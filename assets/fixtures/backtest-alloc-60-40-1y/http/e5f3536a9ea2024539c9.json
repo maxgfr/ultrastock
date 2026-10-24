@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.nasdaq.com/api/quote/SPY/info?assetclass=etf"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"data\":{\"symbol\":\"SPY\",\"companyName\":\"State Street SPDR S&P 500 ETF Trust\",\"stockType\":null,\"exchange\":\"PSE\",\"isNasdaqListed\":false,\"isNasdaq100\":false,\"isHeld\":false,\"primaryData\":{\"lastSalePrice\":\"$759.97\",\"netChange\":\"-3.99\",\"percentageChange\":\"-0.52%\",\"deltaIndicator\":\"down\",\"lastTradeTimestamp\":\"Oct 22, 2026\",\"isRealTime\":false,\"bidPrice\":\"N/A\",\"askPrice\":\"N/A\",\"bidSize\":\"N/A\",\"askSize\":\"N/A\",\"volume\":\"33,423,797\",\"currency\":null},\"secondaryData\":null,\"marketStatus\":\"Closed\",\"assetClass\":\"ETF\",\"keyStats\":null,\"notifications\":[]},\"message\":null,\"status\":{\"rCode\":200,\"bCodeMessage\":null,\"developerMessage\":null}}",
+  "url": "https://api.nasdaq.com/api/quote/SPY/info?assetclass=etf",
+  "fetchedAt": "2026-10-24T16:31:38.384Z"
+ }
+}

@@ -1,0 +1,86 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/germany/scan",
+  "json": {
+   "columns": [
+    "description",
+    "close",
+    "country",
+    "market_cap_basic",
+    "isin",
+    "sector",
+    "currency",
+    "fundamental_currency_code"
+   ],
+   "range": [
+    0,
+    3
+   ],
+   "filter": [
+    {
+     "left": "type",
+     "operation": "equal",
+     "right": "stock"
+    },
+    {
+     "left": "is_primary",
+     "operation": "equal",
+     "right": true
+    },
+    {
+     "left": "country",
+     "operation": "in_range",
+     "right": [
+      "Austria",
+      "Belgium",
+      "Bulgaria",
+      "Croatia",
+      "Cyprus",
+      "Czech Republic",
+      "Denmark",
+      "Estonia",
+      "Finland",
+      "France",
+      "Germany",
+      "Greece",
+      "Hungary",
+      "Ireland",
+      "Italy",
+      "Latvia",
+      "Lithuania",
+      "Luxembourg",
+      "Malta",
+      "Netherlands",
+      "Poland",
+      "Portugal",
+      "Romania",
+      "Slovakia",
+      "Slovenia",
+      "Spain",
+      "Sweden",
+      "Iceland",
+      "Liechtenstein",
+      "Norway"
+     ]
+    },
+    {
+     "left": "market_cap_basic",
+     "operation": "greater",
+     "right": 0
+    }
+   ],
+   "sort": {
+    "sortBy": "market_cap_basic",
+    "sortOrder": "desc"
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":418,\"data\":[{\"s\":\"XETR:SAP\",\"d\":[\"SAP SE\",214.4,\"Germany\",250324633889,\"DE0007164600\",\"Technology Services\",\"EUR\",\"EUR\"]},{\"s\":\"XETR:SIE\",\"d\":[\"Siemens AG\",256.8,\"Germany\",195749427023,\"DE0007236101\",\"Producer Manufacturing\",\"EUR\",\"EUR\"]},{\"s\":\"XETR:ALV\",\"d\":[\"Allianz SE\",427.9,\"Germany\",162043186510,\"DE0008404005\",\"Finance\",\"EUR\",\"EUR\"]}]}",
+  "url": "https://scanner.tradingview.com/germany/scan",
+  "fetchedAt": "2026-10-24T16:06:09.604Z"
+ }
+}

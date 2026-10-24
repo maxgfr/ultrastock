@@ -1,0 +1,41 @@
+{
+  "name": "pmax",
+  "description": "PMAX trend following — buy when pmax equals pmaxLong, sell when pmax equals pmaxShort",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h",
+    "12h"
+  ],
+  "indicators": {
+    "pmax": {
+      "emaPeriod": 10,
+      "atrPeriod": 10,
+      "multiplier": 3
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "pmax.pmax",
+        "==",
+        "pmax.pmaxLong"
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "all",
+    "conditions": [
+      [
+        "pmax.pmax",
+        "==",
+        "pmax.pmaxShort"
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 22,
+    "maxDrawdownPct": 30
+  }
+}

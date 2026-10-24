@@ -81,7 +81,7 @@ interface IfrsDef {
   concepts: string[];
 }
 
-/** IFRS concept fallbacks, in order (ifrs-full prefix implied). */
+/** IFRS concept fallbacks, in order (ifrs-full prefix implied; "*:Name" matches an issuer extension of that name). */
 export const ESEF_METRICS: IfrsDef[] = [
   { id: "revenue", label: "revenue", kind: "flow", concepts: ["Revenue", "RevenueFromContractsWithCustomers"] },
   { id: "grossProfit", label: "gross profit", kind: "flow", concepts: ["GrossProfit"] },
@@ -99,6 +99,9 @@ export const ESEF_METRICS: IfrsDef[] = [
       "PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
       "PurchaseOfPropertyPlantAndEquipment",
       "PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets",
+      // Issuer extensions (any prefix): LVMH tags its capex "operating investments".
+      "*:OperatingInvestmentsClassifiedAsInvestingActivities",
+      "*:PurchaseOfPropertyPlantAndEquipmentAndIntangibleAssetsClassifiedAsInvestingActivities",
     ],
   },
   {
@@ -208,8 +211,9 @@ export function parseEsefReport(json: XbrlJson): { metrics: IfrsMetric[]; notes:
     const byPeriod = new Map<string, IfrsValue>();
     for (const c of concepts) {
       const concept = c.includes(":") ? c : `ifrs-full:${c}`;
+      const anyPrefix = concept.startsWith("*:") ? concept.slice(1) : undefined;
       for (const f of facts) {
-        if (f.concept !== concept) continue;
+        if (anyPrefix ? !f.concept.endsWith(anyPrefix) || f.concept.startsWith("ifrs-full:") : f.concept !== concept) continue;
         if (kind === "flow" && (!f.start || Math.abs(daysBetween(f.start, f.end) - 365) > 25)) continue;
         if (kind === "instant" && f.start) continue;
         if (byPeriod.has(f.end)) continue;

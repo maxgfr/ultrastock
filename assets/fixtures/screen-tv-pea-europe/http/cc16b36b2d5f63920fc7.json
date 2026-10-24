@@ -1,0 +1,86 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/netherlands/scan",
+  "json": {
+   "columns": [
+    "description",
+    "close",
+    "country",
+    "market_cap_basic",
+    "isin",
+    "sector",
+    "currency",
+    "fundamental_currency_code"
+   ],
+   "range": [
+    0,
+    3
+   ],
+   "filter": [
+    {
+     "left": "type",
+     "operation": "equal",
+     "right": "stock"
+    },
+    {
+     "left": "is_primary",
+     "operation": "equal",
+     "right": true
+    },
+    {
+     "left": "country",
+     "operation": "in_range",
+     "right": [
+      "Austria",
+      "Belgium",
+      "Bulgaria",
+      "Croatia",
+      "Cyprus",
+      "Czech Republic",
+      "Denmark",
+      "Estonia",
+      "Finland",
+      "France",
+      "Germany",
+      "Greece",
+      "Hungary",
+      "Ireland",
+      "Italy",
+      "Latvia",
+      "Lithuania",
+      "Luxembourg",
+      "Malta",
+      "Netherlands",
+      "Poland",
+      "Portugal",
+      "Romania",
+      "Slovakia",
+      "Slovenia",
+      "Spain",
+      "Sweden",
+      "Iceland",
+      "Liechtenstein",
+      "Norway"
+     ]
+    },
+    {
+     "left": "market_cap_basic",
+     "operation": "greater",
+     "right": 0
+    }
+   ],
+   "sort": {
+    "sortBy": "market_cap_basic",
+    "sortOrder": "desc"
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":83,\"data\":[{\"s\":\"EURONEXT:ASML\",\"d\":[\"ASML Holding NV\",1407.2,\"Netherlands\",537529123902,\"NL0010273215\",\"Electronic Technology\",\"EUR\",\"EUR\"]},{\"s\":\"EURONEXT:INGA\",\"d\":[\"ING Groep N.V.\",28.46,\"Netherlands\",79338195143,\"NL0011821202\",\"Finance\",\"EUR\",\"EUR\"]},{\"s\":\"EURONEXT:PRX\",\"d\":[\"Prosus N.V. Class N\",34.17,\"Netherlands\",68061132154.00001,\"NL0013654783\",\"Technology Services\",\"EUR\",\"EUR\"]}]}",
+  "url": "https://scanner.tradingview.com/netherlands/scan",
+  "fetchedAt": "2026-10-24T16:06:10.602Z"
+ }
+}

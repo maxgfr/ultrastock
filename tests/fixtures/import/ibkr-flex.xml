@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SYNTHETIC SAMPLE written by hand from the IBKR Flex Query field reference: not a real statement, not market data. -->
+<FlexQueryResponse queryName="synthetic sample" type="AF">
+<FlexStatements count="1">
+<FlexStatement accountId="U0000000" fromDate="20260101" toDate="20260630" period="Custom" whenGenerated="20260701;120000">
+<Trades>
+<Trade accountId="U0000000" currency="USD" fxRateToBase="0.92" assetCategory="STK" symbol="AAPL" description="APPLE INC" conid="265598" isin="US0378331005" listingExchange="NASDAQ" tradeID="1001" tradeDate="20260105" dateTime="20260105;153000" quantity="10" tradePrice="190.5" ibCommission="-1" ibCommissionCurrency="USD" taxes="0" buySell="BUY" levelOfDetail="EXECUTION" />
+<Order accountId="U0000000" currency="USD" assetCategory="STK" symbol="AAPL" isin="US0378331005" listingExchange="NASDAQ" tradeDate="20260105" dateTime="20260105;153000" quantity="10" tradePrice="190.5" ibCommission="-1" buySell="BUY" levelOfDetail="ORDER" />
+<Trade accountId="U0000000" currency="EUR" fxRateToBase="1" assetCategory="STK" symbol="MC" description="LVMH MOET HENNESSY LOUIS VUI" isin="FR0000121014" listingExchange="SBF" tradeID="1002" tradeDate="20260106" dateTime="20260106;093000" quantity="2" tradePrice="700" ibCommission="-3" ibCommissionCurrency="EUR" taxes="-4.2" buySell="BUY" levelOfDetail="EXECUTION" />
+<Trade accountId="U0000000" currency="EUR" fxRateToBase="1" assetCategory="STK" symbol="SAP" description="SAP SE" isin="DE0007164600" listingExchange="IBIS" tradeID="1003" tradeDate="20260107" dateTime="20260107;100000" quantity="5" tradePrice="150" ibCommission="-1.25" ibCommissionCurrency="EUR" buySell="BUY" levelOfDetail="EXECUTION" />
+<Trade accountId="U0000000" currency="GBP" fxRateToBase="1.17" assetCategory="STK" symbol="VUSA" description="VANGUARD S&amp;P 500 UCITS ETF" isin="IE00B3XXRP09" listingExchange="LSEETF" tradeID="1004" tradeDate="20260108" dateTime="20260108;110000" quantity="20" tradePrice="80" ibCommission="-3" ibCommissionCurrency="USD" buySell="BUY" levelOfDetail="EXECUTION" />
+<Trade accountId="U0000000" currency="DKK" assetCategory="STK" symbol="SMPL" description="SYNTHETIC NORDIC LINE" isin="DK0099999990" listingExchange="KFB" tradeID="1005" tradeDate="20260109" dateTime="20260109;100000" quantity="3" tradePrice="500" ibCommission="-10" ibCommissionCurrency="DKK" buySell="BUY" levelOfDetail="EXECUTION" />
+<Trade accountId="U0000000" currency="USD" fxRateToBase="0.93" assetCategory="STK" symbol="AAPL" isin="US0378331005" listingExchange="NASDAQ" tradeID="1006" tradeDate="20260310" dateTime="20260310;160000" quantity="-4" tradePrice="200" ibCommission="-1" ibCommissionCurrency="USD" buySell="SELL" levelOfDetail="EXECUTION" />
+<Trade accountId="U0000000" currency="USD" assetCategory="OPT" symbol="AAPL  260619C00200000" listingExchange="CBOE" tradeID="1007" dateTime="20260311;150000" quantity="1" tradePrice="5.1" ibCommission="-0.65" buySell="BUY" levelOfDetail="EXECUTION" />
+<Trade accountId="U0000000" currency="USD" assetCategory="CASH" symbol="EUR.USD" tradeID="1008" dateTime="20260104;120000" quantity="-1000" tradePrice="1.08" ibCommission="-2" ibCommissionCurrency="USD" buySell="SELL" levelOfDetail="EXECUTION" />
+<Trade accountId="U0000000" currency="USD" assetCategory="STK" symbol="MSFT" listingExchange="NASDAQ" tradeID="1009" dateTime="20260312;150000" quantity="abc" tradePrice="400" buySell="BUY" levelOfDetail="EXECUTION" />
+</Trades>
+<CashTransactions>
+<CashTransaction accountId="U0000000" currency="USD" fxRateToBase="0.92" type="Deposits/Withdrawals" description="CASH RECEIPTS / ELECTRONIC FUND TRANSFERS" dateTime="20260102" amount="5000" levelOfDetail="DETAIL" />
+<CashTransaction accountId="U0000000" currency="EUR" type="Deposits/Withdrawals" description="CASH RECEIPTS / ELECTRONIC FUND TRANSFERS" dateTime="20260102" amount="3000" levelOfDetail="DETAIL" />
+<CashTransaction accountId="U0000000" currency="GBP" type="Deposits/Withdrawals" description="CASH RECEIPTS / ELECTRONIC FUND TRANSFERS" dateTime="20260102" amount="2000" levelOfDetail="DETAIL" />
+<CashTransaction accountId="U0000000" currency="USD" symbol="AAPL" isin="US0378331005" listingExchange="NASDAQ" type="Dividends" description="AAPL(US0378331005) CASH DIVIDEND USD 0.25 PER SHARE (Ordinary Dividend)" dateTime="20260215" amount="2.5" levelOfDetail="DETAIL" />
+<CashTransaction accountId="U0000000" currency="USD" symbol="AAPL" isin="US0378331005" listingExchange="NASDAQ" type="Dividends" description="AAPL(US0378331005) CASH DIVIDEND USD 0.25 PER SHARE (Ordinary Dividend)" dateTime="20260215" amount="2.5" levelOfDetail="SUMMARY" />
+<CashTransaction accountId="U0000000" currency="USD" symbol="AAPL" isin="US0378331005" listingExchange="NASDAQ" type="Withholding Tax" description="AAPL(US0378331005) CASH DIVIDEND USD 0.25 PER SHARE - US TAX" dateTime="20260215" amount="-0.38" levelOfDetail="DETAIL" />
+<CashTransaction accountId="U0000000" currency="USD" type="Broker Interest Received" description="USD CREDIT INT FOR JAN-2026" dateTime="20260203" amount="1.2" levelOfDetail="DETAIL" />
+<CashTransaction accountId="U0000000" currency="USD" type="Other Fees" description="SYNTHETIC MARKET DATA FEE" dateTime="20260203" amount="-10" levelOfDetail="DETAIL" />
+<CashTransaction accountId="U0000000" currency="USD" type="Deposits/Withdrawals" description="DISBURSEMENT" dateTime="20260401" amount="-500" levelOfDetail="DETAIL" />
+<CashTransaction accountId="U0000000" currency="USD" type="Price Adjustments" description="SYNTHETIC ADJUSTMENT" dateTime="20260402" amount="0.01" levelOfDetail="DETAIL" />
+</CashTransactions>
+<CorporateActions>
+<CorporateAction accountId="U0000000" currency="USD" assetCategory="STK" symbol="AAPL" isin="US0378331005" listingExchange="NASDAQ" type="FS" reportDate="20260402" dateTime="20260401;202500" description="AAPL(US0378331005) SPLIT 2 FOR 1 (AAPL, APPLE INC, US0378331005)" quantity="6" />
+<CorporateAction accountId="U0000000" currency="EUR" assetCategory="STK" symbol="SAP" isin="DE0007164600" listingExchange="IBIS" type="TC" reportDate="20260501" dateTime="20260501;000000" description="SAP(DE0007164600) TENDERED TO SYNTHETIC OFFER" quantity="-5" />
+</CorporateActions>
+</FlexStatement>
+</FlexStatements>
+</FlexQueryResponse>

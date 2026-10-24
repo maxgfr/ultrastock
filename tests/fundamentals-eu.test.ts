@@ -120,6 +120,32 @@ describe("EU parsers", () => {
     expect(by("liabilities")?.[0]).toMatchObject({ value: 300, formula: "NoncurrentLiabilities + CurrentLiabilities" });
     expect(by("freeCashFlow")?.[0]).toMatchObject({ value: 25 });
     expect(by("epsBasic")?.[0]).toMatchObject({ value: 2.5, unit: "EUR" });
+    // An issuer extension of a known name stands in when the standard concept is absent (LVMH's "operating investments").
+    const ext = {
+      facts: {
+        a: {
+          value: "100",
+          dimensions: {
+            concept: "ifrs-full:CashFlowsFromUsedInOperatingActivities",
+            entity: "e",
+            period: "2024-01-01T00:00:00/2025-01-01T00:00:00",
+            unit: "iso4217:EUR",
+          },
+        },
+        b: {
+          value: "-30",
+          dimensions: {
+            concept: "LVM:OperatingInvestmentsClassifiedAsInvestingActivities",
+            entity: "e",
+            period: "2024-01-01T00:00:00/2025-01-01T00:00:00",
+            unit: "iso4217:EUR",
+          },
+        },
+      },
+    };
+    const m2 = parseEsefReport(ext).metrics;
+    expect(m2.find((m) => m.id === "capex")?.values[0]).toMatchObject({ value: -30 });
+    expect(m2.find((m) => m.id === "freeCashFlow")?.values[0]).toMatchObject({ value: 70 });
   });
 
   it("reads the filings index, GLEIF records and OpenFIGI answers", () => {

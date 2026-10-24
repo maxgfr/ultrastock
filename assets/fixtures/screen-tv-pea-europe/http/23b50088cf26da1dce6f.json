@@ -1,0 +1,86 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/sweden/scan",
+  "json": {
+   "columns": [
+    "description",
+    "close",
+    "country",
+    "market_cap_basic",
+    "isin",
+    "sector",
+    "currency",
+    "fundamental_currency_code"
+   ],
+   "range": [
+    0,
+    3
+   ],
+   "filter": [
+    {
+     "left": "type",
+     "operation": "equal",
+     "right": "stock"
+    },
+    {
+     "left": "is_primary",
+     "operation": "equal",
+     "right": true
+    },
+    {
+     "left": "country",
+     "operation": "in_range",
+     "right": [
+      "Austria",
+      "Belgium",
+      "Bulgaria",
+      "Croatia",
+      "Cyprus",
+      "Czech Republic",
+      "Denmark",
+      "Estonia",
+      "Finland",
+      "France",
+      "Germany",
+      "Greece",
+      "Hungary",
+      "Ireland",
+      "Italy",
+      "Latvia",
+      "Lithuania",
+      "Luxembourg",
+      "Malta",
+      "Netherlands",
+      "Poland",
+      "Portugal",
+      "Romania",
+      "Slovakia",
+      "Slovenia",
+      "Spain",
+      "Sweden",
+      "Iceland",
+      "Liechtenstein",
+      "Norway"
+     ]
+    },
+    {
+     "left": "market_cap_basic",
+     "operation": "greater",
+     "right": 0
+    }
+   ],
+   "sort": {
+    "sortBy": "market_cap_basic",
+    "sortOrder": "desc"
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":748,\"data\":[{\"s\":\"OMXSTO:INVE_A\",\"d\":[\"Investor AB Class A\",406.3,\"Sweden\",1255144099747,\"SE0015811955\",\"Finance\",\"SEK\",\"SEK\"]},{\"s\":\"OMXSTO:ATCO_A\",\"d\":[\"Atlas Copco AB Class A\",176.3,\"Sweden\",827785565686,\"SE0017486889\",\"Producer Manufacturing\",\"SEK\",\"SEK\"]},{\"s\":\"OMXSTO:VOLV_A\",\"d\":[\"Volvo AB Class A\",308,\"Sweden\",625825421505,\"SE0000115420\",\"Producer Manufacturing\",\"SEK\",\"SEK\"]}]}",
+  "url": "https://scanner.tradingview.com/sweden/scan",
+  "fetchedAt": "2026-10-24T16:06:19.605Z"
+ }
+}
