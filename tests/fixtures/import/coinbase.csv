@@ -1,0 +1,17 @@
+Transactions
+User,Synthetic Sample,00000000-0000-0000-0000-000000000000
+"You can use this transaction report to inform your likely tax obligations. For US customers, Sells, Converts, and Rewards Income, and Coinbase Earn transactions are taxable events."
+Timestamp,Transaction Type,Asset,Quantity Transacted,Spot Price Currency,Spot Price at Transaction,Subtotal,Total (inclusive of fees and/or spread),Fees and/or Spread,Notes
+2026-01-04T09:00:00Z,Deposit,EUR,1000,EUR,€1.00,€1000.00,€1000.00,€0.00,Deposit from a bank account
+2026-01-05T10:00:00Z,Buy,BTC,0.01,EUR,€38000.00,€380.00,€385.99,€5.99,Bought 0.01 BTC for €385.99 EUR
+2026-01-06T10:00:00Z,Advanced Trade Buy,ETH,0.2,EUR,€2400.00,€480.00,€481.20,€1.20,Bought 0.2 ETH for €481.20 EUR on ETH-EUR at 2400.00 EUR/ETH
+2026-01-10T10:00:00Z,Convert,ETH,0.05,EUR,€2450.00,€122.50,€122.50,€1.84,Converted 0.05 ETH to 0.003175 BTC
+2026-01-12T10:00:00Z,Staking Income,ETH,0.0005,EUR,€2500.00,€1.25,€1.25,€0.00,
+2026-01-13T10:00:00Z,Rewards Income,XLM,10,EUR,€0.10,€1.00,€1.00,€0.00,
+2026-01-15T10:00:00Z,Send,BTC,-0.002,EUR,€39000.00,€78.00,€78.00,€0.00,Sent 0.002 BTC to a synthetic address
+2026-01-16T10:00:00Z,Receive,ETH,0.1,EUR,€2500.00,€250.00,€250.00,€0.00,Received 0.1 ETH from an external account
+2026-01-20T10:00:00Z,Sell,BTC,-0.005,EUR,€40000.00,€200.00,€197.01,€2.99,Sold 0.005 BTC for €197.01 EUR
+2026-01-21T10:00:00Z,Withdrawal,EUR,-100,EUR,€1.00,€100.00,€100.00,€0.00,Withdrawal to a bank account
+2026-01-22T10:00:00Z,Exchange Deposit,BTC,0.001,EUR,€40000.00,€40.00,€40.00,€0.00,
+2026-01-23T10:00:00Z,Retail Synthetic Migration,ETH,0.1,EUR,€2500.00,€250.00,€250.00,€0.00,
+yesterday,Buy,BTC,0.01,EUR,€38000.00,€380.00,€385.99,€5.99,

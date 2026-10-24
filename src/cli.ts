@@ -2,6 +2,7 @@ import { readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readBrief, analyzeSymbol } from "./analyze/pack.js";
+import { analyzeFull, DEPTHS, type Depth } from "./analyze/full.js";
 import { calcEvidence } from "./calc.js";
 import { checkAnswer, NOTE_KINDS } from "./check.js";
 import { reportCommand } from "./commands/report.js";
@@ -25,6 +26,7 @@ import {
 import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentimentCommand, universeCommand } from "./commands/macro.js";
 import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
+import { paperCommand, planCommand, portfolioCommand, ticketCommand } from "./commands/trading.js";
 import { catalystsCommand, regimeCommand, sectorsCommand } from "./commands/regime.js";
 import { screenCommand } from "./commands/screen.js";
 import { cryptoAnalysisCommand, optionsAnalysisCommand, predictAnalysisCommand, statsCommand } from "./commands/quant.js";
@@ -57,7 +59,7 @@ figure registered as an evidence [E#] that the answer must cite, and a check
 that refuses a figure the evidence does not hold.
 
 USAGE
-  ultrastock analyze <symbol> [--out <dir>] [--json]
+  ultrastock analyze <symbol> [--depth quick|standard|deep] [--since <run>] [--out <dir>] [--json]
   ultrastock quote <symbol> [--out <dir>] [--json]
   ultrastock history <symbol> [--from <date>] [--to <date>] [--interval 1d|1w|4h|1h|15m] [--limit <n>] [--json]
   ultrastock calc <run> <formula> --label <text> [--unit <unit>] [--key <key>] [--json]
@@ -92,6 +94,16 @@ USAGE
   ultrastock short <US symbol> [--out <dir>] [--json]
   ultrastock dividends <US symbol> [--limit <n>] [--out <dir>] [--json]
   ultrastock congress [--member <name>] [--doc <DocID>] [--year <yyyy>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock portfolio show|perf [--book real|paper] [--out <dir>] [--json]
+  ultrastock portfolio risk|stress|optimize|location|lookthrough|income [--book real|paper] [--benchmark <sym>] [--universe a,b,c] [--out <dir>] [--json]
+  ultrastock portfolio rebalance --targets <file.json|{"CW8.PA":60,"CASH":5}> [--band <pts>] [--rel-band <%>] [--contribution <amount>] [--book] [--out <dir>] [--json]
+  ultrastock portfolio goals --target <amount> --years <n> [--monthly <amount>] [--book] [--out <dir>] [--json]
+  ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name|file.json>] [--dry-run] [--json]
+  ultrastock portfolio deposit|withdraw <account> <amount> [--currency EUR] [--date <date>] [--book real|paper]
+  ultrastock portfolio add buy|sell|dividend|fee|interest|tax|split --account <id> [--symbol] [--quantity] [--price] [--amount] [--fee] [--currency] [--date] [--book]
+  ultrastock plan <symbol> --account <id> [--entry <n>] [--stop <n>] [--target <a,b>] [--venue paper] [--ticket] [--out <dir>] [--json]
+  ultrastock ticket list|show|check|cancel [<ticket-id>] [--status <s>] [--json]
+  ultrastock paper book|submit <ticket-id>|sweep|readiness [--json]
   ultrastock options <symbol> [--expiries <n>] [--out <dir>] [--json]
   ultrastock options-analysis <symbol> [--expiry <date>] [--strategy <spec>] [--spot-moves=<list>] [--rate <pct>] [--out <dir>] [--json]
   ultrastock stats <symbol> [<symbol> …] [--days <n>] [--benchmark <symbol>] [--out <dir>] [--json]
@@ -114,11 +126,18 @@ SYMBOLS
   BTCUSDT, ETH-EUR, SOL/USDC           Binance spot (official, real time; -USD reads USDT)
 
 COMMANDS
-  analyze   Gather an instrument's evidence into a run directory: latest price,
-            52-week range, 1m/3m/6m/1y returns, SMA50/SMA200 and the trend state,
-            RSI(14), MACD(12,26,9), ATR(14), Bollinger(20,2), 1-year volatility and
-            maximum drawdown. Writes evidence.json, BRIEF.md (the figures, by
-            theme, each with its [E#]) and RUNBOOK.md (how to answer).
+  analyze   Gather an instrument's evidence into one run directory. quick: price,
+            52-week range, returns, averages and the trend state, RSI, MACD, ATR,
+            Bollinger, volatility and drawdown. standard (default) adds the
+            technical panel (TECHNICALS.md), valuation for a company
+            (VALUATION.md), the 30-day catalysts, the market regime, a week of
+            news, insiders (US, Paris) and analysts (US), the user's portfolio
+            context (holding / flat / not provided), the profile's limits, the
+            jurisdiction's rules and past decisions. deep: three debate rounds
+            and more headlines. --since <run> writes DELTA.md against an earlier
+            run. BRIEF.md indexes the slices (a failed one is named, never
+            filled in); RUNBOOK.md is the debate: analysts → bull / bear → judge
+            → trader → risk trio → portfolio manager → decide → check → report.
   quote     The latest price. With --out, registers it in that run's evidence.
   history   Daily (or crypto intraday) bars, oldest first; --limit keeps the last n.
   calc      Compute a derived figure from evidence ids — "(E3 / E7 - 1) * 100" —
@@ -214,6 +233,46 @@ COMMANDS
   short     Short interest and days to cover (Nasdaq) and daily short volume (FINRA).
   dividends Dividend history, yield and ex-dates (Nasdaq).
   congress  US House periodic transaction reports, and one report's trades.
+  portfolio The user's holdings: an append-only ledger per book ("real" for what
+            they hold, "paper" for simulation) — positions, cash, average cost
+            (PMP) and FIFO lots recomputed from the transactions, marked to market
+            in the base currency (ECB rates); perf gives the money-weighted return
+            (XIRR), realised results and the circuit breaker's state. import
+            reads a broker statement into the ledger: IBKR Flex Query (XML or
+            CSV) and Activity Statement CSV, Binance trade and transaction
+            history, Kraken trades.csv and ledgers.csv, Coinbase history, or any
+            CSV through a column map (--map '{"date":"Date","type":"Type",
+            "symbol":"Ticker","quantity":"Qty","price":"Price","fee":"Fees",
+            "amount":"Amount","currency":"Ccy"}', or boursorama, fortuneo,
+            trade-republic — unverified layouts, checked against the file's
+            headers). French or English numbers, dates and type words; re-import
+            adds nothing (content ids); a sell beyond holdings refuses the whole
+            file; skipped rows are listed with their reason; --dry-run writes
+            nothing. For crypto, --map '{"quote":"EUR"}' names the pair coin
+            deposits and rewards are booked against.
+            Analyses of a book marked to market, every figure an [E#]: risk
+            (exposures by class, currency, sector, country; HHI, volatility,
+            VaR/CVaR historical, Cornish-Fisher and 10-day bootstrap, beta,
+            drawdown, correlations, limit breaches), stress (GFC, COVID, 2022
+            rates, crypto winter replays and parametric shocks), optimize
+            (min-variance, risk parity, HRP, max-Sharpe on Ledoit-Wolf, capped
+            at maxPositionPct), rebalance (bands into whole-share orders with
+            fees and tax notes), location (best envelope per holding, PEA room),
+            lookthrough (ETF holdings from iShares, Amundi, SEC N-PORT), income
+            (received, forward 12 months, yield on cost), goals (seeded Monte
+            Carlo, the monthly contribution for 80 %). None places an order.
+  plan      From a view to an order within the profile's limits: entry, a stop
+            below support or 2 ATR, targets at 2R and 3R, the size from the risk
+            per trade (and every cap), dry-run through the risk gate → ready,
+            ready with conditions, not ready or reject. --ticket creates the ticket.
+  ticket    The only way to an execution: list, show, check (re-runs the risk
+            gate on fresh prices; a check lasts 15 minutes), cancel.
+  paper     Paper trading on real prices: submit a checked ticket (crypto walks
+            Binance's order book; others fill at the last price plus slippage,
+            fees included), sweep working limit orders against the bars traded
+            since, book, and readiness — whether the paper record is good enough
+            (20 trades, 30 days, positive expectancy, profit factor > 1.2,
+            drawdown < 15 %) to consider real money.
   options   An option chain summary per expiry — ATM IV, put/call open interest
             and volume, totals: US listings from CBOE (15 min delayed), BTC and
             ETH from Deribit with the DVOL volatility index.
@@ -279,6 +338,8 @@ export const VALUE_FLAGS = [
   "currency",
   "answers",
   "answer",
+  "depth",
+  "since",
   "type",
   "broker",
   "venues",
@@ -301,6 +362,25 @@ export const VALUE_FLAGS = [
   "terminal",
   "indicators",
   "benchmark",
+  "book",
+  "account",
+  "quantity",
+  "price",
+  "amount",
+  "fee",
+  "date",
+  "entry",
+  "stop",
+  "target",
+  "venue",
+  "status",
+  "format",
+  "map",
+  "targets",
+  "band",
+  "rel-band",
+  "contribution",
+  "monthly",
   "expiry",
   "strategy",
   "spot-moves",
@@ -312,7 +392,7 @@ export const VALUE_FLAGS = [
   "universe",
   "sort",
 ];
-export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "list", "bootstrap"];
+export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "dry-run", "list", "bootstrap"];
 export const COMMANDS = [
   "analyze",
   "report",
@@ -354,6 +434,10 @@ export const COMMANDS = [
   "sentiment",
   "news",
   "universe",
+  "portfolio",
+  "plan",
+  "ticket",
+  "paper",
   "doctor",
 ];
 
@@ -363,7 +447,7 @@ const SPEC: CliSpec = {
   valueFlags: VALUE_FLAGS,
   boolFlags: BOOL_FLAGS,
   commandFlags: {
-    analyze: ["out", ...NET],
+    analyze: ["depth", "since", "out", ...NET],
     quote: ["out", ...NET],
     history: ["from", "to", "interval", "limit", ...NET],
     calc: ["label", "unit", "key", "json"],
@@ -395,6 +479,34 @@ const SPEC: CliSpec = {
     short: ["out", ...NET],
     dividends: ["limit", "out", ...NET],
     congress: ["member", "doc", "year", "limit", "out", ...NET],
+    portfolio: [
+      "book",
+      "account",
+      "symbol",
+      "quantity",
+      "price",
+      "amount",
+      "fee",
+      "currency",
+      "date",
+      "format",
+      "map",
+      "dry-run",
+      "benchmark",
+      "universe",
+      "targets",
+      "band",
+      "rel-band",
+      "contribution",
+      "target",
+      "years",
+      "monthly",
+      "out",
+      ...NET,
+    ],
+    plan: ["account", "entry", "stop", "target", "venue", "ticket", "out", ...NET],
+    ticket: ["status", ...NET],
+    paper: ["out", ...NET],
     options: ["expiries", "out", ...NET],
     "options-analysis": ["expiry", "strategy", "spot-moves", "rate", "out", ...NET],
     stats: ["days", "benchmark", "out", ...NET],
@@ -434,6 +546,8 @@ function arity(args: CommandArgs): number {
     return Number.POSITIVE_INFINITY;
   if (args.command === "news" || args.command === "cot" || args.command === "resolve") return Number.POSITIVE_INFINITY;
   if (args.command === "congress") return 0;
+  if (args.command === "portfolio") return 3;
+  if (args.command === "ticket" || args.command === "paper") return 2;
   if (args.command === "predict") return Number.POSITIVE_INFINITY;
   return 1;
 }
@@ -469,9 +583,12 @@ async function run(args: CommandArgs): Promise<void> {
 
   if (cmd === "analyze") {
     const symbol = args.positional[0];
-    if (!symbol) usage("usage: ultrastock analyze <symbol> [--out <dir>] [--json]");
+    if (!symbol) usage("usage: ultrastock analyze <symbol> [--depth quick|standard|deep] [--since <run>] [--out <dir>] [--json]");
+    const depth = (argValue(args, "depth") ?? "standard") as Depth;
+    if (!(DEPTHS as readonly string[]).includes(depth)) usage(`--depth is one of ${DEPTHS.join(", ")}`);
     const dir = runDirFor(argValue(args, "out"), `${symbol.toUpperCase().replace(/[^A-Z0-9.-]/g, "_")}-${runId()}`);
-    const r = await analyzeSymbol(symbol, dir);
+    const since = argValue(args, "since");
+    const r = await analyzeFull(symbol, dir, { depth, since: since ? resolve(since) : undefined });
     if (asJson) process.stdout.write(jsonLine(r));
     else process.stdout.write(`${readBrief(dir)}\nrun: ${dir}\n`);
     return;
@@ -601,6 +718,10 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "short") return shortCommand(args, asJson);
   if (cmd === "dividends") return dividendsCommand(args, asJson);
   if (cmd === "congress") return congressCommand(args, asJson);
+  if (cmd === "portfolio") return portfolioCommand(args, asJson);
+  if (cmd === "plan") return planCommand(args, asJson);
+  if (cmd === "ticket") return ticketCommand(args, asJson);
+  if (cmd === "paper") return paperCommand(args, asJson);
   if (cmd === "options") return optionsCommand(args, asJson);
   if (cmd === "options-analysis") return optionsAnalysisCommand(args, asJson);
   if (cmd === "stats") return statsCommand(args, asJson);
