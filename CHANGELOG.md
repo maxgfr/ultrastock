@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [0.8.0](https://github.com/maxgfr/ultrastock/compare/v0.7.0...v0.8.0) (2026-10-24)
+
+
+### Features
+
+* **tax:** parameterised tax engine with French and US regimes ([42a6a9a](https://github.com/maxgfr/ultrastock/commit/42a6a9a0c01a1b9ee527de350fe218df03f61207))
+
 # [0.7.0](https://github.com/maxgfr/ultrastock/compare/v0.6.0...v0.7.0) (2026-10-24)
 
 
