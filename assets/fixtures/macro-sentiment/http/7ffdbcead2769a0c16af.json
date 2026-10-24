@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.alternative.me/fng/?limit=3"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\n\t\"name\": \"Fear and Greed Index\",\n\t\"data\": [\n\t\t{\n\t\t\t\"value\": \"51\",\n\t\t\t\"value_classification\": \"Neutral\",\n\t\t\t\"timestamp\": \"1792800000\",\n\t\t\t\"time_until_update\": \"30864\"\n\t\t},\n\t\t{\n\t\t\t\"value\": \"50\",\n\t\t\t\"value_classification\": \"Neutral\",\n\t\t\t\"timestamp\": \"1792713600\"\n\t\t},\n\t\t{\n\t\t\t\"value\": \"68\",\n\t\t\t\"value_classification\": \"Greed\",\n\t\t\t\"timestamp\": \"1792627200\"\n\t\t}\n\t],\n\t\"metadata\": {\n\t\t\"error\": null\n\t}\n}",
+  "url": "https://api.alternative.me/fng/?limit=3",
+  "fetchedAt": "2026-10-24T15:25:36.400Z"
+ }
+}

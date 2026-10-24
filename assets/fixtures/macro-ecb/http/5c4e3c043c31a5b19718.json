@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://data-api.ecb.europa.eu/service/data/EST/B.EU000A2X2A25.WT?lastNObservations=5&format=csvdata&detail=dataonly"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "KEY,FREQ,BENCHMARK_ITEM,DATA_TYPE_EST,TIME_PERIOD,OBS_VALUE\r\nEST.B.EU000A2X2A25.WT,B,EU000A2X2A25,WT,2026-10-16,2.441\r\nEST.B.EU000A2X2A25.WT,B,EU000A2X2A25,WT,2026-10-19,2.441\r\nEST.B.EU000A2X2A25.WT,B,EU000A2X2A25,WT,2026-10-20,2.44\r\nEST.B.EU000A2X2A25.WT,B,EU000A2X2A25,WT,2026-10-21,2.44\r\nEST.B.EU000A2X2A25.WT,B,EU000A2X2A25,WT,2026-10-22,2.442\r\n",
+  "url": "https://data-api.ecb.europa.eu/service/data/EST/B.EU000A2X2A25.WT?lastNObservations=5&format=csvdata&detail=dataonly",
+  "fetchedAt": "2026-10-24T15:24:25.230Z"
+ }
+}

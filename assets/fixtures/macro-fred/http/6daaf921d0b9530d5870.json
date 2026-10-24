@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL&cosd=2026-07-16"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "observation_date,CPIAUCSL\n2026-07-01,332.813\n2026-08-01,334.131\n2026-09-01,336.298\n",
+  "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL&cosd=2026-07-16",
+  "fetchedAt": "2026-10-24T15:24:26.529Z"
+ }
+}

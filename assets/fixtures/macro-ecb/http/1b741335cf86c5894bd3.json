@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://data-api.ecb.europa.eu/service/data/HICP/M.U2.N.000000.4D0.ANR?lastNObservations=3&format=csvdata&detail=dataonly"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "KEY,FREQ,REF_AREA,ADJUSTMENT,ICP_ITEM,DATA_PROVIDER,ICP_SUFFIX,TIME_PERIOD,OBS_VALUE\r\nHICP.M.U2.N.000000.4D0.ANR,M,U2,N,000000,4D0,ANR,2026-07,2.9\r\nHICP.M.U2.N.000000.4D0.ANR,M,U2,N,000000,4D0,ANR,2026-08,3.2\r\nHICP.M.U2.N.000000.4D0.ANR,M,U2,N,000000,4D0,ANR,2026-09,3.8\r\n",
+  "url": "https://data-api.ecb.europa.eu/service/data/HICP/M.U2.N.000000.4D0.ANR?lastNObservations=3&format=csvdata&detail=dataonly",
+  "fetchedAt": "2026-10-24T15:24:25.303Z"
+ }
+}
