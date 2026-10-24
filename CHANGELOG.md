@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.0.0](https://github.com/maxgfr/ultrastock/compare/v0.10.0...v1.0.0) (2026-10-24)
+
+
+* feat!: ultrastock 1.0 — the stable command, evidence and safety contract ([2a2bdd2](https://github.com/maxgfr/ultrastock/commit/2a2bdd25c667373fceed996822128e18dc1f6f59))
+
+
+### BREAKING CHANGES
+
+* from 1.0 the public surface follows semantic versioning — the commands and flags of `ultrastock --help`, the exit codes (0 done, 1 failed or refused, 2 bad invocation), the evidence register (`evidence.json`: ids, keys, provenance), the decision schema, the ledger and ticket formats under ULTRASTOCK_HOME, and the MCP tool names. A change to any of them is a major release.
+
 # [0.10.0](https://github.com/maxgfr/ultrastock/compare/v0.9.0...v0.10.0) (2026-10-24)
 
 
