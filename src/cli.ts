@@ -24,6 +24,7 @@ import {
 import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentimentCommand, universeCommand } from "./commands/macro.js";
 import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
+import { catalystsCommand, regimeCommand, sectorsCommand } from "./commands/regime.js";
 import { screenCommand } from "./commands/screen.js";
 import { cryptoAnalysisCommand, optionsAnalysisCommand, predictAnalysisCommand, statsCommand } from "./commands/quant.js";
 import { doctorReport, formatDoctor } from "./doctor.js";
@@ -77,6 +78,9 @@ USAGE
   ultrastock fundamentals <symbol> [--asof <date>] [--years <n>] [--quarters <n>] [--source sec|esef|crible] [--out <dir>] [--json]
   ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market <m>] [--universe <idx|list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--out <dir>] [--json]
   ultrastock screen --list [--engine tradingview|crible|builtin] [--json]
+  ultrastock regime [--market us|eu|crypto] [--out <dir>] [--json]
+  ultrastock sectors [--market us|eu] [--out <dir>] [--json]
+  ultrastock catalysts <symbol> [--days <1-90>] [--out <dir>] [--json]
   ultrastock technicals <symbol> [--interval 1d|1w|4h|1h|15m] [--indicators <name:k=v;…,…>] [--benchmark <symbol>] [--out <dir>] [--json]
   ultrastock valuation <symbol> [--erp <pct>] [--terminal <pct>] [--out <dir>] [--json]
   ultrastock filings <US symbol> [--forms 8-K,10-Q] [--days <n>] [--limit <n>] | filings --search <text> [--out <dir>] [--json]
@@ -162,6 +166,23 @@ COMMANDS
             (--engine crible: a crible preset or any DSL, e.g. "piotroski_f >= 7
             AND country IN ('FR','DE')"; --bootstrap downloads its dataset once,
             about a minute). --list prints every preset's rules and source.
+  regime    Market regime and an exposure ceiling. us: SPY trend, RSP/SPY
+            breadth, HYG/LQD credit, SPY/QQQ distribution days and follow-through,
+            VIX/VIX3M, CNN Fear & Greed read contrarian, % of US large caps above
+            their 200-day. eu: CAC 40 trend, euro-area large-cap breadth, VIX term;
+            CW8 and the ECB AAA 2s10s as context. crypto: BTC trend and 30-day
+            return, alt breadth, funding, drawdown from the high. Every signal,
+            component, weight and the zone / max exposure / new-entries call is
+            evidence; missing inputs renormalise the weights and are named.
+  sectors   Sector leadership. us: the 11 SPDR sector ETFs vs SPY (1/3/6-month
+            relative performance, RS rank, above the 50/200-day). eu: large caps
+            of FR/DE/NL/IT/ES grouped by sector. Two or more defensives in the
+            top four reads as risk-off.
+  catalysts What can move an instrument in the next --days (default 30): next
+            earnings, ex-dividend dates, important 8-Ks and insider cluster buys
+            (US), high-impact macro releases for its currency, exchange holidays,
+            the options-implied move to the first expiry after the window (US),
+            and clusters of two or more catalysts within 3 sessions.
   technicals The full technical picture, each reading an [E#]: averages, ADX,
             Supertrend, Parabolic SAR, Ichimoku cloud, Aroon, RSI, MACD,
             stochastic, Williams %R, CCI, ROC, ATR, Bollinger %B and bandwidth,
@@ -298,6 +319,9 @@ export const COMMANDS = [
   "resolve",
   "fundamentals",
   "screen",
+  "regime",
+  "sectors",
+  "catalysts",
   "technicals",
   "valuation",
   "filings",
@@ -349,6 +373,9 @@ const SPEC: CliSpec = {
     universe: ["out", ...NET],
     resolve: ["out", ...NET],
     fundamentals: ["asof", "years", "quarters", "source", "out", ...NET],
+    regime: ["market", "out", ...NET],
+    sectors: ["market", "out", ...NET],
+    catalysts: ["days", "out", ...NET],
     screen: ["engine", "market", "universe", "limit", "sort", "list", "bootstrap", "out", ...NET],
     technicals: ["interval", "indicators", "benchmark", "out", ...NET],
     valuation: ["erp", "terminal", "out", ...NET],
@@ -387,7 +414,15 @@ function arity(args: CommandArgs): number {
   if (args.command === "check" || args.command === "calc") return 2;
   if (args.command === "profile") return 3;
   if (args.command === "crypto" || args.command === "calendar" || args.command === "macro" || args.command === "crypto-analysis") return 2;
-  if (args.command === "stats" || args.command === "predict-analysis" || args.command === "screen") return Number.POSITIVE_INFINITY;
+  if (
+    args.command === "stats" ||
+    args.command === "predict-analysis" ||
+    args.command === "screen" ||
+    args.command === "regime" ||
+    args.command === "sectors" ||
+    args.command === "catalysts"
+  )
+    return Number.POSITIVE_INFINITY;
   if (args.command === "news" || args.command === "cot" || args.command === "resolve") return Number.POSITIVE_INFINITY;
   if (args.command === "congress") return 0;
   if (args.command === "predict") return Number.POSITIVE_INFINITY;
@@ -546,6 +581,9 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "valuation") return valuationCommand(args, asJson);
   if (cmd === "technicals") return technicalsCommand(args, asJson);
   if (cmd === "screen") return screenCommand(args, asJson);
+  if (cmd === "regime") return regimeCommand(args, asJson);
+  if (cmd === "sectors") return sectorsCommand(args, asJson);
+  if (cmd === "catalysts") return catalystsCommand(args, asJson);
   if (cmd === "filings") return filingsCommand(args, asJson);
   if (cmd === "insiders") return insidersCommand(args, asJson);
   if (cmd === "holdings") return holdingsCommand(args, asJson);
