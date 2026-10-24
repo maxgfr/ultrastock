@@ -28,6 +28,7 @@ import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "
 import { backtestCommand, strategyCommand } from "./commands/backtest.js";
 import { decideCommand, journalCommand, knowledgeCommand, watchCommand } from "./commands/journal.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
+import { taxCommand } from "./commands/tax.js";
 import { paperCommand, planCommand, portfolioCommand, ticketCommand } from "./commands/trading.js";
 import { catalystsCommand, regimeCommand, sectorsCommand } from "./commands/regime.js";
 import { screenCommand } from "./commands/screen.js";
@@ -107,6 +108,9 @@ USAGE
   ultrastock ticket list|show|check|cancel [<ticket-id>] [--status <s>] [--json]
   ultrastock paper book|submit <ticket-id>|sweep|readiness [--json]
   ultrastock decide <run> <decision.json> [--json]
+  ultrastock tax report|lots [--regime fr|us] [--year YYYY] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,…|short=…,long=…] [--envelope-value <account>:<date>=<value>] [--lot-method fifo|hifo|lifo] [--household single|couple] [--out <dir>] [--json]
+  ultrastock tax harvest|rules|verify [--regime fr|us] [--year YYYY] [--json]
+  ultrastock tax export --format 8949|2086|2074|koinly [--regime fr|us] [--year YYYY] [--out <dir>]
   ultrastock journal settle|hits|review|digest [--book real|paper] [--json]
   ultrastock journal thesis list|add|show|move [<id>] [<state>] [--symbol] [--thesis] [--invalidation] [--catalysts] [--review-by] [--note] [--outcome] [--ticket-id] [--json]
   ultrastock journal lesson <text> [--tags <a,b>] | journal lessons [--tag <t>] [--json]
@@ -289,6 +293,22 @@ COMMANDS
   decide    Validate a decision (rating, horizon, conviction, thesis, the [E#] it
             rests on, falsifiers, an optional plan with a stop) against the run's
             evidence, then record it in the journal for settlement.
+  tax       The ledger through the tax regime of the profile's residence (or
+            --regime fr|us) for a tax year (default: last year; harvest: this
+            year). report: the year's totals, the form boxes (2042-C 3VG/3VH,
+            2DC, 2TR, 2CK, 2AB, 3AN/3BN, 2086, 2074, 2047; 8949, Schedule D,
+            NIIT…), obligations (2778-DIV, 3916 / 3916-bis, FBAR, 8938) and what
+            is missing. FR: PMP, PFU vs the progressive scale with --tmi, losses
+            carried 10 years (--carryforward 2024=1200), PEA / AV withdrawals
+            (--envelope-value pea:2026-03-02=52000), crypto by the global
+            formula of art. 150 VH bis (portfolio valued at each disposal).
+            US: FIFO/HIFO/LIFO lots, wash sales, ST/LT, the $3,000 limit,
+            0/15/20 % brackets with --income and --filing, NIIT. lots: every
+            realised event; harvest: positions under water and what selling
+            saves; rules: each envelope's rules; verify: every parameter with
+            its sources and a search query to re-check this year; export:
+            CSV for 8949, 2086, 2074 or Koinly. Every amount is converted at
+            the ECB rate of its date. A preparation aid, not tax advice.
   journal   The learning loop: settle decisions at +5/+20/+60 sessions against a
             benchmark (alpha, right or wrong), hit rates by rating, post-trade
             reviews (the plan first, then the outcome in R, with best and worst
@@ -408,6 +428,15 @@ export const VALUE_FLAGS = [
   "indicators",
   "benchmark",
   "book",
+  "regime",
+  "tmi",
+  "marginal-rate",
+  "filing",
+  "income",
+  "carryforward",
+  "envelope-value",
+  "lot-method",
+  "household",
   "account",
   "quantity",
   "price",
@@ -524,6 +553,7 @@ export const COMMANDS = [
   "paper",
   "decide",
   "journal",
+  "tax",
   "knowledge",
   "watch",
   "backtest",
@@ -598,6 +628,22 @@ const SPEC: CliSpec = {
     ticket: ["status", ...NET],
     paper: ["out", ...NET],
     decide: ["json"],
+    tax: [
+      "regime",
+      "year",
+      "book",
+      "tmi",
+      "marginal-rate",
+      "filing",
+      "income",
+      "carryforward",
+      "envelope-value",
+      "lot-method",
+      "household",
+      "format",
+      "out",
+      ...NET,
+    ],
     backtest: [
       "from",
       "to",
@@ -686,7 +732,8 @@ function arity(args: CommandArgs): number {
   if (args.command === "congress") return 0;
   if (args.command === "portfolio") return 3;
   if (args.command === "ticket" || args.command === "paper" || args.command === "decide" || args.command === "knowledge") return 2;
-  if (args.command === "journal" || args.command === "watch" || args.command === "backtest" || args.command === "strategy") return Number.POSITIVE_INFINITY;
+  if (args.command === "journal" || args.command === "watch" || args.command === "tax" || args.command === "backtest" || args.command === "strategy")
+    return Number.POSITIVE_INFINITY;
   if (args.command === "predict") return Number.POSITIVE_INFINITY;
   return 1;
 }
@@ -860,6 +907,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "portfolio") return portfolioCommand(args, asJson);
   if (cmd === "decide") return decideCommand(args, asJson);
   if (cmd === "journal") return journalCommand(args, asJson);
+  if (cmd === "tax") return taxCommand(args, asJson);
   if (cmd === "knowledge") return knowledgeCommand(args, asJson);
   if (cmd === "watch") return watchCommand(args, asJson);
   if (cmd === "backtest") return backtestCommand(args, asJson);

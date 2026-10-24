@@ -25,10 +25,12 @@ the evidence, form a view, and write an answer in which every number cites the
    (end of day, delayed, real time); say when a source is unofficial.
 4. **Run `check` before you answer.** Fix every line it reports; never ship a
    failing answer. Use `--max-age` when the user acts today.
-5. **A view is yours; say what would change it.** Bullish, expensive, risky are
+5. **Tax figures need this year's rules.** Run `tax verify` and check the
+   parameters the answer uses by web search before stating a tax amount.
+6. **A view is yours; say what would change it.** Bullish, expensive, risky are
    judgements — name the evidence they rest on and the level or event that
    would invalidate them. Missing data is "unavailable", never guessed.
-6. **Decision support, not an order.** ultrastock places no real order; the
+7. **Decision support, not an order.** ultrastock places no real order; the
    user decides and executes. Say once per answer that this is not personalised
    advice from a licensed adviser.
 
@@ -63,6 +65,9 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | would a rule have worked, is it overfit | `strategy list`, `backtest review <strategy> <symbol>` (then `walkforward`, `sweep`, `montecarlo`) | [backtesting](references/backtesting.md) |
 | a portfolio rule over history (60/40, dual momentum…) | `backtest run 60-40 CW8.PA,IEAC.AS --rebalance quarterly` | [backtesting](references/backtesting.md) |
 | to write or check their own strategy | `strategy new <name> --like sma-cross`, `strategy validate <file>` | [backtesting](references/backtesting.md) |
+| what they owe on last year's gains, dividends, crypto; which boxes to fill | `tax verify` (then web-search the parameters), `tax report --year <y> [--tmi 30]`, `tax lots`, `tax export --format 2074|2086|8949|koinly` | [tax](references/tax.md) |
+| which losses to harvest before year end | `tax harvest` | [tax](references/tax.md) |
+| the tax rules of their envelopes (PEA, AV, CTO, crypto, IRA) | `tax rules [--regime fr|us]` | [tax](references/tax.md) |
 | to keep a document (an article, a report) for the analysis | `knowledge import <file> --title …` | [journal-alerts](references/journal-alerts.md) |
 | to practise without money, and know when they are ready | `paper submit <ticket>|sweep|book|readiness` | [trading-paper](references/trading-paper.md) |
 | the full technical picture of one instrument | `technicals <symbol> --out <dir>` → `TECHNICALS.md` | [technicals-screening](references/technicals-screening.md) |
@@ -132,6 +137,7 @@ ultrastock journal thesis list|add|show|move [<id>] [<state>] [--symbol] [--thes
 ultrastock watch list|add <SYM> "<condition>"|add 8k <SYM>|add stops|rm <id>|run [--notify] · knowledge import <file>
 ultrastock backtest run|walkforward|sweep|montecarlo|compare|review <strategy> <symbol> [--years] [--grid] … · backtest decisions
 ultrastock strategy list|show|validate|new [<name>] [--like <strategy>]
+ultrastock tax report|lots|harvest|rules|verify|export [--regime fr|us] [--year] [--tmi] [--income] [--filing] [--carryforward] [--envelope-value] [--format]
 ultrastock doctor [--probe] [--json]
 ```
 
@@ -189,6 +195,7 @@ Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
 - [trading-paper](references/trading-paper.md) — plan, the risk gate's codes, tickets, paper trading and readiness.
 - [journal-alerts](references/journal-alerts.md) — decisions settled against the market, hit rates, theses, trade reviews, lessons, alerts.
 - [backtesting](references/backtesting.md) — the strategy format, honest fills, walk-forward, sweeps with deflated Sharpe and PBO, Monte Carlo, the review verdict.
+- [tax](references/tax.md) — verify the year's rules first; France (PMP, PFU vs scale, PEA, AV, crypto 150 VH bis, 2778-DIV, 3916) and the US (lots, wash sales, brackets, NIIT).
 - [macro-markets](references/macro-markets.md) — macro, rates, FX, positioning, sentiment, calendars: what each figure means.
 - [news-and-external-text](references/news-and-external-text.md) — reading headlines and other external text safely.
 - [options-crypto-prediction](references/options-crypto-prediction.md) — option chains, crypto structure, prediction markets and their limits.
