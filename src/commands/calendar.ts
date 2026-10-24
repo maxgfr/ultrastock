@@ -2,9 +2,14 @@
 import { type CalendarMarket, holidays, MARKETS, nextSessions, SPECIAL_CLOSURES } from "../core/calendar.js";
 import { clockNow } from "../core/net.js";
 import { argInt, argValue, type CommandArgs, jsonLine, UsageError } from "../engine.js";
+import { eventCalendar } from "./macro.js";
 
 export async function calendarCommand(args: CommandArgs, asJson: boolean): Promise<void> {
-  const [sub = "sessions"] = args.positional;
+  const [sub = "sessions", date] = args.positional;
+  if (sub === "econ" || sub === "earnings" || sub === "dividends") {
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new UsageError(`calendar ${sub} takes a date like 2026-10-26, not "${date}"`);
+    return eventCalendar(sub, args, asJson, date ?? clockNow().toISOString().slice(0, 10));
+  }
   const market = (argValue(args, "market") ?? "XPAR").toUpperCase() as CalendarMarket;
   if (!MARKETS[market]) throw new UsageError(`--market is one of ${Object.keys(MARKETS).join(", ")}, not "${market}"`);
   const today = clockNow().toISOString().slice(0, 10);
@@ -47,5 +52,5 @@ export async function calendarCommand(args: CommandArgs, asJson: boolean): Promi
     process.stdout.write(`${items.map((i) => `- ${i}`).join("\n")}\n`);
     return;
   }
-  throw new UsageError(`unknown calendar action "${sub}" — sessions, holidays or verify`);
+  throw new UsageError(`unknown calendar action "${sub}" — sessions, holidays, verify, econ, earnings or dividends`);
 }

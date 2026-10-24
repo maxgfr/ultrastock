@@ -9,6 +9,7 @@ import { ExprError } from "./core/expr.js";
 import { clockNow, FixtureMiss, setNetMode } from "./core/net.js";
 import { runDirFor } from "./core/paths.js";
 import { calendarCommand } from "./commands/calendar.js";
+import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentimentCommand, universeCommand } from "./commands/macro.js";
 import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
 import { doctorReport, formatDoctor } from "./doctor.js";
@@ -50,6 +51,14 @@ USAGE
   ultrastock profile show|suitability [--answers <file>]|set <field> <value>|envelope <id> --type PEA [--broker <name>] [--json]
   ultrastock jurisdiction show|verify [--jurisdiction FR] [--venues binance,kraken,coinbase] [--out <dir>] [--json]
   ultrastock calendar sessions|holidays|verify [--market XPAR|XNYS|XMIL|XOSL|CRYPTO] [--days <n>] [--year <yyyy>] [--json]
+  ultrastock calendar econ|earnings|dividends [<date>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock macro us|ea|fr|<country>|fred <ID> [--days <n>] [--out <dir>] [--json]
+  ultrastock rates [us|ea] [--out <dir>] [--json]
+  ultrastock fx [USD,GBP,…] [--out <dir>] [--json]
+  ultrastock cot <market> [--report legacy|tff] [--out <dir>] [--json]
+  ultrastock sentiment [all|cnn|crypto|vix|putcall] [--out <dir>] [--json]
+  ultrastock news <query> [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
   ultrastock options <symbol> [--expiries <n>] [--out <dir>] [--json]
   ultrastock crypto global|top|coin|derivatives|defi|yields|stables|fees|onchain|dex|holders [<target>] [--limit <n>] [--out <dir>] [--json]
   ultrastock predict kalshi|manifold|polymarket [<query>] [--limit <n>] [--out <dir>] [--json]
@@ -90,7 +99,21 @@ COMMANDS
             \`verify\` checks crypto venues against ESMA's MiCA register and
             regulator DNS blocks, and lists what a web search must confirm.
   calendar  Exchange sessions, holidays and early closes, computed from the
-            exchanges' rules; \`verify\` lists what to confirm for a year.
+            exchanges' rules; \`verify\` lists what to confirm for a year;
+            econ / earnings / dividends list the day's scheduled events.
+  macro     Inflation, jobs, growth: US (BLS, FRED), euro area (ECB, Eurostat),
+            France (INSEE), any country (World Bank); \`fred <ID>\` for one series.
+  rates     Yield curves (US Treasury, euro AAA), policy rates and €STR, credit
+            spreads (high yield, investment grade).
+  fx        Euro reference rates (ECB; Frankfurter as fallback).
+  cot       CFTC Commitments of Traders: net positioning and its 26- and
+            156-week index (0–100) for a futures market.
+  sentiment CNN Fear & Greed, crypto Fear & Greed, the VIX term structure,
+            Cboe put/call ratios.
+  news      Recent articles (Google News, GDELT; Yahoo for a symbol) — titles
+            are external text, fenced as untrusted.
+  universe  An index's current members (Wikipedia) — current only: a backtest
+            over them has survivorship bias.
   options   An option chain summary per expiry — ATM IV, put/call open interest
             and volume, totals: US listings from CBOE (15 min delayed), BTC and
             ETH from Deribit with the DVOL volatility index.
@@ -138,6 +161,9 @@ export const VALUE_FLAGS = [
   "days",
   "year",
   "expiries",
+  "report",
+  "symbol",
+  "lang",
 ];
 export const BOOL_FLAGS = ["json", "refresh", "offline", "probe"];
 export const COMMANDS = [
@@ -154,6 +180,13 @@ export const COMMANDS = [
   "crypto",
   "predict",
   "snapshot",
+  "macro",
+  "rates",
+  "fx",
+  "cot",
+  "sentiment",
+  "news",
+  "universe",
   "doctor",
 ];
 
@@ -171,7 +204,14 @@ const SPEC: CliSpec = {
     check: ["max-age", "json"],
     profile: ["jurisdiction", "currency", "answers", "type", "broker", "json"],
     jurisdiction: ["jurisdiction", "venues", "out", ...NET],
-    calendar: ["market", "days", "year", "json"],
+    calendar: ["market", "days", "year", "limit", "out", ...NET],
+    macro: ["days", "out", ...NET],
+    rates: ["out", ...NET],
+    fx: ["out", ...NET],
+    cot: ["report", "out", ...NET],
+    sentiment: ["out", ...NET],
+    news: ["symbol", "lang", "days", "limit", "out", ...NET],
+    universe: ["out", ...NET],
     options: ["expiries", "out", ...NET],
     crypto: ["limit", "out", ...NET],
     predict: ["limit", "out", ...NET],
@@ -195,7 +235,8 @@ function arity(args: CommandArgs): number {
   if (args.command === "doctor" || args.command === "version") return 0;
   if (args.command === "check" || args.command === "calc") return 2;
   if (args.command === "profile") return 3;
-  if (args.command === "crypto") return 2;
+  if (args.command === "crypto" || args.command === "calendar" || args.command === "macro") return 2;
+  if (args.command === "news" || args.command === "cot") return Number.POSITIVE_INFINITY;
   if (args.command === "predict") return Number.POSITIVE_INFINITY;
   return 1;
 }
@@ -351,6 +392,13 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "crypto") return cryptoCommand(args, asJson);
   if (cmd === "predict") return predictCommand(args, asJson);
   if (cmd === "snapshot") return snapshotCommand(args, asJson);
+  if (cmd === "macro") return macroCommand(args, asJson);
+  if (cmd === "rates") return ratesCommand(args, asJson);
+  if (cmd === "fx") return fxCommand(args, asJson);
+  if (cmd === "cot") return cotCommand(args, asJson);
+  if (cmd === "sentiment") return sentimentCommand(args, asJson);
+  if (cmd === "news") return newsCommand(args, asJson);
+  if (cmd === "universe") return universeCommand(args, asJson);
 
   if (cmd === "doctor") {
     const report = await doctorReport({ probe: argBool(args, "probe") });
