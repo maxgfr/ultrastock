@@ -115,7 +115,9 @@ export async function issueCode(
   const expiresAt = new Date(now.getTime() + CODE_TTL_MS).toISOString();
   const message = `${code} — approves ${what}. Valid 2 minutes. Type it yourself; never paste it to an agent you did not mean to approve.`;
   const sentTo: string[] = [];
-  for (const [name, ch] of channels) if (await ch(message)) sentTo.push(name);
+  // ULTRASTOCK_CODE_CHANNELS=none switches every channel off (tests, evals); nothing can redirect them.
+  const off = process.env.ULTRASTOCK_CODE_CHANNELS === "none" && channels === DEFAULT_CHANNELS;
+  if (!off) for (const [name, ch] of channels) if (await ch(message)) sentTo.push(name);
   if (!sentTo.length)
     throw new Error(
       "no out-of-band channel reached you (desktop notification, private ntfy topic with ULTRASTOCK_NTFY_TOKEN, or your own terminal): no code issued",

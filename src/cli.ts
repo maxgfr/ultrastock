@@ -27,6 +27,7 @@ import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentime
 import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
 import { backtestCommand, strategyCommand } from "./commands/backtest.js";
 import { brokerCommand } from "./commands/broker.js";
+import { serveMcp } from "./mcp.js";
 import { decideCommand, journalCommand, knowledgeCommand, watchCommand } from "./commands/journal.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
 import { taxCommand } from "./commands/tax.js";
@@ -122,6 +123,7 @@ USAGE
   ultrastock backtest compare <s1,s2,…> <symbol> · backtest decisions [--rating buy|…] [--horizon 5|20|60] [--json]
   ultrastock broker status|setup <venue>|balances|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr] [--env test|live] [--max-order <n>] [--max-daily <n>] [--venues a,b] [--attest a,b] [--code <code>] [--json]
   ultrastock broker preview|code|submit|reconcile|cancel <ticket-id> [--venue <v>] [--env test|live] [--code <code>] [--conid <id>] [--json]
+  ultrastock mcp [--transport stdio|http] [--port 8765] [--token <24+ chars>]
   ultrastock strategy list | show <name|file.json> | validate <name|file.json> | new <name> [--like <strategy>] [--json]
   ultrastock watch list|add <symbol> <condition>|add 8k <symbol>|add stops|rm <id>|run [--notify] [--message <text>] [--json]
   ultrastock options <symbol> [--expiries <n>] [--out <dir>] [--json]
@@ -348,6 +350,10 @@ COMMANDS
             to store a key in the keychain; limits tighten at once and loosen
             only with a code, 24 hours later; panic sets the kill switch and
             cancels ultrastock's working orders.
+  mcp       The commands as MCP tools (stdio, or HTTP on 127.0.0.1 with a
+            mandatory bearer token): read-only tools plus ticket creation
+            through plan. No tool submits an order, edits the profile or the
+            ledger, stores a key or moves a limit.
   strategy  The strategies: 26 ported from ai-strategy-backtester plus sma-cross,
             and the user's own in <home>/strategies/ — list, show, validate (each
             error with its path), new (from a template or --like another).
@@ -533,6 +539,9 @@ export const VALUE_FLAGS = [
   "max-order",
   "max-daily",
   "attest",
+  "transport",
+  "port",
+  "token",
 ];
 export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "dry-run", "list", "bootstrap", "notify", "perp", "anchored"];
 export const COMMANDS = [
@@ -588,6 +597,7 @@ export const COMMANDS = [
   "backtest",
   "strategy",
   "broker",
+  "mcp",
   "doctor",
 ];
 
@@ -718,6 +728,7 @@ const SPEC: CliSpec = {
       ...NET,
     ],
     strategy: ["like", "json"],
+    mcp: ["transport", "port", "token"],
     broker: ["venue", "env", "code", "conid", "max-order", "max-daily", "venues", "attest", "json"],
     journal: ["book", "symbol", "thesis", "invalidation", "catalysts", "review-by", "note", "outcome", "ticket-id", "tags", "tag", "out", ...NET],
     knowledge: ["title", "json"],
@@ -951,6 +962,10 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "backtest") return backtestCommand(args, asJson);
   if (cmd === "strategy") return strategyCommand(args, asJson);
   if (cmd === "broker") return brokerCommand(args, asJson);
+  if (cmd === "mcp") {
+    const port = argValue(args, "port");
+    return serveMcp({ transport: argValue(args, "transport"), port: port ? Number(port) : undefined, token: argValue(args, "token") });
+  }
   if (cmd === "plan") return planCommand(args, asJson);
   if (cmd === "ticket") return ticketCommand(args, asJson);
   if (cmd === "paper") return paperCommand(args, asJson);

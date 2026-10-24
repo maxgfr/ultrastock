@@ -143,7 +143,8 @@ ultrastock predict order kalshi <TICKER> yes|no [buy|sell] --contracts <n> --pri
 ultrastock backtest run|walkforward|sweep|montecarlo|compare|review <strategy> <symbol> [--years] [--grid] … · backtest decisions
 ultrastock strategy list|show|validate|new [<name>] [--like <strategy>]
 ultrastock tax report|lots|harvest|rules|verify|export [--regime fr|us] [--year] [--tmi] [--income] [--filing] [--carryforward] [--envelope-value] [--format]
-ultrastock doctor [--probe] [--json]
+ultrastock mcp [--transport stdio|http --token <t>]   # the same commands as MCP tools (read-only + ticket creation)
+ultrastock doctor [--probe] [--json]                  # sources, keys, and each command's maturity (stable / beta / experimental)
 ```
 
 - `analyze` — `quick`: price, range, returns, averages and trend state, RSI,
