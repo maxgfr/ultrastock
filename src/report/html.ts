@@ -130,9 +130,15 @@ function decisionHtml(runDir: string): string {
   const f = join(runDir, "decision.json");
   if (!existsSync(f)) return "";
   const d = JSON.parse(readFileSync(f, "utf8")) as Record<string, unknown> & { plan?: Record<string, unknown> };
-  const row = (k: string, v: unknown) => (v === undefined || v === "" ? "" : `<tr><th>${esc(k)}</th><td>${esc(Array.isArray(v) ? v.join("; ") : String(v))}</td></tr>`);
+  const row = (k: string, v: unknown) =>
+    v === undefined || v === "" ? "" : `<tr><th>${esc(k)}</th><td>${esc(Array.isArray(v) ? v.join("; ") : String(v))}</td></tr>`;
   return `<h2>Decision</h2><table><tbody>${row("rating", d.rating)}${row("horizon", d.horizon)}${row("conviction", d.conviction)}${row("thesis", d.thesis)}${row("falsifiers", d.falsifiers)}${row("risks", d.risks)}${row("portfolio context", d.portfolioContext)}${
-    d.plan ? row("plan", `${d.plan.side} at ${d.plan.entry}, stop ${d.plan.stop}, targets ${(d.plan.targets as number[] | undefined)?.join(" / ")}, size ${d.plan.sizePct} %`) : ""
+    d.plan
+      ? row(
+          "plan",
+          `${d.plan.side} at ${d.plan.entry}, stop ${d.plan.stop}, targets ${(d.plan.targets as number[] | undefined)?.join(" / ")}, size ${d.plan.sizePct} %`,
+        )
+      : ""
   }${row("decided at", d.decidedAt)}</tbody></table>`;
 }
 
