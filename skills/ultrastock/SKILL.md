@@ -56,6 +56,11 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | their portfolio: value, performance, risk, stress, income | `portfolio show|perf|risk|stress|income|lookthrough --out <dir>` | [portfolio-risk](references/portfolio-risk.md) |
 | how to allocate or rebalance, which envelope, a savings goal | `portfolio optimize|rebalance --targets …|location|goals --target … --years …` | [portfolio-risk](references/portfolio-risk.md) |
 | to turn a view into an order, sized within their limits | `plan <symbol> --account <id> [--entry] [--stop] [--target]`, then `ticket` | [trading-paper](references/trading-paper.md) |
+| to record the call an analysis ended on | `decide <run> <run>/decision.json` | [journal-alerts](references/journal-alerts.md) |
+| how good past calls were, what the trades teach | `journal settle`, `journal hits`, `journal review`, `journal digest`, `journal lesson "…"` | [journal-alerts](references/journal-alerts.md) |
+| to track an idea until it is acted on or dropped | `journal thesis add|move|list|show` | [journal-alerts](references/journal-alerts.md) |
+| to be told when a level breaks, a stop is hit or an 8-K lands | `watch add <SYM> "<condition>"`, `watch add stops|8k <SYM>`, `watch run --notify` | [journal-alerts](references/journal-alerts.md) |
+| to keep a document (an article, a report) for the analysis | `knowledge import <file> --title …` | [journal-alerts](references/journal-alerts.md) |
 | to practise without money, and know when they are ready | `paper submit <ticket>|sweep|book|readiness` | [trading-paper](references/trading-paper.md) |
 | the full technical picture of one instrument | `technicals <symbol> --out <dir>` → `TECHNICALS.md` | [technicals-screening](references/technicals-screening.md) |
 | ideas: stocks or ETFs matching a style | `screen --list`, then `screen <preset> --market <m>` or `--engine builtin --universe CAC40` | [technicals-screening](references/technicals-screening.md) |
@@ -119,6 +124,9 @@ ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|ge
 ultrastock portfolio deposit|withdraw <account> <amount> · portfolio add buy|sell|dividend|… --account <id> […]
 ultrastock plan <symbol> --account <id> [--entry] [--stop] [--target a,b] [--ticket] · ticket list|show|check|cancel [<id>]
 ultrastock paper book|submit <ticket-id>|sweep|readiness
+ultrastock decide <run> <decision.json> · journal settle|hits|review|digest [--book] · journal lesson "<text>" | lessons
+ultrastock journal thesis list|add|show|move [<id>] [<state>] [--symbol] [--thesis] [--invalidation] [--review-by]
+ultrastock watch list|add <SYM> "<condition>"|add 8k <SYM>|add stops|rm <id>|run [--notify] · knowledge import <file>
 ultrastock doctor [--probe] [--json]
 ```
 
@@ -174,6 +182,7 @@ Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
 - [market-regime](references/market-regime.md) — the regime signals and exposure coach, sector rotation, the catalyst timeline.
 - [portfolio-risk](references/portfolio-risk.md) — the ledger, statement imports, risk, stress, optimisation, rebalancing, location, income, goals.
 - [trading-paper](references/trading-paper.md) — plan, the risk gate's codes, tickets, paper trading and readiness.
+- [journal-alerts](references/journal-alerts.md) — decisions settled against the market, hit rates, theses, trade reviews, lessons, alerts.
 - [macro-markets](references/macro-markets.md) — macro, rates, FX, positioning, sentiment, calendars: what each figure means.
 - [news-and-external-text](references/news-and-external-text.md) — reading headlines and other external text safely.
 - [options-crypto-prediction](references/options-crypto-prediction.md) — option chains, crypto structure, prediction markets and their limits.

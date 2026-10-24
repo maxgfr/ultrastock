@@ -8,7 +8,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { EvidenceStore } from "../core/evidence.js";
 import { homeDir } from "../core/paths.js";
-import { writeFileAtomic } from "../engine.js";
+import { contentHash, writeFileAtomic } from "../engine.js";
 
 export const RATINGS = ["buy", "overweight", "hold", "underweight", "sell"] as const;
 export type Rating = (typeof RATINGS)[number];
@@ -29,6 +29,8 @@ export interface TradePlan {
 
 export interface Decision {
   schema: number;
+  /** Assigned when recorded: d-<hash of symbol, time and rating>. */
+  id?: string;
   symbol: string;
   /** The run the decision was made on (its evidence). */
   run: string;
@@ -107,7 +109,8 @@ export function journalDir(): string {
  * `journal/decisions.jsonl` and an entry in `journal/decisions.md`, pending
  * settlement (the journal settles it later against what the price did).
  */
-export function recordDecision(d: Decision, runDir: string): { file: string; journal: string } {
+export function recordDecision(input: Decision, runDir: string): { file: string; journal: string; id: string } {
+  const d: Decision = { ...input, id: input.id ?? `d-${contentHash(`${input.symbol}|${input.decidedAt}|${input.rating}`).slice(0, 12)}` };
   const file = join(runDir, "decision.json");
   writeFileAtomic(file, `${JSON.stringify(d, null, 2)}\n`);
   const dir = journalDir();
@@ -115,7 +118,7 @@ export function recordDecision(d: Decision, runDir: string): { file: string; jou
   appendFileSync(join(dir, "decisions.jsonl"), `${JSON.stringify({ ...d, status: "pending" })}\n`, { mode: 0o600 });
   const md = join(dir, "decisions.md");
   const entry = [
-    `## [${d.decidedAt.slice(0, 10)} | ${d.symbol} | ${d.rating} | conviction ${d.conviction} | pending]`,
+    `## [${d.decidedAt.slice(0, 10)} | ${d.symbol} | ${d.rating} | conviction ${d.conviction} | pending | ${d.id}]`,
     "",
     `DECISION: ${d.thesis}`,
     `EVIDENCE: ${d.evidence.map((e) => `[${e}]`).join(" ")} — run ${runDir}`,
@@ -127,7 +130,7 @@ export function recordDecision(d: Decision, runDir: string): { file: string; jou
   ].join("\n");
   if (!existsSync(md)) writeFileAtomic(md, "# Decision journal\n\nAppend-only. Each entry is settled later against the price (`journal settle`).\n\n");
   appendFileSync(md, entry);
-  return { file, journal: md };
+  return { file, journal: md, id: d.id! };
 }
 
 /** Previous decisions on a symbol, newest first — what the PM should read before deciding again. */
