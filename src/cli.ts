@@ -25,6 +25,7 @@ import {
 } from "./commands/fundamentals.js";
 import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentimentCommand, universeCommand } from "./commands/macro.js";
 import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
+import { backtestCommand, strategyCommand } from "./commands/backtest.js";
 import { decideCommand, journalCommand, knowledgeCommand, watchCommand } from "./commands/journal.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
 import { paperCommand, planCommand, portfolioCommand, ticketCommand } from "./commands/trading.js";
@@ -110,6 +111,11 @@ USAGE
   ultrastock journal thesis list|add|show|move [<id>] [<state>] [--symbol] [--thesis] [--invalidation] [--catalysts] [--review-by] [--note] [--outcome] [--ticket-id] [--json]
   ultrastock journal lesson <text> [--tags <a,b>] | journal lessons [--tag <t>] [--json]
   ultrastock knowledge import <file> [--title <text>] [--json]
+  ultrastock backtest run <strategy> <symbol> [--from] [--to] [--years N] [--interval 1d|4h|1h|15m] [--capital N] [--fee|--maker|--taker|--slippage %] [--leverage N] [--perp] [--benchmark <sym>|none] [--universe INDEX] [--trail %] [--atr-stop p:m] [--time-stop N] [--risk %] [--max-dd %] [--entry market|limit] [--limit-offset %] [--stop %] [--target %] [--out <dir>] [--json]
+  ultrastock backtest run <buy-and-hold|60-40|equal-weight|dual-momentum|risk-parity> <sym1,sym2,…> [--rebalance monthly|quarterly] [--lookback 12] [--cash-rate 0] [--out <dir>] [--json]
+  ultrastock backtest walkforward|sweep|montecarlo|review <strategy> <symbol> [--grid alias.param=a,b;…] [--objective sharpe|sortino|cagr|calmar|profit-factor] [--train N] [--test N] [--anchored] [--trials N] [--groups 6] [--test-groups 2] [--purge 5] [--embargo N] [--paths 5000] [--seed 42] [--out <dir>] [--json]
+  ultrastock backtest compare <s1,s2,…> <symbol> · backtest decisions [--rating buy|…] [--horizon 5|20|60] [--json]
+  ultrastock strategy list | show <name|file.json> | validate <name|file.json> | new <name> [--like <strategy>] [--json]
   ultrastock watch list|add <symbol> <condition>|add 8k <symbol>|add stops|rm <id>|run [--notify] [--message <text>] [--json]
   ultrastock options <symbol> [--expiries <n>] [--out <dir>] [--json]
   ultrastock options-analysis <symbol> [--expiry <date>] [--strategy <spec>] [--spot-moves=<list>] [--rate <pct>] [--out <dir>] [--json]
@@ -289,6 +295,23 @@ COMMANDS
             excursions), a digest, theses with a life cycle (idea → entry-ready →
             active → closed) and review dates, and the user's own lessons.
   knowledge Keep a source document (an article, a report) as external text.
+  backtest  Backtests a declarative strategy (\`strategy list\`) or an allocation
+            rule (buy-and-hold, 60-40, equal-weight, dual-momentum, risk-parity) on
+            daily or crypto intraday bars. Signals use closed bars and fill at the
+            next open; a stop the market gaps through fills at the open; market
+            orders pay taker, limits maker; crypto leverage adds Binance funding
+            and liquidation. Every metric is an [E#]: CAGR, Sharpe, Sortino, max
+            drawdown, Calmar, Ulcer, Omega, VaR, trade statistics in money and R,
+            MAE/MFE, buy-and-hold, residual alpha (Newey-West t), probabilistic
+            Sharpe, and the result with costs doubled. walkforward picks parameters
+            on train windows and stitches the out-of-sample equity; sweep runs up
+            to 500 variants with the deflated Sharpe, PBO and CPCV; montecarlo
+            resamples the trades; review runs it all and answers PASS, REVISE or
+            REJECT with reasons; decisions gives the journal's hit rates with
+            Wilson intervals. Writes BACKTEST.md, equity.json, trades.json.
+  strategy  The strategies: 26 ported from ai-strategy-backtester plus sma-cross,
+            and the user's own in <home>/strategies/ — list, show, validate (each
+            error with its path), new (from a template or --like another).
   watch     Alerts that fire once when a condition becomes true and re-arm when
             it is false again: an expression over close, rsi14, sma50, sma200,
             macd_hist, atr14, high52w, volume_ratio… (e.g. "close < sma200 and
@@ -424,8 +447,36 @@ export const VALUE_FLAGS = [
   "engine",
   "universe",
   "sort",
+  "capital",
+  "maker",
+  "taker",
+  "slippage",
+  "leverage",
+  "trail",
+  "atr-stop",
+  "time-stop",
+  "risk",
+  "max-dd",
+  "limit-offset",
+  "grid",
+  "objective",
+  "train",
+  "test",
+  "groups",
+  "test-groups",
+  "purge",
+  "embargo",
+  "trials",
+  "paths",
+  "seed",
+  "rebalance",
+  "lookback",
+  "cash-rate",
+  "rating",
+  "horizon",
+  "like",
 ];
-export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "dry-run", "list", "bootstrap", "notify"];
+export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "dry-run", "list", "bootstrap", "notify", "perp", "anchored"];
 export const COMMANDS = [
   "analyze",
   "report",
@@ -475,6 +526,8 @@ export const COMMANDS = [
   "journal",
   "knowledge",
   "watch",
+  "backtest",
+  "strategy",
   "doctor",
 ];
 
@@ -545,6 +598,50 @@ const SPEC: CliSpec = {
     ticket: ["status", ...NET],
     paper: ["out", ...NET],
     decide: ["json"],
+    backtest: [
+      "from",
+      "to",
+      "years",
+      "interval",
+      "capital",
+      "fee",
+      "maker",
+      "taker",
+      "slippage",
+      "leverage",
+      "benchmark",
+      "universe",
+      "trail",
+      "atr-stop",
+      "time-stop",
+      "risk",
+      "max-dd",
+      "limit-offset",
+      "entry",
+      "stop",
+      "target",
+      "grid",
+      "objective",
+      "train",
+      "test",
+      "groups",
+      "test-groups",
+      "purge",
+      "embargo",
+      "trials",
+      "paths",
+      "seed",
+      "rebalance",
+      "lookback",
+      "cash-rate",
+      "rating",
+      "horizon",
+      "perp",
+      "anchored",
+      "out",
+      ...NET,
+    ],
+    strategy: ["like", "json"],
     journal: ["book", "symbol", "thesis", "invalidation", "catalysts", "review-by", "note", "outcome", "ticket-id", "tags", "tag", "out", ...NET],
     knowledge: ["title", "json"],
     watch: ["notify", "message", ...NET],
@@ -589,7 +686,7 @@ function arity(args: CommandArgs): number {
   if (args.command === "congress") return 0;
   if (args.command === "portfolio") return 3;
   if (args.command === "ticket" || args.command === "paper" || args.command === "decide" || args.command === "knowledge") return 2;
-  if (args.command === "journal" || args.command === "watch") return Number.POSITIVE_INFINITY;
+  if (args.command === "journal" || args.command === "watch" || args.command === "backtest" || args.command === "strategy") return Number.POSITIVE_INFINITY;
   if (args.command === "predict") return Number.POSITIVE_INFINITY;
   return 1;
 }
@@ -765,6 +862,8 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "journal") return journalCommand(args, asJson);
   if (cmd === "knowledge") return knowledgeCommand(args, asJson);
   if (cmd === "watch") return watchCommand(args, asJson);
+  if (cmd === "backtest") return backtestCommand(args, asJson);
+  if (cmd === "strategy") return strategyCommand(args, asJson);
   if (cmd === "plan") return planCommand(args, asJson);
   if (cmd === "ticket") return ticketCommand(args, asJson);
   if (cmd === "paper") return paperCommand(args, asJson);

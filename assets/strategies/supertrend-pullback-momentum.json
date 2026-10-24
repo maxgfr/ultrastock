@@ -1,0 +1,70 @@
+{
+  "name": "supertrend-pullback-momentum",
+  "description": "Supertrend uptrend filter + RSI pullback below 50 (dip in uptrend) + MACD positive momentum + ADX trending — buy quality dips in confirmed uptrends, optimized for 6h timeframe",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h"
+  ],
+  "indicators": {
+    "supertrend": {
+      "atrPeriod": 10,
+      "multiplier": 3
+    },
+    "rsi": {
+      "period": 14
+    },
+    "macd": {
+      "fast": 12,
+      "slow": 26,
+      "signal": 9
+    },
+    "adx": {
+      "period": 14
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "close",
+        ">",
+        "supertrend"
+      ],
+      [
+        "rsi",
+        "<",
+        50
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ],
+      [
+        "adx.adx",
+        ">",
+        20
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ],
+      [
+        "rsi",
+        ">",
+        72
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 12,
+    "maxDrawdownPct": 30
+  }
+}

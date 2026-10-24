@@ -1,0 +1,63 @@
+{
+  "name": "cci-williams-momentum",
+  "description": "CCI zero-line crossover with Williams %R oversold confirmation in Supertrend uptrend — exits on CCI overbought or trend reversal",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h"
+  ],
+  "indicators": {
+    "cci": {
+      "period": 20
+    },
+    "williamsR": {
+      "period": 14
+    },
+    "supertrend": {
+      "atrPeriod": 10,
+      "multiplier": 3
+    },
+    "adx": {
+      "period": 14
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "cci",
+        ">",
+        0
+      ],
+      [
+        "cci[-1]",
+        "<",
+        0
+      ],
+      [
+        "close",
+        ">",
+        "supertrend"
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "cci",
+        ">",
+        150
+      ],
+      [
+        "close",
+        "<",
+        "supertrend"
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 12,
+    "maxDrawdownPct": 30
+  }
+}

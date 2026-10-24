@@ -1,0 +1,60 @@
+{
+  "name": "dpo-rsi-pullback",
+  "description": "DPO rising cycle detection with RSI pullback in Supertrend uptrend",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h"
+  ],
+  "indicators": {
+    "dpo": {
+      "period": 20
+    },
+    "rsi": {
+      "period": 14
+    },
+    "supertrend": {
+      "atrPeriod": 10,
+      "multiplier": 3
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "dpo",
+        ">",
+        "dpo[-1]"
+      ],
+      [
+        "rsi",
+        "<",
+        40
+      ],
+      [
+        "close",
+        ">",
+        "supertrend"
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "rsi",
+        ">",
+        75
+      ],
+      [
+        "close",
+        "<",
+        "supertrend"
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 10,
+    "trailingStopPct": 18,
+    "maxDrawdownPct": 30
+  }
+}

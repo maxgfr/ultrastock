@@ -1,0 +1,77 @@
+{
+  "name": "kdj-extreme-recovery",
+  "description": "KDJ J-line extreme oversold recovery: J crosses from below 0 to above 20 (massive momentum shift) in Supertrend uptrend — catches violent V-shaped reversals",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h"
+  ],
+  "indicators": {
+    "kdj": {
+      "rsvPeriod": 9,
+      "kPeriod": 3,
+      "dPeriod": 3
+    },
+    "supertrend": {
+      "atrPeriod": 10,
+      "multiplier": 3
+    },
+    "rsi": {
+      "period": 14
+    },
+    "macd": {
+      "fast": 12,
+      "slow": 26,
+      "signal": 9
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "close",
+        ">",
+        "supertrend"
+      ],
+      [
+        "kdj.j[-1]",
+        "<",
+        20
+      ],
+      [
+        "kdj.j",
+        ">",
+        "kdj.j[-1]"
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ],
+      [
+        "kdj.j",
+        ">",
+        80
+      ],
+      [
+        "rsi",
+        ">",
+        75
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 22,
+    "maxDrawdownPct": 30
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "name": "coppock-bottom",
+  "description": "Coppock Curve zero-cross bottom detection + McGinley Dynamic trend + RSI oversold — long-term bottom picker for major reversals",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h",
+    "12h"
+  ],
+  "indicators": {
+    "coppockCurve": {
+      "rocPeriod1": 14,
+      "rocPeriod2": 11,
+      "wmaPeriod": 10
+    },
+    "mcginleyDynamic": {
+      "period": 14
+    },
+    "rsi": {
+      "period": 14
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "coppockCurve",
+        ">",
+        0
+      ],
+      [
+        "coppockCurve[-1]",
+        "<",
+        0
+      ],
+      [
+        "rsi",
+        "<",
+        45
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "rsi",
+        ">",
+        75
+      ],
+      [
+        "close",
+        "<",
+        "mcginleyDynamic"
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 15,
+    "trailingStopPct": 15,
+    "maxDrawdownPct": 30
+  }
+}

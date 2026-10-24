@@ -1,0 +1,17 @@
+{
+  "name": "sma-cross",
+  "description": "Golden cross: long while the 50-bar SMA is above the 200-bar SMA, out when it falls below",
+  "indicators": {
+    "fast": { "_type": "sma", "period": 50 },
+    "slow": { "_type": "sma", "period": 200 }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [["fast", ">", "slow"]]
+  },
+  "sell": {
+    "mode": "all",
+    "conditions": [["fast", "<", "slow"]]
+  },
+  "risk": {}
+}

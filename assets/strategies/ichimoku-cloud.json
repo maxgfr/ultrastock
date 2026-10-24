@@ -1,0 +1,56 @@
+{
+  "name": "ichimoku-cloud",
+  "description": "Ichimoku Kinko Hyo trend-following: buy when price above cloud with tenkan > kijun, sell when price drops below cloud or tenkan crosses under kijun",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h",
+    "12h"
+  ],
+  "indicators": {
+    "ichimoku": {
+      "conversionPeriod": 9,
+      "basePeriod": 26,
+      "spanPeriod": 52
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "close",
+        ">",
+        "ichimoku.cloudTop"
+      ],
+      [
+        "ichimoku.conversion",
+        ">",
+        "ichimoku.base"
+      ],
+      [
+        "close",
+        ">",
+        "ichimoku.base"
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "close",
+        "<",
+        "ichimoku.cloudBottom"
+      ],
+      [
+        "ichimoku.conversion",
+        "<",
+        "ichimoku.base"
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 22,
+    "maxDrawdownPct": 30
+  }
+}

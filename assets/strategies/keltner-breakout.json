@@ -1,0 +1,63 @@
+{
+  "name": "keltner-breakout",
+  "description": "Keltner channel breakout with MACD confirmation and ADX trend filter",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h"
+  ],
+  "indicators": {
+    "keltner": {
+      "maPeriod": 20,
+      "atrPeriod": 10,
+      "multiplier": 1.5
+    },
+    "macd": {
+      "fast": 12,
+      "slow": 26,
+      "signal": 9
+    },
+    "adx": {
+      "period": 14
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "close",
+        ">",
+        "keltner.upper"
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ],
+      [
+        "adx.adx",
+        ">",
+        20
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "close",
+        "<",
+        "keltner.middle"
+      ],
+      [
+        "macd.histogram",
+        "<",
+        0
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 12,
+    "maxDrawdownPct": 30
+  }
+}

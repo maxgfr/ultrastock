@@ -1,0 +1,76 @@
+{
+  "name": "stochrsi-trend-filter",
+  "description": "StochRSI K/D crossover entry in confirmed uptrend (Supertrend + ADX + MACD), exits on trend reversal or RSI overbought",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h"
+  ],
+  "indicators": {
+    "supertrend": {
+      "atrPeriod": 10,
+      "multiplier": 3
+    },
+    "stochRsi": {
+      "rsiPeriod": 14,
+      "stochasticPeriod": 14,
+      "kPeriod": 3,
+      "dPeriod": 3
+    },
+    "adx": {
+      "period": 14
+    },
+    "rsi": {
+      "period": 14
+    },
+    "macd": {
+      "fast": 12,
+      "slow": 26,
+      "signal": 9
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "close",
+        ">",
+        "supertrend"
+      ],
+      [
+        "stochRsi.k",
+        ">",
+        "stochRsi.d"
+      ],
+      [
+        "adx.adx",
+        ">",
+        20
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ],
+      [
+        "rsi",
+        ">",
+        78
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 12,
+    "maxDrawdownPct": 30
+  }
+}

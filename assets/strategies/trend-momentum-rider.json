@@ -1,0 +1,50 @@
+{
+  "name": "trend-momentum-rider",
+  "description": "Supertrend trend following with MACD momentum filter — only enters when both trend direction and momentum agree. Patient exit on Supertrend break only. Filters whipsaw entries while riding full trends.",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h",
+    "12h"
+  ],
+  "indicators": {
+    "supertrend": {
+      "atrPeriod": 10,
+      "multiplier": 3
+    },
+    "macd": {
+      "fast": 12,
+      "slow": 26,
+      "signal": 9
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "close",
+        ">",
+        "supertrend"
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "all",
+    "conditions": [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 22,
+    "maxDrawdownPct": 30
+  }
+}

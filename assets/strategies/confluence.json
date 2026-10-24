@@ -1,0 +1,114 @@
+{
+  "name": "confluence",
+  "description": "Multi-indicator scoring: PMAX trend gate + environment quality filters (supertrend, ADX, RSI, MACD, volume, ATR regime, EMA slope)",
+  "baseInterval": "4h",
+  "intervals": [
+    "4h",
+    "6h"
+  ],
+  "indicators": {
+    "pmax": {
+      "emaPeriod": 10,
+      "atrPeriod": 10,
+      "multiplier": 3
+    },
+    "supertrend": {
+      "atrPeriod": 10,
+      "multiplier": 3
+    },
+    "adx": {
+      "period": 14
+    },
+    "rsi": {
+      "period": 14
+    },
+    "macd": {
+      "fast": 12,
+      "slow": 26,
+      "signal": 9
+    },
+    "volumeSma": {
+      "period": 20
+    },
+    "atrRatio": {
+      "atrPeriod": 10,
+      "smaPeriod": 50
+    },
+    "ema": {
+      "period": 20
+    }
+  },
+  "buy": {
+    "mode": "score",
+    "threshold": 4,
+    "required": [
+      [
+        "pmax.pmax",
+        "==",
+        "pmax.pmaxLong"
+      ]
+    ],
+    "scored": [
+      [
+        "close",
+        ">",
+        "supertrend"
+      ],
+      [
+        "adx.adx",
+        ">",
+        20
+      ],
+      [
+        "adx.adx",
+        ">",
+        "adx.adx[-2]"
+      ],
+      [
+        "rsi",
+        ">=",
+        30
+      ],
+      [
+        "rsi",
+        "<=",
+        70
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ],
+      [
+        "volume",
+        ">",
+        "volumeSma"
+      ],
+      [
+        "atrRatio",
+        ">",
+        0.5
+      ],
+      [
+        "ema",
+        ">",
+        "ema[-2]"
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "all",
+    "conditions": [
+      [
+        "pmax.pmax",
+        "==",
+        "pmax.pmaxShort"
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 12,
+    "maxDrawdownPct": 30
+  }
+}

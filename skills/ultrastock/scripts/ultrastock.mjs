@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { readFileSync as readFileSync30, realpathSync as realpathSync2 } from "fs";
-import { resolve as resolve11 } from "path";
+import { readFileSync as readFileSync32, realpathSync as realpathSync2 } from "fs";
+import { resolve as resolve12 } from "path";
 import { pathToFileURL } from "url";
 
 // src/analyze/pack.ts
@@ -246,7 +246,7 @@ function inflateCapped(data, cap) {
 }
 function filtersOf(dict) {
   const m = /\/Filter\s*(\[[^\]]*\]|\/[^\s/<>[\]()]+)/.exec(dict);
-  return m ? (m[1].match(/\/[^\s/<>[\]()]+/g) ?? []).map((f) => f.slice(1)) : void 0;
+  return m ? (m[1].match(/\/[^\s/<>[\]()]+/g) ?? []).map((f3) => f3.slice(1)) : void 0;
 }
 function* contentStreams(buf) {
   const s = buf.toString("latin1");
@@ -269,13 +269,13 @@ function* contentStreams(buf) {
     let data = buf.subarray(start, stop);
     const filters = filtersOf(dict);
     if (filters) {
-      for (const f of filters) {
+      for (const f3 of filters) {
         if (!data) break;
         const cap = Math.min(MAX_STREAM_BYTES, budget);
         let decoded;
-        if (f === "ASCII85Decode" || f === "A85") decoded = ascii85Decode(data.toString("latin1"), cap);
-        else if (f === "ASCIIHexDecode" || f === "AHx") decoded = asciiHexDecode(data.toString("latin1"));
-        else if (f === "FlateDecode" || f === "Fl") decoded = inflateCapped(data, cap);
+        if (f3 === "ASCII85Decode" || f3 === "A85") decoded = ascii85Decode(data.toString("latin1"), cap);
+        else if (f3 === "ASCIIHexDecode" || f3 === "AHx") decoded = asciiHexDecode(data.toString("latin1"));
+        else if (f3 === "FlateDecode" || f3 === "Fl") decoded = inflateCapped(data, cap);
         if (decoded === TOO_BIG) budget -= cap;
         data = decoded instanceof Buffer ? decoded : void 0;
       }
@@ -1565,7 +1565,7 @@ var init_ladder3 = __esm({
     dead3 = /* @__PURE__ */ new Map();
     MIN_WORDS_PER_MINUTE = 5;
     base = (tag) => tag.toLowerCase().split(/[-_]/)[0];
-    chapterStarts = (meta) => meta.chapters.map((c) => c.start);
+    chapterStarts = (meta2) => meta2.chapters.map((c) => c.start);
     plain = (segments) => segments.map((s) => s.text).join("\n");
   }
 });
@@ -2473,18 +2473,18 @@ var init_ws = __esm({
         }
       }
       /** Handle one frame; returns the text of a message it completed. */
-      onFrame(f) {
+      onFrame(f3) {
         if (this.done) return;
-        switch (f.opcode) {
+        switch (f3.opcode) {
           case 9:
-            if (!this.socket.destroyed) this.socket.write(encodeFrame(10, f.payload));
+            if (!this.socket.destroyed) this.socket.write(encodeFrame(10, f3.payload));
             return;
           case 10:
             return;
           case 8: {
-            const code = f.payload.length >= 2 ? f.payload.readUInt16BE(0) : 1005;
-            const reason = f.payload.subarray(2).toString("utf8");
-            if (!this.closing) this.writeClose(f.payload.length >= 2 ? code : 1e3, "");
+            const code = f3.payload.length >= 2 ? f3.payload.readUInt16BE(0) : 1005;
+            const reason = f3.payload.subarray(2).toString("utf8");
+            if (!this.closing) this.writeClose(f3.payload.length >= 2 ? code : 1e3, "");
             this.socket.end();
             this.finish(code, reason);
             return;
@@ -2498,12 +2498,12 @@ var init_ws = __esm({
             if (!this.started) throw new WsProtocolError("unexpected continuation frame", 1002);
             break;
           default:
-            throw new WsProtocolError(`unknown opcode ${f.opcode}`, 1002);
+            throw new WsProtocolError(`unknown opcode ${f3.opcode}`, 1002);
         }
-        this.fragmentBytes += f.payload.length;
+        this.fragmentBytes += f3.payload.length;
         if (this.fragmentBytes > this.max) throw new WsProtocolError("message too large", 1009);
-        this.fragments.push(f.payload);
-        if (!f.fin) return;
+        this.fragments.push(f3.payload);
+        if (!f3.fin) return;
         const text = Buffer.concat(this.fragments).toString("utf8");
         this.fragments = [];
         this.fragmentBytes = 0;
@@ -3613,8 +3613,8 @@ var init_session = __esm({
         return frameTree.frame;
       }
       async currentUrl() {
-        const f = await this.frame();
-        return f.url + (f.urlFragment ?? "");
+        const f3 = await this.frame();
+        return f3.url + (f3.urlFragment ?? "");
       }
       async loaderId() {
         return (await this.frame()).loaderId;
@@ -3638,9 +3638,9 @@ var init_session = __esm({
         }
       }
       async loaded() {
-        const f = await this.frame();
+        const f3 = await this.frame();
         const status = await this.responseStatus();
-        return { url: f.url + (f.urlFragment ?? ""), loaderId: f.loaderId, ...status !== void 0 ? { status } : {} };
+        return { url: f3.url + (f3.urlFragment ?? ""), loaderId: f3.loaderId, ...status !== void 0 ? { status } : {} };
       }
       /**
        * Start recording navigation events BEFORE the command that causes them: the
@@ -3730,8 +3730,8 @@ var init_session = __esm({
           const r2 = await this.page.send("Page.navigate", { url }, { timeoutMs });
           if (r2.errorText) throw new Error(`navigation to ${url} failed: ${r2.errorText}`);
           if (!r2.loaderId) {
-            const f = await this.frame();
-            return { url: f.url + (f.urlFragment ?? ""), loaderId: f.loaderId };
+            const f3 = await this.frame();
+            return { url: f3.url + (f3.urlFragment ?? ""), loaderId: f3.loaderId };
           }
           clearRefs(this.targetId);
           if (waitUntil === "none") return { url, loaderId: r2.loaderId };
@@ -4825,8 +4825,8 @@ function flank(marker, core, start, end) {
   if (from === to) return core;
   return `${core.slice(0, from)}${marker}${core.slice(from, to)}${marker}${core.slice(to)}`;
 }
-function wrapInline(f, core, inHeading) {
-  switch (f.kind) {
+function wrapInline(f3, core, inHeading) {
+  switch (f3.kind) {
     case "em":
       return `*${core}*`;
     case "strong":
@@ -4839,8 +4839,8 @@ function wrapInline(f, core, inHeading) {
     }
     default:
       if (inHeading && PERMALINK_TEXT.test(core)) return "";
-      if (inHeading && f.self) return core;
-      return `[${core.replace(/\n{2,}/g, "\n")}](${destination(f.href)})`;
+      if (inHeading && f3.self) return core;
+      return `[${core.replace(/\n{2,}/g, "\n")}](${destination(f3.href)})`;
   }
 }
 function escapeText(s, edges) {
@@ -5002,7 +5002,7 @@ var init_markdown2 = __esm({
       }
       open(kind, href, self) {
         if (this.frames.length >= MAX_INLINE_DEPTH) return;
-        const inert = kind === "a" && href === void 0 || this.inCode() || kind !== "a" && this.frames.some((f) => f.kind === kind);
+        const inert = kind === "a" && href === void 0 || this.inCode() || kind !== "a" && this.frames.some((f3) => f3.kind === kind);
         this.frames.push({ kind, start: this.parts.length, ...href !== void 0 ? { href } : {}, ...self ? { self } : {}, ...inert ? { inert } : {} });
       }
       /** Close the innermost open `kind`, and whatever opened inside it and never closed. */
@@ -5107,13 +5107,13 @@ var init_markdown2 = __esm({
        * links both.
        */
       flush() {
-        const open2 = this.frames.map((f) => ({ ...f }));
+        const open2 = this.frames.map((f3) => ({ ...f3 }));
         while (this.frames.length) this.wrap(this.frames.pop());
         const text = this.parts.join("");
         this.parts = [];
         this.flanked = void 0;
         this.pendingSpace = false;
-        this.frames = open2.map((f) => ({ ...f, start: 0 }));
+        this.frames = open2.map((f3) => ({ ...f3, start: 0 }));
         const level = this.heading;
         this.heading = 0;
         if (level) {
@@ -5150,17 +5150,17 @@ var init_markdown2 = __esm({
         return this.lines.join("\n").trimEnd();
       }
       push(markdown) {
-        const f = this.flanked;
+        const f3 = this.flanked;
         this.flanked = void 0;
-        if (f && !this.pendingSpace && f.at === this.parts.length - 1 && FLANK_WORD.test(markdown[0] ?? "")) {
-          this.parts[f.at] = flank(f.marker, f.core, f.start, true);
+        if (f3 && !this.pendingSpace && f3.at === this.parts.length - 1 && FLANK_WORD.test(markdown[0] ?? "")) {
+          this.parts[f3.at] = flank(f3.marker, f3.core, f3.start, true);
         }
         if (this.pendingSpace) this.parts.push(" ");
         this.pendingSpace = false;
         this.parts.push(markdown);
       }
       inCode() {
-        return this.frames.some((f) => f.kind === "code");
+        return this.frames.some((f3) => f3.kind === "code");
       }
       /**
        * Whether text pushed next will stand straight after something other than
@@ -5171,24 +5171,24 @@ var init_markdown2 = __esm({
       joinsBefore(touching) {
         const last2 = this.parts[this.parts.length - 1];
         if (touching && !this.pendingSpace && last2 !== void 0 && last2 !== "\n") return true;
-        return this.frames.some((f) => !f.inert && f.start === this.parts.length);
+        return this.frames.some((f3) => !f3.inert && f3.start === this.parts.length);
       }
       /** Replace an element's text with its Markdown, its outer whitespace kept outside it. */
-      wrap(f) {
-        if (f.inert) return;
+      wrap(f3) {
+        if (f3.inert) return;
         const trailing = this.pendingSpace;
         this.pendingSpace = false;
-        if (this.flanked && this.flanked.at >= f.start) this.flanked = void 0;
-        const content = this.parts.splice(f.start).join("");
+        if (this.flanked && this.flanked.at >= f3.start) this.flanked = void 0;
+        const content = this.parts.splice(f3.start).join("");
         const core = content.trim();
         const lead = content.slice(0, content.length - content.trimStart().length);
         const trail = content.slice(content.trimEnd().length);
         this.whitespace(lead);
         if (core) {
-          let markdown = wrapInline(f, core, this.heading > 0);
+          let markdown = wrapInline(f3, core, this.heading > 0);
           const last2 = this.parts.length - 1;
-          if (f.kind === "a" && markdown && !this.pendingSpace && this.parts[last2]?.endsWith("!")) this.parts[last2] = `${this.parts[last2].slice(0, -1)}\\!`;
-          const marker = f.kind === "em" ? "*" : f.kind === "strong" ? "**" : "";
+          if (f3.kind === "a" && markdown && !this.pendingSpace && this.parts[last2]?.endsWith("!")) this.parts[last2] = `${this.parts[last2].slice(0, -1)}\\!`;
+          const marker = f3.kind === "em" ? "*" : f3.kind === "strong" ? "**" : "";
           if (marker) {
             const start = !this.pendingSpace && FLANK_WORD.test(this.parts[last2]?.slice(-1) ?? "") && FLANK_PUNCT.test(core[0]);
             if (start) markdown = flank(marker, core, true, false);
@@ -5607,7 +5607,7 @@ async function httpGet(url, opts = {}) {
       }) : { response: await fetch(url, init) };
       if ("failure" in requested) return requested.failure;
       const res = requested.response;
-      const meta = {
+      const meta2 = {
         contentType: res.headers.get("content-type") ?? "",
         url: res.url || url,
         etag: res.headers.get("etag") ?? void 0,
@@ -5615,9 +5615,9 @@ async function httpGet(url, opts = {}) {
         rateLimited: detectRateLimited(res.status, res.headers),
         retryAfterMs: parseRetryAfter(res.headers, Number.POSITIVE_INFINITY)
       };
-      const mime = mimeOf(meta.contentType);
+      const mime = mimeOf(meta2.contentType);
       const filename = dispositionFilename(res.headers.get("content-disposition"));
-      const namedDocument = isBinaryDocument(meta.contentType) || namesDocument(filename);
+      const namedDocument = isBinaryDocument(meta2.contentType) || namesDocument(filename);
       const ambiguous = AMBIGUOUS_TYPES.has(mime);
       const declared = Number(res.headers.get("content-length"));
       const documentCap = namedDocument || ambiguous ? opts.maxDocumentBytes : void 0;
@@ -5626,13 +5626,13 @@ async function httpGet(url, opts = {}) {
       const prefixUseless = opts.binary || namedDocument || NON_TEXT_TYPE_RE.test(mime) || Object.keys(opts.headers ?? {}).some((k) => k.toLowerCase() === "range");
       if (Number.isFinite(declared) && declared > max && prefixUseless) {
         ctrl.abort();
-        return { ok: false, status: res.status, body: "", bytesRead: 0, truncated: true, ...meta, error: `response too large: ${declared} bytes > ${max} cap` };
+        return { ok: false, status: res.status, body: "", bytesRead: 0, truncated: true, ...meta2, error: `response too large: ${declared} bytes > ${max} cap` };
       }
-      const wait = RETRY_STATUS.has(res.status) && attempt < attempts - 1 ? retryDelayMs(meta.retryAfterMs) : void 0;
+      const wait = RETRY_STATUS.has(res.status) && attempt < attempts - 1 ? retryDelayMs(meta2.retryAfterMs) : void 0;
       if (wait !== void 0) {
         await res.body?.cancel();
-        last2 = { ok: false, status: res.status, body: "", bytesRead: 0, truncated: false, ...meta };
-        if (wait > 0) opts.onBackOff?.(meta.url, wait);
+        last2 = { ok: false, status: res.status, body: "", bytesRead: 0, truncated: false, ...meta2 };
+        if (wait > 0) opts.onBackOff?.(meta2.url, wait);
         await sleepUnlessAborted(wait, opts.signal);
         continue;
       }
@@ -5645,18 +5645,18 @@ async function httpGet(url, opts = {}) {
         truncated = true;
       }
       const keepBytes = opts.binary || (namedDocument || sniffed !== void 0) && !truncated;
-      const binaryBody = opts.binary || sniffed !== void 0 || isBinaryDocument(meta.contentType) && !mime.startsWith("text/");
+      const binaryBody = opts.binary || sniffed !== void 0 || isBinaryDocument(meta2.contentType) && !mime.startsWith("text/");
       const result = {
         ok: res.ok,
         status: res.status,
         // Decoded per the response's own encoding, not assumed UTF-8. A
         // Windows-1252 page used to come back with every accented character
         // replaced by U+FFFD, and nothing anywhere noticed.
-        body: binaryBody ? "" : decodeBody(bytes, meta.contentType),
+        body: binaryBody ? "" : decodeBody(bytes, meta2.contentType),
         bytes: keepBytes ? bytes : void 0,
         bytesRead,
         truncated,
-        ...meta,
+        ...meta2,
         ...filename ? { filename } : {}
       };
       return result;
@@ -6018,13 +6018,13 @@ function stripConsentMarkdown(text) {
   let fence = "";
   const kept = [];
   for (const line of text.split("\n")) {
-    const f = MD_FENCE.exec(line);
+    const f3 = MD_FENCE.exec(line);
     if (fence) {
-      if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !f[2].trim()) fence = "";
+      if (f3 && f3[1][0] === fence[0] && f3[1].length >= fence.length && !f3[2].trim()) fence = "";
       kept.push(line);
       continue;
     }
-    if (f) fence = f[1];
+    if (f3) fence = f3[1];
     else if (!line.trim()) {
       if (kept.length && kept[kept.length - 1].trim()) kept.push(line);
       continue;
@@ -6259,7 +6259,7 @@ function classifyChallenge(sig) {
   };
   const statusBlocked = sig.status !== void 0 && BLOCKED_STATUS.has(sig.status);
   const littleText = sig.text !== void 0 && sig.text.trim().length < LITTLE_TEXT;
-  const finish = (kind, ev2) => ({
+  const finish2 = (kind, ev2) => ({
     kind,
     // An empty page makes a block of what is not a widget or a tag; a widget or a tag needs a blocked status.
     blocking: statusBlocked || ev2.some((e) => e.interstitial || littleText && !e.weak && !e.widget),
@@ -6267,10 +6267,10 @@ function classifyChallenge(sig) {
   });
   for (const [kind, rule] of VENDORS) {
     const ev2 = rule(h);
-    if (ev2.some((e) => !e.weak) || ev2.length > 0 && statusBlocked) return finish(kind, ev2);
+    if (ev2.some((e) => !e.weak) || ev2.length > 0 && statusBlocked) return finish2(kind, ev2);
   }
   const ev = genericEvidence(h, sig);
-  return ev.length > 0 ? finish("generic", ev) : null;
+  return ev.length > 0 ? finish2("generic", ev) : null;
 }
 function frameUrls(node, out4 = []) {
   if (!node) return out4;
@@ -6431,8 +6431,8 @@ var init_challenge = __esm({
     };
     arkose = (h) => {
       const out4 = [];
-      const f = frameHas(h, "arkoselabs.com") ?? frameHas(h, "funcaptcha");
-      add(out4, f, { signal: f?.includes("funcaptcha") ? "funcaptcha" : "arkoselabs.com", widget: true });
+      const f3 = frameHas(h, "arkoselabs.com") ?? frameHas(h, "funcaptcha");
+      add(out4, f3, { signal: f3?.includes("funcaptcha") ? "funcaptcha" : "arkoselabs.com", widget: true });
       add(out4, scriptHas(h, "arkoselabs.com") ?? scriptHas(h, "funcaptcha"), { signal: "arkose script", weak: true });
       return out4;
     };
@@ -7943,11 +7943,11 @@ function rsi(closes, n = 14) {
   return out4;
 }
 function macd(closes, fast = 12, slow = 26, signalN = 9) {
-  const f = ema(closes, fast);
+  const f3 = ema(closes, fast);
   const s = ema(closes, slow);
   const line = [];
   const startAt = slow - 1;
-  for (let i = startAt; i < closes.length; i++) line.push(f[i] - s[i]);
+  for (let i = startAt; i < closes.length; i++) line.push(f3[i] - s[i]);
   const sig = ema(line, signalN);
   const out4 = new Array(closes.length).fill(void 0);
   for (let j = 0; j < line.length; j++) {
@@ -7992,12 +7992,12 @@ function logReturns(closes) {
   for (let i = 1; i < closes.length; i++) out4.push(Math.log(closes[i] / closes[i - 1]));
   return out4;
 }
-function annualizedVol(closes, periodsPerYear) {
+function annualizedVol(closes, periodsPerYear2) {
   const r2 = logReturns(closes);
   if (r2.length < 2) return void 0;
   const mean2 = r2.reduce((a, b) => a + b, 0) / r2.length;
   const variance2 = r2.reduce((a, b) => a + (b - mean2) ** 2, 0) / (r2.length - 1);
-  return Math.sqrt(variance2) * Math.sqrt(periodsPerYear);
+  return Math.sqrt(variance2) * Math.sqrt(periodsPerYear2);
 }
 function maxDrawdown(bars) {
   if (bars.length < 2) return void 0;
@@ -8138,16 +8138,16 @@ function setNetMode(next2) {
   mode2 = next2;
   if (next2.kind === "record") {
     mkdirSync4(next2.dir, { recursive: true });
-    const meta = join3(next2.dir, "fixture.json");
-    if (!existsSync4(meta)) writeFileAtomic(meta, `${JSON.stringify({ recordedAt: (/* @__PURE__ */ new Date()).toISOString(), tool: `ultrastock ${VERSION}` }, null, 2)}
+    const meta2 = join3(next2.dir, "fixture.json");
+    if (!existsSync4(meta2)) writeFileAtomic(meta2, `${JSON.stringify({ recordedAt: (/* @__PURE__ */ new Date()).toISOString(), tool: `ultrastock ${VERSION}` }, null, 2)}
 `);
   }
 }
 function clockNow() {
   if (mode2.kind !== "live") {
-    const meta = join3(mode2.dir, "fixture.json");
-    if (existsSync4(meta)) {
-      const at = JSON.parse(readFileSync4(meta, "utf8")).recordedAt;
+    const meta2 = join3(mode2.dir, "fixture.json");
+    if (existsSync4(meta2)) {
+      const at = JSON.parse(readFileSync4(meta2, "utf8")).recordedAt;
       if (at && !Number.isNaN(Date.parse(at))) return new Date(at);
     }
   }
@@ -8243,7 +8243,7 @@ async function firstAnswer(attempts, opts = {}) {
       if (!transient && !opts.fallThroughAll) throw e;
     }
   }
-  throw new ProviderError(attempts.map((a) => a.source).join("\u2192"), `every source failed: ${failures.map((f) => f.error).join("; ")}`, 0);
+  throw new ProviderError(attempts.map((a) => a.source).join("\u2192"), `every source failed: ${failures.map((f3) => f3.error).join("; ")}`, 0);
 }
 
 // src/providers/binance.ts
@@ -8799,17 +8799,17 @@ function sessionDate(ts, gmtoffset = 0) {
 function parseYahooChart(body, interval = "1d", closedBefore) {
   const r2 = body.chart?.result?.[0];
   if (!r2?.meta) return void 0;
-  const meta = r2.meta;
-  const sub = meta.currency ? SUBUNITS[meta.currency] : void 0;
+  const meta2 = r2.meta;
+  const sub = meta2.currency ? SUBUNITS[meta2.currency] : void 0;
   const divisor = sub?.per ?? 1;
-  const currency = sub?.currency ?? meta.currency ?? "";
+  const currency = sub?.currency ?? meta2.currency ?? "";
   const notes = [];
-  if (sub) notes.push(`Yahoo quotes ${meta.symbol} in ${sub.name} (${meta.currency}): prices divided by ${sub.per} and shown in ${sub.currency}`);
+  if (sub) notes.push(`Yahoo quotes ${meta2.symbol} in ${sub.name} (${meta2.currency}): prices divided by ${sub.per} and shown in ${sub.currency}`);
   const daily = interval === "1d" || interval === "1w";
   const q = r2.indicators?.quote?.[0] ?? {};
   const ts = r2.timestamp ?? [];
   const bars = [];
-  const regular = meta.currentTradingPeriod?.regular;
+  const regular = meta2.currentTradingPeriod?.regular;
   for (let i = 0; i < ts.length; i++) {
     const close = q.close?.[i];
     if (close === null || close === void 0 || !Number.isFinite(close)) continue;
@@ -8821,7 +8821,7 @@ function parseYahooChart(body, interval = "1d", closedBefore) {
     }
     const open2 = q.open?.[i] ?? close;
     const bar = {
-      date: daily ? sessionDate(t, meta.gmtoffset) : new Date(t * 1e3).toISOString(),
+      date: daily ? sessionDate(t, meta2.gmtoffset) : new Date(t * 1e3).toISOString(),
       open: open2 / divisor,
       high: (q.high?.[i] ?? Math.max(open2, close)) / divisor,
       low: (q.low?.[i] ?? Math.min(open2, close)) / divisor,
@@ -8833,21 +8833,21 @@ function parseYahooChart(body, interval = "1d", closedBefore) {
   }
   const byDate = /* @__PURE__ */ new Map();
   for (const b of bars) byDate.set(b.date, b);
-  const dividends = Object.values(r2.events?.dividends ?? {}).map((d) => ({ date: sessionDate(d.date, meta.gmtoffset), amount: d.amount / divisor })).sort((a, b) => a.date.localeCompare(b.date));
-  const splits = Object.values(r2.events?.splits ?? {}).map((s) => ({ date: sessionDate(s.date, meta.gmtoffset), numerator: s.numerator, denominator: s.denominator })).sort((a, b) => a.date.localeCompare(b.date));
-  return { meta, currency, divisor, bars: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)), dividends, splits, notes };
+  const dividends = Object.values(r2.events?.dividends ?? {}).map((d) => ({ date: sessionDate(d.date, meta2.gmtoffset), amount: d.amount / divisor })).sort((a, b) => a.date.localeCompare(b.date));
+  const splits = Object.values(r2.events?.splits ?? {}).map((s) => ({ date: sessionDate(s.date, meta2.gmtoffset), numerator: s.numerator, denominator: s.denominator })).sort((a, b) => a.date.localeCompare(b.date));
+  return { meta: meta2, currency, divisor, bars: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)), dividends, splits, notes };
 }
-function yahooInstrument(symbol, meta) {
+function yahooInstrument(symbol, meta2) {
   const sym2 = symbol.toUpperCase();
   const venue = yahooVenue(sym2);
-  const sub = meta.currency ? SUBUNITS[meta.currency] : void 0;
+  const sub = meta2.currency ? SUBUNITS[meta2.currency] : void 0;
   return {
     symbol: sym2,
-    market: venue ? "europe" : meta.instrumentType === "CRYPTOCURRENCY" ? "crypto" : "us",
-    kind: KINDS2[meta.instrumentType ?? ""] ?? "equity",
-    name: meta.longName ?? meta.shortName,
+    market: venue ? "europe" : meta2.instrumentType === "CRYPTOCURRENCY" ? "crypto" : "us",
+    kind: KINDS2[meta2.instrumentType ?? ""] ?? "equity",
+    name: meta2.longName ?? meta2.shortName,
     mic: venue?.mic,
-    currency: sub?.currency ?? meta.currency ?? venue?.currency ?? "USD",
+    currency: sub?.currency ?? meta2.currency ?? venue?.currency ?? "USD",
     venueId: sym2
   };
 }
@@ -8921,12 +8921,12 @@ function corporateActionsDataset(symbol, c, provenance) {
 async function yahooQuote(instrument, now = clockNow()) {
   const res = await chart(instrument.venueId, "range=1d&interval=1d");
   const parsed = parseYahooChart(res.body);
-  const meta = res.body.chart.result[0].meta;
-  if (!parsed || meta.regularMarketPrice === void 0) throw new ProviderError(SOURCE5, `no price for ${instrument.venueId}`);
-  const price = meta.regularMarketPrice / parsed.divisor;
-  const prevRaw = meta.previousClose ?? meta.chartPreviousClose;
+  const meta2 = res.body.chart.result[0].meta;
+  if (!parsed || meta2.regularMarketPrice === void 0) throw new ProviderError(SOURCE5, `no price for ${instrument.venueId}`);
+  const price = meta2.regularMarketPrice / parsed.divisor;
+  const prevRaw = meta2.previousClose ?? meta2.chartPreviousClose;
   const previousClose = prevRaw === void 0 ? void 0 : prevRaw / parsed.divisor;
-  const at = meta.regularMarketTime ? new Date(meta.regularMarketTime * 1e3).toISOString() : now.toISOString();
+  const at = meta2.regularMarketTime ? new Date(meta2.regularMarketTime * 1e3).toISOString() : now.toISOString();
   return {
     instrument,
     price,
@@ -9061,8 +9061,8 @@ function stamp(value, failures) {
   if (!failures.length) return value;
   return {
     ...value,
-    provenance: { ...value.provenance, fallbackFrom: failures.map((f) => f.source).join(", ") },
-    notes: [...value.notes, ...failures.map((f) => `${f.source} did not answer (${f.error}) \u2014 ${value.provenance.source} stood in`)]
+    provenance: { ...value.provenance, fallbackFrom: failures.map((f3) => f3.source).join(", ") },
+    notes: [...value.notes, ...failures.map((f3) => `${f3.source} did not answer (${f3.error}) \u2014 ${value.provenance.source} stood in`)]
   };
 }
 async function getHistory(r2, req) {
@@ -9649,12 +9649,12 @@ var RATINGS = ["buy", "overweight", "hold", "underweight", "sell"];
 var HORIZONS = ["days", "weeks", "months", "years"];
 var DECISION_SCHEMA = 1;
 var isNum = (x) => typeof x === "number" && Number.isFinite(x);
-function validateDecision(raw, runDir) {
+function validateDecision(raw, runDir2) {
   const problems = [];
   if (!raw || typeof raw !== "object") return { ok: false, problems: ["the decision is not a JSON object"] };
   const d = raw;
-  const store = EvidenceStore.load(runDir);
-  if (!store) problems.push(`${runDir} holds no evidence \u2014 decide on a run made by \`analyze\``);
+  const store = EvidenceStore.load(runDir2);
+  if (!store) problems.push(`${runDir2} holds no evidence \u2014 decide on a run made by \`analyze\``);
   if (typeof d.symbol !== "string" || !d.symbol) problems.push("symbol is missing");
   if (!RATINGS.includes(d.rating)) problems.push(`rating must be one of ${RATINGS.join(", ")}`);
   if (!HORIZONS.includes(d.horizon)) problems.push(`horizon must be one of ${HORIZONS.join(", ")}`);
@@ -9665,7 +9665,7 @@ function validateDecision(raw, runDir) {
   else if (store) {
     for (const id of d.evidence) if (!store.get(String(id).replace(/[[\]]/g, ""))) problems.push(`evidence ${id} is not in the run`);
   }
-  if (!Array.isArray(d.falsifiers) || !d.falsifiers.some((f) => typeof f === "string" && f.trim().length > 5))
+  if (!Array.isArray(d.falsifiers) || !d.falsifiers.some((f3) => typeof f3 === "string" && f3.trim().length > 5))
     problems.push("falsifiers: at least one observable event or level that would prove the thesis wrong");
   if (!Array.isArray(d.risks)) problems.push("risks is a list (it may be empty only if you can defend that)");
   if (!["holding", "flat", "not-provided"].includes(String(d.portfolioContext))) problems.push("portfolioContext is holding, flat or not-provided");
@@ -9691,9 +9691,9 @@ function validateDecision(raw, runDir) {
 function journalDir() {
   return join12(homeDir(), "journal");
 }
-function recordDecision(input, runDir) {
+function recordDecision(input, runDir2) {
   const d = { ...input, id: input.id ?? `d-${contentHash(`${input.symbol}|${input.decidedAt}|${input.rating}`).slice(0, 12)}` };
-  const file = join12(runDir, "decision.json");
+  const file = join12(runDir2, "decision.json");
   writeFileAtomic(file, `${JSON.stringify(d, null, 2)}
 `);
   const dir = journalDir();
@@ -9705,7 +9705,7 @@ function recordDecision(input, runDir) {
     `## [${d.decidedAt.slice(0, 10)} | ${d.symbol} | ${d.rating} | conviction ${d.conviction} | pending | ${d.id}]`,
     "",
     `DECISION: ${d.thesis}`,
-    `EVIDENCE: ${d.evidence.map((e) => `[${e}]`).join(" ")} \u2014 run ${runDir}`,
+    `EVIDENCE: ${d.evidence.map((e) => `[${e}]`).join(" ")} \u2014 run ${runDir2}`,
     `FALSIFIERS: ${d.falsifiers.join("; ")}`,
     ...d.plan ? [`PLAN: ${d.plan.side} at ${d.plan.entry}, stop ${d.plan.stop}, targets ${d.plan.targets.join(" / ")}, size ${d.plan.sizePct} %`] : [],
     "",
@@ -9717,9 +9717,9 @@ function recordDecision(input, runDir) {
   return { file, journal: md, id: d.id };
 }
 function pastDecisions(symbol, limit = 5) {
-  const f = join12(journalDir(), "decisions.jsonl");
-  if (!existsSync10(f)) return [];
-  return readFileSync11(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((d) => d.symbol === symbol).reverse().slice(0, limit);
+  const f3 = join12(journalDir(), "decisions.jsonl");
+  if (!existsSync10(f3)) return [];
+  return readFileSync11(f3, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((d) => d.symbol === symbol).reverse().slice(0, limit);
 }
 
 // src/analytics/sizing.ts
@@ -9977,9 +9977,9 @@ function audit(event) {
   }
 }
 function readAudit() {
-  const f = join14(homeDir(), "audit", "orders.jsonl");
-  if (!existsSync12(f)) return [];
-  return readFileSync13(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  const f3 = join14(homeDir(), "audit", "orders.jsonl");
+  if (!existsSync12(f3)) return [];
+  return readFileSync13(f3, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
 }
 function loadTicket(id) {
   const p = ticketPath(id);
@@ -9993,7 +9993,7 @@ function save(t) {
 }
 function listTickets(filter) {
   if (!existsSync12(ticketsDir())) return [];
-  return readdirSync2(ticketsDir()).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(readFileSync13(join14(ticketsDir(), f), "utf8"))).filter((t) => !filter || filter(t)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return readdirSync2(ticketsDir()).filter((f3) => f3.endsWith(".json")).map((f3) => JSON.parse(readFileSync13(join14(ticketsDir(), f3), "utf8"))).filter((t) => !filter || filter(t)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 async function transition(id, to, why, mutate, now = /* @__PURE__ */ new Date()) {
   return withFileLock(`${ticketPath(id)}.lock`, () => {
@@ -10072,13 +10072,13 @@ function saveThesis(t) {
 `, 384);
 }
 function loadThesis(id) {
-  const f = join15(thesesDir(), `${id}.json`);
-  if (!/^th-[a-z0-9.-]+$/.test(id) || id.includes("..") || !existsSync13(f)) throw new Error(`no thesis ${id}`);
-  return JSON.parse(readFileSync14(f, "utf8"));
+  const f3 = join15(thesesDir(), `${id}.json`);
+  if (!/^th-[a-z0-9.-]+$/.test(id) || id.includes("..") || !existsSync13(f3)) throw new Error(`no thesis ${id}`);
+  return JSON.parse(readFileSync14(f3, "utf8"));
 }
 function listTheses() {
   if (!existsSync13(thesesDir())) return [];
-  return readdirSync4(thesesDir()).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(readFileSync14(join15(thesesDir(), f), "utf8"))).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return readdirSync4(thesesDir()).filter((f3) => f3.endsWith(".json")).map((f3) => JSON.parse(readFileSync14(join15(thesesDir(), f3), "utf8"))).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 function addThesis(input, now = /* @__PURE__ */ new Date()) {
   if (input.thesis.trim().length < 20) throw new Error("a thesis says why, in a sentence or more");
@@ -10174,7 +10174,7 @@ function reviewTrip(trip, bars) {
 }
 function reviewMarkdown(rv) {
   const t = rv.trip;
-  const f = (x) => x === void 0 ? "n/a" : `${x >= 0 ? "+" : ""}${x.toFixed(2)}R`;
+  const f3 = (x) => x === void 0 ? "n/a" : `${x >= 0 ? "+" : ""}${x.toFixed(2)}R`;
   return [
     `## ${t.symbol} (${t.account}) \u2014 ${t.entryDate.slice(0, 10)} \u2192 ${t.exitDate.slice(0, 10)}`,
     "",
@@ -10184,7 +10184,7 @@ function reviewMarkdown(rv) {
     "",
     "**What happened:**",
     "",
-    `- exit ${t.exitPrice}, ${t.quantity} unit(s), result ${t.pnl.toFixed(2)} (${f(rv.rMultiple)}); best ${f(rv.mfeR)}, worst ${f(rv.maeR)} while open`,
+    `- exit ${t.exitPrice}, ${t.quantity} unit(s), result ${t.pnl.toFixed(2)} (${f3(rv.rMultiple)}); best ${f3(rv.mfeR)}, worst ${f3(rv.maeR)} while open`,
     ...rv.findings.map((x) => `- ${x}`),
     ""
   ].join("\n");
@@ -10212,24 +10212,24 @@ function addLesson(text, tags = [], now = /* @__PURE__ */ new Date()) {
   const clean3 = sanitizeExternalText(text, 600);
   if (clean3.length < 10) throw new Error("a lesson is a sentence: what happened, and what to do differently");
   mkdirSync11(knowledgeDir(), { recursive: true });
-  const f = join15(knowledgeDir(), "lessons.md");
-  if (!existsSync13(f)) writeFileAtomic(f, "# Lessons\n\nThe user's own pitfalls, newest last. Read before deciding.\n\n");
-  appendFileSync3(f, `- ${now.toISOString().slice(0, 10)}${tags.length ? ` [${tags.join(", ")}]` : ""}: ${clean3}
+  const f3 = join15(knowledgeDir(), "lessons.md");
+  if (!existsSync13(f3)) writeFileAtomic(f3, "# Lessons\n\nThe user's own pitfalls, newest last. Read before deciding.\n\n");
+  appendFileSync3(f3, `- ${now.toISOString().slice(0, 10)}${tags.length ? ` [${tags.join(", ")}]` : ""}: ${clean3}
 `);
-  return f;
+  return f3;
 }
 function readLessons(tag) {
-  const f = join15(knowledgeDir(), "lessons.md");
-  if (!existsSync13(f)) return [];
-  return readFileSync14(f, "utf8").split("\n").filter((l) => l.startsWith("- ") && (!tag || l.includes(`[${tag}`) || l.includes(`, ${tag}`)));
+  const f3 = join15(knowledgeDir(), "lessons.md");
+  if (!existsSync13(f3)) return [];
+  return readFileSync14(f3, "utf8").split("\n").filter((l) => l.startsWith("- ") && (!tag || l.includes(`[${tag}`) || l.includes(`, ${tag}`)));
 }
 function importSource(title, body, origin, now = /* @__PURE__ */ new Date()) {
   const dir = join15(knowledgeDir(), "sources");
   mkdirSync11(dir, { recursive: true });
   const id = `${now.toISOString().slice(0, 10)}-${slugify(title, { max: 50 })}`;
-  const f = join15(dir, `${id}.md`);
+  const f3 = join15(dir, `${id}.md`);
   writeFileAtomic(
-    f,
+    f3,
     [
       `# ${sanitizeExternalText(title, 200)}`,
       "",
@@ -10242,7 +10242,7 @@ function importSource(title, body, origin, now = /* @__PURE__ */ new Date()) {
       ""
     ].join("\n")
   );
-  return f;
+  return f3;
 }
 
 // src/portfolio/ledger.ts
@@ -10429,10 +10429,10 @@ function valueBook(book2, prices, fx, base2) {
   return { positions: vals, cashBase, totalBase, missing: [...new Set(missing)] };
 }
 function xirr(flows) {
-  if (flows.length < 2 || !flows.some((f) => f.amount > 0) || !flows.some((f) => f.amount < 0)) return void 0;
+  if (flows.length < 2 || !flows.some((f3) => f3.amount > 0) || !flows.some((f3) => f3.amount < 0)) return void 0;
   const t0 = Date.parse(flows[0].date);
-  const yrs = flows.map((f) => (Date.parse(f.date) - t0) / (365.25 * 864e5));
-  const npv = (r2) => flows.reduce((s, f, i) => s + f.amount / (1 + r2) ** yrs[i], 0);
+  const yrs = flows.map((f3) => (Date.parse(f3.date) - t0) / (365.25 * 864e5));
+  const npv = (r2) => flows.reduce((s, f3, i) => s + f3.amount / (1 + r2) ** yrs[i], 0);
   let lo = -0.9999;
   let hi = 10;
   if (npv(lo) * npv(hi) > 0) return void 0;
@@ -10832,24 +10832,24 @@ async function nasdaqAnalyst(symbol) {
   const missing = [];
   if (target.data) {
     const t = parseTargetPrice(target.data);
-    const day2 = t.asOf ?? target.res.fetchedAt.slice(0, 10);
+    const day3 = t.asOf ?? target.res.fetchedAt.slice(0, 10);
     const points = [
-      ...pt(`${T}.analyst.target.mean`, `${T} consensus price target`, t.mean, "USD", day2),
-      ...pt(`${T}.analyst.target.high`, `${T} highest price target`, t.high, "USD", day2),
-      ...pt(`${T}.analyst.target.low`, `${T} lowest price target`, t.low, "USD", day2),
-      ...pt(`${T}.analyst.ratings.buy`, `${T} analysts rating buy`, t.buy, "count", day2),
-      ...pt(`${T}.analyst.ratings.hold`, `${T} analysts rating hold`, t.hold, "count", day2),
-      ...pt(`${T}.analyst.ratings.sell`, `${T} analysts rating sell`, t.sell, "count", day2)
+      ...pt(`${T}.analyst.target.mean`, `${T} consensus price target`, t.mean, "USD", day3),
+      ...pt(`${T}.analyst.target.high`, `${T} highest price target`, t.high, "USD", day3),
+      ...pt(`${T}.analyst.target.low`, `${T} lowest price target`, t.low, "USD", day3),
+      ...pt(`${T}.analyst.ratings.buy`, `${T} analysts rating buy`, t.buy, "count", day3),
+      ...pt(`${T}.analyst.ratings.hold`, `${T} analysts rating hold`, t.hold, "count", day3),
+      ...pt(`${T}.analyst.ratings.sell`, `${T} analysts rating sell`, t.sell, "count", day3)
     ];
     const mean2 = ratings.data?.meanRatingType;
     if (typeof mean2 === "string" && /^[A-Za-z ]{1,20}$/.test(mean2))
-      points.push({ key: `${T}.analyst.rating.mean`, label: `${T} mean analyst rating`, value: mean2, asOf: day2 });
+      points.push({ key: `${T}.analyst.rating.mean`, label: `${T} mean analyst rating`, value: mean2, asOf: day3 });
     const n = num3(/Based on (\d+) analysts/.exec(ratings.data?.ratingsSummary ?? "")?.[1]);
-    points.push(...pt(`${T}.analyst.ratings.count`, `${T} analysts offering a recommendation`, n, "count", day2));
+    points.push(...pt(`${T}.analyst.ratings.count`, `${T} analysts offering a recommendation`, n, "count", day3));
     if (points.length) out4.push(dataset("analyst", `${T} analyst price targets and ratings`, T, points, target.url, target.res.fetchedAt));
   } else missing.push("target price");
-  const f = forecast.data ? parseEarningsForecast(forecast.data) : void 0;
-  if (f && (f.quarterly.length || f.yearly.length)) {
+  const f3 = forecast.data ? parseEarningsForecast(forecast.data) : void 0;
+  if (f3 && (f3.quarterly.length || f3.yearly.length)) {
     const rows = (list, kind, what) => list.flatMap((r2) => [
       ...pt(`${T}.est.eps.${kind}.${r2.fiscalEnd}.mean`, `${T} consensus EPS, fiscal ${what} ending ${r2.fiscalEnd}`, r2.mean, "USD"),
       ...pt(`${T}.est.eps.${kind}.${r2.fiscalEnd}.high`, `${T} highest EPS estimate, fiscal ${what} ending ${r2.fiscalEnd}`, r2.high, "USD"),
@@ -10861,7 +10861,7 @@ async function nasdaqAnalyst(symbol) {
         "estimates",
         `${T} EPS consensus (Zacks via Nasdaq)`,
         T,
-        [...rows(f.quarterly, "q", "quarter"), ...rows(f.yearly, "fy", "year")],
+        [...rows(f3.quarterly, "q", "quarter"), ...rows(f3.yearly, "fy", "year")],
         forecast.url,
         forecast.res.fetchedAt,
         ["forward estimates, not reported figures; asOf is the fetch date"]
@@ -10946,10 +10946,10 @@ async function nasdaqDividends(symbol, opts = {}) {
   const d = r2.data ? parseNasdaqDividends(r2.data) : void 0;
   if (!d || !d.rows.length && d.annual === void 0)
     throw new ProviderError(NASDAQ_ANALYST_SOURCE, `no dividend data for ${T} (${r2.res.status})`, r2.res.ok ? 404 : r2.res.status);
-  const day2 = r2.res.fetchedAt.slice(0, 10);
+  const day3 = r2.res.fetchedAt.slice(0, 10);
   const points = [
-    ...pt(`${T}.div.yield`, `${T} dividend yield (indicated)`, d.yieldPct, "%", day2),
-    ...pt(`${T}.div.annual`, `${T} annualized dividend per share`, d.annual, "USD", day2),
+    ...pt(`${T}.div.yield`, `${T} dividend yield (indicated)`, d.yieldPct, "%", day3),
+    ...pt(`${T}.div.annual`, `${T} annualized dividend per share`, d.annual, "USD", day3),
     ...d.rows.slice(0, opts.limit ?? 8).flatMap(
       (x) => pt(
         `${T}.div.${x.exDate}`,
@@ -11321,9 +11321,9 @@ function parseCompanyFacts(json2, opts = {}) {
   return { cik: json2.cik ?? 0, entityName: json2.entityName ?? "", ...opts.asOf ? { asOf: opts.asOf } : {}, metrics, notes };
 }
 var unitOf = (u) => u === "USD/shares" ? "USD" : u;
-function secFundamentalsPoints(f, subject) {
+function secFundamentalsPoints(f3, subject) {
   const points = [];
-  for (const m of f.metrics) {
+  for (const m of f3.metrics) {
     for (const v of [...m.annual, ...m.quarterly, ...m.ttm ? [m.ttm] : []]) {
       const how = v.formula ? v.concept === "derived" || v.period === "TTM" ? "derived" : "derived from YTD" : v.concept;
       const stamp2 = v.formula ? `latest input filed ${v.filed}` : `${v.form} filed ${v.filed}`;
@@ -11443,16 +11443,16 @@ var IMPORTANT_8K_ITEMS = /* @__PURE__ */ new Set([
   "7.01",
   "8.01"
 ]);
-var isImportant8k = (f) => /^8-K/.test(f.form) && f.items.some((i) => IMPORTANT_8K_ITEMS.has(i));
+var isImportant8k = (f3) => /^8-K/.test(f3.form) && f3.items.some((i) => IMPORTANT_8K_ITEMS.has(i));
 function secFilingsPoints(filings, subject) {
-  return filings.map((f) => {
-    const items = f.items.map((i) => `${i} ${EIGHT_K_ITEMS[i] ?? "item"}`).join("; ");
+  return filings.map((f3) => {
+    const items = f3.items.map((i) => `${i} ${EIGHT_K_ITEMS[i] ?? "item"}`).join("; ");
     return {
-      key: `${subject}.filing.${f.accession}`,
-      label: `${subject} ${f.form} filed ${f.filingDate}${f.reportDate ? ` for ${f.reportDate}` : ""}${items ? ` \u2014 ${items}` : ""}${isImportant8k(f) ? " [important]" : ""}`,
-      value: f.form,
-      asOf: f.filingDate,
-      url: f.url
+      key: `${subject}.filing.${f3.accession}`,
+      label: `${subject} ${f3.form} filed ${f3.filingDate}${f3.reportDate ? ` for ${f3.reportDate}` : ""}${items ? ` \u2014 ${items}` : ""}${isImportant8k(f3) ? " [important]" : ""}`,
+      value: f3.form,
+      asOf: f3.filingDate,
+      url: f3.url
     };
   });
 }
@@ -11460,13 +11460,13 @@ async function secFilings(tickerOrCik, opts = {}) {
   const co = await secCompany(tickerOrCik);
   const sub = await secSubmissions(co.cik);
   const since = opts.days ? isoDayOf(new Date((opts.now ?? clockNow()).getTime() - opts.days * 864e5)) : "";
-  const forms = opts.forms?.map((f) => f.toUpperCase());
-  const picked = sub.filings.filter((f) => (!forms || forms.some((x) => f.form === x || f.form === `${x}/A`)) && f.filingDate >= since).slice(0, opts.limit ?? 20);
+  const forms = opts.forms?.map((f3) => f3.toUpperCase());
+  const picked = sub.filings.filter((f3) => (!forms || forms.some((x) => f3.form === x || f3.form === `${x}/A`)) && f3.filingDate >= since).slice(0, opts.limit ?? 20);
   if (!picked.length) throw new ProviderError(SEC_SOURCE, `no ${forms?.join("/") ?? ""} filings for CIK ${co.cik}${since ? ` since ${since}` : ""}`, 404);
   const subject = opts.subject ?? co.ticker ?? sub.tickers[0] ?? `CIK${co.cik}`;
   const important = picked.filter(isImportant8k).length;
   const points = secFilingsPoints(picked, subject);
-  if (picked.some((f) => /^8-K/.test(f.form)))
+  if (picked.some((f3) => /^8-K/.test(f3.form)))
     points.push({
       key: `${subject}.filings.8k.important.count`,
       label: `${subject} 8-Ks with an important item in this list`,
@@ -11613,14 +11613,14 @@ function summarizeInsiders(filings, now, windowDays = 90) {
   const since30 = isoDayOf(new Date(now.getTime() - 30 * 864e5));
   const s = { buyShares: 0, buyValue: 0, sellShares: 0, sellValue: 0 };
   const buyers = /* @__PURE__ */ new Set();
-  for (const f of filings) {
-    for (const t of f.transactions) {
+  for (const f3 of filings) {
+    for (const t of f3.transactions) {
       if (t.date < since) continue;
       const value = t.shares * (t.price ?? 0);
       if (t.code === "P") {
         s.buyShares += t.shares;
         s.buyValue += value;
-        if (t.date >= since30) for (const o of f.owners) buyers.add(o.cik || o.name);
+        if (t.date >= since30) for (const o of f3.owners) buyers.add(o.cik || o.name);
       } else if (t.code === "S") {
         s.sellShares += t.shares;
         s.sellValue += value;
@@ -11629,9 +11629,9 @@ function summarizeInsiders(filings, now, windowDays = 90) {
   }
   return { windowDays, ...s, netValue: s.buyValue - s.sellValue, buyers30d: buyers.size, clusterBuy: buyers.size >= 3 };
 }
-async function form4Xml(cik, f) {
-  const base2 = archiveBase(cik, f.accession);
-  const raw = f.primaryDocument.replace(/^xsl[^/]*\//, "");
+async function form4Xml(cik, f3) {
+  const base2 = archiveBase(cik, f3.accession);
+  const raw = f3.primaryDocument.replace(/^xsl[^/]*\//, "");
   if (raw.endsWith(".xml")) {
     try {
       const res2 = await secText(`${base2}/${raw}`);
@@ -11642,7 +11642,7 @@ async function form4Xml(cik, f) {
   }
   const index = await secJson(`${base2}/index.json`);
   const name = index.data.directory?.item?.map((i) => i.name ?? "").find((n) => n.endsWith(".xml"));
-  if (!name) throw new ProviderError(SEC_SOURCE, `no XML document in filing ${f.accession}`, 404);
+  if (!name) throw new ProviderError(SEC_SOURCE, `no XML document in filing ${f3.accession}`, 404);
   const res = await secText(`${base2}/${name}`);
   return { xml: res.body, url: `${base2}/${name}` };
 }
@@ -11651,32 +11651,32 @@ async function secInsiders(tickerOrCik, opts = {}) {
   const co = await secCompany(tickerOrCik);
   const sub = await secSubmissions(co.cik);
   const subject = co.ticker ?? sub.tickers[0] ?? `CIK${co.cik}`;
-  const list = sub.filings.filter((f) => f.form === "4" || f.form === "4/A").slice(0, opts.limit ?? 5);
+  const list = sub.filings.filter((f3) => f3.form === "4" || f3.form === "4/A").slice(0, opts.limit ?? 5);
   if (!list.length) throw new ProviderError(SEC_SOURCE, `no Form 4 filings for ${subject} in its recent filings`, 404);
   const points = [];
   const parsed = [];
   const notes = [];
-  for (const f of list) {
+  for (const f3 of list) {
     let doc;
     try {
-      doc = await form4Xml(co.cik, f);
+      doc = await form4Xml(co.cik, f3);
     } catch (e) {
       if (e instanceof ProviderError && !e.transient) {
-        notes.push(`Form 4 ${f.accession} unreadable: ${e.message}`);
+        notes.push(`Form 4 ${f3.accession} unreadable: ${e.message}`);
         continue;
       }
       throw e;
     }
     const form = parseForm4(doc.xml);
     parsed.push(form);
-    const acc = f.accession;
+    const acc = f3.accession;
     points.push({
       key: `${subject}.insider.${acc}.owner`,
-      label: `${subject} Form 4 filer (filed ${f.filingDate})`,
+      label: `${subject} Form 4 filer (filed ${f3.filingDate})`,
       value: form.owners.map((o) => `${o.name}${o.title ? ` \u2014 ${o.title}` : ""}`).join("; "),
       untrusted: true,
-      asOf: f.filingDate,
-      url: f.url
+      asOf: f3.filingDate,
+      url: f3.url
     });
     form.transactions.forEach((t, i) => {
       points.push({
@@ -11797,9 +11797,9 @@ async function yahooArticles(symbol) {
   if (!res.ok) throw new ProviderError("yahoo", `headline feed unavailable (HTTP ${res.status})`, res.status);
   return { articles: parseYahooRss(res.body, res.url), url: res.url, fetchedAt: res.fetchedAt };
 }
-function articlesToDataset(articles, meta) {
+function articlesToDataset(articles, meta2) {
   const points = articles.map((a, i) => ({
-    key: `${meta.subject}.news.${i + 1}`,
+    key: `${meta2.subject}.news.${i + 1}`,
     label: `headline ${i + 1}${a.published ? ` (${a.published.slice(0, 16).replace("T", " ")} UTC)` : ""}`,
     value: a.source ? `${a.title} | ${a.source}` : a.title,
     untrusted: true,
@@ -11808,11 +11808,11 @@ function articlesToDataset(articles, meta) {
   }));
   return {
     kind: "news",
-    title: meta.title,
-    subject: meta.subject,
+    title: meta2.title,
+    subject: meta2.subject,
     points,
-    provenance: { source: meta.source, url: meta.url, fetchedAt: meta.fetchedAt, official: false },
-    notes: meta.notes
+    provenance: { source: meta2.source, url: meta2.url, fetchedAt: meta2.fetchedAt, official: false },
+    notes: meta2.notes
   };
 }
 async function newsSearch(query2, opts = {}) {
@@ -12011,8 +12011,8 @@ function solve(A, b) {
     if (Math.abs(p) < 1e-14) throw new Error("singular matrix: regressors are collinear");
     for (let r2 = 0; r2 < n; r2++) {
       if (r2 === col) continue;
-      const f = M[r2][col] / p;
-      for (let k = col; k <= n; k++) M[r2][k] -= f * M[col][k];
+      const f3 = M[r2][col] / p;
+      for (let k = col; k <= n; k++) M[r2][k] -= f3 * M[col][k];
     }
   }
   return M.map((row, i) => row[n] / row[i]);
@@ -12100,11 +12100,11 @@ function yangZhangVol(bars) {
   const k = 0.34 / (1.34 + (n + 1) / (n - 1));
   return Math.sqrt(variance(o) + k * variance(c) + (1 - k) * (rs / n));
 }
-function nelderMead(f, x0, opts = {}) {
+function nelderMead(f3, x0, opts = {}) {
   const n = x0.length;
   const step = opts.step ?? 0.1;
   let simplex = [x0, ...x0.map((_, i) => x0.map((v, j) => i === j ? v + (v === 0 ? step : step * Math.abs(v)) : v))];
-  let values = simplex.map(f);
+  let values = simplex.map(f3);
   let it = 0;
   for (; it < (opts.maxIter ?? 2e3); it++) {
     const order = values.map((v, i) => [v, i]).sort((a, b) => a[0] - b[0]);
@@ -12114,19 +12114,19 @@ function nelderMead(f, x0, opts = {}) {
     const centroid = x0.map((_, j) => simplex.slice(0, n).reduce((s, p) => s + p[j], 0) / n);
     const along = (t) => centroid.map((c, j) => c + t * (simplex[n][j] - c));
     const xr = along(-1);
-    const fr = f(xr);
+    const fr = f3(xr);
     if (fr < values[0]) {
       const xe = along(-2);
-      const fe = f(xe);
+      const fe = f3(xe);
       [simplex[n], values[n]] = fe < fr ? [xe, fe] : [xr, fr];
     } else if (fr < values[n - 1]) [simplex[n], values[n]] = [xr, fr];
     else {
       const xc = along(fr < values[n] ? -0.5 : 0.5);
-      const fc = f(xc);
+      const fc = f3(xc);
       if (fc < Math.min(fr, values[n])) [simplex[n], values[n]] = [xc, fc];
       else {
         simplex = simplex.map((p, i) => i === 0 ? p : p.map((v, j) => simplex[0][j] + 0.5 * (v - simplex[0][j])));
-        values = simplex.map(f);
+        values = simplex.map(f3);
       }
     }
   }
@@ -12480,7 +12480,7 @@ function gammaExposure(chain2, spot, multiplier = 100) {
   return { total, byStrike, flip, callWall: wall(calls), putWall: wall(puts) };
 }
 function chainSentiment(chain2) {
-  const sum = (right, f) => chain2.filter((o) => o.right === right).reduce((s, o) => s + (f(o) ?? 0), 0);
+  const sum = (right, f3) => chain2.filter((o) => o.right === right).reduce((s, o) => s + (f3(o) ?? 0), 0);
   const coi = sum("call", (o) => o.openInterest);
   const cv = sum("call", (o) => o.volume);
   const near = (right, target) => chain2.filter((o) => o.right === right && o.delta !== void 0 && o.iv).reduce((a, b) => !a || Math.abs(b.delta - target) < Math.abs(a.delta - target) ? b : a, void 0);
@@ -12546,16 +12546,16 @@ function easterSunday(year) {
   const c = year % 100;
   const d = Math.floor(b / 4);
   const e = b % 4;
-  const f = Math.floor((b + 8) / 25);
-  const g = Math.floor((b - f + 1) / 3);
+  const f3 = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f3 + 1) / 3);
   const h = (19 * a + b - d - g + 15) % 30;
   const i = Math.floor(c / 4);
   const k = c % 4;
   const l = (32 + 2 * e + 2 * i - h - k) % 7;
   const m = Math.floor((a + 11 * h + 22 * l) / 451);
   const month = Math.floor((h + l - 7 * m + 114) / 31);
-  const day2 = (h + l - 7 * m + 114) % 31 + 1;
-  return utc(year, month, day2);
+  const day3 = (h + l - 7 * m + 114) % 31 + 1;
+  return utc(year, month, day3);
 }
 function nthWeekday(year, month, weekday, n) {
   if (n > 0) {
@@ -12648,10 +12648,10 @@ function nextSessions(market, from, n) {
   const out4 = [];
   let d = /* @__PURE__ */ new Date(`${from}T00:00:00Z`);
   for (let guard = 0; out4.length < n && guard < 400; guard++, d = addDays(d, 1)) {
-    const day2 = fmt(d);
-    if (!isTradingDay(market, day2)) continue;
-    const e = holidays(market, d.getUTCFullYear()).find((h) => h.date === day2 && h.kind === "early-close");
-    out4.push({ date: day2, closeAt: e?.closeAt ?? MARKETS[market].close, early: !!e });
+    const day3 = fmt(d);
+    if (!isTradingDay(market, day3)) continue;
+    const e = holidays(market, d.getUTCFullYear()).find((h) => h.date === day3 && h.kind === "early-close");
+    out4.push({ date: day3, closeAt: e?.closeAt ?? MARKETS[market].close, early: !!e });
   }
   return out4;
 }
@@ -12766,7 +12766,7 @@ function parseForexFactory(rows) {
     ];
   });
 }
-function econEventsToDataset(events, meta) {
+function econEventsToDataset(events, meta2) {
   const points = [{ key: "CAL.econ.count", label: "economic events listed", value: events.length, unit: "count" }];
   events.forEach((e, i) => {
     const fields = [
@@ -12785,10 +12785,10 @@ function econEventsToDataset(events, meta) {
   });
   return {
     kind: "calendar",
-    title: meta.title,
+    title: meta2.title,
     points,
-    provenance: { source: meta.source, url: meta.url, fetchedAt: meta.fetchedAt, official: false },
-    notes: meta.notes ?? []
+    provenance: { source: meta2.source, url: meta2.url, fetchedAt: meta2.fetchedAt, official: false },
+    notes: meta2.notes ?? []
   };
 }
 async function nasdaqEconomicCalendar(date = isoDate(clockNow())) {
@@ -12873,7 +12873,7 @@ function parseNasdaqDividends2(rows) {
   return rows.flatMap((r2) => {
     const symbol = clean2(r2.symbol);
     if (!symbol) return [];
-    const num10 = (v) => typeof v === "number" ? v : parseLooseNumber(clean2(v));
+    const num11 = (v) => typeof v === "number" ? v : parseLooseNumber(clean2(v));
     return [
       {
         symbol,
@@ -12882,8 +12882,8 @@ function parseNasdaqDividends2(rows) {
         payDate: usSlashDate(clean2(r2.payment_Date)),
         recordDate: usSlashDate(clean2(r2.record_Date)),
         announced: usSlashDate(clean2(r2.announcement_Date)),
-        amount: num10(r2.dividend_Rate),
-        annual: num10(r2.indicated_Annual_Dividend)
+        amount: num11(r2.dividend_Rate),
+        annual: num11(r2.indicated_Annual_Dividend)
       }
     ];
   });
@@ -13053,7 +13053,7 @@ async function tradingviewSnapshot(symbol, opts = {}) {
   const res = await scan(opts.market ?? "global", { symbols: { tickers: [ticker] }, columns });
   const row = res.data.data.find((r2) => r2.s === ticker) ?? res.data.data[0];
   if (!row) throw new ProviderError(SOURCE7, `TradingView knows no ${ticker}`, 404);
-  const day2 = res.fetchedAt.slice(0, 10);
+  const day3 = res.fetchedAt.slice(0, 10);
   const notes = [NOTE];
   const cur = row.d[columns.indexOf("currency")];
   if (typeof cur === "string" && SUBUNITS2[cur])
@@ -13062,8 +13062,8 @@ async function tradingviewSnapshot(symbol, opts = {}) {
     kind: "snapshot",
     title: `${ticker} TradingView snapshot`,
     subject: symbol.toUpperCase(),
-    points: tvRowPoints(row, columns, day2),
-    provenance: { source: SOURCE7, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day2 },
+    points: tvRowPoints(row, columns, day3),
+    provenance: { source: SOURCE7, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day3 },
     notes
   };
 }
@@ -13074,10 +13074,10 @@ async function tradingviewScan(market, opts = {}) {
   if (opts.sort) body.sort = opts.sort;
   if (opts.tickers) body.symbols = { tickers: opts.tickers };
   const res = await scan(market, body);
-  const day2 = res.fetchedAt.slice(0, 10);
+  const day3 = res.fetchedAt.slice(0, 10);
   const points = [
-    { key: `TV.${market}.scan.matches`, label: `TradingView ${market} screener matches`, value: res.data.totalCount, unit: "count", asOf: day2 },
-    ...res.data.data.flatMap((row) => tvRowPoints(row, columns, day2))
+    { key: `TV.${market}.scan.matches`, label: `TradingView ${market} screener matches`, value: res.data.totalCount, unit: "count", asOf: day3 },
+    ...res.data.data.flatMap((row) => tvRowPoints(row, columns, day3))
   ];
   const notes = [NOTE];
   if (res.data.totalCount > res.data.data.length) notes.push(`${res.data.data.length} of ${res.data.totalCount} matches returned (range)`);
@@ -13086,7 +13086,7 @@ async function tradingviewScan(market, opts = {}) {
     title: `TradingView ${market} screener`,
     subject: market,
     points,
-    provenance: { source: SOURCE7, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day2 },
+    provenance: { source: SOURCE7, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day3 },
     notes
   };
 }
@@ -13102,7 +13102,7 @@ function summarizeChain(chain2, now) {
   }
   const out4 = [];
   for (const [expiry, cs] of [...byExpiry.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    const sum = (right, f) => cs.filter((c) => c.right === right).reduce((s, c) => s + f(c), 0);
+    const sum = (right, f3) => cs.filter((c) => c.right === right).reduce((s, c) => s + f3(c), 0);
     const callOi = sum("call", (c) => c.openInterest);
     const putOi = sum("put", (c) => c.openInterest);
     const callVolume = sum("call", (c) => c.volume);
@@ -13546,10 +13546,10 @@ async function catalystsReport(raw, days, now = clockNow()) {
     ...us ? { "CBOE option chain": () => cboeChain(sym2) } : {}
   });
   const ok = side2.ok;
-  for (const f of side2.failed) {
-    if (/SEC 8-K filings: .*no 8-K/.test(f)) notes.push("no 8-K filed in the last 30 days");
-    else if (/CBOE option chain: .*lists no options/.test(f)) notes.push(`no listed options on ${sym2} at CBOE \u2014 no expected move`);
-    else notes.push(`unavailable \u2014 ${f}`);
+  for (const f3 of side2.failed) {
+    if (/SEC 8-K filings: .*no 8-K/.test(f3)) notes.push("no 8-K filed in the last 30 days");
+    else if (/CBOE option chain: .*lists no options/.test(f3)) notes.push(`no listed options on ${sym2} at CBOE \u2014 no expected move`);
+    else notes.push(`unavailable \u2014 ${f3}`);
   }
   const ne = ok["Nasdaq earnings date"];
   let tv = ok["TradingView event dates"];
@@ -13914,12 +13914,12 @@ function followThrough(bars, minGain = 1.25, correctionPct = 8) {
       attemptStart = i;
     }
     if (state === "rally-attempt") {
-      const day2 = i - attemptStart + 1;
-      if (day2 >= 4 && day2 <= 10 && pct2(b.close, p.close) >= minGain && (b.volume ?? 0) > (p.volume ?? Number.POSITIVE_INFINITY)) {
+      const day3 = i - attemptStart + 1;
+      if (day3 >= 4 && day3 <= 10 && pct2(b.close, p.close) >= minGain && (b.volume ?? 0) > (p.volume ?? Number.POSITIVE_INFINITY)) {
         state = "follow-through";
-        ftd = { date: b.date, day: day2 };
+        ftd = { date: b.date, day: day3 };
         high = b.close;
-      } else if (day2 > 10) {
+      } else if (day3 > 10) {
         state = "failed";
       }
     } else if (state === "failed" && b.close > p.close) {
@@ -14468,8 +14468,8 @@ async function ecbPolicyRates() {
   const points = [];
   for (const s of series) {
     const id = s.key.split(".")[6] ?? "";
-    const meta = RATE_KEYS[id];
-    if (meta) points.push(...seriesPoints(meta[0], meta[1], "%", s.obs));
+    const meta2 = RATE_KEYS[id];
+    if (meta2) points.push(...seriesPoints(meta2[0], meta2[1], "%", s.obs));
   }
   return {
     kind: "macro",
@@ -14557,16 +14557,16 @@ function parseCnnFearGreed(js) {
     { key: k, label: "CNN Fear & Greed index", value: Number(fg.score.toFixed(1)), unit: "index", asOf },
     ...rating(`${k}.rating`, "CNN Fear & Greed rating", fg.rating, asOf)
   ];
-  for (const [f, label2] of [
+  for (const [f3, label2] of [
     ["previous_close", "previous close"],
     ["previous_1_week", "one week ago"],
     ["previous_1_month", "one month ago"],
     ["previous_1_year", "one year ago"]
   ]) {
-    const v = fg[f];
+    const v = fg[f3];
     if (typeof v === "number")
       points.push({
-        key: `${k}.${f.replace("previous_", "prev.")}`,
+        key: `${k}.${f3.replace("previous_", "prev.")}`,
         label: `CNN Fear & Greed index, ${label2}`,
         value: Number(v.toFixed(1)),
         unit: "index",
@@ -14700,8 +14700,8 @@ function parseCboePutCall(js, date) {
   }
   return points;
 }
-function previousSession(day2) {
-  let d = /* @__PURE__ */ new Date(`${day2}T00:00:00Z`);
+function previousSession(day3) {
+  let d = /* @__PURE__ */ new Date(`${day3}T00:00:00Z`);
   for (let guard = 0; guard < 15; guard++) {
     d = new Date(d.getTime() - 864e5);
     if (isTradingDay("XNYS", isoDate(d))) break;
@@ -14709,18 +14709,18 @@ function previousSession(day2) {
   return isoDate(d);
 }
 async function cboePutCall(now = clockNow()) {
-  let day2 = isoDate(now);
-  if (!isTradingDay("XNYS", day2) || now.getUTCHours() < 22) day2 = previousSession(day2);
+  let day3 = isoDate(now);
+  if (!isTradingDay("XNYS", day3) || now.getUTCHours() < 22) day3 = previousSession(day3);
   let lastStatus = 0;
-  for (let i = 0; i < 3; i++, day2 = previousSession(day2)) {
-    const res = await fetchJson(`https://cdn.cboe.com/data/us/options/market_statistics/daily/${day2}_daily_options`);
+  for (let i = 0; i < 3; i++, day3 = previousSession(day3)) {
+    const res = await fetchJson(`https://cdn.cboe.com/data/us/options/market_statistics/daily/${day3}_daily_options`);
     lastStatus = res.status;
     if (!res.ok || !res.data) continue;
-    const points = parseCboePutCall(res.data, day2);
+    const points = parseCboePutCall(res.data, day3);
     if (!points.length) continue;
     return {
       kind: "sentiment",
-      title: `Cboe put/call ratios \u2014 ${day2}`,
+      title: `Cboe put/call ratios \u2014 ${day3}`,
       subject: "US",
       points,
       provenance: {
@@ -14729,7 +14729,7 @@ async function cboePutCall(now = clockNow()) {
         fetchedAt: res.fetchedAt,
         delay: "eod",
         official: false,
-        asOf: day2
+        asOf: day3
       },
       notes: ["Volume-based ratios for Cboe's own options exchanges, not the whole US options market."]
     };
@@ -14772,7 +14772,7 @@ function shareAbove200(rows) {
   }
   return { above, total, pct: total ? above / total * 100 : void 0 };
 }
-var breadthSignal = (pct8) => Math.max(-1, Math.min(1, (pct8 - 50) / 30));
+var breadthSignal = (pct9) => Math.max(-1, Math.min(1, (pct9 - 50) / 30));
 async function largeCapRows(markets, cap, columns) {
   const res = await mapLimit(markets, FETCH_CONCURRENCY, async (m) => {
     try {
@@ -14888,18 +14888,18 @@ function tapePoints(ns, sym2, s) {
       note: `${sym2}: no session volumes from ${s.provenance.source} \u2014 distribution days and follow-through (both volume-based) are unavailable`
     };
   const d = distributionDays(bars);
-  const f = followThrough(bars);
+  const f3 = followThrough(bars);
   const points = [
     { key: `${ns}.dist.${sym2}.count`, label: `${sym2} distribution days, last 25 sessions`, value: d.days.length, unit: "count", asOf, formula: DIST_FORMULA },
     { key: `${ns}.dist.${sym2}.level`, label: `${sym2} distribution level (normal < 3, caution 3\u20134, high 5\u20136, severe \u2265 7)`, value: d.level, asOf }
   ];
   if (d.days.length) points.push({ key: `${ns}.dist.${sym2}.dates`, label: `${sym2} distribution day dates`, value: d.days.map((x) => x.date).join(", "), asOf });
   points.push(
-    { key: `${ns}.ftd.${sym2}.state`, label: `${sym2} follow-through state`, value: f.state, asOf, formula: FTD_FORMULA },
-    { key: `${ns}.ftd.${sym2}.reason`, label: `${sym2} follow-through state, reason`, value: f.reason, asOf }
+    { key: `${ns}.ftd.${sym2}.state`, label: `${sym2} follow-through state`, value: f3.state, asOf, formula: FTD_FORMULA },
+    { key: `${ns}.ftd.${sym2}.reason`, label: `${sym2} follow-through state, reason`, value: f3.reason, asOf }
   );
-  if (f.date) points.push({ key: `${ns}.ftd.${sym2}.date`, label: `${sym2} follow-through day`, value: f.date, asOf });
-  return { points, count: d.days.length, level: d.level, ftd: f.state };
+  if (f3.date) points.push({ key: `${ns}.ftd.${sym2}.date`, label: `${sym2} follow-through day`, value: f3.date, asOf });
+  return { points, count: d.days.length, level: d.level, ftd: f3.state };
 }
 var COMPONENT_FORMULA = {
   trend: "(trend signal + 1) / 2 \xD7 100",
@@ -15006,7 +15006,7 @@ async function usRegime(now = clockNow()) {
       "TradingView large-cap breadth": () => usBreadthCount()
     })
   ]);
-  const notes = [...hist.failed.map((f) => `history unavailable \u2014 ${f}`), ...side2.failed.map((f) => `unavailable \u2014 ${f}`)];
+  const notes = [...hist.failed.map((f3) => `history unavailable \u2014 ${f3}`), ...side2.failed.map((f3) => `unavailable \u2014 ${f3}`)];
   const S = hist.series;
   const sec = new Sections("US");
   const signals = [];
@@ -15173,9 +15173,9 @@ async function euRegime(now = clockNow()) {
     })
   ]);
   const notes = [
-    ...hist.failed.map((f) => `history unavailable \u2014 ${f}`),
-    ...tv.failed.map((f) => `unavailable \u2014 ${f}`),
-    ...side2.failed.map((f) => `unavailable \u2014 ${f}`)
+    ...hist.failed.map((f3) => `history unavailable \u2014 ${f3}`),
+    ...tv.failed.map((f3) => `unavailable \u2014 ${f3}`),
+    ...side2.failed.map((f3) => `unavailable \u2014 ${f3}`)
   ];
   const sec = new Sections("EU");
   const signals = [];
@@ -15353,7 +15353,7 @@ async function cryptoRegimeReport(now = clockNow()) {
       "Binance futures funding": () => binanceFuturesPositioning("BTC", { fundingLimit: 21, days: 2 })
     })
   ]);
-  const notes = [...hist.failed.map((f) => `history unavailable \u2014 ${f}`), ...side2.failed.map((f) => `unavailable \u2014 ${f}`)];
+  const notes = [...hist.failed.map((f3) => `history unavailable \u2014 ${f3}`), ...side2.failed.map((f3) => `unavailable \u2014 ${f3}`)];
   const sec = new Sections("CRYPTO");
   const signals = [];
   const provs = [];
@@ -15829,10 +15829,10 @@ function starcBands(bars, smaPeriod = 6, atrPeriod = 15, multiplier = 1.33) {
     return { middle: m, upper: m + multiplier * av, lower: m - multiplier * av };
   });
 }
-function movingAverageEnvelope(values, n = 20, pct8 = 2.5, type = "sma") {
+function movingAverageEnvelope(values, n = 20, pct9 = 2.5, type = "sma") {
   const mid2 = type === "ema" ? ema(values, n) : sma(values, n);
-  const f = pct8 / 100;
-  return mid2.map((m) => m === void 0 ? void 0 : { middle: m, upper: m * (1 + f), lower: m * (1 - f) });
+  const f3 = pct9 / 100;
+  return mid2.map((m) => m === void 0 ? void 0 : { middle: m, upper: m * (1 + f3), lower: m * (1 - f3) });
 }
 function bollingerPercentB(values, n = 20, k = 2) {
   const b = bollinger(values, n, k);
@@ -16104,9 +16104,9 @@ function ultimateOscillator(bars, short = 7, medium = 14, long = 28) {
 }
 function awesomeOscillator(bars, fast = 5, slow = 34) {
   const mp = medianPrices(bars);
-  const f = sma(mp, fast);
+  const f3 = sma(mp, fast);
   const s = sma(mp, slow);
-  return mp.map((_, i) => f[i] === void 0 || s[i] === void 0 ? void 0 : f[i] - s[i]);
+  return mp.map((_, i) => f3[i] === void 0 || s[i] === void 0 ? void 0 : f3[i] - s[i]);
 }
 function trix(values, n = 14) {
   const e3 = chain(
@@ -16210,16 +16210,16 @@ function rvi(bars, n = 10) {
   const sym2 = (xs, i) => (xs[i] + 2 * xs[i - 1] + 2 * xs[i - 2] + xs[i - 3]) / 6;
   const co = bars.map((b) => b.close - b.open);
   const hl = bars.map((b) => b.high - b.low);
-  const num10 = new Array(bars.length).fill(0);
+  const num11 = new Array(bars.length).fill(0);
   const den = new Array(bars.length).fill(0);
   for (let i = 3; i < bars.length; i++) {
-    num10[i] = sym2(co, i);
+    num11[i] = sym2(co, i);
     den[i] = sym2(hl, i);
   }
   const line = blank(bars.length);
   for (let i = n + 2; i < bars.length; i++) {
     const d = windowSum(den, i, n);
-    line[i] = d === 0 ? 0 : windowSum(num10, i, n) / d;
+    line[i] = d === 0 ? 0 : windowSum(num11, i, n) / d;
   }
   const out4 = blank(bars.length);
   for (let i = n + 5; i < bars.length; i++) {
@@ -16559,9 +16559,9 @@ function accumulationDistribution(bars) {
 }
 function chaikinOscillator(bars, fast = 3, slow = 10) {
   const adl = accumulationDistribution(bars);
-  const f = ema(adl, fast);
+  const f3 = ema(adl, fast);
   const s = ema(adl, slow);
-  return zipWith([f, s], (a, b) => a - b);
+  return zipWith([f3, s], (a, b) => a - b);
 }
 function cmf(bars, n = 20) {
   const mfv = rollingSum(bars.map(moneyFlowVolume), n);
@@ -16620,7 +16620,7 @@ function twiggsMoneyFlow(bars, n = 21) {
 }
 function volumeOscillator(bars, fast = 14, slow = 28) {
   const v = volumesOf(bars);
-  return zipWith([ema(v, fast), ema(v, slow)], (f, s) => s === 0 ? void 0 : 100 * (f - s) / s);
+  return zipWith([ema(v, fast), ema(v, slow)], (f3, s) => s === 0 ? void 0 : 100 * (f3 - s) / s);
 }
 function vwap(bars, anchor = "session") {
   const tp = typicalPrices(bars);
@@ -16632,9 +16632,9 @@ function vwap(bars, anchor = "session") {
   for (let i = 0; i < bars.length; i++) {
     const b = bars[i];
     if (anchor === "session") {
-      const day2 = b.date.slice(0, 10);
-      if (day2 !== session) {
-        session = day2;
+      const day3 = b.date.slice(0, 10);
+      if (day3 !== session) {
+        session = day3;
         pv = 0;
         vs = 0;
       }
@@ -17143,6 +17143,15 @@ for (const [name, fn] of Object.entries(CANDLE_PATTERNS)) {
   def(name, "candles", PATTERN_TEXT[name], params, V, (b, p) => withTrend ? fn(b, num5(p, "trendLookback")) : fn(b));
 }
 var BY_NAME = new Map(defs.map((d) => [d.name, d]));
+function listIndicators() {
+  return defs.map(({ name, group, description, params, outputs }) => ({
+    name,
+    group,
+    description,
+    params: params.map((p) => ({ ...p })),
+    outputs: [...outputs]
+  }));
+}
 function resolveParams(d, given) {
   const known = new Set(d.params.map((p) => p.name));
   for (const k of Object.keys(given)) {
@@ -17741,14 +17750,14 @@ async function technicalsRun(raw, dir, opts = {}) {
       continue;
     }
     const suffix = r2.params ? Object.values(r2.params).join("_") : "";
-    for (const [field2, meta] of Object.entries(r2.fields ?? { value: { label: r2.label } })) {
+    for (const [field2, meta2] of Object.entries(r2.fields ?? { value: { label: r2.label } })) {
       const v2 = row[field2];
       if (typeof v2 !== "number" || !Number.isFinite(v2)) continue;
       pts.push({
         key: `${sym2}.ta.${r2.name}${suffix ? `.${suffix}` : ""}.${field2}`,
-        label: `${sym2} ${meta.label}`,
+        label: `${sym2} ${meta2.label}`,
         value: r6(v2),
-        unit: unitOf3(meta.unit),
+        unit: unitOf3(meta2.unit),
         formula: `${r2.name}(${JSON.stringify(res.params)})`
       });
     }
@@ -17952,22 +17961,22 @@ function equityCurve(returns, start = 1) {
   for (const r2 of returns) out4.push(out4[out4.length - 1] * (1 + r2));
   return out4;
 }
-function cagr(equity, periodsPerYear) {
+function cagr(equity, periodsPerYear2) {
   if (equity.length < 2 || equity[0] <= 0) return Number.NaN;
-  const years = (equity.length - 1) / periodsPerYear;
+  const years = (equity.length - 1) / periodsPerYear2;
   return (equity[equity.length - 1] / equity[0]) ** (1 / years) - 1;
 }
-function annualizedVolatility(returns, periodsPerYear) {
-  return stdev(returns) * Math.sqrt(periodsPerYear);
+function annualizedVolatility(returns, periodsPerYear2) {
+  return stdev(returns) * Math.sqrt(periodsPerYear2);
 }
-function sharpe(returns, periodsPerYear, riskFree = 0) {
+function sharpe(returns, periodsPerYear2, riskFree = 0) {
   const ex = returns.map((r2) => r2 - riskFree);
   const sd = stdev(ex);
-  return sd > 0 ? mean(ex) / sd * Math.sqrt(periodsPerYear) : Number.NaN;
+  return sd > 0 ? mean(ex) / sd * Math.sqrt(periodsPerYear2) : Number.NaN;
 }
-function sortino(returns, periodsPerYear, target = 0) {
+function sortino(returns, periodsPerYear2, target = 0) {
   const dd = Math.sqrt(mean(returns.map((r2) => Math.min(0, r2 - target) ** 2)));
-  return dd > 0 ? (mean(returns) - target) / dd * Math.sqrt(periodsPerYear) : Number.NaN;
+  return dd > 0 ? (mean(returns) - target) / dd * Math.sqrt(periodsPerYear2) : Number.NaN;
 }
 function drawdowns(equity) {
   let peak = equity[0] ?? 0;
@@ -18001,9 +18010,9 @@ function drawdowns(equity) {
   }
   return { maxDrawdown: worst, peakIndex: worstPeak, troughIndex: worstTrough, recoveryIndex, longestUnderwater: longest, series };
 }
-function calmar(equity, periodsPerYear) {
+function calmar(equity, periodsPerYear2) {
   const dd = drawdowns(equity).maxDrawdown;
-  return dd < 0 ? cagr(equity, periodsPerYear) / -dd : Number.NaN;
+  return dd < 0 ? cagr(equity, periodsPerYear2) / -dd : Number.NaN;
 }
 function ulcerIndex(equity) {
   const s = drawdowns(equity).series;
@@ -18018,7 +18027,7 @@ function omega(returns, threshold = 0) {
   }
   return down > 0 ? up / down : Number.POSITIVE_INFINITY;
 }
-function relativeTo(returns, bench, periodsPerYear, riskFree = 0) {
+function relativeTo(returns, bench, periodsPerYear2, riskFree = 0) {
   const n = Math.min(returns.length, bench.length);
   const r2 = returns.slice(-n);
   const b = bench.slice(-n);
@@ -18031,9 +18040,9 @@ function relativeTo(returns, bench, periodsPerYear, riskFree = 0) {
     vb += (b[i] - mb) ** 2;
   }
   const beta = cov / vb;
-  const alpha = (mr - riskFree - beta * (mb - riskFree)) * periodsPerYear;
+  const alpha = (mr - riskFree - beta * (mb - riskFree)) * periodsPerYear2;
   const active2 = r2.map((v, i) => v - b[i]);
-  const te = stdev(active2) * Math.sqrt(periodsPerYear);
+  const te = stdev(active2) * Math.sqrt(periodsPerYear2);
   const capture = (pred) => {
     const idx = b.map((v, i) => pred(v) ? i : -1).filter((i) => i >= 0);
     return idx.length ? mean(idx.map((i) => r2[i])) / mean(idx.map((i) => b[i])) : Number.NaN;
@@ -18043,7 +18052,7 @@ function relativeTo(returns, bench, periodsPerYear, riskFree = 0) {
     alpha,
     correlation: cov / Math.sqrt(vb * r2.reduce((s, v) => s + (v - mr) ** 2, 0)),
     trackingError: te,
-    informationRatio: te > 0 ? mean(active2) * periodsPerYear / te : Number.NaN,
+    informationRatio: te > 0 ? mean(active2) * periodsPerYear2 / te : Number.NaN,
     upCapture: capture((v) => v > 0),
     downCapture: capture((v) => v < 0)
   };
@@ -18087,19 +18096,26 @@ function probabilisticSharpe(sr, T, skew, exKurt, benchmark = 0) {
   const denom = Math.sqrt(1 - skew * sr + (exKurt + 2) / 4 * sr * sr);
   return normCdf((sr - benchmark) * Math.sqrt(T - 1) / denom);
 }
-function performanceSummary(returns, periodsPerYear, opts = {}) {
+function expectedMaxSharpe(nTrials, srVariance) {
+  const g = 0.5772156649015329;
+  return Math.sqrt(srVariance) * ((1 - g) * normInv(1 - 1 / nTrials) + g * normInv(1 - 1 / (nTrials * Math.E)));
+}
+function deflatedSharpe(sr, T, skew, exKurt, nTrials, srVariance) {
+  return probabilisticSharpe(sr, T, skew, exKurt, nTrials > 1 ? expectedMaxSharpe(nTrials, srVariance) : 0);
+}
+function performanceSummary(returns, periodsPerYear2, opts = {}) {
   const equity = equityCurve(returns);
   const dd = drawdowns(equity);
   const srPer = stdev(returns) > 0 ? (mean(returns) - (opts.riskFree ?? 0)) / stdev(returns) : Number.NaN;
   return {
     periods: returns.length,
-    cagr: cagr(equity, periodsPerYear),
-    volatility: annualizedVolatility(returns, periodsPerYear),
-    sharpe: sharpe(returns, periodsPerYear, opts.riskFree),
-    sortino: sortino(returns, periodsPerYear),
+    cagr: cagr(equity, periodsPerYear2),
+    volatility: annualizedVolatility(returns, periodsPerYear2),
+    sharpe: sharpe(returns, periodsPerYear2, opts.riskFree),
+    sortino: sortino(returns, periodsPerYear2),
     maxDrawdown: dd.maxDrawdown,
     longestUnderwater: dd.longestUnderwater,
-    calmar: calmar(equity, periodsPerYear),
+    calmar: calmar(equity, periodsPerYear2),
     ulcer: ulcerIndex(equity),
     omega: omega(returns),
     skew: skewness(returns),
@@ -18109,7 +18125,7 @@ function performanceSummary(returns, periodsPerYear, opts = {}) {
     cornishFisherVar95: cornishFisherVar(returns, 0.95),
     probabilisticSharpe: probabilisticSharpe(srPer, returns.length, skewness(returns), excessKurtosis(returns)),
     hitRate: returns.filter((r2) => r2 > 0).length / returns.length,
-    relative: opts.benchmark ? relativeTo(returns, opts.benchmark, periodsPerYear, opts.riskFree) : void 0
+    relative: opts.benchmark ? relativeTo(returns, opts.benchmark, periodsPerYear2, opts.riskFree) : void 0
   };
 }
 
@@ -18489,14 +18505,14 @@ function fillGaps(filings, crible) {
   if (!filings.length) return crible.map(whole);
   const newest = filings[0].period.end;
   const newer = crible.filter((c) => Date.parse(c.period.end) > Date.parse(newest) + 10 * 864e5).map(whole);
-  for (const f of filings) {
-    const c = crible.find((x) => near(x.period.end, f.period.end));
+  for (const f3 of filings) {
+    const c = crible.find((x) => near(x.period.end, f3.period.end));
     if (!c) continue;
     for (const [field2, id] of Object.entries(c.ids)) {
-      if (f.period[field2] !== void 0) continue;
-      f.period[field2] = c.period[field2];
-      f.ids[field2] = id;
-      f.filled.push(field2);
+      if (f3.period[field2] !== void 0) continue;
+      f3.period[field2] = c.period[field2];
+      f3.ids[field2] = id;
+      f3.filled.push(field2);
     }
   }
   return [...newer, ...filings];
@@ -18568,7 +18584,7 @@ async function cribleMcpCall(tool, toolArgs, timeoutMs = 12e4) {
   const child = spawn4(cmd, [...args, "--data-dir", cribleDataDir(), "mcp"], { stdio: ["pipe", "pipe", "pipe"] });
   const send = (msg) => child.stdin.write(`${JSON.stringify(msg)}
 `);
-  return new Promise((resolve12, reject) => {
+  return new Promise((resolve13, reject) => {
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       reject(new ProviderError(SOURCE13, `crible mcp did not answer ${tool} within ${timeoutMs} ms`, 0));
@@ -18591,9 +18607,9 @@ async function cribleMcpCall(tool, toolArgs, timeoutMs = 12e4) {
           if (msg.error) return reject(new ProviderError(SOURCE13, `crible ${tool}: ${msg.error.message}`, 400));
           const r2 = msg.result ?? {};
           if (r2.isError) return reject(new ProviderError(SOURCE13, `crible ${tool}: ${r2.content?.[0]?.text ?? "error"}`, 400));
-          if (r2.structuredContent !== void 0) return resolve12(r2.structuredContent.result ?? r2.structuredContent);
+          if (r2.structuredContent !== void 0) return resolve13(r2.structuredContent.result ?? r2.structuredContent);
           const text = r2.content?.[0]?.text;
-          resolve12(text === void 0 ? null : JSON.parse(text));
+          resolve13(text === void 0 ? null : JSON.parse(text));
         }
       }
     });
@@ -18774,11 +18790,11 @@ var CORE_DIMS = /* @__PURE__ */ new Set(["concept", "entity", "period", "unit", 
 var dayOf = (s) => /T00:00:00/.test(s) ? shiftIsoDay(s.slice(0, 10), -1) : s.slice(0, 10);
 function consolidatedFacts(json2) {
   const out4 = /* @__PURE__ */ new Map();
-  for (const f of Object.values(json2.facts ?? {})) {
-    const d = f.dimensions ?? {};
+  for (const f3 of Object.values(json2.facts ?? {})) {
+    const d = f3.dimensions ?? {};
     if (!d.concept || !d.period || !d.unit || Object.keys(d).some((k) => !CORE_DIMS.has(k))) continue;
-    const value = typeof f.value === "number" ? f.value : Number(f.value);
-    if (f.value === null || f.value === void 0 || !Number.isFinite(value)) continue;
+    const value = typeof f3.value === "number" ? f3.value : Number(f3.value);
+    if (f3.value === null || f3.value === void 0 || !Number.isFinite(value)) continue;
     const [a, b] = d.period.split("/");
     const fact = {
       concept: d.concept,
@@ -18786,7 +18802,7 @@ function consolidatedFacts(json2) {
       end: dayOf(b ?? a),
       value,
       unit: d.unit.split("/").map((u) => u.replace(/^iso4217:/, "").replace(/^xbrli:/, "")).join("/"),
-      ...typeof f.decimals === "number" ? { decimals: f.decimals } : {}
+      ...typeof f3.decimals === "number" ? { decimals: f3.decimals } : {}
     };
     const key = `${fact.concept}|${fact.start ?? ""}|${fact.end}|${fact.unit}`;
     if (!out4.has(key)) out4.set(key, fact);
@@ -18803,19 +18819,19 @@ function parseEsefReport(json2) {
     for (const c of concepts) {
       const concept = c.includes(":") ? c : `ifrs-full:${c}`;
       const anyPrefix = concept.startsWith("*:") ? concept.slice(1) : void 0;
-      for (const f of facts) {
-        if (anyPrefix ? !f.concept.endsWith(anyPrefix) || f.concept.startsWith("ifrs-full:") : f.concept !== concept) continue;
-        if (kind === "flow" && (!f.start || Math.abs(daysBetween(f.start, f.end) - 365) > 25)) continue;
-        if (kind === "instant" && f.start) continue;
-        if (byPeriod.has(f.end)) continue;
-        byPeriod.set(f.end, {
-          period: `FY${f.end.slice(0, 4)}`,
-          ...f.start ? { start: f.start } : {},
-          end: f.end,
-          value: f.value,
-          unit: unitName(f.unit),
+      for (const f3 of facts) {
+        if (anyPrefix ? !f3.concept.endsWith(anyPrefix) || f3.concept.startsWith("ifrs-full:") : f3.concept !== concept) continue;
+        if (kind === "flow" && (!f3.start || Math.abs(daysBetween(f3.start, f3.end) - 365) > 25)) continue;
+        if (kind === "instant" && f3.start) continue;
+        if (byPeriod.has(f3.end)) continue;
+        byPeriod.set(f3.end, {
+          period: `FY${f3.end.slice(0, 4)}`,
+          ...f3.start ? { start: f3.start } : {},
+          end: f3.end,
+          value: f3.value,
+          unit: unitName(f3.unit),
           concept,
-          ...f.decimals !== void 0 ? { decimals: f.decimals } : {}
+          ...f3.decimals !== void 0 ? { decimals: f3.decimals } : {}
         });
       }
     }
@@ -18885,7 +18901,7 @@ async function esefFundamentals(id, opts = {}) {
   const lei = isLei(v) ? v : isIsin(v) ? (await leiForIsin(v)).record.lei : void 0;
   if (!lei) throw new ProviderError(ESEF_SOURCE, `"${id}" is neither an LEI nor an ISIN \u2014 find the LEI by name first (esefEntities / gleifSearch)`, 400);
   const index = await filingsOf(lei);
-  const filing = index.filings.find((f) => f.jsonUrl && (!opts.asOf || f.added <= opts.asOf));
+  const filing = index.filings.find((f3) => f3.jsonUrl && (!opts.asOf || f3.added <= opts.asOf));
   if (!filing?.jsonUrl)
     throw new ProviderError(ESEF_SOURCE, `no ESEF report for LEI ${lei} on filings.xbrl.org${opts.asOf ? ` added by ${opts.asOf}` : ""}`, 404);
   const jsonUrl = filing.jsonUrl;
@@ -18899,7 +18915,7 @@ async function esefFundamentals(id, opts = {}) {
   const subject = opts.subject ?? (isIsin(v) ? v : lei);
   const points = esefPoints(got.metrics, subject, filing);
   if (!points.length) throw new ProviderError(ESEF_SOURCE, `no consolidated IFRS key metrics tagged in ${jsonUrl}`, 404);
-  const newer = index.filings.filter((f) => f.periodEnd > filing.periodEnd).map((f) => f.periodEnd);
+  const newer = index.filings.filter((f3) => f3.periodEnd > filing.periodEnd).map((f3) => f3.periodEnd);
   return {
     kind: "fundamentals",
     title: `${subject} key metrics (ESEF annual report ${filing.periodEnd})`,
@@ -19137,7 +19153,7 @@ function computeValuation(store, ctx) {
   const opts = { years: ctx.years };
   const cur = periods[0];
   const prev = periods[1];
-  const ids = (sp, ...fields) => fields.map((f) => sp?.ids[f]).filter((x) => !!x);
+  const ids = (sp, ...fields) => fields.map((f3) => sp?.ids[f3]).filter((x) => !!x);
   const yr = cur.period.end.slice(0, 4);
   const addScore = (key, s, inputs) => {
     if (!Number.isFinite(s.value)) {
@@ -19378,13 +19394,13 @@ async function analyzeFull(raw, dir, opts = {}) {
   const slices = [{ name: "price and risk", status: "ok", detail: `${base2.evidence} figures, trend ${base2.trend}`, file: "BRIEF.md" }];
   const sections = [];
   const notes = [...base2.notes];
-  const run3 = async (name, when, why, f) => {
+  const run3 = async (name, when, why, f3) => {
     if (!when) {
       slices.push({ name, status: "skipped", detail: why });
       return;
     }
     try {
-      const detail = await f();
+      const detail = await f3();
       slices.push({ name, status: "ok", detail: detail ?? "" });
     } catch (e) {
       slices.push({ name, status: "unavailable", detail: e.message.split("\n")[0].slice(0, 200) });
@@ -19651,10 +19667,10 @@ function tokenize(src2) {
       i++;
       continue;
     }
-    const num10 = /^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(src2.slice(i));
-    if (num10) {
-      out4.push({ k: "num", v: Number(num10[0]) });
-      i += num10[0].length;
+    const num11 = /^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(src2.slice(i));
+    if (num11) {
+      out4.push({ k: "num", v: Number(num11[0]) });
+      i += num11[0].length;
       continue;
     }
     const id = /^[A-Za-z_][A-Za-z0-9_.]*/.exec(src2.slice(i));
@@ -19998,15 +20014,15 @@ function parseDigits(d) {
   const decimals = s.includes(".") ? s.split(".")[1].length : 0;
   return { value: Number(s), decimals };
 }
-function figureMatches(f, items) {
-  const tol = 0.5 * 10 ** -f.decimals * f.scale;
+function figureMatches(f3, items) {
+  const tol = 0.5 * 10 ** -f3.decimals * f3.scale;
   for (const it of items) {
     if (typeof it.value !== "number") continue;
     const candidates2 = [it.value];
-    if (f.percent && it.unit !== "%") candidates2.push(it.value * 100);
-    if (!f.percent && it.unit === "%") candidates2.push(it.value / 100);
+    if (f3.percent && it.unit !== "%") candidates2.push(it.value * 100);
+    if (!f3.percent && it.unit === "%") candidates2.push(it.value / 100);
     for (const v of candidates2) {
-      for (const target of [f.value, Math.abs(f.value)]) {
+      for (const target of [f3.value, Math.abs(f3.value)]) {
         const a = Math.abs(v) === Math.abs(target) ? 0 : Math.abs(Math.abs(v) - Math.abs(target));
         if (a <= tol + 1e-9 * Math.max(1, Math.abs(v))) return true;
         if (Math.abs(v) > 0 && a / Math.abs(v) <= 1e-3) return true;
@@ -20088,15 +20104,15 @@ function checkAnswer(dir, rawAnswer, opts = {}) {
         }
       }
       if (figs.length && !tokens.length) {
-        problems.push({ line, kind: "uncited", message: `${figs.map((f) => f.raw).join(", ")} stated without an [E#] \u2014 "${quote(text)}"` });
+        problems.push({ line, kind: "uncited", message: `${figs.map((f3) => f3.raw).join(", ")} stated without an [E#] \u2014 "${quote(text)}"` });
         continue;
       }
-      for (const f of figs) {
-        if (!figureMatches(f, known)) {
+      for (const f3 of figs) {
+        if (!figureMatches(f3, known)) {
           problems.push({
             line,
             kind: "unsupported",
-            message: `${f.raw} is in none of ${tokens.map((t) => `[${t}]`).join(" ")} \u2014 cite the evidence that holds it, or compute it with \`ultrastock calc\``
+            message: `${f3.raw} is in none of ${tokens.map((t) => `[${t}]`).join(" ")} \u2014 cite the evidence that holds it, or compute it with \`ultrastock calc\``
           });
         }
       }
@@ -20222,30 +20238,30 @@ code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em
 a{color:var(--line)}a.cite{text-decoration:none;font-size:.85em}blockquote{margin:1rem 0;padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
 svg{width:100%;height:auto;background:var(--card);border:1px solid var(--rule);margin:1rem 0}.axis{fill:var(--muted);font-size:11px}
 .meta{color:var(--muted);font-size:.9rem}details{border:1px solid var(--rule);border-radius:6px;padding:.4rem .8rem;margin:.5rem 0}summary{cursor:pointer;font-weight:600}tr:target{background:color-mix(in srgb,var(--line) 15%,transparent)}footer{color:var(--muted);font-size:.85rem;margin-top:3rem}`;
-function decisionHtml(runDir) {
-  const f = join22(runDir, "decision.json");
-  if (!existsSync18(f)) return "";
-  const d = JSON.parse(readFileSync18(f, "utf8"));
+function decisionHtml(runDir2) {
+  const f3 = join22(runDir2, "decision.json");
+  if (!existsSync18(f3)) return "";
+  const d = JSON.parse(readFileSync18(f3, "utf8"));
   const row = (k, v) => v === void 0 || v === "" ? "" : `<tr><th>${esc2(k)}</th><td>${esc2(Array.isArray(v) ? v.join("; ") : String(v))}</td></tr>`;
   return `<h2>Decision</h2><table><tbody>${row("rating", d.rating)}${row("horizon", d.horizon)}${row("conviction", d.conviction)}${row("thesis", d.thesis)}${row("falsifiers", d.falsifiers)}${row("risks", d.risks)}${row("portfolio context", d.portfolioContext)}${d.plan ? row(
     "plan",
     `${d.plan.side} at ${d.plan.entry}, stop ${d.plan.stop}, targets ${d.plan.targets?.join(" / ")}, size ${d.plan.sizePct} %`
   ) : ""}${row("decided at", d.decidedAt)}</tbody></table>`;
 }
-function notesHtml(runDir) {
-  const dir = join22(runDir, "notes");
+function notesHtml(runDir2) {
+  const dir = join22(runDir2, "notes");
   if (!existsSync18(dir)) return "";
   const order = ["market", "fundamentals", "news", "bull", "bear", "judge", "trader", "risk"];
-  const files = readdirSync6(dir).filter((f) => f.endsWith(".md")).sort((a, b) => (order.indexOf(a.replace(/\.md$/, "")) + 1 || 99) - (order.indexOf(b.replace(/\.md$/, "")) + 1 || 99) || a.localeCompare(b));
+  const files = readdirSync6(dir).filter((f3) => f3.endsWith(".md")).sort((a, b) => (order.indexOf(a.replace(/\.md$/, "")) + 1 || 99) - (order.indexOf(b.replace(/\.md$/, "")) + 1 || 99) || a.localeCompare(b));
   if (!files.length) return "";
-  return `<h2>The debate</h2>${files.map((f) => `<details><summary>${esc2(f.replace(/\.md$/, ""))}</summary>${markdownToHtml(readFileSync18(join22(dir, f), "utf8"))}</details>`).join("\n")}`;
+  return `<h2>The debate</h2>${files.map((f3) => `<details><summary>${esc2(f3.replace(/\.md$/, ""))}</summary>${markdownToHtml(readFileSync18(join22(dir, f3), "utf8"))}</details>`).join("\n")}`;
 }
-function renderReport(runDir, answerMd, opts = {}) {
-  const store = EvidenceStore.load(runDir);
-  if (!store) throw new Error(`${runDir} holds no evidence.json`);
+function renderReport(runDir2, answerMd, opts = {}) {
+  const store = EvidenceStore.load(runDir2);
+  if (!store) throw new Error(`${runDir2} holds no evidence.json`);
   const cited = new Set([...answerMd.matchAll(/\[(E\d+)\]/g)].map((m) => m[1]));
   const rows = store.items.filter((i) => cited.has(i.id));
-  const barsFile = join22(runDir, "bars.json");
+  const barsFile = join22(runDir2, "bars.json");
   const bars = existsSync18(barsFile) ? JSON.parse(readFileSync18(barsFile, "utf8")) : [];
   const title = opts.title ?? /^#\s+(.+)$/m.exec(answerMd)?.[1] ?? store.subject ?? "ultrastock report";
   const evidenceTable = rows.length ? `<h2>Evidence cited</h2><table><thead><tr><th>Id</th><th>What</th><th>Value</th><th>Source</th><th>As of</th></tr></thead><tbody>${rows.map(
@@ -20256,10 +20272,10 @@ function renderReport(runDir, answerMd, opts = {}) {
 <body><main>
 ${bars.length ? priceSvg(bars) : ""}
 ${markdownToHtml(answerMd)}
-${decisionHtml(runDir)}
-${notesHtml(runDir)}
+${decisionHtml(runDir2)}
+${notesHtml(runDir2)}
 ${evidenceTable}
-<footer>Generated by ultrastock from the run in ${esc2(runDir)}${opts.generatedAt ? ` on ${esc2(opts.generatedAt)}` : ""}. Every figure links to its evidence. Decision support, not personalised advice from a licensed adviser.</footer>
+<footer>Generated by ultrastock from the run in ${esc2(runDir2)}${opts.generatedAt ? ` on ${esc2(opts.generatedAt)}` : ""}. Every figure links to its evidence. Decision support, not personalised advice from a licensed adviser.</footer>
 </main></body></html>
 `;
 }
@@ -21160,7 +21176,7 @@ async function gather(tasks) {
     else failed.push(`${tasks[i][0]}: ${s.reason.message}`);
   });
   if (!out4.length) throw new Error(`no source answered \u2014 ${failed.join("; ")}`);
-  if (failed.length) out4[out4.length - 1] = { ...out4[out4.length - 1], notes: [...out4[out4.length - 1].notes, ...failed.map((f) => `unavailable \u2014 ${f}`)] };
+  if (failed.length) out4[out4.length - 1] = { ...out4[out4.length - 1], notes: [...out4[out4.length - 1].notes, ...failed.map((f3) => `unavailable \u2014 ${f3}`)] };
   return out4;
 }
 async function macroCommand(args, asJson) {
@@ -21523,15 +21539,15 @@ async function housePtrFilings(opts = {}) {
     throw new ProviderError(HOUSE_SOURCE, `${url}: ${e.message}`, 502);
   }
   const who = opts.member?.trim().toLowerCase();
-  const ptrs = filings.filter((f) => f.filingType === "P" && (!who || f.member.toLowerCase().includes(who))).slice(0, opts.limit ?? 20);
+  const ptrs = filings.filter((f3) => f3.filingType === "P" && (!who || f3.member.toLowerCase().includes(who))).slice(0, opts.limit ?? 20);
   if (!ptrs.length) throw new ProviderError(HOUSE_SOURCE, `no periodic transaction report in ${year}${who ? " for that member" : ""}`, 404);
-  const points = ptrs.map((f) => ({
-    key: `US.house.ptr.${f.docId}`,
-    label: `House periodic transaction report ${f.docId} (${f.stateDistrict}) filed ${f.date}`,
-    value: f.member,
+  const points = ptrs.map((f3) => ({
+    key: `US.house.ptr.${f3.docId}`,
+    label: `House periodic transaction report ${f3.docId} (${f3.stateDistrict}) filed ${f3.date}`,
+    value: f3.member,
     untrusted: true,
-    asOf: f.date,
-    url: f.pdfUrl
+    asOf: f3.date,
+    url: f3.pdfUrl
   }));
   return {
     kind: "disclosures",
@@ -21775,20 +21791,20 @@ function managerFor(manager) {
     throw new ProviderError(SEC_SOURCE, `unknown 13F manager "${manager}" \u2014 pass a CIK, or one of: ${NOTABLE_13F_MANAGERS.map((x) => x.slug).join(", ")}`, 404);
   return { cik: m.cik, name: m.name, ...m.note ? { note: m.note } : {} };
 }
-async function holdingsOf(cik, f) {
-  const base2 = archiveBase(cik, f.accession);
+async function holdingsOf(cik, f3) {
+  const base2 = archiveBase(cik, f3.accession);
   const index = await secJson(`${base2}/index.json`);
   const xmls = (index.data.directory?.item ?? []).map((i) => i.name ?? "").filter((n) => n.toLowerCase().endsWith(".xml") && n.toLowerCase() !== "primary_doc.xml");
   for (const name of xmls) {
     const res = await secText(`${base2}/${name}`);
-    if (/informationTable/i.test(res.body)) return { holdings: parse13fTable(res.body, { thousands: f.filingDate < "2023-01-03" }), url: `${base2}/${name}` };
+    if (/informationTable/i.test(res.body)) return { holdings: parse13fTable(res.body, { thousands: f3.filingDate < "2023-01-03" }), url: `${base2}/${name}` };
   }
-  throw new ProviderError(SEC_SOURCE, `no information table in 13F filing ${f.accession}`, 404);
+  throw new ProviderError(SEC_SOURCE, `no information table in 13F filing ${f3.accession}`, 404);
 }
 async function sec13f(manager, opts = {}) {
   const mgr = managerFor(manager);
   const sub = await secSubmissions(mgr.cik);
-  const list = sub.filings.filter((f) => f.form === "13F-HR").slice(0, 2);
+  const list = sub.filings.filter((f3) => f3.form === "13F-HR").slice(0, 2);
   const latest = list[0];
   if (!latest) throw new ProviderError(SEC_SOURCE, `no 13F-HR among the recent filings of CIK ${mgr.cik}`, 404);
   const cur = await holdingsOf(mgr.cik, latest);
@@ -21921,10 +21937,10 @@ async function cribleFundamentals(symbol, currency) {
   const row = r2.rows[0];
   if (!row) throw new ProviderError(SOURCE13, `crible does not cover ${symbol}`, 404);
   const period2 = String(row.period ?? "");
-  const points = CRIBLE_FIELDS2.filter(([f]) => typeof row[f] === "number").map(([f, label2, unit]) => ({
-    key: `${symbol}.fund.${f}.${period2 || "latest"}`,
+  const points = CRIBLE_FIELDS2.filter(([f3]) => typeof row[f3] === "number").map(([f3, label2, unit]) => ({
+    key: `${symbol}.fund.${f3}.${period2 || "latest"}`,
     label: `${symbol} ${label2}${period2 ? ` (period ending ${period2})` : ""}`,
-    value: row[f],
+    value: row[f3],
     unit: unit === "ccy" ? String(row.currency ?? currency) : unit,
     asOf: period2 || void 0
   }));
@@ -22134,15 +22150,15 @@ function coinmetricsPoints(asset, rows) {
     ["AdrActCnt", "active addresses"]
   ]) {
     const l = latest(m);
-    const f = first(m);
-    if (!l || !f || f.date === l.date || f.values[m] <= 0) continue;
+    const f3 = first(m);
+    if (!l || !f3 || f3.date === l.date || f3.values[m] <= 0) continue;
     out4.push({
       key: `${A}.${CM_METRICS[m].key}.change.window`,
-      label: `${A} ${what} change ${f.date} \u2192 ${l.date}`,
-      value: (l.v / f.values[m] - 1) * 100,
+      label: `${A} ${what} change ${f3.date} \u2192 ${l.date}`,
+      value: (l.v / f3.values[m] - 1) * 100,
       unit: "%",
       asOf: l.date,
-      formula: `(${m}[${l.date}] / ${m}[${f.date}] - 1) \xD7 100`
+      formula: `(${m}[${l.date}] / ${m}[${f3.date}] - 1) \xD7 100`
     });
   }
   const cap = latest("CapMrktCurUSD");
@@ -22357,13 +22373,13 @@ async function llamaStablecoins(limit = 15) {
     notes: ["supply grows when dollars come on-chain: a rising total is read as fresh liquidity, a falling one as outflow"]
   };
 }
-function filterPools(rows, f = {}) {
-  const sym2 = f.symbol?.toUpperCase();
-  const proj = f.project?.toLowerCase();
-  const chain2 = f.chain?.toLowerCase();
-  return rows.filter((p) => p.pool && finite2(p.tvlUsd) && p.tvlUsd >= (f.minTvlUsd ?? 0)).filter(
+function filterPools(rows, f3 = {}) {
+  const sym2 = f3.symbol?.toUpperCase();
+  const proj = f3.project?.toLowerCase();
+  const chain2 = f3.chain?.toLowerCase();
+  return rows.filter((p) => p.pool && finite2(p.tvlUsd) && p.tvlUsd >= (f3.minTvlUsd ?? 0)).filter(
     (p) => !sym2 || (p.symbol ?? "").toUpperCase().split(/[-/+ ]/).includes(sym2)
-  ).filter((p) => !proj || (p.project ?? "").toLowerCase() === proj).filter((p) => !chain2 || (p.chain ?? "").toLowerCase() === chain2).filter((p) => !f.stablecoinOnly || p.stablecoin === true).sort((a, b) => b.tvlUsd - a.tvlUsd).slice(0, f.limit ?? 10);
+  ).filter((p) => !proj || (p.project ?? "").toLowerCase() === proj).filter((p) => !chain2 || (p.chain ?? "").toLowerCase() === chain2).filter((p) => !f3.stablecoinOnly || p.stablecoin === true).sort((a, b) => b.tvlUsd - a.tvlUsd).slice(0, f3.limit ?? 10);
 }
 function rewardShare(apyBase, apyReward) {
   const base2 = finite2(apyBase) ? apyBase : 0;
@@ -22394,7 +22410,7 @@ function poolPoints(rows) {
   }
   return out4;
 }
-async function llamaYields(f = {}) {
+async function llamaYields(f3 = {}) {
   const all = await cachedJson("defillama:pools", TTL.intraday * 12, async () => {
     const r2 = await get4("https://yields.llama.fi/pools", "yield pools", BIG);
     if (!Array.isArray(r2.data.data)) throw new ProviderError(SOURCE24, "yield pools: no data array");
@@ -22415,7 +22431,7 @@ async function llamaYields(f = {}) {
     return { rows: rows2, url: r2.url, fetchedAt: r2.fetchedAt };
   });
   if (!all) throw new ProviderError(SOURCE24, "yield pools unavailable (offline, nothing cached)", 0);
-  const rows = filterPools(all.rows, f);
+  const rows = filterPools(all.rows, f3);
   if (!rows.length) throw new ProviderError(SOURCE24, "no yield pool matches the filter", 404);
   const shares = rows.map((p) => rewardShare(p.apyBase, p.apyReward)).filter((x) => x !== void 0);
   const notes = ["APY is variable and backward-looking; reward APY is paid in the protocol's token at its current price"];
@@ -22575,7 +22591,7 @@ async function get5(path) {
   if (!res.ok || res.data === void 0) throw new ProviderError(SOURCE26, `${path} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   return { data: res.data, url: res.url, fetchedAt: res.fetchedAt };
 }
-function feePoints(f, asOf) {
+function feePoints(f3, asOf) {
   const rows = [
     ["fastestFee", "fastest", "next block"],
     ["halfHourFee", "halfhour", "~30 minutes"],
@@ -22583,7 +22599,7 @@ function feePoints(f, asOf) {
     ["economyFee", "economy", "economy"],
     ["minimumFee", "minimum", "minimum relay"]
   ];
-  return rows.filter(([k]) => Number.isFinite(f[k])).map(([k, key, what]) => ({ key: `BTC.onchain.fee.${key}`, label: `BTC recommended fee (${what})`, value: f[k], unit: "sat/vB", asOf }));
+  return rows.filter(([k]) => Number.isFinite(f3[k])).map(([k, key, what]) => ({ key: `BTC.onchain.fee.${key}`, label: `BTC recommended fee (${what})`, value: f3[k], unit: "sat/vB", asOf }));
 }
 function hashratePoints(h) {
   const last2 = h.hashrates[h.hashrates.length - 1];
@@ -22617,14 +22633,14 @@ async function mempoolNetwork() {
   const hash = await get5("/mining/hashrate/3d");
   const diff = await get5("/difficulty-adjustment");
   const prov5 = (r2) => ({ source: SOURCE26, url: r2.url, fetchedAt: r2.fetchedAt, delay: "realtime", official: false });
-  const day2 = fees.fetchedAt.slice(0, 10);
+  const day3 = fees.fetchedAt.slice(0, 10);
   return [
     {
       kind: "crypto-onchain",
       title: "Bitcoin recommended fees",
       subject: "BTC",
-      points: feePoints(fees.data, day2),
-      provenance: { ...prov5(fees), asOf: day2 },
+      points: feePoints(fees.data, day3),
+      provenance: { ...prov5(fees), asOf: day3 },
       notes: ["fee estimates from mempool.space's own mempool view; they move block to block"]
     },
     {
@@ -22632,7 +22648,7 @@ async function mempoolNetwork() {
       title: "Bitcoin hashrate and difficulty",
       subject: "BTC",
       points: hashratePoints(hash.data),
-      provenance: { ...prov5(hash), asOf: day2 },
+      provenance: { ...prov5(hash), asOf: day3 },
       notes: ["hashrate is estimated from block arrival times, not measured"]
     },
     {
@@ -22640,7 +22656,7 @@ async function mempoolNetwork() {
       title: "Bitcoin difficulty epoch",
       subject: "BTC",
       points: difficultyPoints(diff.data),
-      provenance: { ...prov5(diff), asOf: day2 },
+      provenance: { ...prov5(diff), asOf: day3 },
       notes: []
     }
   ];
@@ -23415,19 +23431,4806 @@ async function snapshotCommand(args, asJson) {
   emitDatasets(args, [await tradingviewSnapshot(sym2, { market: argValue(args, "market") })], asJson);
 }
 
+// src/commands/backtest.ts
+import { existsSync as existsSync22, mkdirSync as mkdirSync18, readFileSync as readFileSync24, writeFileSync as writeFileSync3 } from "fs";
+import { join as join29, resolve as resolve7 } from "path";
+
+// src/analytics/portfolio.ts
+function sampleCovariance(returns) {
+  const k = returns.length;
+  const n = Math.min(...returns.map((r2) => r2.length));
+  const m = returns.map((r2) => mean(r2.slice(-n)));
+  const cov = Array.from({ length: k }, () => new Array(k).fill(0));
+  for (let a = 0; a < k; a++)
+    for (let b = a; b < k; b++) {
+      let s = 0;
+      const ra = returns[a].slice(-n);
+      const rb = returns[b].slice(-n);
+      for (let t = 0; t < n; t++) s += (ra[t] - m[a]) * (rb[t] - m[b]);
+      cov[a][b] = cov[b][a] = s / (n - 1);
+    }
+  return cov;
+}
+function ledoitWolf(returns) {
+  const k = returns.length;
+  const n = Math.min(...returns.map((r2) => r2.length));
+  const X = returns.map((r2) => {
+    const s = r2.slice(-n);
+    const m = mean(s);
+    return s.map((v) => v - m);
+  });
+  const S = sampleCovariance(returns).map((row) => row.map((v) => v * (n - 1) / n));
+  const sd = S.map((row, i) => Math.sqrt(row[i]));
+  let rbar = 0;
+  for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) if (i !== j) rbar += S[i][j] / (sd[i] * sd[j]);
+  rbar /= k * (k - 1);
+  const F = S.map((row, i) => row.map((v, j) => i === j ? v : rbar * sd[i] * sd[j]));
+  let pi = 0;
+  const piMat = Array.from({ length: k }, () => new Array(k).fill(0));
+  for (let i = 0; i < k; i++)
+    for (let j = 0; j < k; j++) {
+      let s = 0;
+      for (let t = 0; t < n; t++) s += (X[i][t] * X[j][t] - S[i][j]) ** 2;
+      piMat[i][j] = s / n;
+      pi += piMat[i][j];
+    }
+  let rho = 0;
+  for (let i = 0; i < k; i++) rho += piMat[i][i];
+  for (let i = 0; i < k; i++)
+    for (let j = 0; j < k; j++) {
+      if (i === j) continue;
+      let thetaII = 0;
+      let thetaJJ = 0;
+      for (let t = 0; t < n; t++) {
+        const xi = X[i][t];
+        const xj = X[j][t];
+        thetaII += (xi * xi - S[i][i]) * (xi * xj - S[i][j]);
+        thetaJJ += (xj * xj - S[j][j]) * (xi * xj - S[i][j]);
+      }
+      rho += rbar / 2 * (sd[j] / sd[i] * (thetaII / n) + sd[i] / sd[j] * (thetaJJ / n));
+    }
+  let gamma = 0;
+  for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) gamma += (F[i][j] - S[i][j]) ** 2;
+  const kappa = (pi - rho) / gamma;
+  const shrinkage = Math.max(0, Math.min(1, kappa / n));
+  return { cov: S.map((row, i) => row.map((v, j) => shrinkage * F[i][j] + (1 - shrinkage) * v)), shrinkage };
+}
+var dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
+var mulMv = (M, v) => M.map((row) => dot(row, v));
+var portfolioVariance = (w, cov) => dot(w, mulMv(cov, w));
+function projectSimplex(v, cap = 1) {
+  let lo = Math.min(...v) - 1;
+  let hi = Math.max(...v);
+  for (let i = 0; i < 100; i++) {
+    const tau2 = (lo + hi) / 2;
+    const s = v.reduce((acc, x) => acc + Math.min(cap, Math.max(0, x - tau2)), 0);
+    if (s > 1) lo = tau2;
+    else hi = tau2;
+  }
+  const tau = (lo + hi) / 2;
+  return v.map((x) => Math.min(cap, Math.max(0, x - tau)));
+}
+function minVariance(cov, opts = {}) {
+  const k = cov.length;
+  let w = new Array(k).fill(1 / k);
+  const trace = cov.reduce((s, row, i) => s + row[i], 0);
+  const step = 0.5 / trace;
+  for (let it = 0; it < (opts.iterations ?? 5e3); it++) {
+    const g = mulMv(cov, w).map((x) => 2 * x);
+    w = projectSimplex(
+      w.map((wi, i) => wi - step * g[i]),
+      opts.maxWeight ?? 1
+    );
+  }
+  return w;
+}
+function maxSharpe(mu, cov, opts = {}) {
+  const k = cov.length;
+  let w = new Array(k).fill(1 / k);
+  const sharpeOf = (x) => dot(x, mu) / Math.sqrt(portfolioVariance(x, cov));
+  let best = w;
+  let bestS = sharpeOf(w);
+  const scale = Math.sqrt(cov.reduce((s, row, i) => s + row[i], 0) / k);
+  for (let it = 0; it < (opts.iterations ?? 4e3); it++) {
+    const v = portfolioVariance(w, cov);
+    const sd = Math.sqrt(v);
+    const r2 = dot(w, mu);
+    const cw = mulMv(cov, w);
+    const g = mu.map((m, i) => m / sd - r2 * cw[i] / (sd * v));
+    w = projectSimplex(
+      w.map((wi, i) => wi + 0.05 * scale * g[i]),
+      opts.maxWeight ?? 1
+    );
+    const s = sharpeOf(w);
+    if (s > bestS) {
+      bestS = s;
+      best = w;
+    }
+  }
+  return best;
+}
+function riskParity(cov, budgets, iterations = 2e3) {
+  const k = cov.length;
+  const b = budgets ?? new Array(k).fill(1 / k);
+  let w = cov.map((row, i) => 1 / Math.sqrt(row[i]));
+  const norm2 = (x) => {
+    const s = x.reduce((a, c) => a + c, 0);
+    return x.map((v) => v / s);
+  };
+  w = norm2(w);
+  for (let it = 0; it < iterations; it++) {
+    const mv = mulMv(cov, w);
+    const sigma = Math.sqrt(dot(w, mv));
+    w = norm2(
+      w.map((wi, i) => {
+        const c = mv[i] - cov[i][i] * wi;
+        const a = cov[i][i];
+        const target = b[i] * sigma * sigma;
+        return (-c + Math.sqrt(c * c + 4 * a * target)) / (2 * a);
+      })
+    );
+  }
+  return w;
+}
+function hierarchicalRiskParity(cov) {
+  const k = cov.length;
+  const sd = cov.map((row, i) => Math.sqrt(row[i]));
+  const dist = (i, j) => Math.sqrt(Math.max(0, 0.5 * (1 - cov[i][j] / (sd[i] * sd[j]))));
+  let clusters = Array.from({ length: k }, (_, i) => [i]);
+  while (clusters.length > 1) {
+    let best = [0, 1];
+    let bestD = Number.POSITIVE_INFINITY;
+    for (let a = 0; a < clusters.length; a++)
+      for (let b = a + 1; b < clusters.length; b++) {
+        let d = Number.POSITIVE_INFINITY;
+        for (const i of clusters[a]) for (const j of clusters[b]) d = Math.min(d, dist(i, j));
+        if (d < bestD) {
+          bestD = d;
+          best = [a, b];
+        }
+      }
+    const merged = [...clusters[best[0]], ...clusters[best[1]]];
+    clusters = clusters.filter((_, i) => i !== best[0] && i !== best[1]);
+    clusters.push(merged);
+  }
+  const order = clusters[0];
+  const w = new Array(k).fill(1);
+  const clusterVar = (items) => {
+    const iv = items.map((i) => 1 / cov[i][i]);
+    const s = iv.reduce((a, b) => a + b, 0);
+    const ww = iv.map((v2) => v2 / s);
+    let v = 0;
+    items.forEach((i, a) => items.forEach((j, b) => v += ww[a] * ww[b] * cov[i][j]));
+    return v;
+  };
+  const bisect = (items) => {
+    if (items.length < 2) return;
+    const half = Math.floor(items.length / 2);
+    const left = items.slice(0, half);
+    const right = items.slice(half);
+    const vl = clusterVar(left);
+    const vr = clusterVar(right);
+    const alpha = 1 - vl / (vl + vr);
+    for (const i of left) w[i] *= alpha;
+    for (const i of right) w[i] *= 1 - alpha;
+    bisect(left);
+    bisect(right);
+  };
+  bisect(order);
+  return w;
+}
+function rebalance(holdings, targets, opts = {}) {
+  const assets = [.../* @__PURE__ */ new Set([...Object.keys(holdings), ...Object.keys(targets)])];
+  const total = assets.reduce((s, a) => s + (holdings[a] ?? 0), 0) + (opts.contribution ?? 0);
+  if (total <= 0) return { trades: [], drift: [] };
+  const tsum = Object.values(targets).reduce((s, v) => s + v, 0);
+  const band = opts.bandPct ?? 5;
+  const rel = opts.relBand ?? 0.25;
+  const drift = assets.map((a) => ({ asset: a, drift: (holdings[a] ?? 0) / total * 100 - (targets[a] ?? 0) / tsum * 100 }));
+  const trades2 = [];
+  let cash = opts.contribution ?? 0;
+  for (const d of [...drift].sort((x, y) => x.drift - y.drift)) {
+    if (cash <= 0 || d.drift >= 0) break;
+    const need = -d.drift / 100 * total;
+    const amount = Math.min(need, cash);
+    cash -= amount;
+    trades2.push({ asset: d.asset, current: d.drift + (targets[d.asset] ?? 0) / tsum * 100, target: (targets[d.asset] ?? 0) / tsum * 100, amount });
+  }
+  for (const d of drift) {
+    const target = (targets[d.asset] ?? 0) / tsum * 100;
+    const alreadyBought = trades2.find((t) => t.asset === d.asset)?.amount ?? 0;
+    const residual = d.drift + alreadyBought / total * 100;
+    const outOfBand = Math.abs(residual) > band || target > 0 && Math.abs(residual) / target > rel;
+    if (!outOfBand) continue;
+    const amount = -residual / 100 * total;
+    if (Math.abs(amount) < (opts.minTrade ?? 0)) continue;
+    const existing = trades2.find((t) => t.asset === d.asset);
+    if (existing) existing.amount += amount;
+    else trades2.push({ asset: d.asset, current: target + d.drift, target, amount });
+  }
+  return { trades: trades2.filter((t) => Math.abs(t.amount) > 1e-9), drift };
+}
+
+// src/backtest/allocation.ts
+var ALLOCATIONS = ["buy-and-hold", "60-40", "equal-weight", "dual-momentum", "risk-parity"];
+function alignBars(series) {
+  const maps = series.map((s) => new Map(s.map((b) => [b.date.slice(0, 10), b])));
+  const dates = [...maps[0].keys()].filter((d) => maps.every((m) => m.has(d))).sort();
+  return { dates, bars: maps.map((m) => dates.map((d) => m.get(d))) };
+}
+var periodKey = (date, rebalance2) => {
+  const m = Number(date.slice(5, 7));
+  return rebalance2 === "monthly" ? date.slice(0, 7) : `${date.slice(0, 4)}Q${Math.ceil(m / 3)}`;
+};
+function indexMonthsBefore(dates, t, months) {
+  const [y, m, d] = dates[t].split("-").map(Number);
+  const target = new Date(Date.UTC(y, m - 1 - months, d)).toISOString().slice(0, 10);
+  let i = t;
+  while (i > 0 && dates[i] > target) i--;
+  return dates[i] <= target ? i : -1;
+}
+function targetWeights(kind, bars, dates, t, opts) {
+  const n = bars.length;
+  if (kind === "equal-weight" || kind === "buy-and-hold") return { w: new Array(n).fill(1 / n), reason: `1/${n} each` };
+  if (kind === "60-40") return { w: [0.6, 0.4], reason: "60 % / 40 %" };
+  if (kind === "dual-momentum") {
+    const months = opts.lookbackMonths ?? 12;
+    const back = indexMonthsBefore(dates, t, months);
+    if (back < 0) return void 0;
+    const ret2 = bars.map((b) => b[t].close / b[back].close - 1);
+    const risky = ret2.slice(0, n - 1);
+    const best = risky.indexOf(Math.max(...risky));
+    const hurdle = (opts.cashRatePct ?? 0) / 100 * (months / 12);
+    const w2 = new Array(n).fill(0);
+    if (risky[best] > hurdle) {
+      w2[best] = 1;
+      return {
+        w: w2,
+        reason: `relative momentum: asset ${best + 1} led with ${(risky[best] * 100).toFixed(2)} % over ${months} months, above the ${(hurdle * 100).toFixed(2)} % hurdle`
+      };
+    }
+    w2[n - 1] = 1;
+    return {
+      w: w2,
+      reason: `absolute momentum: the best risky return ${(risky[best] * 100).toFixed(2)} % is under the ${(hurdle * 100).toFixed(2)} % hurdle \u2014 safe asset`
+    };
+  }
+  const window = opts.covarianceBars ?? 252;
+  const from = Math.max(1, t - window + 1);
+  if (t - from + 1 < 60) return void 0;
+  const rets = bars.map((b) => {
+    const r2 = [];
+    for (let i = from; i <= t; i++) r2.push(b[i].close / b[i - 1].close - 1);
+    return r2;
+  });
+  const { cov, shrinkage } = ledoitWolf(rets);
+  const w = riskParity(cov);
+  return { w, reason: `equal risk contributions, Ledoit\u2013Wolf covariance of ${rets[0].length} daily returns (shrinkage ${shrinkage.toFixed(3)})` };
+}
+function allocationBacktest(kind, bars, dates, opts) {
+  const n = bars.length;
+  if (kind === "60-40" && n !== 2) throw new Error("60-40 takes exactly two symbols: equities first, bonds second");
+  if (kind === "dual-momentum" && n < 2) throw new Error("dual-momentum takes at least two symbols: the risky ones, then the safe one last");
+  if (n < 1 || !dates.length) throw new Error("no common dates across the symbols");
+  const rebalance2 = opts.rebalance ?? "monthly";
+  const rate = (opts.costs.takerPct + opts.costs.slippagePct) / 100;
+  let cash = opts.capital;
+  let units = new Array(n).fill(0);
+  const equity = [];
+  const returns = [];
+  const rebalances = [];
+  let traded = 0;
+  let costs = 0;
+  let prevEq = opts.capital;
+  let started = false;
+  for (let t = 0; t < dates.length; t++) {
+    const opens = bars.map((b) => b[t].open);
+    const newPeriod = t === 0 || periodKey(dates[t], rebalance2) !== periodKey(dates[t - 1], rebalance2);
+    const due = kind === "buy-and-hold" ? !started : newPeriod;
+    if (due) {
+      const decision = t === 0 ? kind === "dual-momentum" || kind === "risk-parity" ? void 0 : targetWeights(kind, bars, dates, 0, opts) : targetWeights(kind, bars, dates, t - 1, opts);
+      if (decision) {
+        const value = cash + units.reduce((s, u, i) => s + u * opens[i], 0);
+        const sum = decision.w.reduce((s, x) => s + x, 0);
+        const w = decision.w.map((x) => sum > 0 ? x / sum : 0);
+        const tradedValue = (v) => w.reduce((s, wi, i) => s + Math.abs(wi * v - units[i] * opens[i]), 0);
+        const cost = tradedValue(value) * rate;
+        const after = value - cost;
+        const tv = tradedValue(after);
+        units = w.map((wi, i) => wi * after / opens[i]);
+        cash = after - units.reduce((s, u, i) => s + u * opens[i], 0);
+        traded += tv;
+        costs += cost;
+        started = true;
+        rebalances.push({ date: dates[t], weights: w, reason: decision.reason, costs: cost, turnoverPct: value > 0 ? tv / value * 100 : 0 });
+      }
+    }
+    const eq = cash + units.reduce((s, u, i) => s + u * bars[i][t].close, 0);
+    const gross2 = units.reduce((s, u, i) => s + Math.abs(u * bars[i][t].close), 0);
+    equity.push({ date: dates[t], equity: eq, exposure: eq > 0 ? gross2 / eq : 0 });
+    returns.push(prevEq > 0 ? eq / prevEq - 1 : 0);
+    prevEq = eq;
+  }
+  const avgEq = equity.reduce((s, e) => s + e.equity, 0) / equity.length;
+  const lastEq = equity[equity.length - 1].equity;
+  return {
+    dates: [...dates],
+    equity,
+    returns,
+    rebalances,
+    costs,
+    turnoverPct: avgEq > 0 ? traded / avgEq * 100 : 0,
+    finalWeights: units.map((u, i) => lastEq > 0 ? u * bars[i][dates.length - 1].close / lastEq : 0)
+  };
+}
+
+// src/backtest/catalog.ts
+import { existsSync as existsSync20, readdirSync as readdirSync7, readFileSync as readFileSync21 } from "fs";
+import { join as join25 } from "path";
+
+// assets/strategies/adaptive-momentum-reversal.json
+var adaptive_momentum_reversal_default = {
+  name: "adaptive-momentum-reversal",
+  description: "Asymmetric dual-mode: contrarian bottom picker (RSI extreme + MACD momentum turn) for longs, trend-following (Supertrend + MACD + ADX strong trend) for shorts. Dual exits via overbought/oversold + Supertrend reversals.",
+  leverage: 2,
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    rsi: {
+      period: 14
+    },
+    macd: {
+      fast: 12,
+      slow: 26,
+      signal: 9
+    },
+    supertrend: {
+      atrPeriod: 10,
+      multiplier: 3
+    },
+    adx: {
+      period: 14
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "rsi",
+        "<",
+        30
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "rsi",
+        ">",
+        80
+      ],
+      [
+        "close",
+        "<",
+        "supertrend"
+      ]
+    ]
+  },
+  short: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ],
+      [
+        "macd.histogram",
+        "<",
+        0
+      ],
+      [
+        "adx.adx",
+        ">",
+        25
+      ]
+    ]
+  },
+  cover: {
+    mode: "any",
+    conditions: [
+      [
+        "rsi",
+        "<",
+        25
+      ],
+      [
+        "close",
+        ">",
+        "supertrend"
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 6,
+    trailingStopPct: 10,
+    maxDrawdownPct: 20,
+    riskPerTradePct: 2
+  }
+};
+
+// assets/strategies/aroon-trend-rider.json
+var aroon_trend_rider_default = {
+  name: "aroon-trend-rider",
+  description: "Aroon trend detection with RSI pullback entry and ADX filter",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    aroon: {
+      period: 25
+    },
+    rsi: {
+      period: 14
+    },
+    adx: {
+      period: 14
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "aroon.up",
+        ">",
+        80
+      ],
+      [
+        "rsi",
+        "<",
+        45
+      ],
+      [
+        "adx.adx",
+        ">",
+        20
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "aroon.down",
+        ">",
+        70
+      ],
+      [
+        "rsi",
+        ">",
+        75
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 12,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/bollinger-squeeze.json
+var bollinger_squeeze_default = {
+  name: "bollinger-squeeze",
+  description: "Bollinger Bands squeeze breakout \u2014 buy when BBR near zero with MACD positive and ADX rising, sell on upper band or momentum loss",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    bollingerBands: {
+      period: 20,
+      stdDev: 2
+    },
+    macd: {
+      fast: 12,
+      slow: 26,
+      signal: 9
+    },
+    adx: {
+      period: 14
+    },
+    rsi: {
+      period: 14
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "bollingerBands.bbr",
+        ">",
+        -0.1
+      ],
+      [
+        "bollingerBands.bbr",
+        "<",
+        0.3
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ],
+      [
+        "adx.adx",
+        ">",
+        20
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "bollingerBands.bbr",
+        ">",
+        1
+      ],
+      [
+        "rsi",
+        ">",
+        75
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 12,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/breakout-momentum-rider.json
+var breakout_momentum_rider_default = {
+  name: "breakout-momentum-rider",
+  description: "Hybrid turtle + trend-momentum-rider: 100-period Donchian breakout entry (strong bull filter) + MACD momentum confirmation + adaptive Supertrend exit. Shorter breakout period than turtle for earlier entries, MACD prevents false breakouts, Supertrend exit adapts to volatility.",
+  baseInterval: "4h",
+  intervals: [
+    "6h",
+    "12h"
+  ],
+  indicators: {
+    breakout: {
+      _type: "donchian",
+      period: 100
+    },
+    macd: {
+      fast: 12,
+      slow: 26,
+      signal: 9
+    },
+    supertrend: {
+      atrPeriod: 10,
+      multiplier: 3
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        ">",
+        "breakout.upper[-1]"
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ]
+    ]
+  },
+  sell: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 22,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/breakout-volume.json
+var breakout_volume_default = {
+  name: "breakout-volume",
+  description: "Donchian breakout + ADX trending + volume confirmation",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    donchian: {
+      period: 50
+    },
+    adx: {
+      period: 14
+    },
+    volumeOscillator: {
+      fastPeriod: 5,
+      slowPeriod: 20
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        ">",
+        "donchian.upper[-1]"
+      ],
+      [
+        "adx.adx",
+        ">",
+        25
+      ],
+      [
+        "volumeOscillator",
+        ">",
+        0
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "close",
+        "<",
+        "donchian.lower[-1]"
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 12,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/cci-williams-momentum.json
+var cci_williams_momentum_default = {
+  name: "cci-williams-momentum",
+  description: "CCI zero-line crossover with Williams %R oversold confirmation in Supertrend uptrend \u2014 exits on CCI overbought or trend reversal",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    cci: {
+      period: 20
+    },
+    williamsR: {
+      period: 14
+    },
+    supertrend: {
+      atrPeriod: 10,
+      multiplier: 3
+    },
+    adx: {
+      period: 14
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "cci",
+        ">",
+        0
+      ],
+      [
+        "cci[-1]",
+        "<",
+        0
+      ],
+      [
+        "close",
+        ">",
+        "supertrend"
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "cci",
+        ">",
+        150
+      ],
+      [
+        "close",
+        "<",
+        "supertrend"
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 12,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/confluence.json
+var confluence_default = {
+  name: "confluence",
+  description: "Multi-indicator scoring: PMAX trend gate + environment quality filters (supertrend, ADX, RSI, MACD, volume, ATR regime, EMA slope)",
+  baseInterval: "4h",
+  intervals: [
+    "4h",
+    "6h"
+  ],
+  indicators: {
+    pmax: {
+      emaPeriod: 10,
+      atrPeriod: 10,
+      multiplier: 3
+    },
+    supertrend: {
+      atrPeriod: 10,
+      multiplier: 3
+    },
+    adx: {
+      period: 14
+    },
+    rsi: {
+      period: 14
+    },
+    macd: {
+      fast: 12,
+      slow: 26,
+      signal: 9
+    },
+    volumeSma: {
+      period: 20
+    },
+    atrRatio: {
+      atrPeriod: 10,
+      smaPeriod: 50
+    },
+    ema: {
+      period: 20
+    }
+  },
+  buy: {
+    mode: "score",
+    threshold: 4,
+    required: [
+      [
+        "pmax.pmax",
+        "==",
+        "pmax.pmaxLong"
+      ]
+    ],
+    scored: [
+      [
+        "close",
+        ">",
+        "supertrend"
+      ],
+      [
+        "adx.adx",
+        ">",
+        20
+      ],
+      [
+        "adx.adx",
+        ">",
+        "adx.adx[-2]"
+      ],
+      [
+        "rsi",
+        ">=",
+        30
+      ],
+      [
+        "rsi",
+        "<=",
+        70
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ],
+      [
+        "volume",
+        ">",
+        "volumeSma"
+      ],
+      [
+        "atrRatio",
+        ">",
+        0.5
+      ],
+      [
+        "ema",
+        ">",
+        "ema[-2]"
+      ]
+    ]
+  },
+  sell: {
+    mode: "all",
+    conditions: [
+      [
+        "pmax.pmax",
+        "==",
+        "pmax.pmaxShort"
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 12,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/coppock-bottom.json
+var coppock_bottom_default = {
+  name: "coppock-bottom",
+  description: "Coppock Curve zero-cross bottom detection + McGinley Dynamic trend + RSI oversold \u2014 long-term bottom picker for major reversals",
+  baseInterval: "4h",
+  intervals: [
+    "6h",
+    "12h"
+  ],
+  indicators: {
+    coppockCurve: {
+      rocPeriod1: 14,
+      rocPeriod2: 11,
+      wmaPeriod: 10
+    },
+    mcginleyDynamic: {
+      period: 14
+    },
+    rsi: {
+      period: 14
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "coppockCurve",
+        ">",
+        0
+      ],
+      [
+        "coppockCurve[-1]",
+        "<",
+        0
+      ],
+      [
+        "rsi",
+        "<",
+        45
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "rsi",
+        ">",
+        75
+      ],
+      [
+        "close",
+        "<",
+        "mcginleyDynamic"
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 15,
+    trailingStopPct: 15,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/dpo-rsi-pullback.json
+var dpo_rsi_pullback_default = {
+  name: "dpo-rsi-pullback",
+  description: "DPO rising cycle detection with RSI pullback in Supertrend uptrend",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    dpo: {
+      period: 20
+    },
+    rsi: {
+      period: 14
+    },
+    supertrend: {
+      atrPeriod: 10,
+      multiplier: 3
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "dpo",
+        ">",
+        "dpo[-1]"
+      ],
+      [
+        "rsi",
+        "<",
+        40
+      ],
+      [
+        "close",
+        ">",
+        "supertrend"
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "rsi",
+        ">",
+        75
+      ],
+      [
+        "close",
+        "<",
+        "supertrend"
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 10,
+    trailingStopPct: 18,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/elder-impulse.json
+var elder_impulse_default = {
+  name: "elder-impulse",
+  description: "Elder Ray bull/bear power impulse system with EMA trend and ADX filter",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    elderRay: {
+      period: 13
+    },
+    ema: {
+      period: 21
+    },
+    adx: {
+      period: 14
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "elderRay.bullPower",
+        ">",
+        0
+      ],
+      [
+        "elderRay.bearPower",
+        ">",
+        "elderRay.bearPower[-1]"
+      ],
+      [
+        "close",
+        ">",
+        "ema"
+      ],
+      [
+        "adx.adx",
+        ">",
+        20
+      ]
+    ]
+  },
+  sell: {
+    mode: "all",
+    conditions: [
+      [
+        "elderRay.bearPower",
+        "<",
+        0
+      ],
+      [
+        "close",
+        "<",
+        "ema"
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 12,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/fast-supertrend.json
+var fast_supertrend_default = {
+  name: "fast-supertrend",
+  description: "Supertrend uptrend with RSI pullback entry \u2014 buy dips in confirmed trend, exit only on trend break",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    supertrend: {
+      atrPeriod: 10,
+      multiplier: 3
+    },
+    rsi: {
+      period: 10
+    },
+    adx: {
+      period: 14
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        ">",
+        "supertrend"
+      ],
+      [
+        "rsi",
+        "<",
+        40
+      ],
+      [
+        "adx.adx",
+        ">",
+        18
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ],
+      [
+        "rsi",
+        ">",
+        75
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 12,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/hull-chop-momentum.json
+var hull_chop_momentum_default = {
+  name: "hull-chop-momentum",
+  description: "HMA trend + Choppiness filter + Ultimate Oscillator dip \u2014 buys UO oversold pullbacks in trending HMA uptrend, exits on overbought or trend loss",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    hma: {
+      period: 16
+    },
+    choppinessIndex: {
+      period: 14
+    },
+    ultimateOscillator: {
+      period1: 7,
+      period2: 14,
+      period3: 28
+    },
+    adx: {
+      period: 14
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        ">",
+        "hma"
+      ],
+      [
+        "choppinessIndex",
+        "<",
+        50
+      ],
+      [
+        "ultimateOscillator",
+        "<",
+        45
+      ],
+      [
+        "adx.adx",
+        ">",
+        18
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "ultimateOscillator",
+        ">",
+        65
+      ],
+      [
+        "close",
+        "<",
+        "hma"
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 18,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/ichimoku-cloud.json
+var ichimoku_cloud_default = {
+  name: "ichimoku-cloud",
+  description: "Ichimoku Kinko Hyo trend-following: buy when price above cloud with tenkan > kijun, sell when price drops below cloud or tenkan crosses under kijun",
+  baseInterval: "4h",
+  intervals: [
+    "6h",
+    "12h"
+  ],
+  indicators: {
+    ichimoku: {
+      conversionPeriod: 9,
+      basePeriod: 26,
+      spanPeriod: 52
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        ">",
+        "ichimoku.cloudTop"
+      ],
+      [
+        "ichimoku.conversion",
+        ">",
+        "ichimoku.base"
+      ],
+      [
+        "close",
+        ">",
+        "ichimoku.base"
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "close",
+        "<",
+        "ichimoku.cloudBottom"
+      ],
+      [
+        "ichimoku.conversion",
+        "<",
+        "ichimoku.base"
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 22,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/kdj-extreme-recovery.json
+var kdj_extreme_recovery_default = {
+  name: "kdj-extreme-recovery",
+  description: "KDJ J-line extreme oversold recovery: J crosses from below 0 to above 20 (massive momentum shift) in Supertrend uptrend \u2014 catches violent V-shaped reversals",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    kdj: {
+      rsvPeriod: 9,
+      kPeriod: 3,
+      dPeriod: 3
+    },
+    supertrend: {
+      atrPeriod: 10,
+      multiplier: 3
+    },
+    rsi: {
+      period: 14
+    },
+    macd: {
+      fast: 12,
+      slow: 26,
+      signal: 9
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        ">",
+        "supertrend"
+      ],
+      [
+        "kdj.j[-1]",
+        "<",
+        20
+      ],
+      [
+        "kdj.j",
+        ">",
+        "kdj.j[-1]"
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ],
+      [
+        "kdj.j",
+        ">",
+        80
+      ],
+      [
+        "rsi",
+        ">",
+        75
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 22,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/keltner-breakout.json
+var keltner_breakout_default = {
+  name: "keltner-breakout",
+  description: "Keltner channel breakout with MACD confirmation and ADX trend filter",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    keltner: {
+      maPeriod: 20,
+      atrPeriod: 10,
+      multiplier: 1.5
+    },
+    macd: {
+      fast: 12,
+      slow: 26,
+      signal: 9
+    },
+    adx: {
+      period: 14
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        ">",
+        "keltner.upper"
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ],
+      [
+        "adx.adx",
+        ">",
+        20
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "close",
+        "<",
+        "keltner.middle"
+      ],
+      [
+        "macd.histogram",
+        "<",
+        0
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 12,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/pmax.json
+var pmax_default = {
+  name: "pmax",
+  description: "PMAX trend following \u2014 buy when pmax equals pmaxLong, sell when pmax equals pmaxShort",
+  baseInterval: "4h",
+  intervals: [
+    "6h",
+    "12h"
+  ],
+  indicators: {
+    pmax: {
+      emaPeriod: 10,
+      atrPeriod: 10,
+      multiplier: 3
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "pmax.pmax",
+        "==",
+        "pmax.pmaxLong"
+      ]
+    ]
+  },
+  sell: {
+    mode: "all",
+    conditions: [
+      [
+        "pmax.pmax",
+        "==",
+        "pmax.pmaxShort"
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 22,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/psar-momentum.json
+var psar_momentum_default = {
+  name: "psar-momentum",
+  description: "Parabolic SAR trend following with ROC momentum and RSI filter",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    psar: {
+      step: 0.02,
+      max: 0.2
+    },
+    roc: {
+      period: 12
+    },
+    rsi: {
+      period: 14
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        ">",
+        "psar"
+      ],
+      [
+        "roc",
+        ">",
+        0
+      ],
+      [
+        "rsi",
+        "<",
+        60
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "close",
+        "<",
+        "psar"
+      ],
+      [
+        "rsi",
+        ">",
+        75
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 12,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/rsi-macd-trend-ride.json
+var rsi_macd_trend_ride_default = {
+  name: "rsi-macd-trend-ride",
+  description: "RSI deeply oversold + MACD momentum positive entry, sell only at extreme overbought RSI > 80 \u2014 catches bottoms and holds through the full rally",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    rsi: {
+      period: 14
+    },
+    macd: {
+      fast: 12,
+      slow: 26,
+      signal: 9
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "rsi",
+        "<",
+        30
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "rsi",
+        ">",
+        80
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 15,
+    trailingStopPct: 15,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/sma-cross.json
+var sma_cross_default = {
+  name: "sma-cross",
+  description: "Golden cross: long while the 50-bar SMA is above the 200-bar SMA, out when it falls below",
+  indicators: {
+    fast: { _type: "sma", period: 50 },
+    slow: { _type: "sma", period: 200 }
+  },
+  buy: {
+    mode: "all",
+    conditions: [["fast", ">", "slow"]]
+  },
+  sell: {
+    mode: "all",
+    conditions: [["fast", "<", "slow"]]
+  },
+  risk: {}
+};
+
+// assets/strategies/stochrsi-trend-filter.json
+var stochrsi_trend_filter_default = {
+  name: "stochrsi-trend-filter",
+  description: "StochRSI K/D crossover entry in confirmed uptrend (Supertrend + ADX + MACD), exits on trend reversal or RSI overbought",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    supertrend: {
+      atrPeriod: 10,
+      multiplier: 3
+    },
+    stochRsi: {
+      rsiPeriod: 14,
+      stochasticPeriod: 14,
+      kPeriod: 3,
+      dPeriod: 3
+    },
+    adx: {
+      period: 14
+    },
+    rsi: {
+      period: 14
+    },
+    macd: {
+      fast: 12,
+      slow: 26,
+      signal: 9
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        ">",
+        "supertrend"
+      ],
+      [
+        "stochRsi.k",
+        ">",
+        "stochRsi.d"
+      ],
+      [
+        "adx.adx",
+        ">",
+        20
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ],
+      [
+        "rsi",
+        ">",
+        78
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 12,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/supertrend-pullback-momentum.json
+var supertrend_pullback_momentum_default = {
+  name: "supertrend-pullback-momentum",
+  description: "Supertrend uptrend filter + RSI pullback below 50 (dip in uptrend) + MACD positive momentum + ADX trending \u2014 buy quality dips in confirmed uptrends, optimized for 6h timeframe",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    supertrend: {
+      atrPeriod: 10,
+      multiplier: 3
+    },
+    rsi: {
+      period: 14
+    },
+    macd: {
+      fast: 12,
+      slow: 26,
+      signal: 9
+    },
+    adx: {
+      period: 14
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        ">",
+        "supertrend"
+      ],
+      [
+        "rsi",
+        "<",
+        50
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ],
+      [
+        "adx.adx",
+        ">",
+        20
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ],
+      [
+        "rsi",
+        ">",
+        72
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 12,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/supertrend.json
+var supertrend_default = {
+  name: "supertrend",
+  description: "Supertrend trend following \u2014 buy when close is above supertrend, sell when below",
+  baseInterval: "4h",
+  intervals: [
+    "6h",
+    "12h"
+  ],
+  indicators: {
+    supertrend: {
+      atrPeriod: 10,
+      multiplier: 3
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        ">",
+        "supertrend"
+      ]
+    ]
+  },
+  sell: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 22,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/trend-momentum-rider.json
+var trend_momentum_rider_default = {
+  name: "trend-momentum-rider",
+  description: "Supertrend trend following with MACD momentum filter \u2014 only enters when both trend direction and momentum agree. Patient exit on Supertrend break only. Filters whipsaw entries while riding full trends.",
+  baseInterval: "4h",
+  intervals: [
+    "6h",
+    "12h"
+  ],
+  indicators: {
+    supertrend: {
+      atrPeriod: 10,
+      multiplier: 3
+    },
+    macd: {
+      fast: 12,
+      slow: 26,
+      signal: 9
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        ">",
+        "supertrend"
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ]
+    ]
+  },
+  sell: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 22,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/turtle-supertrend-exit.json
+var turtle_supertrend_exit_default = {
+  name: "turtle-supertrend-exit",
+  description: "Turtle breakout entry (200-period Donchian, ultra-selective) with adaptive Supertrend exit instead of fixed 10-period Donchian low. The ATR-based Supertrend exit adapts to market volatility \u2014 tighter in calm markets, wider in volatile ones.",
+  baseInterval: "4h",
+  intervals: [
+    "6h",
+    "12h"
+  ],
+  indicators: {
+    breakout: {
+      _type: "donchian",
+      period: 200
+    },
+    supertrend: {
+      atrPeriod: 10,
+      multiplier: 3
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        ">",
+        "breakout.upper[-1]"
+      ]
+    ]
+  },
+  sell: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 22,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/turtle.json
+var turtle_default = {
+  name: "turtle",
+  description: "Turtle Trading \u2014 200-period breakout entry, 10-period trailing stop exit",
+  baseInterval: "4h",
+  intervals: [
+    "6h",
+    "12h"
+  ],
+  indicators: {
+    breakout: {
+      _type: "donchian",
+      period: 200
+    },
+    exit: {
+      _type: "donchian",
+      period: 10
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        ">",
+        "breakout.upper[-1]"
+      ]
+    ]
+  },
+  sell: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        "<",
+        "exit.lower[-1]"
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 12,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/vwap-momentum.json
+var vwap_momentum_default = {
+  name: "vwap-momentum",
+  description: "VWAP and Supertrend gated momentum \u2014 requires uptrend and price above VWAP, scores momentum indicators, exits on trend break",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    vwap: {},
+    supertrend: {
+      atrPeriod: 10,
+      multiplier: 3
+    },
+    roc: {
+      period: 10
+    },
+    mfi: {
+      period: 14
+    },
+    volumeSma: {
+      period: 20
+    },
+    rsi: {
+      period: 10
+    }
+  },
+  buy: {
+    mode: "score",
+    threshold: 3,
+    required: [
+      [
+        "close",
+        ">",
+        "vwap"
+      ],
+      [
+        "close",
+        ">",
+        "supertrend"
+      ]
+    ],
+    scored: [
+      [
+        "roc",
+        ">",
+        0
+      ],
+      [
+        "mfi",
+        "<",
+        40
+      ],
+      [
+        "volume",
+        ">",
+        "volumeSma"
+      ],
+      [
+        "rsi",
+        "<",
+        40
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ],
+      [
+        "rsi",
+        ">",
+        75
+      ],
+      [
+        "mfi",
+        ">",
+        85
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 12,
+    maxDrawdownPct: 30
+  }
+};
+
+// assets/strategies/vwma-chop-breakout.json
+var vwma_chop_breakout_default = {
+  name: "vwma-chop-breakout",
+  description: "VWMA/SMA volume divergence + Choppiness exit from ranging \u2014 catches volume-confirmed breakouts when market transitions from choppy to trending",
+  baseInterval: "4h",
+  intervals: [
+    "6h"
+  ],
+  indicators: {
+    vwma: {
+      period: 20
+    },
+    movingAverage: {
+      period: 20
+    },
+    choppinessIndex: {
+      period: 14
+    },
+    rsi: {
+      period: 14
+    }
+  },
+  buy: {
+    mode: "all",
+    conditions: [
+      [
+        "close",
+        ">",
+        "vwma"
+      ],
+      [
+        "vwma",
+        ">",
+        "movingAverage"
+      ],
+      [
+        "choppinessIndex",
+        "<",
+        50
+      ],
+      [
+        "rsi",
+        ">",
+        55
+      ]
+    ]
+  },
+  sell: {
+    mode: "any",
+    conditions: [
+      [
+        "close",
+        "<",
+        "vwma"
+      ],
+      [
+        "choppinessIndex",
+        ">",
+        60
+      ]
+    ]
+  },
+  risk: {
+    stopLossPct: 8,
+    trailingStopPct: 12,
+    maxDrawdownPct: 30
+  }
+};
+
+// src/backtest/strategy.ts
+var CANDLE_FIELDS = ["close", "open", "high", "low", "volume"];
+var OPS = [">", "<", ">=", "<=", "==", "!="];
+var INTERVAL_MINUTES = { "15m": 15, "1h": 60, "4h": 240, "1d": 1440, "1w": 10080 };
+var REF = /^([a-zA-Z]+)(?:\.([a-zA-Z]+))?(?:\[(-?\d+)\])?$/;
+var SOURCE_INDICATORS = {
+  bollingerBands: { registry: "bollinger", defaultField: "bbr" },
+  vwap: { registry: "vwap", fixed: { anchor: "start" } },
+  pmax: { registry: "pmax", params: { emaPeriod: "maPeriod" }, fields: { pmaxLong: "longStop", pmaxShort: "shortStop" }, defaultField: "pmax" },
+  adx: { registry: "adx", fields: { pdi: "plusDI", mdi: "minusDI" }, defaultField: "adx" },
+  donchian: { registry: "donchian", defaultField: "middle" },
+  aroon: { registry: "aroon", defaultField: "oscillator" },
+  ichimoku: {
+    registry: "ichimoku",
+    fields: { conversion: "tenkan", base: "kijun" },
+    defaultField: "tenkan",
+    refused: {
+      chikou: "the chikou span is today's close plotted 26 bars back: reading it at its plotted bar needs future closes \u2014 compare close with close[-26] instead"
+    }
+  },
+  chandelier: { registry: "chandelierExit", defaultField: "exitLong" },
+  keltner: { registry: "keltner", defaultField: "middle" },
+  starcBands: { registry: "starcBands", defaultField: "middle" },
+  movingAverageEnvelope: { registry: "movingAverageEnvelope", defaultField: "middle" },
+  stochRsi: { registry: "stochRsi", defaultField: "k" },
+  supertrend: { registry: "supertrend", defaultField: "supertrend" },
+  psar: { registry: "psar", defaultField: "sar" },
+  // Same name, same parameters, same fields in both:
+  ...Object.fromEntries(
+    [
+      "rsi",
+      "ema",
+      "obv",
+      "cmf",
+      "williamsR",
+      "cci",
+      "roc",
+      "ad",
+      "mfi",
+      "ao",
+      "movingAverage",
+      "trix",
+      "volumeOscillator",
+      "macd",
+      "stochastic",
+      "vortex",
+      "atrTrailingStop",
+      "pmo",
+      "kdj",
+      "volumeSma",
+      "atrRatio",
+      "elderRay",
+      "ravi",
+      "hma",
+      "choppinessIndex",
+      "ultimateOscillator",
+      "chaikinOscillator",
+      "linearRegressionSlope",
+      "fisherTransform",
+      "coppockCurve",
+      "forceIndex",
+      "dpo",
+      "vwma",
+      "rvi",
+      "massIndex",
+      "emv",
+      "mcginleyDynamic"
+    ].map((n) => [n, { registry: n }])
+  )
+};
+var registryCache;
+var registry = () => registryCache ??= new Map(listIndicators().map((i) => [i.name, i]));
+function resolveIndicator(alias, raw) {
+  const name = typeof raw._type === "string" ? raw._type : alias;
+  const adapter = SOURCE_INDICATORS[name];
+  const info2 = registry().get(adapter?.registry ?? name);
+  if (!info2) return `unknown indicator "${name}" (alias "${alias}") \u2014 see \`ultrastock strategy list\` for the catalog`;
+  const params = { ...adapter?.fixed ?? {} };
+  for (const [k, v] of Object.entries(raw)) {
+    if (k === "_type") continue;
+    const target = adapter?.params?.[k] ?? k;
+    const spec = info2.params.find((p) => p.name === target);
+    if (!spec || spec.kind === "bars")
+      return `indicator "${alias}" (${name}): unknown parameter "${k}" (expected ${info2.params.filter((p) => p.kind !== "bars").map((p) => p.name).join(", ")})`;
+    if (spec.kind === "number") {
+      if (typeof v !== "number" || !Number.isFinite(v)) return `indicator "${alias}": parameter "${k}" must be a number`;
+      if (spec.integer && !Number.isInteger(v)) return `indicator "${alias}": parameter "${k}" must be an integer`;
+      if (spec.min !== void 0 && v < spec.min) return `indicator "${alias}": parameter "${k}" must be \u2265 ${spec.min}`;
+    } else {
+      if (typeof v !== "string") return `indicator "${alias}": parameter "${k}" must be a string`;
+      if (spec.choices && !spec.choices.includes(v)) return `indicator "${alias}": parameter "${k}" must be one of ${spec.choices.join(", ")}`;
+    }
+    params[target] = v;
+  }
+  if (info2.params.some((p) => p.kind === "bars")) return `indicator "${name}" needs a benchmark series, which a strategy cannot supply`;
+  const fields = new Map(info2.outputs.map((o) => [o, o]));
+  for (const [s, r2] of Object.entries(adapter?.fields ?? {})) fields.set(s, r2);
+  if (name === "bollingerBands") fields.set("bbr", "bbr");
+  return { alias, name, info: info2, adapter, params, fields, defaultField: adapter?.defaultField ?? info2.outputs[0] ?? "value" };
+}
+var isObj2 = (x) => typeof x === "object" && x !== null && !Array.isArray(x);
+var TOP_KEYS = /* @__PURE__ */ new Set(["name", "description", "leverage", "baseInterval", "intervals", "indicators", "buy", "sell", "short", "cover", "risk", "execution"]);
+var RISK_KEYS = {
+  stopLossPct: [0.01, 100],
+  takeProfitPct: [0.01, 1e4],
+  trailingStopPct: [0.01, 100],
+  riskPerTradePct: [0.01, 100],
+  maxDrawdownPct: [0.01, 100]
+};
+function checkCondition(c, path, aliases, errors) {
+  if (!Array.isArray(c) || c.length !== 3) {
+    errors.push(`${path}: a condition is [left, op, right], like ["rsi", "<", 30]`);
+    return;
+  }
+  const [l, op, r2] = c;
+  if (!OPS.includes(op)) errors.push(`${path}[1]: operator ${JSON.stringify(op)} is not one of ${OPS.join(" ")}`);
+  for (const [ref, at] of [
+    [l, 0],
+    [r2, 2]
+  ]) {
+    const msg = checkRef(ref, aliases);
+    if (msg) errors.push(`${path}[${at}]: ${msg}`);
+  }
+}
+function checkRef(ref, aliases) {
+  if (typeof ref === "number") return Number.isFinite(ref) ? void 0 : "a number literal must be finite";
+  if (typeof ref !== "string") return `a reference is a number or a string, not ${JSON.stringify(ref)}`;
+  const m = REF.exec(ref);
+  if (!m) return `"${ref}" is not a reference (alias, alias.field, alias[-n] or alias.field[-n])`;
+  const [, head, field2, off] = m;
+  if (off !== void 0 && Number(off) > 0) return `"${ref}" reads ${off} bar(s) into the future \u2014 offsets must be \u2264 0`;
+  if (CANDLE_FIELDS.includes(head)) return field2 ? `"${ref}": a candle field has no sub-field` : void 0;
+  const ind = aliases.get(head);
+  if (!ind) return `"${ref}" uses undeclared indicator "${head}" (declared: ${[...aliases.keys()].join(", ") || "none"})`;
+  if (field2) {
+    const refused = ind.adapter?.refused?.[field2];
+    if (refused) return `"${ref}": ${refused}`;
+    if (!ind.fields.has(field2)) return `unknown field "${field2}" for indicator "${ind.name}" (available: ${[...ind.fields.keys()].join(", ")})`;
+  }
+  return void 0;
+}
+function checkBlock(b, path, aliases, errors) {
+  if (!isObj2(b)) {
+    errors.push(`${path}: a signal block is an object with "mode"`);
+    return;
+  }
+  if (b.mode === "all" || b.mode === "any") {
+    if ("scored" in b || "required" in b || "threshold" in b) errors.push(`${path}: "scored", "required" and "threshold" belong to mode "score" only`);
+    if (!Array.isArray(b.conditions) || !b.conditions.length) errors.push(`${path}.conditions: a non-empty array of conditions is required`);
+    else b.conditions.forEach((c, i) => checkCondition(c, `${path}.conditions[${i}]`, aliases, errors));
+  } else if (b.mode === "score") {
+    if ("conditions" in b) errors.push(`${path}: score mode counts "scored" conditions \u2014 "conditions" is for modes "all"/"any"`);
+    if (!Array.isArray(b.scored) || !b.scored.length) errors.push(`${path}.scored: a non-empty array of conditions is required`);
+    else b.scored.forEach((c, i) => checkCondition(c, `${path}.scored[${i}]`, aliases, errors));
+    if (b.required !== void 0) {
+      if (!Array.isArray(b.required)) errors.push(`${path}.required: an array of conditions`);
+      else b.required.forEach((c, i) => checkCondition(c, `${path}.required[${i}]`, aliases, errors));
+    }
+    const n = Array.isArray(b.scored) ? b.scored.length : 0;
+    if (typeof b.threshold !== "number" || !Number.isInteger(b.threshold) || b.threshold < 1 || n && b.threshold > n)
+      errors.push(`${path}.threshold: an integer between 1 and the number of scored conditions (${n})`);
+  } else errors.push(`${path}.mode: "all", "any" or "score", not ${JSON.stringify(b.mode)}`);
+}
+function validateStrategy(x) {
+  const errors = [];
+  const warnings = [];
+  if (!isObj2(x)) return { valid: false, errors: ["a strategy is a JSON object"], warnings };
+  for (const k of Object.keys(x)) if (!TOP_KEYS.has(k)) errors.push(`${k}: unknown key (known: ${[...TOP_KEYS].join(", ")})`);
+  if (typeof x.name !== "string" || !/^[a-z][a-z0-9-]*$/.test(x.name))
+    errors.push("name: kebab-case (lowercase letters, digits, hyphens), starting with a letter");
+  if (typeof x.description !== "string" || !x.description.trim()) errors.push("description: a non-empty string");
+  if (x.leverage !== void 0 && (typeof x.leverage !== "number" || x.leverage < 1 || x.leverage > 125)) errors.push("leverage: a number from 1 to 125");
+  if (x.baseInterval !== void 0 && !(typeof x.baseInterval === "string" && x.baseInterval in INTERVAL_MINUTES))
+    errors.push(`baseInterval: one of ${Object.keys(INTERVAL_MINUTES).join(", ")}`);
+  if (x.intervals !== void 0 && !(Array.isArray(x.intervals) && x.intervals.every((s) => typeof s === "string")))
+    errors.push("intervals: an array of interval names");
+  const aliases = /* @__PURE__ */ new Map();
+  if (!isObj2(x.indicators)) errors.push("indicators: an object of alias \u2192 parameters");
+  else
+    for (const [alias, params] of Object.entries(x.indicators)) {
+      if (!/^[a-zA-Z]+$/.test(alias)) {
+        errors.push(`indicators.${alias}: an alias is letters only (emaSlow, not ema50)`);
+        continue;
+      }
+      if (CANDLE_FIELDS.includes(alias)) {
+        errors.push(`indicators.${alias}: "${alias}" is a candle field and cannot be an alias`);
+        continue;
+      }
+      if (!isObj2(params)) {
+        errors.push(`indicators.${alias}: an object of parameters ({} for the defaults)`);
+        continue;
+      }
+      const r2 = resolveIndicator(alias, params);
+      if (typeof r2 === "string") errors.push(`indicators.${alias}: ${r2}`);
+      else aliases.set(alias, r2);
+    }
+  for (const k of ["buy", "sell"]) {
+    if (x[k] === void 0) errors.push(`${k}: required`);
+    else checkBlock(x[k], k, aliases, errors);
+  }
+  if (x.short === void 0 !== (x.cover === void 0)) errors.push("short and cover: define both or neither");
+  for (const k of ["short", "cover"]) if (x[k] !== void 0) checkBlock(x[k], k, aliases, errors);
+  if (x.risk !== void 0) {
+    if (!isObj2(x.risk)) errors.push("risk: an object");
+    else
+      for (const [k, v] of Object.entries(x.risk)) {
+        if (k === "atrStop") {
+          if (!isObj2(v) || typeof v.period !== "number" || !Number.isInteger(v.period) || v.period < 1 || typeof v.multiplier !== "number" || v.multiplier <= 0)
+            errors.push('risk.atrStop: { "period": integer \u2265 1, "multiplier": number > 0 }');
+        } else if (k === "timeStopBars") {
+          if (typeof v !== "number" || !Number.isInteger(v) || v < 1) errors.push("risk.timeStopBars: an integer \u2265 1");
+        } else if (RISK_KEYS[k]) {
+          const [lo, hi] = RISK_KEYS[k];
+          if (typeof v !== "number" || v < lo || v > hi) errors.push(`risk.${k}: a percent number between ${lo} and ${hi} (8 means 8 %)`);
+          else if (v < 1 && k !== "riskPerTradePct") warnings.push(`risk.${k} = ${v} means ${v} %, not ${v * 100} % \u2014 percents are percent numbers`);
+        } else errors.push(`risk.${k}: unknown key (stopLossPct, takeProfitPct, trailingStopPct, atrStop, timeStopBars, riskPerTradePct, maxDrawdownPct)`);
+      }
+    if (isObj2(x.risk) && x.risk.riskPerTradePct !== void 0 && x.risk.stopLossPct === void 0 && x.risk.atrStop === void 0)
+      errors.push("risk.riskPerTradePct: needs a stop (stopLossPct or atrStop) to size against");
+  }
+  if (x.execution !== void 0) {
+    if (!isObj2(x.execution)) errors.push("execution: an object");
+    else {
+      for (const k of Object.keys(x.execution)) if (k !== "entry" && k !== "limitOffsetPct") errors.push(`execution.${k}: unknown key (entry, limitOffsetPct)`);
+      if (x.execution.entry !== void 0 && x.execution.entry !== "market" && x.execution.entry !== "limit")
+        errors.push('execution.entry: "market" or "limit"');
+      const off = x.execution.limitOffsetPct;
+      if (off !== void 0 && (typeof off !== "number" || off < 0 || off > 50)) errors.push("execution.limitOffsetPct: a percent number from 0 to 50");
+    }
+  }
+  for (const k of ["buy", "short"]) {
+    const b = x[k];
+    if (isObj2(b) && b.mode === "all" && Array.isArray(b.conditions) && b.conditions.length >= 5)
+      warnings.push(`${k}: ${b.conditions.length} conditions joined by "all" rarely all hold \u2014 expect few trades`);
+    if (isObj2(b) && b.mode === "score" && Array.isArray(b.scored) && typeof b.threshold === "number" && b.threshold < b.scored.length / 2)
+      warnings.push(`${k}: threshold ${b.threshold} of ${b.scored.length} scored conditions is permissive \u2014 expect noisy signals`);
+  }
+  return { valid: errors.length === 0, errors, warnings, def: errors.length ? void 0 : x };
+}
+function scaleParams(info2, params, base2, run3) {
+  if (!base2 || base2 === run3) return params;
+  const b = INTERVAL_MINUTES[base2];
+  const r2 = INTERVAL_MINUTES[run3];
+  if (!b || !r2) return params;
+  const scale = Math.sqrt(b / r2);
+  const out4 = { ...params };
+  for (const spec of info2.params) {
+    if (spec.kind !== "number" || !spec.integer) continue;
+    const v = params[spec.name] ?? spec.default;
+    out4[spec.name] = Math.max(2, Math.round(v * scale));
+  }
+  return out4;
+}
+function compileStrategy(def2, bars, interval = "1d") {
+  const v = validateStrategy(def2);
+  if (!v.valid) throw new Error(`strategy ${def2.name}: ${v.errors.join("; ")}`);
+  const columns = /* @__PURE__ */ new Map();
+  const params = {};
+  for (const [alias, raw] of Object.entries(def2.indicators)) {
+    const ind = resolveIndicator(alias, raw);
+    const p = scaleParams(ind.info, ind.params, def2.baseInterval, interval);
+    let rows = computeIndicator(ind.info.name, bars, p).values;
+    if (ind.name === "bollingerBands") {
+      const pb = computeIndicator("bollingerPercentB", bars, p).values;
+      rows = rows.map((r2, i) => r2 && pb[i] ? { ...r2, bbr: pb[i].value } : void 0);
+    }
+    columns.set(alias, { rows, ind });
+    params[alias] = Object.fromEntries(Object.entries(p).map(([k, x]) => [k, x]));
+  }
+  const getter = (ref) => {
+    if (typeof ref === "number") return () => ref;
+    const [, head, field2, off] = REF.exec(ref);
+    const o = off ? Number(off) : 0;
+    if (CANDLE_FIELDS.includes(head)) {
+      const f3 = head;
+      return (i) => {
+        const b = bars[i + o];
+        return b ? f3 === "volume" ? b.volume ?? 0 : b[f3] : void 0;
+      };
+    }
+    const col = columns.get(head);
+    const key = col.ind.fields.get(field2 ?? col.ind.defaultField) ?? field2 ?? col.ind.defaultField;
+    return (i) => {
+      const v2 = i + o >= 0 ? col.rows[i + o]?.[key] : void 0;
+      return typeof v2 === "number" && Number.isFinite(v2) ? v2 : void 0;
+    };
+  };
+  const cond = (c) => {
+    const l = getter(c[0]);
+    const r2 = getter(c[2]);
+    const op = c[1];
+    return (i) => {
+      const a = l(i);
+      const b = r2(i);
+      if (a === void 0 || b === void 0) return false;
+      switch (op) {
+        case ">":
+          return a > b;
+        case "<":
+          return a < b;
+        case ">=":
+          return a >= b;
+        case "<=":
+          return a <= b;
+        case "==":
+          return a === b;
+        default:
+          return a !== b;
+      }
+    };
+  };
+  const block = (b) => {
+    if (!b) return bars.map(() => false);
+    if (b.mode === "score") {
+      const req = (b.required ?? []).map(cond);
+      const sc = b.scored.map(cond);
+      return bars.map((_, i) => req.every((f3) => f3(i)) && sc.reduce((n, f3) => n + (f3(i) ? 1 : 0), 0) >= b.threshold);
+    }
+    const cs = b.conditions.map(cond);
+    return bars.map((_, i) => b.mode === "all" ? cs.every((f3) => f3(i)) : cs.some((f3) => f3(i)));
+  };
+  return { buy: block(def2.buy), sell: block(def2.sell), short: block(def2.short), cover: block(def2.cover), params };
+}
+function withParam(def2, path, value) {
+  const [head, key] = path.split(".");
+  if (!head || !key) throw new Error(`parameter "${path}" is alias.param or risk.key`);
+  if (head === "risk") return { ...def2, risk: { ...def2.risk ?? {}, [key]: value } };
+  if (head === "atrStop") return { ...def2, risk: { ...def2.risk ?? {}, atrStop: { ...def2.risk?.atrStop ?? { period: 14, multiplier: 3 }, [key]: value } } };
+  const ind = def2.indicators[head];
+  if (!ind) throw new Error(`parameter "${path}": no indicator "${head}" (declared: ${Object.keys(def2.indicators).join(", ")})`);
+  return { ...def2, indicators: { ...def2.indicators, [head]: { ...ind, [key]: value } } };
+}
+function tunableParams(def2) {
+  const ints = [];
+  const reals = [];
+  for (const [alias, raw] of Object.entries(def2.indicators)) {
+    const r2 = resolveIndicator(alias, raw);
+    if (typeof r2 === "string") continue;
+    const reverse = Object.fromEntries(Object.entries(r2.adapter?.params ?? {}).map(([s, t]) => [t, s]));
+    for (const spec of r2.info.params) {
+      if (spec.kind !== "number") continue;
+      const v = r2.params[spec.name] ?? spec.default;
+      (spec.integer ? ints : reals).push({ path: `${alias}.${reverse[spec.name] ?? spec.name}`, value: v, integer: !!spec.integer });
+    }
+  }
+  return [...ints, ...reals];
+}
+
+// src/backtest/catalog.ts
+var BUILTIN_STRATEGIES = [
+  adaptive_momentum_reversal_default,
+  aroon_trend_rider_default,
+  bollinger_squeeze_default,
+  breakout_momentum_rider_default,
+  breakout_volume_default,
+  cci_williams_momentum_default,
+  confluence_default,
+  coppock_bottom_default,
+  dpo_rsi_pullback_default,
+  elder_impulse_default,
+  fast_supertrend_default,
+  hull_chop_momentum_default,
+  ichimoku_cloud_default,
+  kdj_extreme_recovery_default,
+  keltner_breakout_default,
+  pmax_default,
+  psar_momentum_default,
+  rsi_macd_trend_ride_default,
+  sma_cross_default,
+  stochrsi_trend_filter_default,
+  supertrend_pullback_momentum_default,
+  supertrend_default,
+  trend_momentum_rider_default,
+  turtle_supertrend_exit_default,
+  turtle_default,
+  vwap_momentum_default,
+  vwma_chop_breakout_default
+];
+function userStrategyDir() {
+  return join25(homeDir(), "strategies");
+}
+function listStrategies() {
+  const out4 = /* @__PURE__ */ new Map();
+  for (const s of BUILTIN_STRATEGIES) {
+    const v = validateStrategy(s);
+    const o = s;
+    out4.set(o.name, { name: o.name, description: o.description, origin: "builtin", valid: v.valid, errors: v.errors });
+  }
+  const dir = userStrategyDir();
+  if (existsSync20(dir))
+    for (const f3 of readdirSync7(dir).filter((x) => x.endsWith(".json"))) {
+      const path = join25(dir, f3);
+      try {
+        const raw = JSON.parse(readFileSync21(path, "utf8"));
+        const v = validateStrategy(raw);
+        out4.set(raw?.name ?? f3, { name: raw?.name ?? f3, description: String(raw?.description ?? ""), origin: "user", path, valid: v.valid, errors: v.errors });
+      } catch (e) {
+        out4.set(f3, { name: f3, description: "", origin: "user", path, valid: false, errors: [`not JSON: ${e.message}`] });
+      }
+    }
+  return [...out4.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+function findStrategy(ref) {
+  if (ref.endsWith(".json") || ref.includes("/")) {
+    if (!existsSync20(ref)) return void 0;
+    return { raw: JSON.parse(readFileSync21(ref, "utf8")), origin: ref };
+  }
+  const user = join25(userStrategyDir(), `${ref}.json`);
+  if (existsSync20(user)) return { raw: JSON.parse(readFileSync21(user, "utf8")), origin: user };
+  const b = BUILTIN_STRATEGIES.find((s) => s.name === ref);
+  return b ? { raw: structuredClone(b), origin: "builtin" } : void 0;
+}
+function loadStrategy(ref) {
+  const found = findStrategy(ref);
+  if (!found) throw new Error(`no strategy "${ref}" \u2014 \`ultrastock strategy list\` shows the built-ins and yours`);
+  const v = validateStrategy(found.raw);
+  if (!v.valid) throw new Error(`strategy ${ref} is invalid:
+  - ${v.errors.join("\n  - ")}`);
+  return { def: v.def, origin: found.origin, warnings: v.warnings };
+}
+function strategyTemplate(name) {
+  return {
+    name,
+    description: "Describe the idea in one sentence: what the edge is and why it should persist",
+    indicators: {
+      trend: { _type: "ema", period: 100 },
+      rsi: { period: 14 }
+    },
+    buy: {
+      mode: "all",
+      conditions: [
+        ["close", ">", "trend"],
+        ["rsi", "<", 35]
+      ]
+    },
+    sell: {
+      mode: "any",
+      conditions: [
+        ["rsi", ">", 70],
+        ["close", "<", "trend"]
+      ]
+    },
+    risk: { stopLossPct: 8, trailingStopPct: 15, maxDrawdownPct: 30 },
+    execution: { entry: "market" }
+  };
+}
+
+// src/backtest/decisions.ts
+function wilsonInterval(successes, n, confidence = 0.95) {
+  if (n <= 0) return { low: Number.NaN, high: Number.NaN };
+  const z = normInv(1 - (1 - confidence) / 2);
+  const p = successes / n;
+  const den = 1 + z * z / n;
+  const centre = (p + z * z / (2 * n)) / den;
+  const half = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / den;
+  return { low: Math.max(0, centre - half), high: Math.min(1, centre + half) };
+}
+function tQuantile(p, df) {
+  const z = normInv(p);
+  const g1 = (z ** 3 + z) / 4;
+  const g2 = (5 * z ** 5 + 16 * z ** 3 + 3 * z) / 96;
+  const g3 = (3 * z ** 7 + 19 * z ** 5 + 17 * z ** 3 - 15 * z) / 384;
+  return z + g1 / df + g2 / df ** 2 + g3 / df ** 3;
+}
+function decisionQuality(settlements, confidence = 0.95) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const s of settlements) {
+    const k = `${s.rating}|${s.horizon}`;
+    groups.set(k, [...groups.get(k) ?? [], s]);
+  }
+  const out4 = [];
+  for (const [k, xs] of groups) {
+    const [rating2, h] = k.split("|");
+    const hits = xs.filter((x) => x.hit).length;
+    const ci = wilsonInterval(hits, xs.length, confidence);
+    const alphas = xs.map((x) => x.alphaPct).filter((x) => typeof x === "number");
+    const g = {
+      rating: rating2,
+      horizon: Number(h),
+      n: xs.length,
+      hits,
+      hitRate: hits / xs.length,
+      hitLow: ci.low,
+      hitHigh: ci.high,
+      meanReturnPct: mean(xs.map((x) => x.returnPct))
+    };
+    if (alphas.length) {
+      g.meanAlphaPct = mean(alphas);
+      if (alphas.length >= 2) {
+        const half = tQuantile(1 - (1 - confidence) / 2, alphas.length - 1) * stdev(alphas) / Math.sqrt(alphas.length);
+        g.alphaLowPct = g.meanAlphaPct - half;
+        g.alphaHighPct = g.meanAlphaPct + half;
+      }
+    }
+    out4.push(g);
+  }
+  return out4.sort((a, b) => a.rating.localeCompare(b.rating) || a.horizon - b.horizon);
+}
+
+// src/backtest/run.ts
+import { mkdirSync as mkdirSync16 } from "fs";
+import { join as join27 } from "path";
+
+// src/providers/external/binance-historical.ts
+import { mkdtempSync as mkdtempSync2, readdirSync as readdirSync8, readFileSync as readFileSync22, rmSync as rmSync3 } from "fs";
+import { tmpdir } from "os";
+import { join as join26 } from "path";
+var SOURCE32 = "binance-historical";
+function binanceHistoricalInfo() {
+  if (!have("binance-historical")) return { installed: false, compatible: false };
+  const r2 = sh("binance-historical", ["describe", "--json"], { timeoutMs: 15e3 });
+  if (!r2.ok) return { installed: true, compatible: false };
+  try {
+    const d = JSON.parse(r2.stdout);
+    const fields = d.markets?.spot?.fields ?? [];
+    return {
+      installed: true,
+      version: d.version,
+      schemaVersion: d.schemaVersion,
+      compatible: d.schemaVersion === 1 && ["openTime", "open", "high", "low", "close", "volume"].every((f3) => fields.includes(f3))
+    };
+  } catch {
+    return { installed: true, compatible: false };
+  }
+}
+async function bulkKlines(req) {
+  const info2 = binanceHistoricalInfo();
+  if (!info2.installed)
+    throw new ProviderError(
+      SOURCE32,
+      "binance-historical is not installed \u2014 npm install -g binance-historical, or brew install maxgfr/tap/binance-historical",
+      0
+    );
+  if (!info2.compatible)
+    throw new ProviderError(SOURCE32, `binance-historical ${info2.version ?? "?"} does not speak the expected describe contract (schemaVersion 1)`, 0);
+  const out4 = mkdtempSync2(join26(tmpdir(), "ultrastock-bh-"));
+  try {
+    const args = [
+      "download",
+      "--pair",
+      req.pair,
+      "--market",
+      req.market ?? "spot",
+      "--kind",
+      req.kind ?? "trade",
+      "--interval",
+      req.interval,
+      "--start",
+      req.start.toISOString(),
+      "--end",
+      req.end.toISOString(),
+      "--output",
+      out4,
+      "--format",
+      "jsonl",
+      "--json"
+    ];
+    const r2 = await shAsync("binance-historical", args, { timeoutMs: 30 * 6e4 });
+    let report;
+    try {
+      report = JSON.parse(r2.stdout);
+    } catch {
+      throw new ProviderError(SOURCE32, `no report from binance-historical: ${(r2.stderr || r2.stdout).slice(0, 300)}`, 0);
+    }
+    const res = report.results?.[0];
+    if (!res || res.status === "failed" || res.error) {
+      const e = res?.error;
+      throw new ProviderError(SOURCE32, `${req.pair}: ${e?.code ?? "FAILED"} ${e?.message ?? ""}`.trim(), e?.httpStatus ?? 0);
+    }
+    const file = res.outputPath ?? join26(out4, readdirSync8(out4).find((f3) => f3.endsWith(".jsonl")) ?? "");
+    const bars = readFileSync22(file, "utf8").split("\n").filter(Boolean).map((line) => {
+      const k = JSON.parse(line);
+      const iso2 = new Date(k.openTime).toISOString();
+      return {
+        date: /^(1d|3d|1w|1M)$/.test(req.interval) ? iso2.slice(0, 10) : iso2,
+        open: Number(k.open),
+        high: Number(k.high),
+        low: Number(k.low),
+        close: Number(k.close),
+        volume: Number(k.volume),
+        trades: k.trades
+      };
+    });
+    return { bars, report };
+  } finally {
+    rmSync3(out4, { recursive: true, force: true });
+  }
+}
+
+// src/backtest/data.ts
+var INTERVAL_MS = { "15m": 9e5, "1h": 36e5, "4h": 144e5, "1d": 864e5, "1w": 6048e5 };
+var DAY3 = 864e5;
+var isoDay9 = (d) => d.toISOString().slice(0, 10);
+async function loadBars(raw, req) {
+  const resolved = await resolveSymbol(raw);
+  const inst = resolved.instrument;
+  if (inst.market === "crypto") {
+    const expected = Math.ceil((req.to.getTime() - req.from.getTime()) / INTERVAL_MS[req.interval]);
+    if (expected > 1e3) {
+      const info2 = binanceHistoricalInfo();
+      if (info2.installed && info2.compatible) {
+        const { bars } = await bulkKlines({ pair: inst.venueId, interval: req.interval, start: req.from, end: req.to });
+        if (bars.length)
+          return {
+            resolved,
+            series: {
+              instrument: inst,
+              interval: req.interval,
+              bars,
+              adjusted: false,
+              provenance: { source: "binance", url: "https://data.binance.vision/", fetchedAt: new Date(req.to).toISOString(), delay: "eod", official: true },
+              notes: [...resolved.notes, `${bars.length} ${req.interval} bars from the binance-historical bulk export (${info2.version ?? "?"})`]
+            }
+          };
+      }
+      const series2 = await getHistory(resolved, req);
+      series2.notes.push(
+        `${series2.bars.length} ${req.interval} bars paged from the Binance REST API (1000 a request)${info2.installed ? "" : " \u2014 install binance-historical for long windows"}`
+      );
+      return { resolved, series: series2 };
+    }
+    return { resolved, series: await getHistory(resolved, req) };
+  }
+  const series = await getHistory(resolved, req);
+  const wanted = isoDay9(new Date(req.from.getTime() + 7 * DAY3));
+  if (inst.market === "euronext" && series.bars[0] && series.bars[0].date > wanted) {
+    try {
+      const y = await resolveYahoo(inst.symbol);
+      const longer = await getHistory({ instrument: { ...y, market: "europe" }, notes: [] }, req);
+      if (longer.bars[0] && longer.bars[0].date < series.bars[0].date) {
+        return {
+          resolved,
+          series: {
+            ...longer,
+            instrument: inst,
+            provenance: { ...longer.provenance, fallbackFrom: "euronext" },
+            notes: [
+              ...longer.notes,
+              `Euronext keeps about two years (its bars start ${series.bars[0].date}); the window from ${isoDay9(req.from)} was read from Yahoo instead \u2014 unofficial, split-adjusted`
+            ]
+          }
+        };
+      }
+    } catch (e) {
+      series.notes.push(`Euronext keeps about two years and Yahoo could not stand in for the longer window (${e.message})`);
+    }
+  }
+  return { resolved, series };
+}
+async function fundingHistory(symbol, from, to) {
+  const pair = perpSymbol(symbol);
+  const events = [];
+  let start = from.getTime();
+  let firstUrl = "";
+  let fetchedAt = "";
+  for (let page = 0; page < 40 && start < to.getTime(); page++) {
+    const url = `https://fapi.binance.com/fapi/v1/fundingRate?symbol=${pair}&startTime=${start}&endTime=${to.getTime()}&limit=1000`;
+    const res = await fetchJson(url, { hostIntervalMs: 250 });
+    if (!res.ok || !Array.isArray(res.data)) {
+      if (res.status === 451)
+        throw new ProviderError("binance-futures", `Binance refuses funding history from this location (HTTP 451) for ${pair} \u2014 not circumvented`, 451);
+      throw new ProviderError("binance-futures", `funding history for ${pair} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+    }
+    if (!firstUrl) {
+      firstUrl = res.url;
+      fetchedAt = res.fetchedAt;
+    }
+    for (const r2 of res.data) {
+      const rate = Number(r2.fundingRate);
+      if (Number.isFinite(rate)) events.push({ time: r2.fundingTime, rate });
+    }
+    if (res.data.length < 1e3) break;
+    start = res.data[res.data.length - 1].fundingTime + 1;
+  }
+  return { events, url: firstUrl, fetchedAt, pair };
+}
+
+// src/backtest/metrics.ts
+function tradeStats(sim) {
+  const t = sim.trades;
+  const wins = t.filter((x) => x.pnl > 0);
+  const losses = t.filter((x) => x.pnl < 0);
+  const gp = wins.reduce((s, x) => s + x.pnl, 0);
+  const gl = -losses.reduce((s, x) => s + x.pnl, 0);
+  const net = gp - gl;
+  let streak = 0;
+  let worstStreak = 0;
+  for (const x of t) {
+    streak = x.pnl < 0 ? streak + 1 : 0;
+    worstStreak = Math.max(worstStreak, streak);
+  }
+  const rs = t.map((x) => x.r).filter((x) => x !== void 0);
+  const byReason = {};
+  for (const x of t) byReason[x.exitReason] = (byReason[x.exitReason] ?? 0) + 1;
+  return {
+    trades: t.length,
+    longs: t.filter((x) => x.side === "long").length,
+    shorts: t.filter((x) => x.side === "short").length,
+    winRate: t.length ? wins.length / t.length * 100 : Number.NaN,
+    profitFactor: gl > 0 ? gp / gl : gp > 0 ? Number.POSITIVE_INFINITY : Number.NaN,
+    expectancy: t.length ? net / t.length : Number.NaN,
+    expectancyR: rs.length && rs.length === t.length ? mean(rs) : void 0,
+    grossProfit: gp,
+    grossLoss: gl,
+    netProfit: net,
+    avgHoldBars: t.length ? mean(t.map((x) => x.bars)) : Number.NaN,
+    exposurePct: sim.equity.length ? sim.equity.filter((e) => e.exposure !== 0).length / sim.equity.length * 100 : 0,
+    avgMaePct: t.length ? mean(t.map((x) => x.maePct)) : Number.NaN,
+    avgMfePct: t.length ? mean(t.map((x) => x.mfePct)) : Number.NaN,
+    worstMaePct: t.length ? Math.min(...t.map((x) => x.maePct)) : Number.NaN,
+    maxConsecutiveLosses: worstStreak,
+    largestWinSharePct: net > 0 && wins.length ? Math.max(...wins.map((x) => x.pnl)) / net * 100 : void 0,
+    fees: sim.fees,
+    funding: sim.funding,
+    byReason
+  };
+}
+function periodsPerYear(bars, crypto) {
+  const t = (b) => Date.parse(b.date.length === 10 ? `${b.date}T00:00:00Z` : b.date);
+  const ms = bars.length > 1 ? (t(bars[bars.length - 1]) - t(bars[0])) / (bars.length - 1) : 864e5;
+  if (crypto) return Math.round(365 * 864e5 / Math.max(ms, 6e4));
+  if (ms >= 5 * 864e5) return 52;
+  return 252;
+}
+function summarize(sim, ppy, capital) {
+  const s = performanceSummary(sim.returns, ppy);
+  const last2 = sim.equity[sim.equity.length - 1]?.equity ?? capital;
+  return { ...s, finalEquity: last2, totalReturn: last2 / capital - 1, years: sim.returns.length / ppy };
+}
+function buyAndHold(bars, costs, start = 0, end = bars.length) {
+  const fee = costs.takerPct / 100;
+  const slip = costs.slippagePct / 100;
+  const entry = bars[start].open * (1 + slip);
+  const qty = (1 - fee) / entry;
+  const returns = [];
+  let prev = 1;
+  for (let t = start; t < end; t++) {
+    let v = qty * bars[t].close;
+    if (t === end - 1) v = qty * bars[t].close * (1 - slip) * (1 - fee);
+    returns.push(v / prev - 1);
+    prev = v;
+  }
+  return { returns, totalReturn: prev - 1 };
+}
+function residualAlpha(dates, returns, bench, ppy) {
+  const closeByDate = new Map(bench.map((b) => [b.date, b.close]));
+  const y = [];
+  const x = [];
+  for (let i = 1; i < dates.length; i++) {
+    const a = closeByDate.get(dates[i - 1]);
+    const b = closeByDate.get(dates[i]);
+    if (a === void 0 || b === void 0 || a <= 0) continue;
+    y.push(returns[i]);
+    x.push(b / a - 1);
+  }
+  if (y.length < 30 || variance(x) === 0) return void 0;
+  const r2 = ols(y, [x]);
+  return { alphaPct: r2.coef[0] * ppy * 100, alphaT: r2.hacT[0], beta: r2.coef[1], r2: r2.r2, n: r2.n, hacLags: r2.hacLags };
+}
+function periodSharpe(returns) {
+  const sd = stdev(returns);
+  return sd > 0 ? mean(returns) / sd : 0;
+}
+function deflatedSharpeOf(chosen, variantSharpes, nTrials) {
+  if (!(stdev(chosen) > 0)) return 0;
+  const sr = periodSharpe(chosen);
+  const finite4 = variantSharpes.filter(Number.isFinite);
+  const v = finite4.length > 1 ? variance(finite4) : 0;
+  return deflatedSharpe(sr, chosen.length, skewness(chosen), excessKurtosis(chosen), Math.max(1, nTrials), v);
+}
+
+// src/backtest/review.ts
+var f22 = (x) => x === void 0 || !Number.isFinite(x) ? "n/a" : x.toFixed(2);
+function reviewScorecard(i) {
+  const checks = [];
+  const add2 = (c) => checks.push(c);
+  add2({
+    id: "sample.trades",
+    label: "Sample size: trades",
+    status: i.trades >= 30 ? "pass" : "fail",
+    critical: i.trades < 10,
+    value: i.trades,
+    threshold: "\u2265 30 (under 10 rejects)",
+    reason: i.trades >= 30 ? `${i.trades} closed trades` : `${i.trades} closed trades is too few to tell skill from luck`
+  });
+  add2({
+    id: "sample.span",
+    label: "Sample size: span",
+    status: i.years >= 3 || i.fullCycle ? "pass" : "fail",
+    critical: false,
+    value: Number(i.years.toFixed(2)),
+    threshold: "\u2265 3 years, or a full cycle (a \u2265 20 % fall and a new high)",
+    reason: i.years >= 3 ? `${i.years.toFixed(1)} years` : i.fullCycle ? `${i.years.toFixed(1)} years covering a full cycle` : `${i.years.toFixed(1)} years without a full cycle`
+  });
+  add2({
+    id: "profit.base",
+    label: "Net profit at modelled costs",
+    status: i.netProfit > 0 ? "pass" : "fail",
+    critical: i.netProfit <= 0,
+    value: Number(i.netProfit.toFixed(2)),
+    threshold: "> 0",
+    reason: i.netProfit > 0 ? "profitable after fees, slippage and funding" : "loses money after costs"
+  });
+  if (i.oosSharpe === void 0 || i.isSharpe === void 0)
+    add2({ id: "robust.oos", label: "Out-of-sample Sharpe", status: "n/a", critical: false, threshold: "\u2265 50 % of in-sample", reason: "no walk-forward ran" });
+  else {
+    const ok = i.isSharpe > 0 && i.oosSharpe >= 0.5 * i.isSharpe;
+    add2({
+      id: "robust.oos",
+      label: "Out-of-sample Sharpe vs in-sample",
+      status: ok ? "pass" : "fail",
+      critical: !(i.oosSharpe > 0),
+      value: `${f22(i.oosSharpe)} vs ${f22(i.isSharpe)}`,
+      threshold: "OOS \u2265 50 % of IS (OOS \u2264 0 rejects)",
+      reason: ok ? `walk-forward kept ${(i.oosSharpe / i.isSharpe * 100).toFixed(0)} % of the in-sample Sharpe` : i.oosSharpe > 0 ? "the edge shrinks by more than half out of sample" : "no edge out of sample"
+    });
+  }
+  add2({
+    id: "robust.dsr",
+    label: "Deflated Sharpe ratio",
+    status: i.dsr === void 0 ? "n/a" : i.dsr >= 0.95 ? "pass" : "fail",
+    critical: false,
+    value: i.dsr === void 0 ? void 0 : Number(i.dsr.toFixed(4)),
+    threshold: "\u2265 0.95 for PASS",
+    reason: i.dsr === void 0 ? "not computed" : `probability the Sharpe beats the best of ${i.nTrials} skill-less variant(s): ${(i.dsr * 100).toFixed(1)} %${i.dsr >= 0.95 ? "" : " \u2014 not shown beyond the search that found it"}`
+  });
+  add2({
+    id: "robust.pbo",
+    label: "Probability of backtest overfitting",
+    status: i.pbo === void 0 ? "n/a" : i.pbo < 0.5 ? "pass" : "fail",
+    critical: false,
+    value: i.pbo === void 0 ? void 0 : Number(i.pbo.toFixed(4)),
+    threshold: "< 0.5",
+    reason: i.pbo === void 0 ? "needs \u2265 2 variants and enough bars" : `the in-sample best ranked in the bottom half out of sample in ${(i.pbo * 100).toFixed(0)} % of splits`
+  });
+  add2({
+    id: "costs.x2",
+    label: "Profit at \xD72 costs",
+    status: i.stressedNetProfit > 0 ? "pass" : "fail",
+    critical: false,
+    value: Number(i.stressedNetProfit.toFixed(2)),
+    threshold: "> 0",
+    reason: i.stressedNetProfit > 0 ? "survives doubled fees and slippage" : "the edge is eaten by doubled fees and slippage"
+  });
+  add2({
+    id: "concentration",
+    label: "Largest trade's share of net profit",
+    status: i.largestWinSharePct === void 0 ? "n/a" : i.largestWinSharePct <= 25 ? "pass" : "fail",
+    critical: false,
+    value: i.largestWinSharePct === void 0 ? void 0 : Number(i.largestWinSharePct.toFixed(2)),
+    threshold: "\u2264 25 %",
+    reason: i.largestWinSharePct === void 0 ? "no net profit to divide" : i.largestWinSharePct <= 25 ? "profit spread over many trades" : "one trade carries the result \u2014 remove it and the edge may vanish"
+  });
+  add2({
+    id: "survivorship",
+    label: "Survivorship",
+    status: i.universe ? "fail" : "pass",
+    critical: false,
+    value: i.universe,
+    threshold: "not picked from today's index members",
+    reason: i.universe ? `picked from today's ${i.universe} members: the companies that left the index are missing, which biases results upward` : "a single symbol named by the user (no index membership involved)"
+  });
+  add2({
+    id: "lookahead",
+    label: "Look-ahead",
+    status: i.lookAheadMismatches === 0 ? "pass" : "fail",
+    critical: i.lookAheadMismatches > 0,
+    value: i.lookAheadMismatches,
+    threshold: "0 trades differ on a truncated series",
+    reason: i.lookAheadMismatches === 0 ? `signals use closed bars only and fill at the next open; re-run on the series cut at ${i.lookAheadCheckedAt ?? "two thirds"} gives the same trades` : `${i.lookAheadMismatches} trade(s) changed when future bars were removed \u2014 the strategy reads the future`
+  });
+  const critical = checks.filter((c) => c.status === "fail" && c.critical);
+  const failed = checks.filter((c) => c.status === "fail");
+  const verdict = critical.length ? "REJECT" : failed.length || checks.some((c) => c.id === "robust.dsr" && c.status !== "pass") ? "REVISE" : "PASS";
+  const reasons = (critical.length ? critical : failed).map((c) => `${c.label}: ${c.reason}`);
+  if (verdict === "PASS") reasons.push("every check passed, including a deflated Sharpe \u2265 0.95");
+  return { verdict, checks, reasons };
+}
+
+// src/backtest/simulate.ts
+var barTime = (b) => Date.parse(b.date.length === 10 ? `${b.date}T00:00:00Z` : b.date);
+function simulate(bars, signals, cfg) {
+  const start = Math.max(0, cfg.start ?? 0);
+  const end = Math.min(bars.length, cfg.end ?? bars.length);
+  const L = Math.max(1, cfg.leverage ?? 1);
+  const maker = cfg.costs.makerPct / 100;
+  const taker = cfg.costs.takerPct / 100;
+  const slip = cfg.costs.slippagePct / 100;
+  const risk = cfg.risk ?? {};
+  const limitEntry = cfg.execution?.entry === "limit";
+  const limitOff = (cfg.execution?.limitOffsetPct ?? 0.5) / 100;
+  const mm = (cfg.maintenanceMarginPct ?? 0.5) / 100;
+  const funding = cfg.funding ?? [];
+  const barMs = bars.length > 1 ? barTime(bars[1]) - barTime(bars[0]) : 864e5;
+  let cash = cfg.capital;
+  let pos2;
+  let pending;
+  let peakEquity = cfg.capital;
+  let breaker = false;
+  let breakerAt;
+  let fundIdx = 0;
+  let totalFees = 0;
+  let totalFunding = 0;
+  let liquidations = 0;
+  let unfilled = 0;
+  const trades2 = [];
+  const equity = [];
+  const returns = [];
+  const close = (t, rawPrice, reason, order) => {
+    const p = pos2;
+    const fill = order === "market" ? rawPrice * (1 - p.side * slip) : rawPrice;
+    const fee = order === "market" ? p.qty * fill * taker : p.qty * fill * maker;
+    let gross2 = p.side * p.qty * (fill - p.entryPrice);
+    let exitFee = fee;
+    if (reason === "liquidation") {
+      gross2 = -(p.margin - p.funding);
+      exitFee = 0;
+    }
+    cash += gross2 - exitFee;
+    totalFees += exitFee;
+    const fees = p.fees + exitFee;
+    const pnl = gross2 - exitFee - p.fees - p.funding;
+    const bar = bars[t];
+    trades2.push({
+      side: p.side === 1 ? "long" : "short",
+      signalIndex: p.signalIndex,
+      entryIndex: p.entryIndex,
+      entryDate: bars[p.entryIndex].date,
+      entryPrice: p.entryPrice,
+      entryOrder: p.entryOrder,
+      exitIndex: t,
+      exitDate: bar.date,
+      exitPrice: reason === "liquidation" ? rawPrice : fill,
+      exitReason: reason,
+      qty: p.qty,
+      notional: p.notional,
+      fees,
+      funding: p.funding,
+      slippage: p.slippage + (order === "market" ? p.qty * Math.abs(fill - rawPrice) : 0),
+      pnl,
+      returnPct: pnl / p.equityAtEntry * 100,
+      r: p.initialRisk ? pnl / p.initialRisk : void 0,
+      bars: t - p.entryIndex,
+      maePct: (p.side === 1 ? p.low / p.entryPrice - 1 : 1 - p.high / p.entryPrice) * 100,
+      mfePct: (p.side === 1 ? p.high / p.entryPrice - 1 : 1 - p.low / p.entryPrice) * 100
+    });
+    if (reason === "liquidation") liquidations++;
+    pos2 = void 0;
+  };
+  const open2 = (t, side2, signalIndex, reference, fill, order, rawPrice) => {
+    const fee = order === "market" ? taker : maker;
+    const stopDist = [];
+    const sl = risk.stopLossPct !== void 0 ? risk.stopLossPct / 100 : void 0;
+    const atrV = risk.atrStop ? cfg.atr?.[signalIndex] : void 0;
+    const atrDist = atrV !== void 0 && risk.atrStop ? risk.atrStop.multiplier * atrV / reference : void 0;
+    if (sl !== void 0) stopDist.push(sl);
+    if (atrDist !== void 0) stopDist.push(atrDist);
+    const nearest = stopDist.length ? Math.min(...stopDist) : void 0;
+    const maxNotional = cash * L / (1 + L * fee);
+    const notional = risk.riskPerTradePct !== void 0 && nearest !== void 0 && nearest > 0 ? Math.min(maxNotional, cash * risk.riskPerTradePct / 100 / nearest) : maxNotional;
+    if (notional <= 0) return;
+    const qty = notional / fill;
+    const entryFee = notional * fee;
+    cash -= entryFee;
+    totalFees += entryFee;
+    const stopLoss = sl !== void 0 ? fill * (1 - side2 * sl) : void 0;
+    const atrStop = atrV !== void 0 && risk.atrStop ? fill - side2 * risk.atrStop.multiplier * atrV : void 0;
+    const levels = [stopLoss, atrStop].filter((x) => x !== void 0);
+    const initialStop = levels.length ? side2 === 1 ? Math.max(...levels) : Math.min(...levels) : void 0;
+    pos2 = {
+      side: side2,
+      signalIndex,
+      entryIndex: t,
+      entryPrice: fill,
+      entryOrder: order,
+      qty,
+      notional,
+      margin: notional / L,
+      fees: entryFee,
+      funding: 0,
+      slippage: qty * Math.abs(fill - rawPrice),
+      stopLoss,
+      atrStop,
+      takeProfit: risk.takeProfitPct !== void 0 ? fill * (1 + side2 * risk.takeProfitPct / 100) : void 0,
+      extreme: fill,
+      low: fill,
+      high: fill,
+      initialRisk: initialStop !== void 0 ? qty * Math.abs(fill - initialStop) : void 0,
+      equityAtEntry: cash + entryFee
+    };
+  };
+  const stopLevel = (p) => {
+    const cands = [];
+    if (p.stopLoss !== void 0) cands.push({ price: p.stopLoss, reason: "stop" });
+    if (p.atrStop !== void 0) cands.push({ price: p.atrStop, reason: "atr-stop" });
+    if (risk.trailingStopPct !== void 0) cands.push({ price: p.extreme * (1 - p.side * risk.trailingStopPct / 100), reason: "trail" });
+    if (!cands.length) return void 0;
+    return cands.reduce((a, b) => p.side === 1 ? b.price > a.price ? b : a : b.price < a.price ? b : a);
+  };
+  const liqPrice = (p) => p.side === 1 ? (p.qty * p.entryPrice - p.margin + p.funding) / (p.qty * (1 - mm)) : (p.margin + p.qty * p.entryPrice - p.funding) / (p.qty * (1 + mm));
+  for (let t = start; t < end; t++) {
+    const bar = bars[t];
+    const prior = pos2 !== void 0;
+    if (pending?.kind === "exit" && pos2) close(t, bar.open, pending.reason, "market");
+    else if (pending?.kind === "entry" && !pos2) {
+      const { side: side2, signalIndex, reference } = pending;
+      if (!limitEntry) open2(t, side2, signalIndex, reference, bar.open * (1 + side2 * slip), "market", bar.open);
+      else {
+        const limit = reference * (1 - side2 * limitOff);
+        const touched = side2 === 1 ? bar.low <= limit : bar.high >= limit;
+        if (touched) {
+          const fill = side2 === 1 ? Math.min(bar.open, limit) : Math.max(bar.open, limit);
+          open2(t, side2, signalIndex, reference, fill, "limit", fill);
+        } else unfilled++;
+      }
+    }
+    pending = void 0;
+    if (pos2) {
+      const p = pos2;
+      const s = stopLevel(p);
+      const liq = cfg.liquidation && L > 1 ? liqPrice(p) : void 0;
+      const beyond = (price, level) => p.side === 1 ? price <= level : price >= level;
+      const reached = (level) => p.side === 1 ? bar.low <= level : bar.high >= level;
+      const tpReached = (level) => p.side === 1 ? bar.high >= level : bar.low <= level;
+      if (prior && liq !== void 0 && beyond(bar.open, liq)) close(t, bar.open, "liquidation", "market");
+      else if (prior && s && beyond(bar.open, s.price)) close(t, bar.open, s.reason, "market");
+      else if (prior && p.takeProfit !== void 0 && tpReached(p.takeProfit) && (p.side === 1 ? bar.open >= p.takeProfit : bar.open <= p.takeProfit))
+        close(t, bar.open, "target", "limit");
+      else if (liq !== void 0 && reached(liq) && (!s || beyond(s.price, liq))) close(t, liq, "liquidation", "market");
+      else if (s && reached(s.price)) close(t, s.price, s.reason, "market");
+      else if (p.takeProfit !== void 0 && tpReached(p.takeProfit)) close(t, p.takeProfit, "target", "limit");
+    }
+    if (pos2) {
+      pos2.low = Math.min(pos2.low, bar.low);
+      pos2.high = Math.max(pos2.high, bar.high);
+      pos2.extreme = pos2.side === 1 ? Math.max(pos2.extreme, bar.high) : Math.min(pos2.extreme, bar.low);
+    }
+    const t0 = barTime(bar);
+    while (fundIdx < funding.length && funding[fundIdx].time < t0) fundIdx++;
+    while (fundIdx < funding.length && funding[fundIdx].time < t0 + barMs) {
+      if (pos2) {
+        const pay = pos2.side * funding[fundIdx].rate * pos2.qty * bar.close;
+        pos2.funding += pay;
+        cash -= pay;
+        totalFunding += pay;
+      }
+      fundIdx++;
+    }
+    if (t === end - 1 && pos2) close(t, bar.close, "end", "market");
+    const eq = pos2 ? cash + pos2.side * pos2.qty * (bar.close - pos2.entryPrice) : cash;
+    const prev = equity.length ? equity[equity.length - 1].equity : cfg.capital;
+    equity.push({ date: bar.date, equity: eq, exposure: pos2 && eq > 0 ? pos2.side * pos2.qty * bar.close / eq : 0 });
+    returns.push(prev > 0 ? eq / prev - 1 : 0);
+    peakEquity = Math.max(peakEquity, eq);
+    if (!breaker && risk.maxDrawdownPct !== void 0 && peakEquity > 0 && (peakEquity - eq) / peakEquity >= risk.maxDrawdownPct / 100) {
+      breaker = true;
+      breakerAt = bar.date;
+    }
+    if (t >= end - 1) continue;
+    if (pos2) {
+      const held = t - pos2.entryIndex + 1;
+      if (pos2.side === 1 && signals.sell[t]) pending = { kind: "exit", reason: "signal" };
+      else if (pos2.side === -1 && signals.cover[t]) pending = { kind: "exit", reason: "signal" };
+      else if (risk.timeStopBars !== void 0 && held >= risk.timeStopBars) pending = { kind: "exit", reason: "time" };
+    } else if (!breaker && eq > 0) {
+      if (signals.buy[t]) pending = { kind: "entry", side: 1, signalIndex: t, reference: bar.close };
+      else if (cfg.allowShort && signals.short[t]) pending = { kind: "entry", side: -1, signalIndex: t, reference: bar.close };
+    }
+  }
+  return { trades: trades2, equity, returns, start, end, fees: totalFees, funding: totalFunding, liquidations, breakerTrippedAt: breakerAt, unfilledLimits: unfilled };
+}
+
+// src/backtest/validation.ts
+var MAX_RUNS = 500;
+function prepareVariant(bt, def2, params = {}) {
+  let d = def2;
+  for (const [k, v] of Object.entries(params)) d = withParam(d, k, v);
+  const signals = compileStrategy(d, bt.bars, bt.interval);
+  const atrRule = { ...d.risk ?? {}, ...bt.riskOverride ?? {} }.atrStop;
+  const atr2 = atrRule ? computeIndicator("atr", bt.bars, { period: atrRule.period }).values.map((r2) => r2?.value) : void 0;
+  return { params, def: d, signals, atr: atr2 };
+}
+function runVariant(bt, v, range = {}, costs) {
+  return simulate(bt.bars, v.signals, {
+    ...bt.base,
+    costs: costs ?? bt.base.costs,
+    risk: { ...v.def.risk ?? {}, ...bt.riskOverride ?? {} },
+    execution: { ...v.def.execution ?? {}, ...bt.executionOverride ?? {} },
+    atr: v.atr,
+    ...range
+  });
+}
+var OBJECTIVES = ["sharpe", "sortino", "cagr", "calmar", "profit-factor"];
+function objectiveOf(sim, objective, ppy) {
+  const r2 = sim.returns;
+  const finite4 = (x) => Number.isFinite(x) ? x : Number.NEGATIVE_INFINITY;
+  if (objective === "profit-factor") {
+    const gp = sim.trades.filter((t) => t.pnl > 0).reduce((s, t) => s + t.pnl, 0);
+    const gl = -sim.trades.filter((t) => t.pnl < 0).reduce((s, t) => s + t.pnl, 0);
+    return gl > 0 ? gp / gl : gp > 0 ? 1e6 : Number.NEGATIVE_INFINITY;
+  }
+  return finite4(objectiveOfReturns(r2, objective, ppy));
+}
+function objectiveOfReturns(r2, objective, ppy) {
+  if (r2.length < 2) return Number.NEGATIVE_INFINITY;
+  switch (objective) {
+    case "sortino":
+      return sortino(r2, ppy);
+    case "cagr":
+      return cagr(equityCurve(r2), ppy);
+    case "calmar":
+      return calmar(equityCurve(r2), ppy);
+    default:
+      return sharpe(r2, ppy);
+  }
+}
+function parseGrid(spec) {
+  return spec.split(";").map((s) => s.trim()).filter(Boolean).map((part) => {
+    const eq = part.indexOf("=");
+    if (eq < 1) throw new Error(`grid "${part}": write alias.param=v1,v2 or alias.param=from:to:step`);
+    const path = part.slice(0, eq).trim();
+    const rhs = part.slice(eq + 1).trim();
+    let values;
+    const range = /^(-?[\d.]+):(-?[\d.]+):([\d.]+)$/.exec(rhs);
+    if (range) {
+      const [a, b, st] = [Number(range[1]), Number(range[2]), Number(range[3])];
+      if (!(st > 0) || b < a) throw new Error(`grid "${part}": from \u2264 to and step > 0`);
+      values = [];
+      for (let v = a; v <= b + st * 1e-9; v += st) values.push(Number(v.toFixed(10)));
+    } else values = rhs.split(",").map((v) => Number(v.trim()));
+    if (!values.length || values.some((v) => !Number.isFinite(v))) throw new Error(`grid "${part}": values must be numbers`);
+    if (!/^[a-zA-Z]+\.[a-zA-Z]+$/.test(path)) throw new Error(`grid "${part}": the parameter is alias.param or risk.key`);
+    return { path, values: [...new Set(values)] };
+  });
+}
+function expandGrid(dims) {
+  const total = dims.reduce((n, d) => n * d.values.length, 1);
+  if (total > MAX_RUNS) throw new Error(`the grid has ${total} combinations \u2014 at most ${MAX_RUNS} runs; narrow a dimension`);
+  let out4 = [{}];
+  for (const d of dims) out4 = out4.flatMap((c) => d.values.map((v) => ({ ...c, [d.path]: v })));
+  return out4;
+}
+function defaultGrid(def2) {
+  return tunableParams(def2).slice(0, 3).map(({ path, value, integer }) => ({
+    path,
+    values: [...new Set([0.75, 1, 1.25].map((f3) => integer ? Math.max(2, Math.round(value * f3)) : Number((value * f3).toFixed(4))))]
+  }));
+}
+function sweep(bt, def2, combos, objective) {
+  const variants = combos.map((c) => prepareVariant(bt, def2, c));
+  const sims = variants.map((v) => runVariant(bt, v));
+  const rows = sims.map((s, i) => ({
+    params: combos[i],
+    sharpe: sharpe(s.returns, bt.ppy),
+    cagr: cagr(equityCurve(s.returns), bt.ppy),
+    maxDrawdown: drawdowns(equityCurve(s.returns)).maxDrawdown,
+    trades: s.trades.length,
+    objective: objectiveOf(s, objective, bt.ppy)
+  }));
+  return { variants, sims, rows };
+}
+function walkForward(bt, def2, combos, opts) {
+  const objective = opts.objective ?? "sharpe";
+  const n = bt.bars.length;
+  if (opts.train < 20 || opts.test < 5) throw new Error("walk-forward needs a training window \u2265 20 bars and a test window \u2265 5");
+  if (opts.train + opts.test > n)
+    throw new Error(`walk-forward needs ${opts.train + opts.test} bars (train ${opts.train} + test ${opts.test}); the series has ${n}`);
+  const variants = (combos.length ? combos : [{}]).map((c) => prepareVariant(bt, def2, c));
+  const windows = [];
+  const oosReturns = [];
+  const oosDates = [];
+  const oosTrades = [];
+  for (let trainEnd = opts.train; trainEnd + Math.min(opts.test, 5) <= n; trainEnd += opts.test) {
+    const trainStart = opts.anchored ? 0 : trainEnd - opts.train;
+    const testEnd = Math.min(n, trainEnd + opts.test);
+    let best = 0;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    let bestSim;
+    variants.forEach((v, i) => {
+      const s = runVariant(bt, v, { start: trainStart, end: trainEnd });
+      const score = objectiveOf(s, objective, bt.ppy);
+      if (score > bestScore || !bestSim) {
+        best = i;
+        bestScore = score;
+        bestSim = s;
+      }
+    });
+    const test = runVariant(bt, variants[best], { start: trainEnd, end: testEnd });
+    oosReturns.push(...test.returns);
+    oosDates.push(...test.equity.map((e) => e.date));
+    oosTrades.push(...test.trades);
+    windows.push({
+      trainFrom: bt.bars[trainStart].date,
+      trainTo: bt.bars[trainEnd - 1].date,
+      testFrom: bt.bars[trainEnd].date,
+      testTo: bt.bars[testEnd - 1].date,
+      chosen: variants[best].params,
+      isObjective: bestScore,
+      isSharpe: sharpe(bestSim.returns, bt.ppy),
+      oosSharpe: sharpe(test.returns, bt.ppy),
+      oosReturnPct: (test.equity[test.equity.length - 1].equity / bt.base.capital - 1) * 100,
+      oosTrades: test.trades.length
+    });
+  }
+  const isSharpes = windows.map((w) => w.isSharpe).filter(Number.isFinite);
+  const isMean = isSharpes.length ? mean(isSharpes) : Number.NaN;
+  const oos = sharpe(oosReturns, bt.ppy);
+  return {
+    windows,
+    oosReturns,
+    oosDates,
+    oosTrades,
+    isSharpeMean: isMean,
+    oosSharpe: oos,
+    efficiency: isMean > 0 && Number.isFinite(oos) ? oos / isMean : Number.NaN,
+    objective,
+    anchored: !!opts.anchored
+  };
+}
+function combinations(n, k) {
+  const out4 = [];
+  const cur = [];
+  const rec = (from) => {
+    if (cur.length === k) {
+      out4.push([...cur]);
+      return;
+    }
+    for (let i = from; i <= n - (k - cur.length); i++) {
+      cur.push(i);
+      rec(i + 1);
+      cur.pop();
+    }
+  };
+  rec(0);
+  return out4;
+}
+function cpcv(returnsByVariant, labels, ppy, opts = {}) {
+  const T = returnsByVariant[0]?.length ?? 0;
+  const N = opts.groups ?? 6;
+  const k = opts.testGroups ?? 2;
+  if (k < 1 || k >= N) throw new Error("CPCV needs 1 \u2264 test groups < groups");
+  if (T < N * 10) throw new Error(`CPCV with ${N} groups needs at least ${N * 10} bars; the series has ${T}`);
+  const purge = opts.purge ?? 5;
+  const embargo = opts.embargo ?? Math.ceil(T * 0.01);
+  const bounds = Array.from({ length: N }, (_, g) => [Math.floor(g * T / N), Math.floor((g + 1) * T / N)]);
+  const objective = opts.objective === "profit-factor" ? "sharpe" : opts.objective ?? "sharpe";
+  const splits = combinations(N, k);
+  const chosenBySplit = [];
+  const chosenCounts = {};
+  for (const test of splits) {
+    const excluded = new Uint8Array(T);
+    for (const g of test) {
+      const [a, b] = bounds[g];
+      for (let i = Math.max(0, a - purge); i < Math.min(T, b + embargo); i++) excluded[i] = 1;
+    }
+    const trainIdx = [];
+    for (let i = 0; i < T; i++) if (!excluded[i]) trainIdx.push(i);
+    let best = 0;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    returnsByVariant.forEach((r2, v) => {
+      const s = objectiveOfReturns(
+        trainIdx.map((i) => r2[i]),
+        objective,
+        ppy
+      );
+      if (s > bestScore) {
+        bestScore = s;
+        best = v;
+      }
+    });
+    chosenBySplit.push(best);
+    const label2 = labels[best] ?? String(best);
+    chosenCounts[label2] = (chosenCounts[label2] ?? 0) + 1;
+  }
+  const nPaths = combinations(N - 1, k - 1).length;
+  const paths = Array.from({ length: nPaths }, () => []);
+  for (let g = 0; g < N; g++) {
+    const using = splits.map((s, i) => s.includes(g) ? i : -1).filter((i) => i >= 0);
+    using.forEach((splitIdx, p) => {
+      const [a, b] = bounds[g];
+      const r2 = returnsByVariant[chosenBySplit[splitIdx]];
+      for (let i = a; i < b; i++) paths[p].push(r2[i]);
+    });
+  }
+  const pathSharpes = paths.map((p) => sharpe(p, ppy)).map((x) => Number.isFinite(x) ? x : 0);
+  return {
+    groups: N,
+    testGroups: k,
+    purge,
+    embargo,
+    splits: splits.length,
+    pathSharpes,
+    meanPathSharpe: mean(pathSharpes),
+    minPathSharpe: Math.min(...pathSharpes),
+    positivePathsPct: pathSharpes.filter((s) => s > 0).length / pathSharpes.length * 100,
+    chosenCounts
+  };
+}
+function pbo(returnsByVariant, opts = {}) {
+  const N = returnsByVariant.length;
+  const T = returnsByVariant[0]?.length ?? 0;
+  if (N < 2) return void 0;
+  const distinct = new Set(returnsByVariant.map((r2) => r2.join(","))).size;
+  if (distinct < 2) return void 0;
+  let S = opts.blocks ?? 16;
+  S = Math.min(S, Math.floor(T / 10));
+  if (S % 2) S--;
+  if (S < 4) return void 0;
+  const sums = returnsByVariant.map(
+    (r2) => Array.from({ length: S }, (_, b) => {
+      const a = Math.floor(b * T / S);
+      const e = Math.floor((b + 1) * T / S);
+      let s = 0;
+      let q = 0;
+      for (let i = a; i < e; i++) {
+        s += r2[i];
+        q += r2[i] * r2[i];
+      }
+      return { s, q, n: e - a };
+    })
+  );
+  const sr = (v, blocks) => {
+    let s = 0;
+    let q = 0;
+    let n = 0;
+    for (const b of blocks) {
+      const x = sums[v][b];
+      s += x.s;
+      q += x.q;
+      n += x.n;
+    }
+    const m = s / n;
+    const vr = (q - n * m * m) / (n - 1);
+    return vr > 0 ? m / Math.sqrt(vr) : 0;
+  };
+  const logits = [];
+  for (const is of combinations(S, S / 2)) {
+    const oos = Array.from({ length: S }, (_, b) => b).filter((b) => !is.includes(b));
+    let best = 0;
+    let bestSr = Number.NEGATIVE_INFINITY;
+    for (let v = 0; v < N; v++) {
+      const x = sr(v, is);
+      if (x > bestSr) {
+        bestSr = x;
+        best = v;
+      }
+    }
+    const oosSr = Array.from({ length: N }, (_, v) => sr(v, oos));
+    const target = oosSr[best];
+    const below = oosSr.filter((x) => x < target).length;
+    const equal = oosSr.filter((x) => x === target).length;
+    const omega2 = (below + (equal + 1) / 2) / (N + 1);
+    logits.push(Math.log(omega2 / (1 - omega2)));
+  }
+  const overfit = logits.filter((l) => l < -1e-12).length + 0.5 * logits.filter((l) => Math.abs(l) <= 1e-12).length;
+  return { pbo: overfit / logits.length, blocks: S, splits: logits.length, variants: N, medianLogit: quantile(logits, 0.5) };
+}
+function monteCarlo(tradeReturnsPct, paths = 5e3, seed = 42) {
+  const n = tradeReturnsPct.length;
+  if (!n) return void 0;
+  const rnd = seededRandom(seed);
+  const finals = [];
+  const dds = [];
+  for (let p = 0; p < paths; p++) {
+    let eq = 1;
+    let peak = 1;
+    let dd = 0;
+    for (let i = 0; i < n; i++) {
+      eq *= Math.max(0, 1 + tradeReturnsPct[Math.floor(rnd() * n)] / 100);
+      peak = Math.max(peak, eq);
+      dd = Math.min(dd, peak > 0 ? eq / peak - 1 : -1);
+    }
+    finals.push((eq - 1) * 100);
+    dds.push(dd * 100);
+  }
+  const pct9 = (xs) => ({ p5: quantile(xs, 0.05), p25: quantile(xs, 0.25), p50: quantile(xs, 0.5), p75: quantile(xs, 0.75), p95: quantile(xs, 0.95) });
+  return {
+    paths,
+    seed,
+    trades: n,
+    finalReturnPct: pct9(finals),
+    maxDrawdownPct: pct9(dds),
+    lossProbabilityPct: finals.filter((f3) => f3 < 0).length / paths * 100,
+    ruinProbabilityPct: dds.filter((d) => d <= -50).length / paths * 100
+  };
+}
+function stressCosts(c, factor = 2) {
+  return { makerPct: c.makerPct * factor, takerPct: c.takerPct * factor, slippagePct: c.slippagePct * factor };
+}
+
+// src/backtest/run.ts
+var MAX_PORTFOLIO_SYMBOLS = 12;
+function defaultCosts(crypto, perp) {
+  if (crypto && perp) return { makerPct: 0.02, takerPct: 0.05, slippagePct: 0.05 };
+  if (crypto) return { makerPct: 0.1, takerPct: 0.1, slippagePct: 0.05 };
+  return { makerPct: 0.1, takerPct: 0.1, slippagePct: 0.05 };
+}
+async function loadMarket(symbol, opts, def2) {
+  const { resolved, series } = await loadBars(symbol, { from: opts.from, to: opts.to, interval: opts.interval });
+  const inst = resolved.instrument;
+  const crypto = inst.market === "crypto";
+  const notes = [...series.notes];
+  let leverage = opts.leverage ?? def2?.leverage ?? 1;
+  if (!crypto && leverage > 1) {
+    notes.push(`leverage ${leverage}\xD7 ignored: listed securities are backtested as a cash account (1\xD7)`);
+    leverage = 1;
+  }
+  const perp = crypto && (leverage > 1 || !!opts.perp || !!def2?.short);
+  const costs = { ...defaultCosts(crypto, perp), ...opts.costs ?? {} };
+  let funding;
+  if (perp) {
+    try {
+      funding = await fundingHistory(inst.symbol, opts.from, opts.to);
+      notes.push(`funding: ${funding.events.length} settlements of the ${funding.pair} perpetual (Binance USDT-M history)`);
+    } catch (e) {
+      notes.push(`funding history unavailable (${e.message}) \u2014 the perpetual is simulated without funding`);
+    }
+  }
+  let benchmark;
+  const benchSym = opts.benchmark === null ? void 0 : opts.benchmark ?? (crypto ? inst.symbol.startsWith("BTC") ? void 0 : "BTCUSDT" : defaultBenchmark(inst.market, inst.mic));
+  if (benchSym) {
+    try {
+      benchmark = { symbol: benchSym, series: (await loadBars(benchSym, { from: opts.from, to: opts.to, interval: opts.interval })).series };
+    } catch (e) {
+      notes.push(`benchmark ${benchSym} unavailable (${e.message}) \u2014 no residual alpha`);
+    }
+  }
+  if (series.bars.length < 50) throw new Error(`only ${series.bars.length} bars for ${inst.symbol} in the window \u2014 a backtest needs at least 50`);
+  return {
+    symbol: inst.symbol,
+    instrument: inst,
+    series,
+    bars: series.bars,
+    interval: opts.interval,
+    crypto,
+    ppy: periodsPerYear(series.bars, crypto),
+    capital: opts.capital,
+    costs,
+    leverage,
+    perp,
+    funding,
+    benchmark,
+    universe: opts.universe,
+    notes
+  };
+}
+function backtesterFor(m, def2, overrides2 = {}) {
+  return {
+    bars: m.bars,
+    interval: m.interval,
+    ppy: m.ppy,
+    base: {
+      capital: m.capital,
+      costs: m.costs,
+      leverage: m.leverage,
+      allowShort: !!def2.short,
+      liquidation: m.perp && m.leverage > 1,
+      funding: m.funding?.events
+    },
+    riskOverride: overrides2.risk,
+    executionOverride: overrides2.execution
+  };
+}
+var PointList = class {
+  constructor(prefix) {
+    this.prefix = prefix;
+  }
+  prefix;
+  points = [];
+  skipped = [];
+  add(key, label2, value, unit, formula) {
+    if (value === void 0 || typeof value === "number" && !Number.isFinite(value)) {
+      this.skipped.push(`${label2}: undefined for this run`);
+      return;
+    }
+    this.points.push({ key: `${this.prefix}.${key}`, label: label2, value: typeof value === "number" ? Number(value.toPrecision(10)) : value, unit, formula });
+  }
+};
+var pct5 = (x) => x * 100;
+var costText = (c) => `maker ${c.makerPct} %, taker ${c.takerPct} %, slippage ${c.slippagePct} % per side`;
+var FILLS = "signals on closed bars, filled at the next open; stops gap to the open; stop before target inside a bar";
+function provenanceOf(m) {
+  return { ...m.series.provenance, asOf: m.bars[m.bars.length - 1].date };
+}
+function performancePoints(P, s, label2, ccy, basis) {
+  P.add("cagr", `${label2} CAGR`, pct5(s.cagr), "%", `(final / initial)^(1 / years) \u2212 1 of the ${basis}`);
+  P.add("totalReturn", `${label2} total return`, pct5(s.totalReturn), "%", `final equity / initial \u2212 1 (${basis})`);
+  P.add("finalEquity", `${label2} final equity`, s.finalEquity, ccy, `mark-to-market equity at the last close (${basis})`);
+  P.add("volatility", `${label2} annualised volatility`, pct5(s.volatility), "%", "stdev of per-bar returns \xD7 \u221A(periods per year)");
+  P.add("sharpe", `${label2} Sharpe ratio`, s.sharpe, "ratio", "mean / stdev of per-bar returns \xD7 \u221A(periods per year), risk-free 0");
+  P.add("sortino", `${label2} Sortino ratio`, s.sortino, "ratio", "mean / downside deviation \xD7 \u221A(periods per year), target 0");
+  P.add("maxDrawdown", `${label2} maximum drawdown`, pct5(s.maxDrawdown), "%", "worst peak-to-trough of the equity curve");
+  P.add("calmar", `${label2} Calmar ratio`, s.calmar, "ratio", "CAGR / |maximum drawdown|");
+  P.add("ulcer", `${label2} Ulcer index`, s.ulcer, "index", "root mean square of percentage drawdowns (Martin)");
+  P.add("omega", `${label2} Omega ratio`, s.omega, "ratio", "sum of per-bar gains over sum of per-bar losses, threshold 0");
+  P.add("var95", `${label2} 1-bar historical VaR 95 %`, pct5(s.var95), "%", "\u22125th percentile of per-bar returns");
+  P.add("cvar95", `${label2} 1-bar expected shortfall 95 %`, pct5(s.cvar95), "%", "\u2212mean of per-bar returns at or below the 5th percentile");
+  P.add(
+    "psr",
+    `${label2} probabilistic Sharpe ratio`,
+    s.probabilisticSharpe,
+    "ratio",
+    "P(true Sharpe > 0) given T, skewness and kurtosis (Bailey & L\xF3pez de Prado 2012)"
+  );
+  P.add("longestUnderwater", `${label2} longest stretch under a previous peak`, s.longestUnderwater, "bars", "bars between a peak and its recovery, longest");
+}
+function tradePoints(P, t, label2, ccy) {
+  P.add("trades", `${label2} closed trades`, t.trades, "count", "positions opened and closed in the window (open ones closed at the last bar)");
+  P.add("winRate", `${label2} win rate`, t.winRate, "%", "trades with a positive net P&L / trades");
+  P.add(
+    "profitFactor",
+    `${label2} profit factor`,
+    Number.isFinite(t.profitFactor) ? t.profitFactor : t.trades ? "no losing trade" : void 0,
+    Number.isFinite(t.profitFactor) ? "ratio" : void 0,
+    "gross profit / gross loss"
+  );
+  P.add("expectancy", `${label2} expectancy per trade`, t.expectancy, ccy, "net profit / trades");
+  P.add("expectancyR", `${label2} expectancy in R`, t.expectancyR, "R", "mean of net P&L / money at risk to the initial stop");
+  P.add("avgHoldBars", `${label2} average holding`, t.avgHoldBars, "bars", "mean of exit bar \u2212 entry bar");
+  P.add("exposure", `${label2} exposure`, t.exposurePct, "%", "bars with a position open at the close / bars");
+  P.add("avgMae", `${label2} average adverse excursion`, t.avgMaePct, "%", "mean worst move against the entry while held (MAE)");
+  P.add("avgMfe", `${label2} average favourable excursion`, t.avgMfePct, "%", "mean best move for the entry while held (MFE)");
+  P.add("fees", `${label2} fees paid`, t.fees, ccy, "\u03A3 fees: taker on market orders, maker on limits");
+  P.add("funding", `${label2} funding paid`, t.funding, ccy, "\u03A3 rate \xD7 notional at each 8 h settlement held (perpetuals only; negative = received)");
+  P.add("netProfit", `${label2} net profit`, t.netProfit, ccy, "\u03A3 trade P&L net of fees and funding");
+  P.add("largestWinShare", `${label2} largest trade / net profit`, t.largestWinSharePct, "%", "best trade's net P&L / total net P&L");
+  P.add("maxConsecutiveLosses", `${label2} longest losing streak`, t.maxConsecutiveLosses, "count", "most consecutive losing trades");
+}
+function strategyBacktest(m, def2, overrides2 = {}) {
+  const bt = backtesterFor(m, def2, overrides2);
+  const v = prepareVariant(bt, def2);
+  const sim = runVariant(bt, v);
+  const summary = summarize(sim, m.ppy, m.capital);
+  const stats = tradeStats(sim);
+  const sCosts = stressCosts(m.costs, 2);
+  const sSim = runVariant(bt, v, {}, sCosts);
+  const stressed = { summary: summarize(sSim, m.ppy, m.capital), stats: tradeStats(sSim), costs: sCosts };
+  const bh = buyAndHold(m.bars, m.costs);
+  const buyHold = { summary: performanceSummary(bh.returns, m.ppy), totalReturn: bh.totalReturn };
+  const dates = sim.equity.map((e) => e.date);
+  const alpha = m.benchmark ? residualAlpha(dates, sim.returns, m.benchmark.series.bars, m.ppy) : void 0;
+  const bb = m.benchmark?.series.bars;
+  const benchTotalReturn = bb?.length ? bb[bb.length - 1].close / bb[0].close - 1 : void 0;
+  const ccy = m.instrument.currency;
+  const name = def2.name;
+  const P = new PointList(`${m.symbol}.bt.${name}`);
+  const basis = `daily mark-to-market equity of ${name} on ${m.symbol}, ${FILLS}, ${costText(m.costs)}`;
+  P.add(
+    "bars",
+    `${name} on ${m.symbol}: bars simulated`,
+    m.bars.length,
+    "count",
+    `${m.interval} bars from ${m.bars[0].date} to ${m.bars[m.bars.length - 1].date}`
+  );
+  P.add("years", `${name} on ${m.symbol}: years simulated`, summary.years, "years", "bars / periods per year");
+  performancePoints(P, summary, `${name} on ${m.symbol}`, ccy, basis);
+  tradePoints(P, stats, `${name} on ${m.symbol}`, ccy);
+  P.add("liquidations", `${name} on ${m.symbol}: liquidations`, sim.liquidations, "count", "positions closed at the maintenance margin (leverage > 1)");
+  P.add(
+    "bh.totalReturn",
+    `Buy-and-hold ${m.symbol} total return`,
+    pct5(buyHold.totalReturn),
+    "%",
+    "bought at the first open, sold at the last close, taker fee and slippage both ways"
+  );
+  P.add("bh.cagr", `Buy-and-hold ${m.symbol} CAGR`, pct5(buyHold.summary.cagr), "%", "(final / initial)^(1 / years) \u2212 1");
+  P.add("bh.sharpe", `Buy-and-hold ${m.symbol} Sharpe ratio`, buyHold.summary.sharpe, "ratio", "annualised per-bar Sharpe, risk-free 0");
+  P.add("bh.maxDrawdown", `Buy-and-hold ${m.symbol} maximum drawdown`, pct5(buyHold.summary.maxDrawdown), "%", "worst peak-to-trough");
+  P.add(
+    "excessReturn",
+    `${name} total return minus buy-and-hold`,
+    pct5(summary.totalReturn - buyHold.totalReturn),
+    "pp",
+    "strategy total return \u2212 buy-and-hold total return"
+  );
+  P.add("x2.totalReturn", `${name} total return at \xD72 costs`, pct5(stressed.summary.totalReturn), "%", `same signals, ${costText(sCosts)}`);
+  P.add("x2.netProfit", `${name} net profit at \xD72 costs`, stressed.stats.netProfit, ccy, `\u03A3 trade P&L, ${costText(sCosts)}`);
+  P.add("x2.sharpe", `${name} Sharpe at \xD72 costs`, stressed.summary.sharpe, "ratio", "annualised per-bar Sharpe with doubled fees and slippage");
+  const datasets = [
+    {
+      kind: "backtest",
+      title: `${name} on ${m.symbol} \u2014 backtest (${m.interval}, ${m.bars[0].date} \u2192 ${m.bars[m.bars.length - 1].date})`,
+      subject: m.symbol,
+      points: P.points,
+      provenance: provenanceOf(m),
+      notes: [
+        ...m.notes,
+        `fills: ${FILLS}`,
+        `costs: ${costText(m.costs)}`,
+        ...sim.breakerTrippedAt ? [`circuit breaker tripped on ${sim.breakerTrippedAt}`] : [],
+        ...P.skipped
+      ]
+    }
+  ];
+  if (m.benchmark) {
+    const B = new PointList(`${m.symbol}.bt.${name}.vs.${m.benchmark.symbol}`);
+    B.add(
+      "benchTotalReturn",
+      `${m.benchmark.symbol} total return over the window`,
+      benchTotalReturn === void 0 ? void 0 : pct5(benchTotalReturn),
+      "%",
+      "last close / first close \u2212 1"
+    );
+    if (alpha) {
+      B.add(
+        "alpha",
+        `${name} residual alpha vs ${m.benchmark.symbol} (annualised)`,
+        alpha.alphaPct,
+        "%",
+        "OLS intercept of per-bar strategy returns on benchmark returns \xD7 periods per year"
+      );
+      B.add("alphaT", `${name} alpha t-stat (Newey\u2013West)`, alpha.alphaT, "t", `intercept / HAC standard error, ${alpha.hacLags} lags, ${alpha.n} aligned bars`);
+      B.add("beta", `${name} beta to ${m.benchmark.symbol}`, alpha.beta, "ratio", "OLS slope of strategy returns on benchmark returns");
+      B.add("r2", `${name} R\xB2 against ${m.benchmark.symbol}`, alpha.r2, "ratio", "share of the strategy's variance the benchmark explains");
+    }
+    const bp = m.benchmark.series.provenance;
+    datasets.push({
+      kind: "backtest-relative",
+      title: `${name} on ${m.symbol} against ${m.benchmark.symbol}`,
+      subject: m.symbol,
+      points: B.points,
+      provenance: {
+        ...m.series.provenance,
+        source: `${m.series.provenance.source}+${bp.source}`,
+        official: m.series.provenance.official && bp.official,
+        fetchedAt: [m.series.provenance.fetchedAt, bp.fetchedAt].sort()[0],
+        asOf: m.bars[m.bars.length - 1].date
+      },
+      notes: [...m.benchmark.series.notes, ...B.skipped, ...alpha ? [] : ["fewer than 30 aligned bars: no regression"]]
+    });
+  }
+  return { market: m, def: def2, sim, summary, stats, stressed, buyHold, alpha, benchTotalReturn, params: v.signals.params, datasets };
+}
+function sweepReport(m, def2, dims, objective, opts = {}) {
+  const bt = backtesterFor(m, def2, opts.overrides);
+  const combos = dims.length ? expandGrid(dims) : [{}];
+  const { sims, rows } = sweep(bt, def2, combos, objective);
+  const notes = [];
+  let bi = 0;
+  rows.forEach((r2, i) => {
+    if (r2.objective > rows[bi].objective) bi = i;
+  });
+  const sharpes = sims.map((s) => periodSharpe(s.returns));
+  const nTrials = combos.length + (opts.trials ?? 0);
+  const dsr = deflatedSharpeOf(sims[bi].returns, sharpes, nTrials);
+  const returns = sims.map((s) => s.returns);
+  const labels = combos.map(
+    (c) => Object.entries(c).map(([k, v]) => `${k}=${v}`).join(",") || "as written"
+  );
+  let pboR;
+  let cpcvR;
+  if (combos.length >= 2) {
+    pboR = pbo(returns);
+    if (!pboR) notes.push("PBO not computed: it needs at least 40 bars and variants whose returns differ");
+    try {
+      cpcvR = cpcv(returns, labels, m.ppy, { groups: opts.groups, testGroups: opts.testGroups, purge: opts.purge, embargo: opts.embargo, objective });
+    } catch (e) {
+      notes.push(`CPCV skipped: ${e.message}`);
+    }
+  } else notes.push("a single variant: no PBO or CPCV (give --grid)");
+  const sorted = [...rows.map((r2) => r2.sharpe).filter(Number.isFinite)].sort((a, b) => a - b);
+  const medianSharpe = sorted.length ? sorted[Math.floor(sorted.length / 2)] : Number.NaN;
+  const positiveSharePct = rows.filter((r2) => r2.sharpe > 0).length / rows.length * 100;
+  const P = new PointList(`${m.symbol}.bt.${def2.name}.sweep`);
+  P.add(
+    "variants",
+    `${def2.name} on ${m.symbol}: variants swept`,
+    combos.length,
+    "count",
+    dims.map((d) => `${d.path} \u2208 {${d.values.join(", ")}}`).join(" \xD7 ") || "as written"
+  );
+  P.add("trials", `${def2.name}: trials counted for deflation`, nTrials, "count", "variants swept + --trials declared beforehand");
+  P.add("best", `${def2.name}: best variant by ${objective}`, labels[bi], void 0, `argmax ${objective} over the grid`);
+  P.add("bestSharpe", `${def2.name}: best variant's Sharpe`, rows[bi].sharpe, "ratio", "annualised per-bar Sharpe of the best variant");
+  P.add("medianSharpe", `${def2.name}: median variant Sharpe`, medianSharpe, "ratio", "median annualised Sharpe across the grid (sensitivity)");
+  P.add("positiveShare", `${def2.name}: variants with a positive Sharpe`, positiveSharePct, "%", "variants with Sharpe > 0 / variants");
+  P.add(
+    "dsr",
+    `${def2.name}: deflated Sharpe ratio of the best variant`,
+    dsr,
+    "ratio",
+    `PSR against E[max Sharpe] of ${nTrials} skill-less trials (Bailey & L\xF3pez de Prado 2014)`
+  );
+  if (pboR)
+    P.add(
+      "pbo",
+      `${def2.name}: probability of backtest overfitting`,
+      pboR.pbo,
+      "ratio",
+      `CSCV over ${pboR.blocks} blocks, ${pboR.splits} splits, ${pboR.variants} variants (Bailey et al. 2015)`
+    );
+  if (cpcvR) {
+    P.add(
+      "cpcv.paths",
+      `${def2.name}: CPCV out-of-sample paths`,
+      cpcvR.pathSharpes.length,
+      "count",
+      `N=${cpcvR.groups} groups, k=${cpcvR.testGroups} test groups, purge ${cpcvR.purge}, embargo ${cpcvR.embargo} bars`
+    );
+    P.add("cpcv.meanSharpe", `${def2.name}: CPCV mean path Sharpe`, cpcvR.meanPathSharpe, "ratio", "mean annualised Sharpe of the reassembled OOS paths");
+    P.add("cpcv.minSharpe", `${def2.name}: CPCV worst path Sharpe`, cpcvR.minPathSharpe, "ratio", "minimum annualised Sharpe over the OOS paths");
+    P.add("cpcv.positivePaths", `${def2.name}: CPCV paths with a positive Sharpe`, cpcvR.positivePathsPct, "%", "paths with Sharpe > 0 / paths");
+  }
+  return {
+    dims,
+    rows,
+    best: { params: combos[bi], objective: rows[bi].objective, sharpe: rows[bi].sharpe },
+    dsr,
+    nTrials,
+    pbo: pboR,
+    cpcv: cpcvR,
+    medianSharpe,
+    positiveSharePct,
+    variantSharpes: sharpes,
+    notes,
+    dataset: {
+      kind: "backtest-sweep",
+      title: `${def2.name} on ${m.symbol} \u2014 parameter sweep, deflated Sharpe, PBO and CPCV`,
+      subject: m.symbol,
+      points: P.points,
+      provenance: provenanceOf(m),
+      notes: [...notes, ...P.skipped]
+    }
+  };
+}
+function defaultWindows(m) {
+  const year = m.ppy;
+  let train = Math.round(2 * year);
+  let test = Math.round(year / 2);
+  if (train + test > m.bars.length) {
+    train = Math.floor(m.bars.length * 0.6);
+    test = Math.max(5, Math.floor(m.bars.length * 0.2));
+  }
+  return { train, test };
+}
+function walkForwardReport(m, def2, dims, opts) {
+  const bt = backtesterFor(m, def2, opts.overrides);
+  const w = defaultWindows(m);
+  const combos = dims.length ? expandGrid(dims) : [{}];
+  const wf = walkForward(bt, def2, combos, { train: opts.train ?? w.train, test: opts.test ?? w.test, anchored: opts.anchored, objective: opts.objective });
+  const summary = performanceSummary(wf.oosReturns, m.ppy);
+  const P = new PointList(`${m.symbol}.bt.${def2.name}.wf`);
+  const how = `${wf.anchored ? "anchored" : "rolling"} windows of ${opts.train ?? w.train} train / ${opts.test ?? w.test} test bars, ${combos.length} variant(s) chosen by ${wf.objective}`;
+  P.add("windows", `${def2.name} on ${m.symbol}: walk-forward windows`, wf.windows.length, "count", how);
+  P.add("oosSharpe", `${def2.name}: walk-forward out-of-sample Sharpe`, wf.oosSharpe, "ratio", "annualised Sharpe of the stitched out-of-sample returns");
+  P.add("isSharpe", `${def2.name}: mean in-sample Sharpe of the chosen variants`, wf.isSharpeMean, "ratio", "mean over windows of the training-window Sharpe");
+  P.add(
+    "efficiency",
+    `${def2.name}: walk-forward efficiency`,
+    Number.isFinite(wf.efficiency) ? wf.efficiency * 100 : void 0,
+    "%",
+    "OOS Sharpe / mean IS Sharpe"
+  );
+  P.add("oosCagr", `${def2.name}: out-of-sample CAGR`, pct5(summary.cagr), "%", "CAGR of the stitched out-of-sample equity");
+  P.add("oosMaxDrawdown", `${def2.name}: out-of-sample maximum drawdown`, pct5(summary.maxDrawdown), "%", "worst peak-to-trough of the stitched OOS equity");
+  P.add("oosTrades", `${def2.name}: out-of-sample trades`, wf.oosTrades.length, "count", "trades opened and closed inside the test windows");
+  return {
+    wf,
+    summary,
+    dataset: {
+      kind: "backtest-walkforward",
+      title: `${def2.name} on ${m.symbol} \u2014 walk-forward (${how})`,
+      subject: m.symbol,
+      points: P.points,
+      provenance: provenanceOf(m),
+      notes: P.skipped
+    }
+  };
+}
+function monteCarloDataset(m, def2, sim, paths, seed) {
+  const mc = monteCarlo(
+    sim.trades.map((t) => t.returnPct),
+    paths,
+    seed
+  );
+  const P = new PointList(`${m.symbol}.bt.${def2.name}.mc`);
+  if (mc) {
+    const how = `${mc.paths} bootstrap paths of ${mc.trades} trades (seed ${mc.seed}), trade returns on equity compounded`;
+    P.add("paths", `${def2.name}: Monte Carlo paths`, mc.paths, "count", how);
+    P.add("final.p5", `${def2.name}: total return, 5th percentile`, mc.finalReturnPct.p5, "%", how);
+    P.add("final.p50", `${def2.name}: total return, median`, mc.finalReturnPct.p50, "%", how);
+    P.add("final.p95", `${def2.name}: total return, 95th percentile`, mc.finalReturnPct.p95, "%", how);
+    P.add("maxdd.p50", `${def2.name}: maximum drawdown, median`, mc.maxDrawdownPct.p50, "%", `${how}; drawdown measured trade to trade`);
+    P.add("maxdd.p5", `${def2.name}: maximum drawdown, 5th percentile (bad tail)`, mc.maxDrawdownPct.p5, "%", `${how}; drawdown measured trade to trade`);
+    P.add("lossProbability", `${def2.name}: probability of a loss`, mc.lossProbabilityPct, "%", "paths ending below the starting capital / paths");
+    P.add("ruinProbability", `${def2.name}: probability of a \u2265 50 % drawdown`, mc.ruinProbabilityPct, "%", "paths with a drawdown of 50 % or worse / paths");
+  }
+  return {
+    mc,
+    dataset: {
+      kind: "backtest-montecarlo",
+      title: `${def2.name} on ${m.symbol} \u2014 Monte Carlo of the trade sequence`,
+      subject: m.symbol,
+      points: P.points,
+      provenance: provenanceOf(m),
+      notes: mc ? P.skipped : ["no closed trade: nothing to resample"]
+    }
+  };
+}
+function lookAheadCheck(m, def2, full, overrides2 = {}) {
+  const k = Math.floor(m.bars.length * 2 / 3);
+  const cut = { ...m, bars: m.bars.slice(0, k), funding: m.funding };
+  const bt = backtesterFor(cut, def2, overrides2);
+  const short = runVariant(bt, prepareVariant(bt, def2));
+  const a = full.trades.filter((t) => t.exitIndex < k - 1);
+  const b = short.trades.filter((t) => t.exitIndex < k - 1);
+  const same = (x, y) => x.entryIndex === y.entryIndex && x.exitIndex === y.exitIndex && Math.abs(x.entryPrice - y.entryPrice) <= 1e-9 * x.entryPrice && Math.abs(x.pnl - y.pnl) <= 1e-6 * Math.max(1, Math.abs(x.pnl));
+  let mismatches = Math.abs(a.length - b.length);
+  for (let i = 0; i < Math.min(a.length, b.length); i++) if (!same(a[i], b[i])) mismatches++;
+  return { mismatches, cutAt: m.bars[k - 1].date };
+}
+function reviewRun(m, def2, opts) {
+  const base2 = strategyBacktest(m, def2, opts.overrides);
+  const dims = opts.dims ?? defaultGrid(def2);
+  const notes = [];
+  const sw = sweepReport(m, def2, dims, opts.objective, { trials: opts.trials, overrides: opts.overrides });
+  const dsrBase = deflatedSharpeOf(base2.sim.returns, sw.variantSharpes, sw.nTrials);
+  let wf;
+  try {
+    wf = walkForwardReport(m, def2, dims, { train: opts.train, test: opts.test, anchored: opts.anchored, objective: opts.objective, overrides: opts.overrides });
+  } catch (e) {
+    notes.push(`walk-forward skipped: ${e.message}`);
+  }
+  const mc = monteCarloDataset(m, def2, base2.sim, opts.paths ?? 5e3, opts.seed ?? 42);
+  const la = lookAheadCheck(m, def2, base2.sim, opts.overrides);
+  const closes = m.bars.map((b) => b.close);
+  const dd = drawdowns(closes);
+  const fullCycle = dd.maxDrawdown <= -0.2 && dd.recoveryIndex !== void 0;
+  const review = reviewScorecard({
+    trades: base2.stats.trades,
+    years: base2.summary.years,
+    fullCycle,
+    netProfit: base2.stats.netProfit,
+    isSharpe: wf?.wf.isSharpeMean,
+    oosSharpe: wf?.wf.oosSharpe,
+    dsr: dsrBase,
+    nTrials: sw.nTrials,
+    pbo: sw.pbo?.pbo,
+    stressedNetProfit: base2.stressed.stats.netProfit,
+    largestWinSharePct: base2.stats.largestWinSharePct,
+    universe: m.universe,
+    lookAheadMismatches: la.mismatches,
+    lookAheadCheckedAt: la.cutAt
+  });
+  const P = new PointList(`${m.symbol}.bt.${def2.name}.review`);
+  P.add("verdict", `${def2.name} on ${m.symbol}: review verdict`, review.verdict, void 0, review.reasons.join("; "));
+  P.add(
+    "dsr",
+    `${def2.name} as written: deflated Sharpe ratio`,
+    dsrBase,
+    "ratio",
+    `PSR of the strategy as written against E[max Sharpe] of ${sw.nTrials} trials`
+  );
+  for (const c of review.checks)
+    P.add(
+      `check.${c.id}`,
+      `${def2.name} review \u2014 ${c.label}`,
+      c.status.toUpperCase(),
+      void 0,
+      `${c.reason} (value ${c.value ?? "n/a"}; threshold ${c.threshold}${c.critical && c.status === "fail" ? "; critical" : ""})`
+    );
+  return {
+    review,
+    base: base2,
+    sweep: sw,
+    wf,
+    mc,
+    notes,
+    dataset: {
+      kind: "backtest-review",
+      title: `${def2.name} on ${m.symbol} \u2014 review scorecard: ${review.verdict}`,
+      subject: m.symbol,
+      points: P.points,
+      provenance: provenanceOf(m),
+      notes: [...notes, ...P.skipped]
+    }
+  };
+}
+async function portfolioRun(kind, symbols, opts) {
+  if (symbols.length > MAX_PORTFOLIO_SYMBOLS) throw new Error(`at most ${MAX_PORTFOLIO_SYMBOLS} symbols in one allocation backtest`);
+  const notes = [];
+  const loaded = await mapLimit(symbols, 4, async (s2) => {
+    try {
+      return (await loadBars(s2, { from: opts.from, to: opts.to, interval: "1d" })).series;
+    } catch (e) {
+      notes.push(`${s2}: ${e.message}`);
+      return void 0;
+    }
+  });
+  const ok = loaded.filter((s2) => !!s2);
+  if (ok.length !== symbols.length) throw new Error(`could not load every symbol: ${notes.join("; ")}`);
+  const { dates, bars } = alignBars(ok.map((s2) => s2.bars));
+  if (dates.length < 60) throw new Error(`only ${dates.length} dates common to every symbol \u2014 an allocation backtest needs at least 60`);
+  const crypto = ok.every((s2) => s2.instrument.market === "crypto");
+  const ppy = crypto ? 365 : 252;
+  const costs = { ...defaultCosts(crypto, false), ...opts.costs ?? {} };
+  const common = { rebalance: opts.rebalance, capital: opts.capital, lookbackMonths: opts.lookbackMonths, cashRatePct: opts.cashRatePct };
+  const result = allocationBacktest(kind, bars, dates, { ...common, costs });
+  const stressed = allocationBacktest(kind, bars, dates, { ...common, costs: stressCosts(costs, 2) });
+  const summary = performanceSummary(result.returns, ppy);
+  const stressedSummary = performanceSummary(stressed.returns, ppy);
+  for (const s2 of ok) notes.push(...s2.notes.map((n) => `${s2.instrument.symbol}: ${n}`));
+  if (opts.universe)
+    notes.push(
+      `SURVIVORSHIP: the symbols are today's members of ${opts.universe} \u2014 every company that left the index is missing, so results are biased upward`
+    );
+  if (dates.length < Math.min(...ok.map((s2) => s2.bars.length))) notes.push(`${dates.length} dates common to all symbols (series joined on shared sessions)`);
+  const subject = ok.map((s2) => s2.instrument.symbol).join("+");
+  const P = new PointList(`${subject}.bt.${kind}`);
+  const final = result.equity[result.equity.length - 1].equity;
+  const s = { ...summary, finalEquity: final, totalReturn: final / opts.capital - 1, years: result.returns.length / ppy };
+  const basis = `${kind} over ${subject}, ${opts.rebalance ?? "monthly"} rebalancing decided on the prior close and traded at the open, ${costText(costs)}`;
+  P.add("bars", `${kind} on ${subject}: sessions simulated`, dates.length, "count", `common dates from ${dates[0]} to ${dates[dates.length - 1]}`);
+  performancePoints(P, s, `${kind} on ${subject}`, ok[0].instrument.currency, basis);
+  P.add("rebalances", `${kind}: rebalances`, result.rebalances.length, "count", "rebalance dates where weights were traded");
+  P.add("turnover", `${kind}: turnover`, result.turnoverPct, "%", "\u03A3 traded value / average equity");
+  P.add("costs", `${kind}: trading costs paid`, result.costs, ok[0].instrument.currency, "\u03A3 traded value \xD7 (taker fee + slippage)");
+  P.add("x2.cagr", `${kind}: CAGR at \xD72 costs`, pct5(stressedSummary.cagr), "%", "same rule with doubled fees and slippage");
+  result.finalWeights.forEach(
+    (w, i) => P.add(
+      `weight.${ok[i].instrument.symbol}`,
+      `${kind}: final weight of ${ok[i].instrument.symbol}`,
+      pct5(w),
+      "%",
+      "position value / equity at the last close"
+    )
+  );
+  const provs = ok.map((x) => x.provenance);
+  return {
+    kind,
+    symbols: ok.map((x) => x.instrument.symbol),
+    series: ok,
+    result,
+    summary,
+    stressedSummary,
+    bars: bars[0],
+    notes,
+    dataset: {
+      kind: "backtest-allocation",
+      title: `${kind} on ${subject} \u2014 allocation backtest (${dates[0]} \u2192 ${dates[dates.length - 1]})`,
+      subject,
+      points: P.points,
+      provenance: {
+        source: [...new Set(provs.map((p) => p.source))].join("+"),
+        url: provs[0].url,
+        fetchedAt: provs.map((p) => p.fetchedAt).sort()[0],
+        delay: provs[0].delay,
+        official: provs.every((p) => p.official),
+        asOf: dates[dates.length - 1]
+      },
+      notes: [...notes, ...P.skipped]
+    }
+  };
+}
+function writeRun(dir, title, datasets, files, createdAt) {
+  mkdirSync16(dir, { recursive: true });
+  const store = EvidenceStore.open(dir, { subject: datasets[0]?.subject, createdAt });
+  const reg = registerDatasets(store, datasets);
+  const md = [
+    `# ${title}`,
+    "",
+    "Every figure below is an [E#] of this run: cite those. The tables after the evidence are working detail (also in the JSON files of the run), not evidence.",
+    "",
+    formatDatasets(reg).trimEnd(),
+    ...files.sections?.length ? ["", files.sections.join("\n\n")] : [],
+    ""
+  ].join("\n");
+  writeArtifact(join27(dir, "BACKTEST.md"), md);
+  for (const [name, value] of Object.entries(files.json ?? {})) writeArtifact(join27(dir, name), `${JSON.stringify(value, null, 1)}
+`);
+  if (files.bars) writeArtifact(join27(dir, "bars.json"), `${JSON.stringify(files.bars)}
+`);
+  return store.items.length;
+}
+var f = (x, d = 2) => x === void 0 || !Number.isFinite(x) ? "\u2013" : x.toFixed(d);
+function tradesTable(trades2, max = 40) {
+  if (!trades2.length) return "## Trades\n\nNo trade.";
+  const rows = trades2.length > max ? [...trades2.slice(0, max / 2), void 0, ...trades2.slice(-max / 2)] : trades2;
+  return [
+    `## Trades (${trades2.length})`,
+    "",
+    "| # | Side | Entry | Entry price | Exit | Exit price | Reason | Bars | P&L | Return % | R | MAE % | MFE % |",
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+    ...rows.map(
+      (t) => t ? `| ${trades2.indexOf(t) + 1} | ${t.side} | ${t.entryDate} | ${f(t.entryPrice, 4)} | ${t.exitDate} | ${f(t.exitPrice, 4)} | ${t.exitReason} | ${t.bars} | ${f(t.pnl)} | ${f(t.returnPct)} | ${f(t.r)} | ${f(t.maePct)} | ${f(t.mfePct)} |` : `| \u2026 | ${trades2.length - max} more (trades.json) | | | | | | | | | | | |`
+    )
+  ].join("\n");
+}
+function sweepTable(sw) {
+  const lines = ["## Parameter sensitivity", ""];
+  if (sw.dims.length === 2) {
+    const [a, b] = sw.dims;
+    lines.push(
+      `Sharpe by ${a.path} (rows) \xD7 ${b.path} (columns):`,
+      "",
+      `| ${a.path} \\ ${b.path} | ${b.values.join(" | ")} |`,
+      `|---|${b.values.map(() => "---").join("|")}|`
+    );
+    for (const va of a.values) {
+      const cells = b.values.map((vb) => f(sw.rows.find((r2) => r2.params[a.path] === va && r2.params[b.path] === vb)?.sharpe));
+      lines.push(`| ${va} | ${cells.join(" | ")} |`);
+    }
+  } else {
+    lines.push("| Variant | Sharpe | CAGR % | Max DD % | Trades |", "|---|---|---|---|---|");
+    const top = [...sw.rows].sort((x, y) => y.objective - x.objective).slice(0, 30);
+    for (const r2 of top)
+      lines.push(
+        `| ${Object.entries(r2.params).map(([k, v]) => `${k}=${v}`).join(", ") || "as written"} | ${f(r2.sharpe)} | ${f(r2.cagr * 100)} | ${f(r2.maxDrawdown * 100)} | ${r2.trades} |`
+      );
+    if (sw.rows.length > 30) lines.push(`| \u2026 ${sw.rows.length - 30} more in sweep.json | | | | |`);
+  }
+  return lines.join("\n");
+}
+function walkForwardTable(wf) {
+  return [
+    "## Walk-forward windows",
+    "",
+    "| Train | Test | Chosen | IS Sharpe | OOS Sharpe | OOS trades |",
+    "|---|---|---|---|---|---|",
+    ...wf.windows.map(
+      (w) => `| ${w.trainFrom} \u2192 ${w.trainTo} | ${w.testFrom} \u2192 ${w.testTo} | ${Object.entries(w.chosen).map(([k, v]) => `${k}=${v}`).join(", ") || "as written"} | ${f(w.isSharpe)} | ${f(w.oosSharpe)} | ${w.oosTrades} |`
+    )
+  ].join("\n");
+}
+function reviewTable(r2) {
+  return [
+    `## Review: ${r2.verdict}`,
+    "",
+    ...r2.reasons.map((x) => `- ${x}`),
+    "",
+    "| Check | Status | Value | Threshold | Why |",
+    "|---|---|---|---|---|",
+    ...r2.checks.map(
+      (c) => `| ${c.label} | ${c.status.toUpperCase()}${c.critical && c.status === "fail" ? " (critical)" : ""} | ${c.value ?? "\u2013"} | ${c.threshold} | ${c.reason} |`
+    )
+  ].join("\n");
+}
+function equityJson(sim) {
+  const dd = drawdowns(sim.equity.map((e) => e.equity)).series;
+  return sim.equity.map((e, i) => ({
+    date: e.date,
+    equity: Number(e.equity.toFixed(4)),
+    drawdownPct: Number((dd[i] * 100).toFixed(4)),
+    exposure: Number(e.exposure.toFixed(4))
+  }));
+}
+
+// src/journal/settle.ts
+import { appendFileSync as appendFileSync5, existsSync as existsSync21, mkdirSync as mkdirSync17, readFileSync as readFileSync23 } from "fs";
+import { join as join28 } from "path";
+var HORIZONS2 = [5, 20, 60];
+function readDecisions() {
+  const f3 = join28(journalDir(), "decisions.jsonl");
+  if (!existsSync21(f3)) return [];
+  return readFileSync23(f3, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((d) => d.id);
+}
+function readSettlements() {
+  const f3 = join28(journalDir(), "settlements.jsonl");
+  if (!existsSync21(f3)) return [];
+  return readFileSync23(f3, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+}
+var closeAtOrBefore = (bars, date) => {
+  let v;
+  for (const b of bars) {
+    if (b.date.slice(0, 10) <= date) v = b;
+    else break;
+  }
+  return v;
+};
+function judge(rating2, alphaPct, horizon) {
+  if (rating2 === "buy" || rating2 === "overweight") return alphaPct > 0;
+  if (rating2 === "sell" || rating2 === "underweight") return alphaPct < 0;
+  return Math.abs(alphaPct) < 2 * Math.max(1, horizon / 21);
+}
+async function settleDecisions(now = clockNow()) {
+  const done = new Set(readSettlements().map((s) => `${s.decisionId}|${s.horizon}`));
+  const settled = [];
+  const errors = [];
+  let pending = 0;
+  const today = now.toISOString().slice(0, 10);
+  for (const d of readDecisions()) {
+    const due = HORIZONS2.filter((h) => !done.has(`${d.id}|${h}`));
+    if (!due.length) continue;
+    try {
+      const r2 = await resolveSymbol(d.symbol);
+      const market = r2.instrument.market === "crypto" ? "CRYPTO" : marketForMic(r2.instrument.mic);
+      const start = d.decidedAt.slice(0, 10);
+      const matured = due.filter(
+        (h) => (market === "CRYPTO" ? new Date(Date.parse(start) + h * 864e5).toISOString().slice(0, 10) : addSessions(market, start, h)) <= today
+      );
+      pending += due.length - matured.length;
+      if (!matured.length) continue;
+      const from = new Date(Date.parse(start) - 10 * 864e5);
+      const series = await getHistory(r2, { from, to: now });
+      const benchSym = defaultBenchmark(r2.instrument.market, r2.instrument.mic);
+      const bench = benchSym ? await getHistory(await resolveSymbol(benchSym), { from, to: now }).catch(() => void 0) : void 0;
+      for (const h of matured) {
+        const endDate = market === "CRYPTO" ? new Date(Date.parse(start) + h * 864e5).toISOString().slice(0, 10) : addSessions(market, start, h);
+        const s0 = closeAtOrBefore(series.bars, start);
+        const s1 = closeAtOrBefore(series.bars, endDate);
+        if (!s0 || !s1) {
+          errors.push(`${d.symbol} ${h}: no close around ${start} or ${endDate}`);
+          continue;
+        }
+        const ret2 = (s1.close / s0.close - 1) * 100;
+        const b0 = bench && closeAtOrBefore(bench.bars, start);
+        const b1 = bench && closeAtOrBefore(bench.bars, endDate);
+        const bRet = b0 && b1 ? (b1.close / b0.close - 1) * 100 : void 0;
+        const alpha = bRet === void 0 ? void 0 : ret2 - bRet;
+        const st = {
+          decisionId: d.id,
+          symbol: d.symbol,
+          rating: d.rating,
+          horizon: h,
+          decidedAt: d.decidedAt,
+          startClose: s0.close,
+          endDate: s1.date.slice(0, 10),
+          endClose: s1.close,
+          returnPct: Number(ret2.toFixed(4)),
+          benchmark: benchSym,
+          benchmarkReturnPct: bRet === void 0 ? void 0 : Number(bRet.toFixed(4)),
+          alphaPct: alpha === void 0 ? void 0 : Number(alpha.toFixed(4)),
+          hit: judge(d.rating, alpha ?? ret2, h),
+          settledAt: now.toISOString()
+        };
+        settled.push(st);
+      }
+    } catch (e) {
+      errors.push(`${d.symbol}: ${e.message}`);
+    }
+  }
+  if (settled.length) {
+    mkdirSync17(journalDir(), { recursive: true });
+    appendFileSync5(join28(journalDir(), "settlements.jsonl"), settled.map((s) => `${JSON.stringify(s)}
+`).join(""), { mode: 384 });
+    appendFileSync5(
+      join28(journalDir(), "decisions.md"),
+      settled.map(
+        (s) => `SETTLED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions \u2192 ${s.endDate}]: return ${s.returnPct} %${s.alphaPct !== void 0 ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} \u2014 ${s.hit ? "right" : "wrong"}
+`
+      ).join("")
+    );
+  }
+  return { settled, pending, errors };
+}
+function hitRates(settlements) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const s of settlements) groups.set(`${s.rating}|${s.horizon}`, [...groups.get(`${s.rating}|${s.horizon}`) ?? [], s]);
+  return [...groups.entries()].map(([k, xs]) => {
+    const [rating2, h] = k.split("|");
+    const alphas = xs.map((x) => x.alphaPct).filter((x) => x !== void 0);
+    return {
+      rating: rating2,
+      horizon: Number(h),
+      n: xs.length,
+      hitRate: xs.filter((x) => x.hit).length / xs.length,
+      meanAlphaPct: alphas.length ? alphas.reduce((a, b) => a + b, 0) / alphas.length : void 0
+    };
+  }).sort((a, b) => a.rating.localeCompare(b.rating) || a.horizon - b.horizon);
+}
+
+// src/commands/backtest.ts
+var INTERVALS2 = ["1d", "1w", "4h", "1h", "15m"];
+var COMMON = "[--from YYYY-MM-DD] [--to YYYY-MM-DD] [--years N] [--interval 1d|4h|1h|15m] [--capital N] [cost, risk and data flags] [--out <dir>] [--json]";
+var BACKTEST_USAGE = [
+  `usage: ultrastock backtest run <strategy> <symbol> ${COMMON}`,
+  "       ultrastock backtest run <buy-and-hold|60-40|equal-weight|dual-momentum|risk-parity> <sym1,sym2,\u2026> [--rebalance monthly|quarterly] [--lookback 12] [--cash-rate 0] [--universe INDEX]",
+  "       ultrastock backtest walkforward <strategy> <symbol> [--grid alias.param=a,b;\u2026] [--train N] [--test N] [--anchored] [--objective sharpe|sortino|cagr|calmar|profit-factor]",
+  "       ultrastock backtest sweep <strategy> <symbol> [--grid \u2026] [--objective \u2026] [--trials N] [--groups 6] [--test-groups 2] [--purge 5] [--embargo N]",
+  "       ultrastock backtest montecarlo <strategy> <symbol> [--paths 5000] [--seed 42]",
+  "       ultrastock backtest compare <strategy1,strategy2,\u2026> <symbol>",
+  "       ultrastock backtest review <strategy> <symbol> [--grid \u2026] [--trials N] [--universe INDEX]",
+  "       ultrastock backtest decisions [--rating buy|\u2026] [--horizon 5|20|60]"
+].join("\n");
+var STRATEGY_USAGE = "usage: ultrastock strategy list | show <name|file.json> | validate <name|file.json> | new <name> [--like <strategy>] \u2014 strategies live in <home>/strategies/";
+var day2 = (v, flag) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(Date.parse(`${v}T00:00:00Z`))) throw new UsageError(`--${flag} is a date like 2021-01-31`);
+  return /* @__PURE__ */ new Date(`${v}T00:00:00Z`);
+};
+var num8 = (args, flag, lo, hi) => {
+  const v = argValue(args, flag);
+  if (v === void 0) return void 0;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < lo || n > hi) throw new UsageError(`--${flag} is a number between ${lo} and ${hi}`);
+  return n;
+};
+function marketOptions(args) {
+  const now = clockNow();
+  const to = argValue(args, "to") ? day2(argValue(args, "to"), "to") : now;
+  const years = num8(args, "years", 0.25, 30) ?? 5;
+  const from = argValue(args, "from") ? day2(argValue(args, "from"), "from") : new Date(to.getTime() - Math.round(years * 365.25) * 864e5);
+  if (from >= to) throw new UsageError("--from must be before --to");
+  const interval = argValue(args, "interval") ?? "1d";
+  if (!INTERVALS2.includes(interval)) throw new UsageError(`--interval must be one of ${INTERVALS2.join(", ")}`);
+  const costs = {};
+  const fee = num8(args, "fee", 0, 5);
+  if (fee !== void 0) costs.makerPct = costs.takerPct = fee;
+  const maker = num8(args, "maker", 0, 5);
+  if (maker !== void 0) costs.makerPct = maker;
+  const taker = num8(args, "taker", 0, 5);
+  if (taker !== void 0) costs.takerPct = taker;
+  const slip = num8(args, "slippage", 0, 5);
+  if (slip !== void 0) costs.slippagePct = slip;
+  const bench = argValue(args, "benchmark");
+  const universe = argValue(args, "universe");
+  if (universe && !indexId(universe)) throw new UsageError(`--universe ${universe}: not a known index (SPX, NDX, DJI, CAC40, SBF120, DAX, SX5E, AEX, UKX)`);
+  return {
+    from,
+    to,
+    interval,
+    capital: num8(args, "capital", 1, 1e12) ?? 1e4,
+    costs,
+    leverage: num8(args, "leverage", 1, 125),
+    perp: argBool(args, "perp"),
+    benchmark: bench === void 0 ? void 0 : bench.toLowerCase() === "none" ? null : bench,
+    universe: universe ? indexId(universe) : void 0
+  };
+}
+function overrides(args) {
+  const risk = {};
+  const set = (k, v) => {
+    if (v !== void 0) risk[k] = v;
+  };
+  set("stopLossPct", num8(args, "stop", 0.01, 100));
+  set("takeProfitPct", num8(args, "target", 0.01, 1e4));
+  set("trailingStopPct", num8(args, "trail", 0.01, 100));
+  set("riskPerTradePct", num8(args, "risk", 0.01, 100));
+  set("maxDrawdownPct", num8(args, "max-dd", 0.01, 100));
+  set("timeStopBars", argInt(args, "time-stop", { min: 1, max: 1e5 }));
+  const atr2 = argValue(args, "atr-stop");
+  if (atr2 !== void 0) {
+    const m = /^(\d+):([\d.]+)$/.exec(atr2);
+    if (!m || Number(m[2]) <= 0) throw new UsageError("--atr-stop is period:multiplier, like 14:3");
+    risk.atrStop = { period: Number(m[1]), multiplier: Number(m[2]) };
+  }
+  const execution = {};
+  const entry = argValue(args, "entry");
+  if (entry !== void 0) {
+    if (entry !== "market" && entry !== "limit") throw new UsageError("--entry is market or limit");
+    execution.entry = entry;
+  }
+  const off = num8(args, "limit-offset", 0, 50);
+  if (off !== void 0) execution.limitOffsetPct = off;
+  return { risk: Object.keys(risk).length ? risk : void 0, execution: Object.keys(execution).length ? execution : void 0 };
+}
+function objectiveOf2(args) {
+  const o = argValue(args, "objective") ?? "sharpe";
+  if (!OBJECTIVES.includes(o)) throw new UsageError(`--objective must be one of ${OBJECTIVES.join(", ")}`);
+  return o;
+}
+function gridOf(args, def2) {
+  const g = argValue(args, "grid");
+  if (!g) return defaultGrid(def2);
+  try {
+    return parseGrid(g);
+  } catch (e) {
+    throw new UsageError(e.message);
+  }
+}
+function loadDef(ref, usage2) {
+  if (!ref) throw new UsageError(usage2);
+  try {
+    const { def: def2, warnings } = loadStrategy(ref);
+    return { def: def2, warnings };
+  } catch (e) {
+    throw new UsageError(e.message);
+  }
+}
+var runDir = (args, name) => argValue(args, "out") ? resolve7(argValue(args, "out")) : runDirFor(void 0, `${name.toUpperCase().replace(/[^A-Z0-9.+-]/g, "_")}-${runId()}`);
+function finish(asJson, dir, evidence, summary) {
+  if (asJson) process.stdout.write(jsonLine({ dir, evidence, ...summary }));
+  else process.stdout.write(`${readFileSync24(join29(dir, "BACKTEST.md"), "utf8")}
+run: ${dir}
+`);
+}
+var tradesJson = (m, trades2) => ({ symbol: m.symbol, currency: m.instrument.currency, trades: trades2 });
+async function backtestCommand(args, asJson) {
+  const [sub, first, second] = args.positional;
+  const now = clockNow();
+  switch (sub) {
+    case "run": {
+      if (!first || !second) throw new UsageError(BACKTEST_USAGE);
+      if (ALLOCATIONS.includes(first)) return allocationCommand(first, args, asJson);
+      const { def: def2, warnings } = loadDef(first, BACKTEST_USAGE);
+      const o = overrides(args);
+      const m = await loadMarket(second, marketOptions(args), def2);
+      const rep = strategyBacktest(m, def2, o);
+      rep.datasets[0].notes.push(...warnings.map((w) => `strategy: ${w}`));
+      const dir = runDir(args, `${m.symbol}-backtest-${def2.name}`);
+      const evidence = writeRun(
+        dir,
+        `${def2.name} on ${m.symbol} \u2014 backtest`,
+        rep.datasets,
+        {
+          sections: [paramsSection(rep.params), tradesTable(rep.sim.trades)],
+          json: { "equity.json": equityJson(rep.sim), "trades.json": tradesJson(m, rep.sim.trades), "strategy.json": def2, "meta.json": meta(m, def2, o) },
+          bars: m.bars
+        },
+        now.toISOString()
+      );
+      return finish(asJson, dir, evidence, {
+        symbol: m.symbol,
+        strategy: def2.name,
+        cagrPct: rep.summary.cagr * 100,
+        sharpe: rep.summary.sharpe,
+        maxDrawdownPct: rep.summary.maxDrawdown * 100,
+        trades: rep.stats.trades,
+        notes: rep.datasets[0].notes
+      });
+    }
+    case "walkforward": {
+      const { def: def2 } = loadDef(first, BACKTEST_USAGE);
+      if (!second) throw new UsageError(BACKTEST_USAGE);
+      const o = overrides(args);
+      const wfOpts = {
+        train: argInt(args, "train", { min: 20, max: 1e6 }),
+        test: argInt(args, "test", { min: 5, max: 1e6 }),
+        anchored: argBool(args, "anchored"),
+        objective: objectiveOf2(args),
+        overrides: o
+      };
+      const dims = gridOf(args, def2);
+      const m = await loadMarket(second, marketOptions(args), def2);
+      const wf = walkForwardReport(m, def2, dims, wfOpts);
+      const dir = runDir(args, `${m.symbol}-walkforward-${def2.name}`);
+      const equity = wf.wf.oosDates.map((d, i) => ({ date: d, return: wf.wf.oosReturns[i] }));
+      const evidence = writeRun(
+        dir,
+        `${def2.name} on ${m.symbol} \u2014 walk-forward`,
+        [wf.dataset],
+        {
+          sections: [walkForwardTable(wf.wf), tradesTable(wf.wf.oosTrades)],
+          json: {
+            "walkforward.json": { ...wf.wf, oosReturns: void 0, oosDates: void 0 },
+            "equity.json": oosEquity(m.capital, equity),
+            "trades.json": tradesJson(m, wf.wf.oosTrades)
+          },
+          bars: m.bars
+        },
+        now.toISOString()
+      );
+      return finish(asJson, dir, evidence, {
+        symbol: m.symbol,
+        strategy: def2.name,
+        oosSharpe: wf.wf.oosSharpe,
+        isSharpe: wf.wf.isSharpeMean,
+        windows: wf.wf.windows.length
+      });
+    }
+    case "sweep": {
+      const { def: def2 } = loadDef(first, BACKTEST_USAGE);
+      if (!second) throw new UsageError(BACKTEST_USAGE);
+      const dims = gridOf(args, def2);
+      const objective = objectiveOf2(args);
+      const swOpts = {
+        trials: argInt(args, "trials", { min: 0, max: 1e6 }),
+        groups: argInt(args, "groups", { min: 3, max: 20 }),
+        testGroups: argInt(args, "test-groups", { min: 1, max: 10 }),
+        purge: argInt(args, "purge", { min: 0, max: 1e4 }),
+        embargo: argInt(args, "embargo", { min: 0, max: 1e4 }),
+        overrides: overrides(args)
+      };
+      const m = await loadMarket(second, marketOptions(args), def2);
+      const sw = sweepReport(m, def2, dims, objective, swOpts);
+      const dir = runDir(args, `${m.symbol}-sweep-${def2.name}`);
+      const evidence = writeRun(
+        dir,
+        `${def2.name} on ${m.symbol} \u2014 sweep`,
+        [sw.dataset],
+        {
+          sections: [sweepTable(sw)],
+          json: { "sweep.json": { dims: sw.dims, rows: sw.rows, best: sw.best, dsr: sw.dsr, nTrials: sw.nTrials, pbo: sw.pbo, cpcv: sw.cpcv } },
+          bars: m.bars
+        },
+        now.toISOString()
+      );
+      return finish(asJson, dir, evidence, { symbol: m.symbol, strategy: def2.name, variants: sw.rows.length, best: sw.best, dsr: sw.dsr, pbo: sw.pbo?.pbo });
+    }
+    case "montecarlo": {
+      const { def: def2 } = loadDef(first, BACKTEST_USAGE);
+      if (!second) throw new UsageError(BACKTEST_USAGE);
+      const m = await loadMarket(second, marketOptions(args), def2);
+      const rep = strategyBacktest(m, def2, overrides(args));
+      const mc = monteCarloDataset(
+        m,
+        def2,
+        rep.sim,
+        argInt(args, "paths", { min: 100, max: 1e5 }) ?? 5e3,
+        argInt(args, "seed", { min: 0, max: 2 ** 31 }) ?? 42
+      );
+      const dir = runDir(args, `${m.symbol}-montecarlo-${def2.name}`);
+      const evidence = writeRun(
+        dir,
+        `${def2.name} on ${m.symbol} \u2014 Monte Carlo`,
+        [...rep.datasets, mc.dataset],
+        {
+          sections: [tradesTable(rep.sim.trades)],
+          json: { "montecarlo.json": mc.mc ?? null, "equity.json": equityJson(rep.sim), "trades.json": tradesJson(m, rep.sim.trades) },
+          bars: m.bars
+        },
+        now.toISOString()
+      );
+      return finish(asJson, dir, evidence, { symbol: m.symbol, strategy: def2.name, montecarlo: mc.mc });
+    }
+    case "compare": {
+      if (!first || !second) throw new UsageError(BACKTEST_USAGE);
+      const names = first.split(",").map((s) => s.trim()).filter(Boolean);
+      if (names.length < 2 || names.length > 30) throw new UsageError("compare takes 2 to 30 comma-separated strategies");
+      const defs2 = names.map((n) => loadDef(n, BACKTEST_USAGE).def);
+      const o = overrides(args);
+      const m = await loadMarket(second, marketOptions(args), defs2[0]);
+      const reps = defs2.map((d) => strategyBacktest(m, d, o));
+      const table = [
+        `## Comparison on ${m.symbol} (${names.length} strategies)`,
+        "",
+        "| Strategy | CAGR % | Sharpe | Max DD % | Trades | Win % | \xD72 costs return % |",
+        "|---|---|---|---|---|---|---|",
+        ...reps.map(
+          (r2) => `| ${r2.def.name} | ${(r2.summary.cagr * 100).toFixed(2)} | ${r2.summary.sharpe.toFixed(2)} | ${(r2.summary.maxDrawdown * 100).toFixed(2)} | ${r2.stats.trades} | ${Number.isFinite(r2.stats.winRate) ? r2.stats.winRate.toFixed(1) : "\u2013"} | ${(r2.stressed.summary.totalReturn * 100).toFixed(2)} |`
+        ),
+        "",
+        `Comparing ${names.length} strategies is ${names.length} trials: run \`backtest review\` on the winner with \`--trials ${names.length}\` so its deflated Sharpe counts them.`
+      ].join("\n");
+      const dir = runDir(args, `${m.symbol}-compare`);
+      const evidence = writeRun(
+        dir,
+        `${names.length} strategies on ${m.symbol} \u2014 comparison`,
+        reps.flatMap((r2) => r2.datasets),
+        { sections: [table], bars: m.bars },
+        now.toISOString()
+      );
+      return finish(asJson, dir, evidence, {
+        symbol: m.symbol,
+        strategies: reps.map((r2) => ({
+          name: r2.def.name,
+          cagrPct: r2.summary.cagr * 100,
+          sharpe: r2.summary.sharpe,
+          maxDrawdownPct: r2.summary.maxDrawdown * 100,
+          trades: r2.stats.trades
+        }))
+      });
+    }
+    case "review": {
+      const { def: def2 } = loadDef(first, BACKTEST_USAGE);
+      if (!second) throw new UsageError(BACKTEST_USAGE);
+      const o = overrides(args);
+      const rvOpts = {
+        dims: argValue(args, "grid") ? gridOf(args, def2) : void 0,
+        objective: objectiveOf2(args),
+        trials: argInt(args, "trials", { min: 0, max: 1e6 }),
+        train: argInt(args, "train", { min: 20, max: 1e6 }),
+        test: argInt(args, "test", { min: 5, max: 1e6 }),
+        anchored: argBool(args, "anchored"),
+        paths: argInt(args, "paths", { min: 100, max: 1e5 }),
+        seed: argInt(args, "seed", { min: 0, max: 2 ** 31 }),
+        overrides: o
+      };
+      const m = await loadMarket(second, marketOptions(args), def2);
+      const r2 = reviewRun(m, def2, rvOpts);
+      const dir = runDir(args, `${m.symbol}-review-${def2.name}`);
+      const datasets = [r2.dataset, ...r2.base.datasets, r2.sweep.dataset, ...r2.wf ? [r2.wf.dataset] : [], r2.mc.dataset];
+      const evidence = writeRun(
+        dir,
+        `${def2.name} on ${m.symbol} \u2014 review: ${r2.review.verdict}`,
+        datasets,
+        {
+          sections: [reviewTable(r2.review), sweepTable(r2.sweep), ...r2.wf ? [walkForwardTable(r2.wf.wf)] : [], tradesTable(r2.base.sim.trades)],
+          json: {
+            "review.json": r2.review,
+            "equity.json": equityJson(r2.base.sim),
+            "trades.json": tradesJson(m, r2.base.sim.trades),
+            "sweep.json": { dims: r2.sweep.dims, rows: r2.sweep.rows, best: r2.sweep.best, dsr: r2.sweep.dsr, pbo: r2.sweep.pbo, cpcv: r2.sweep.cpcv },
+            ...r2.wf ? { "walkforward.json": { ...r2.wf.wf, oosReturns: void 0, oosDates: void 0 } } : {},
+            "montecarlo.json": r2.mc.mc ?? null,
+            "meta.json": meta(m, def2, o)
+          },
+          bars: m.bars
+        },
+        now.toISOString()
+      );
+      return finish(asJson, dir, evidence, {
+        symbol: m.symbol,
+        strategy: def2.name,
+        verdict: r2.review.verdict,
+        reasons: r2.review.reasons,
+        checks: r2.review.checks
+      });
+    }
+    case "decisions":
+      return decisionsCommand(args, asJson);
+    default:
+      throw new UsageError(BACKTEST_USAGE);
+  }
+}
+async function allocationCommand(kind, args, asJson) {
+  const symbols = args.positional.slice(2).flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean);
+  if (!symbols.length) throw new UsageError(BACKTEST_USAGE);
+  const opts = marketOptions(args);
+  if (opts.interval !== "1d") throw new UsageError("allocation backtests run on daily bars");
+  const rebalance2 = argValue(args, "rebalance") ?? "monthly";
+  if (rebalance2 !== "monthly" && rebalance2 !== "quarterly") throw new UsageError("--rebalance is monthly or quarterly");
+  const r2 = await portfolioRun(kind, symbols, {
+    ...opts,
+    rebalance: rebalance2,
+    lookbackMonths: argInt(args, "lookback", { min: 1, max: 36 }),
+    cashRatePct: num8(args, "cash-rate", -5, 20)
+  });
+  const dir = runDir(args, `${r2.symbols.join("+")}-backtest-${kind}`);
+  const rebal = [
+    `## Rebalances (${r2.result.rebalances.length})`,
+    "",
+    `| Date | ${r2.symbols.join(" | ")} | Turnover % | Why |`,
+    `|---|${r2.symbols.map(() => "---").join("|")}|---|---|`,
+    ...r2.result.rebalances.slice(-24).map((x) => `| ${x.date} | ${x.weights.map((w) => (w * 100).toFixed(1)).join(" | ")} | ${x.turnoverPct.toFixed(1)} | ${x.reason} |`)
+  ].join("\n");
+  const evidence = writeRun(
+    dir,
+    `${kind} on ${r2.symbols.join(", ")} \u2014 allocation backtest`,
+    [r2.dataset],
+    {
+      sections: [rebal],
+      json: {
+        "equity.json": equityJson(r2.result),
+        "rebalances.json": r2.result.rebalances,
+        "trades.json": { symbols: r2.symbols, rebalances: r2.result.rebalances }
+      },
+      bars: r2.bars
+    },
+    clockNow().toISOString()
+  );
+  return finish(asJson, dir, evidence, {
+    symbols: r2.symbols,
+    allocation: kind,
+    cagrPct: r2.summary.cagr * 100,
+    sharpe: r2.summary.sharpe,
+    maxDrawdownPct: r2.summary.maxDrawdown * 100
+  });
+}
+function oosEquity(capital, rows) {
+  let e = capital;
+  return rows.map((r2) => ({ date: r2.date, equity: Number((e *= 1 + (r2.return ?? 0)).toFixed(4)) }));
+}
+function meta(m, def2, o) {
+  return {
+    symbol: m.symbol,
+    strategy: def2.name,
+    interval: m.interval,
+    from: m.bars[0].date,
+    to: m.bars[m.bars.length - 1].date,
+    bars: m.bars.length,
+    capital: m.capital,
+    costs: m.costs,
+    leverage: m.leverage,
+    perp: m.perp,
+    benchmark: m.benchmark?.symbol,
+    universe: m.universe,
+    risk: { ...def2.risk ?? {}, ...o.risk ?? {} },
+    execution: { ...def2.execution ?? {}, ...o.execution ?? {} },
+    fills: "signal at bar i close \u2192 fill at bar i+1 open; stops gap to the open; stop before target in a bar; market = taker, limit = maker",
+    source: m.series.provenance
+  };
+}
+function paramsSection(params) {
+  return [
+    "## Indicator parameters used",
+    "",
+    ...Object.entries(params).map(
+      ([a, p]) => `- ${a}: ${Object.entries(p).map(([k, v]) => `${k}=${v}`).join(", ") || "defaults"}`
+    )
+  ].join("\n");
+}
+async function decisionsCommand(args, asJson) {
+  const rating2 = argValue(args, "rating");
+  const horizon = argInt(args, "horizon", { min: 1, max: 1e3 });
+  const all = readSettlements().filter((s) => (!rating2 || s.rating === rating2) && (!horizon || s.horizon === horizon));
+  if (!all.length) throw new Error("no settled decision yet \u2014 record calls with `decide`, then `journal settle` once 5, 20 and 60 sessions have passed");
+  const groups = decisionQuality(all);
+  const points = [];
+  const how = "settled decisions in journal/settlements.jsonl";
+  points.push({ key: "journal.decisions.settlements", label: "Settled decision horizons", value: all.length, unit: "count", formula: how });
+  for (const g of groups) {
+    const k = `journal.decisions.${g.rating}.h${g.horizon}`;
+    const l = `${g.rating} calls at +${g.horizon} sessions`;
+    points.push(
+      { key: `${k}.n`, label: `${l}: settled`, value: g.n, unit: "count", formula: how },
+      {
+        key: `${k}.hitRate`,
+        label: `${l}: hit rate`,
+        value: g.hitRate * 100,
+        unit: "%",
+        formula: "right calls / settled (buy/overweight right when alpha > 0, sell/underweight when < 0, hold when |alpha| < 2 % a month)"
+      },
+      { key: `${k}.hitLow`, label: `${l}: hit rate, 95 % Wilson low`, value: g.hitLow * 100, unit: "%", formula: "Wilson score interval, z = 1.96" },
+      { key: `${k}.hitHigh`, label: `${l}: hit rate, 95 % Wilson high`, value: g.hitHigh * 100, unit: "%", formula: "Wilson score interval, z = 1.96" },
+      {
+        key: `${k}.meanReturn`,
+        label: `${l}: mean return`,
+        value: Number(g.meanReturnPct.toPrecision(10)),
+        unit: "%",
+        formula: "mean of the symbol's return over the horizon"
+      }
+    );
+    if (g.meanAlphaPct !== void 0)
+      points.push({
+        key: `${k}.meanAlpha`,
+        label: `${l}: mean alpha`,
+        value: Number(g.meanAlphaPct.toPrecision(10)),
+        unit: "%",
+        formula: "mean of return \u2212 benchmark return"
+      });
+    if (g.alphaLowPct !== void 0 && g.alphaHighPct !== void 0)
+      points.push(
+        {
+          key: `${k}.alphaLow`,
+          label: `${l}: mean alpha, 95 % low`,
+          value: Number(g.alphaLowPct.toPrecision(10)),
+          unit: "%",
+          formula: "mean \u2212 t(0.975, n\u22121) \xB7 s / \u221An"
+        },
+        {
+          key: `${k}.alphaHigh`,
+          label: `${l}: mean alpha, 95 % high`,
+          value: Number(g.alphaHighPct.toPrecision(10)),
+          unit: "%",
+          formula: "mean + t(0.975, n\u22121) \xB7 s / \u221An"
+        }
+      );
+  }
+  const last2 = all.map((s) => s.endDate).sort()[all.length - 1];
+  const ds = {
+    kind: "decision-quality",
+    title: "Decision quality \u2014 the journal's settled calls by rating and horizon",
+    points,
+    provenance: { source: "journal", fetchedAt: clockNow().toISOString(), official: false, asOf: last2 },
+    notes: [
+      "A replay of recorded calls, never a simulated portfolio: decisions carry no sizes.",
+      ...groups.filter((g) => g.n < 30).map((g) => `${g.rating} at +${g.horizon}: ${g.n} settled \u2014 the interval is wide; do not read a rate from so few`)
+    ]
+  };
+  emitDatasets(args, [ds], asJson);
+}
+async function strategyCommand(args, asJson) {
+  const [sub, ref] = args.positional;
+  switch (sub) {
+    case "list": {
+      const list = listStrategies();
+      if (asJson) return void process.stdout.write(jsonLine(list));
+      const lines = list.map((s) => `- ${s.name}${s.origin === "user" ? " (yours)" : ""}${s.valid ? "" : " \u2014 INVALID"}: ${s.description}`);
+      process.stdout.write(`${list.length} strategies (built-in, and yours in ${userStrategyDir()}):
+${lines.join("\n")}
+`);
+      return;
+    }
+    case "show": {
+      if (!ref) throw new UsageError(STRATEGY_USAGE);
+      const found = findStrategy(ref);
+      if (!found) throw new UsageError(`no strategy "${ref}" \u2014 \`ultrastock strategy list\``);
+      const v = validateStrategy(found.raw);
+      const mapping = v.def ? Object.entries(v.def.indicators).map(([alias, raw]) => {
+        const r2 = resolveIndicator(alias, raw);
+        return typeof r2 === "string" ? { alias, error: r2 } : { alias, name: r2.name, registry: r2.info.name, params: r2.params, fields: Object.fromEntries(r2.fields), defaultField: r2.defaultField };
+      }) : [];
+      if (asJson)
+        return void process.stdout.write(
+          jsonLine({ origin: found.origin, strategy: found.raw, valid: v.valid, errors: v.errors, warnings: v.warnings, indicators: mapping })
+        );
+      const ind = mapping.map(
+        (x) => "error" in x ? `- ${x.alias}: ${x.error}` : `- ${x.alias}: ${x.name}${x.name !== x.registry ? ` \u2192 registry ${x.registry}` : ""} (${Object.entries(x.params).map(([k, val2]) => `${k}=${String(val2)}`).join(", ") || "defaults"}); a bare reference reads "${x.defaultField}"`
+      );
+      process.stdout.write(
+        `${JSON.stringify(found.raw, null, 2)}
+
+origin: ${found.origin}
+${v.valid ? "valid" : `INVALID:
+  - ${v.errors.join("\n  - ")}`}
+${v.warnings.map((w) => `warning: ${w}
+`).join("")}${ind.length ? `indicators:
+${ind.join("\n")}
+` : ""}`
+      );
+      return;
+    }
+    case "validate": {
+      if (!ref) throw new UsageError(STRATEGY_USAGE);
+      let raw;
+      try {
+        raw = findStrategy(ref)?.raw;
+      } catch (e) {
+        throw new Error(`${ref}: not JSON (${e.message})`);
+      }
+      if (raw === void 0) throw new UsageError(`no strategy "${ref}"`);
+      const v = validateStrategy(raw);
+      if (asJson) process.stdout.write(jsonLine({ valid: v.valid, errors: v.errors, warnings: v.warnings }));
+      else
+        process.stdout.write(
+          `${v.valid ? `${ref}: valid` : `${ref}: INVALID
+  - ${v.errors.join("\n  - ")}`}
+${v.warnings.map((w) => `warning: ${w}
+`).join("")}`
+        );
+      if (!v.valid) throw new Error(`${ref}: ${v.errors.length} error(s)`);
+      return;
+    }
+    case "new": {
+      if (!ref || !/^[a-z][a-z0-9-]*$/.test(ref)) throw new UsageError("usage: ultrastock strategy new <kebab-case-name> [--like <strategy>]");
+      const like = argValue(args, "like");
+      const base2 = like ? findStrategy(like)?.raw : strategyTemplate(ref);
+      if (!base2) throw new UsageError(`no strategy "${like}" to start from`);
+      const def2 = { ...base2, name: ref };
+      const dir = userStrategyDir();
+      const path = join29(dir, `${ref}.json`);
+      if (existsSync22(path)) throw new UsageError(`${path} already exists \u2014 edit it, or pick another name`);
+      mkdirSync18(dir, { recursive: true });
+      writeFileSync3(path, `${JSON.stringify(def2, null, 2)}
+`);
+      if (asJson) process.stdout.write(jsonLine({ path, strategy: def2 }));
+      else process.stdout.write(`wrote ${path}
+edit it, then: ultrastock strategy validate ${ref} && ultrastock backtest run ${ref} <symbol>
+`);
+      return;
+    }
+    default:
+      throw new UsageError(STRATEGY_USAGE);
+  }
+}
+
 // src/commands/journal.ts
-import { readFileSync as readFileSync23 } from "fs";
-import { basename as basename3, resolve as resolve7 } from "path";
+import { readFileSync as readFileSync26 } from "fs";
+import { basename as basename3, resolve as resolve8 } from "path";
 
 // src/alerts/alerts.ts
-import { existsSync as existsSync20, mkdirSync as mkdirSync16, readFileSync as readFileSync21 } from "fs";
-import { join as join25 } from "path";
-var statePath = () => join25(homeDir(), "state", "alerts.json");
+import { existsSync as existsSync23, mkdirSync as mkdirSync19, readFileSync as readFileSync25 } from "fs";
+import { join as join30 } from "path";
+var statePath = () => join30(homeDir(), "state", "alerts.json");
 function loadRules() {
-  return existsSync20(statePath()) ? JSON.parse(readFileSync21(statePath(), "utf8")) : [];
+  return existsSync23(statePath()) ? JSON.parse(readFileSync25(statePath(), "utf8")) : [];
 }
 function saveRules(rules) {
-  mkdirSync16(join25(homeDir(), "state"), { recursive: true });
+  mkdirSync19(join30(homeDir(), "state"), { recursive: true });
   writeFileAtomic(statePath(), `${JSON.stringify(rules, null, 2)}
 `, 384);
 }
@@ -23626,120 +28429,6 @@ async function notify(events) {
   return report;
 }
 
-// src/journal/settle.ts
-import { appendFileSync as appendFileSync5, existsSync as existsSync21, mkdirSync as mkdirSync17, readFileSync as readFileSync22 } from "fs";
-import { join as join26 } from "path";
-var HORIZONS2 = [5, 20, 60];
-function readDecisions() {
-  const f = join26(journalDir(), "decisions.jsonl");
-  if (!existsSync21(f)) return [];
-  return readFileSync22(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((d) => d.id);
-}
-function readSettlements() {
-  const f = join26(journalDir(), "settlements.jsonl");
-  if (!existsSync21(f)) return [];
-  return readFileSync22(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
-}
-var closeAtOrBefore = (bars, date) => {
-  let v;
-  for (const b of bars) {
-    if (b.date.slice(0, 10) <= date) v = b;
-    else break;
-  }
-  return v;
-};
-function judge(rating2, alphaPct, horizon) {
-  if (rating2 === "buy" || rating2 === "overweight") return alphaPct > 0;
-  if (rating2 === "sell" || rating2 === "underweight") return alphaPct < 0;
-  return Math.abs(alphaPct) < 2 * Math.max(1, horizon / 21);
-}
-async function settleDecisions(now = clockNow()) {
-  const done = new Set(readSettlements().map((s) => `${s.decisionId}|${s.horizon}`));
-  const settled = [];
-  const errors = [];
-  let pending = 0;
-  const today = now.toISOString().slice(0, 10);
-  for (const d of readDecisions()) {
-    const due = HORIZONS2.filter((h) => !done.has(`${d.id}|${h}`));
-    if (!due.length) continue;
-    try {
-      const r2 = await resolveSymbol(d.symbol);
-      const market = r2.instrument.market === "crypto" ? "CRYPTO" : marketForMic(r2.instrument.mic);
-      const start = d.decidedAt.slice(0, 10);
-      const matured = due.filter(
-        (h) => (market === "CRYPTO" ? new Date(Date.parse(start) + h * 864e5).toISOString().slice(0, 10) : addSessions(market, start, h)) <= today
-      );
-      pending += due.length - matured.length;
-      if (!matured.length) continue;
-      const from = new Date(Date.parse(start) - 10 * 864e5);
-      const series = await getHistory(r2, { from, to: now });
-      const benchSym = defaultBenchmark(r2.instrument.market, r2.instrument.mic);
-      const bench = benchSym ? await getHistory(await resolveSymbol(benchSym), { from, to: now }).catch(() => void 0) : void 0;
-      for (const h of matured) {
-        const endDate = market === "CRYPTO" ? new Date(Date.parse(start) + h * 864e5).toISOString().slice(0, 10) : addSessions(market, start, h);
-        const s0 = closeAtOrBefore(series.bars, start);
-        const s1 = closeAtOrBefore(series.bars, endDate);
-        if (!s0 || !s1) {
-          errors.push(`${d.symbol} ${h}: no close around ${start} or ${endDate}`);
-          continue;
-        }
-        const ret2 = (s1.close / s0.close - 1) * 100;
-        const b0 = bench && closeAtOrBefore(bench.bars, start);
-        const b1 = bench && closeAtOrBefore(bench.bars, endDate);
-        const bRet = b0 && b1 ? (b1.close / b0.close - 1) * 100 : void 0;
-        const alpha = bRet === void 0 ? void 0 : ret2 - bRet;
-        const st = {
-          decisionId: d.id,
-          symbol: d.symbol,
-          rating: d.rating,
-          horizon: h,
-          decidedAt: d.decidedAt,
-          startClose: s0.close,
-          endDate: s1.date.slice(0, 10),
-          endClose: s1.close,
-          returnPct: Number(ret2.toFixed(4)),
-          benchmark: benchSym,
-          benchmarkReturnPct: bRet === void 0 ? void 0 : Number(bRet.toFixed(4)),
-          alphaPct: alpha === void 0 ? void 0 : Number(alpha.toFixed(4)),
-          hit: judge(d.rating, alpha ?? ret2, h),
-          settledAt: now.toISOString()
-        };
-        settled.push(st);
-      }
-    } catch (e) {
-      errors.push(`${d.symbol}: ${e.message}`);
-    }
-  }
-  if (settled.length) {
-    mkdirSync17(journalDir(), { recursive: true });
-    appendFileSync5(join26(journalDir(), "settlements.jsonl"), settled.map((s) => `${JSON.stringify(s)}
-`).join(""), { mode: 384 });
-    appendFileSync5(
-      join26(journalDir(), "decisions.md"),
-      settled.map(
-        (s) => `SETTLED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions \u2192 ${s.endDate}]: return ${s.returnPct} %${s.alphaPct !== void 0 ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} \u2014 ${s.hit ? "right" : "wrong"}
-`
-      ).join("")
-    );
-  }
-  return { settled, pending, errors };
-}
-function hitRates(settlements) {
-  const groups = /* @__PURE__ */ new Map();
-  for (const s of settlements) groups.set(`${s.rating}|${s.horizon}`, [...groups.get(`${s.rating}|${s.horizon}`) ?? [], s]);
-  return [...groups.entries()].map(([k, xs]) => {
-    const [rating2, h] = k.split("|");
-    const alphas = xs.map((x) => x.alphaPct).filter((x) => x !== void 0);
-    return {
-      rating: rating2,
-      horizon: Number(h),
-      n: xs.length,
-      hitRate: xs.filter((x) => x.hit).length / xs.length,
-      meanAlphaPct: alphas.length ? alphas.reduce((a, b) => a + b, 0) / alphas.length : void 0
-    };
-  }).sort((a, b) => a.rating.localeCompare(b.rating) || a.horizon - b.horizon);
-}
-
 // src/commands/journal.ts
 var out = (asJson, value, text) => {
   process.stdout.write(asJson ? jsonLine(value) : text.endsWith("\n") ? text : `${text}
@@ -23751,18 +28440,18 @@ async function decideCommand(args, asJson) {
     throw new UsageError("usage: ultrastock decide <run> <decision.json> \u2014 validate the decision against the run's evidence and record it in the journal");
   let raw;
   try {
-    raw = JSON.parse(readFileSync23(resolve7(file), "utf8"));
+    raw = JSON.parse(readFileSync26(resolve8(file), "utf8"));
   } catch (e) {
     throw new Error(`cannot read ${file} as JSON: ${e.message}`);
   }
-  const r2 = validateDecision({ decidedAt: clockNow().toISOString(), run: resolve7(run3), ...raw }, resolve7(run3));
+  const r2 = validateDecision({ decidedAt: clockNow().toISOString(), run: resolve8(run3), ...raw }, resolve8(run3));
   if (!r2.ok) {
     out(asJson, r2, `decision refused \u2014 ${r2.problems.length} problem(s):
 ${r2.problems.map((p) => `  - ${p}`).join("\n")}`);
     process.exitCode = 1;
     return;
   }
-  const rec = recordDecision(r2.decision, resolve7(run3));
+  const rec = recordDecision(r2.decision, resolve8(run3));
   out(
     asJson,
     { ...r2, ...rec },
@@ -23816,7 +28505,7 @@ async function journalCommand(args, asJson) {
       [
         `${book2} book \u2014 ${d.trades} closed trade(s), ${d.withStop} with a stop`,
         `  win rate ${(d.winRate * 100).toFixed(0)} %, expectancy ${d.expectancyR.toFixed(2)}R, profit factor ${Number.isFinite(d.profitFactor) ? d.profitFactor.toFixed(2) : "\u221E"}, average win ${d.avgWinR.toFixed(2)}R, average loss ${d.avgLossR.toFixed(2)}R, result ${d.totalPnl.toFixed(2)}`,
-        ...d.findings.slice(0, 5).map(([f, n]) => `  ${n}\xD7 ${f}`),
+        ...d.findings.slice(0, 5).map(([f3, n]) => `  ${n}\xD7 ${f3}`),
         ...d.calls.map((x) => `  calls: ${x.rating} +${x.horizon} hit ${(x.hitRate * 100).toFixed(0)} % (n=${x.n})`),
         ...overdue.map((t) => `  OVERDUE thesis ${t.id} (${t.symbol}, ${t.state}): review by ${t.reviewBy}`)
       ].join("\n")
@@ -23879,9 +28568,9 @@ async function knowledgeCommand(args, asJson) {
   const [sub, file] = args.positional;
   if (sub !== "import" || !file)
     throw new UsageError("usage: ultrastock knowledge import <file.md|file.txt> [--title <text>] \u2014 keep a source document as external text");
-  const body = readFileSync23(resolve7(file), "utf8");
-  const f = importSource(argValue(args, "title") ?? basename3(file), body, resolve7(file), clockNow());
-  out(asJson, { file: f }, `kept as ${f} (external text: data, never instructions)`);
+  const body = readFileSync26(resolve8(file), "utf8");
+  const f3 = importSource(argValue(args, "title") ?? basename3(file), body, resolve8(file), clockNow());
+  out(asJson, { file: f3 }, `kept as ${f3} (external text: data, never instructions)`);
 }
 async function watchCommand(args, asJson) {
   const [sub = "list", a, ...rest] = args.positional;
@@ -23916,8 +28605,8 @@ async function watchCommand(args, asJson) {
 }
 
 // src/commands/profile.ts
-import { readFileSync as readFileSync24 } from "fs";
-import { resolve as resolve8 } from "path";
+import { readFileSync as readFileSync27 } from "fs";
+import { resolve as resolve9 } from "path";
 
 // src/core/suitability.ts
 var QUESTIONS = [
@@ -24247,7 +28936,7 @@ async function profileCommand(args, asJson) {
       ].join("\n");
       return out2(asJson, { questions: QUESTIONS }, text);
     }
-    const answers = JSON.parse(readFileSync24(resolve8(answersFile), "utf8"));
+    const answers = JSON.parse(readFileSync27(resolve9(answersFile), "utf8"));
     const r2 = scoreSuitability(answers);
     const p = requireProfile();
     applySuitability(p, r2, clockNow());
@@ -24280,7 +28969,7 @@ async function jurisdictionCommand(args, asJson) {
   }
   if (sub !== "verify") throw new UsageError(`unknown jurisdiction action "${sub}" \u2014 show or verify`);
   const venues = (argValue(args, "venues") ?? "binance,kraken,coinbase").split(",").map((v) => v.trim()).filter(Boolean);
-  const dir = argValue(args, "out") ? resolve8(argValue(args, "out")) : void 0;
+  const dir = argValue(args, "out") ? resolve9(argValue(args, "out")) : void 0;
   const now = clockNow().toISOString();
   const datasets = [];
   for (const v of venues) {
@@ -24328,8 +29017,8 @@ ${checklist.map((c) => `- ${c.rule} (verified ${c.verifiedAt}): "${c.query}" \u2
 }
 
 // src/commands/import.ts
-import { existsSync as existsSync22, readFileSync as readFileSync25 } from "fs";
-import { resolve as resolve9 } from "path";
+import { existsSync as existsSync24, readFileSync as readFileSync28 } from "fs";
+import { resolve as resolve10 } from "path";
 
 // src/portfolio/import/shared.ts
 var emptyResult = () => ({ transactions: [], skipped: [], warnings: [] });
@@ -24419,11 +29108,11 @@ function statementDate(raw, order = "DMY") {
   const M = Number(mo);
   const D = Number(d);
   if (M < 1 || M > 12 || D < 1 || D > 31) return void 0;
-  const day2 = `${y}-${String(M).padStart(2, "0")}-${String(D).padStart(2, "0")}`;
-  if (!time) return day2;
+  const day3 = `${y}-${String(M).padStart(2, "0")}-${String(D).padStart(2, "0")}`;
+  if (!time) return day3;
   const [hh, mm, ss] = time;
   if (Number(hh) > 23 || Number(mm) > 59) return void 0;
-  return `${day2}T${hh.padStart(2, "0")}:${mm}:${(ss ?? "00").padStart(2, "0")}`;
+  return `${day3}T${hh.padStart(2, "0")}:${mm}:${(ss ?? "00").padStart(2, "0")}`;
 }
 function statementNumber(raw, decimal) {
   if (raw === void 0) return void 0;
@@ -24924,8 +29613,8 @@ function parseGeneric(text, opts) {
     let amount = n("amount");
     const currency = (cell2("currency") ?? defaultCurrency).toUpperCase();
     if ((type === "buy" || type === "sell") && price === void 0 && amount !== void 0 && quantity) {
-      const f = Math.abs(fee ?? 0);
-      price = round3((type === "buy" ? Math.abs(amount) - f : Math.abs(amount) + f) / Math.abs(quantity));
+      const f3 = Math.abs(fee ?? 0);
+      price = round3((type === "buy" ? Math.abs(amount) - f3 : Math.abs(amount) + f3) / Math.abs(quantity));
       pricedFromAmount++;
     }
     const cashType = type === "deposit" || type === "withdrawal" || type === "dividend" || type === "interest" || type === "fee" || type === "tax";
@@ -25005,9 +29694,9 @@ function xmlElementAttrs(xml, tag) {
   }
   return out4;
 }
-var pick2 = (f, ...keys) => {
+var pick2 = (f3, ...keys) => {
   for (const k of keys) {
-    const v = f[k];
+    const v = f3[k];
     if (v !== void 0 && v.trim() !== "") return v.trim();
   }
   return void 0;
@@ -25102,10 +29791,10 @@ function ibkrCsvRecords(rows, res) {
       const def2 = ACTIVITY_SECTIONS[sec];
       const h = headers[sec];
       if (!def2 || !h) continue;
-      const f = Object.fromEntries(h.map((k, i) => [k, r2.cells[i + 2] ?? ""]));
-      if (/^total/i.test(f.currency ?? "") || /^total/i.test(f.assetcategory ?? "")) continue;
-      if (def2.type) f.type = def2.type;
-      recs.push({ kind: def2.kind, line: r2.line, f });
+      const f3 = Object.fromEntries(h.map((k, i) => [k, r2.cells[i + 2] ?? ""]));
+      if (/^total/i.test(f3.currency ?? "") || /^total/i.test(f3.assetcategory ?? "")) continue;
+      if (def2.type) f3.type = def2.type;
+      recs.push({ kind: def2.kind, line: r2.line, f: f3 });
     }
     return recs;
   }
@@ -25150,36 +29839,36 @@ function parseIbkr(text, opts) {
     if (!ex) continue;
     for (const id of [pick2(r2.f, "symbol"), pick2(r2.f, "isin", "securityid"), pick2(r2.f, "conid")]) if (id) exchangeOf.set(id.toUpperCase(), ex);
   }
-  const symbolFor = (f, fromDescription = false) => {
-    let sym2 = pick2(f, "symbol");
-    let isin = pick2(f, "isin", "securityid") ?? isinOf.get((pick2(f, "symbol") ?? "").toUpperCase());
+  const symbolFor = (f3, fromDescription = false) => {
+    let sym2 = pick2(f3, "symbol");
+    let isin = pick2(f3, "isin", "securityid") ?? isinOf.get((pick2(f3, "symbol") ?? "").toUpperCase());
     if (fromDescription && (!sym2 || !isin)) {
-      const m = DESCRIPTION_ID.exec(pick2(f, "description") ?? "");
+      const m = DESCRIPTION_ID.exec(pick2(f3, "description") ?? "");
       if (m) {
         sym2 ??= m[1].trim();
         isin ??= m[2];
       }
     }
-    const ex = pick2(f, "listingexchange", "listingexch") ?? exchangeOf.get((sym2 ?? "").toUpperCase()) ?? exchangeOf.get((isin ?? "").toUpperCase()) ?? exchangeOf.get((pick2(f, "conid") ?? "").toUpperCase());
+    const ex = pick2(f3, "listingexchange", "listingexch") ?? exchangeOf.get((sym2 ?? "").toUpperCase()) ?? exchangeOf.get((isin ?? "").toUpperCase()) ?? exchangeOf.get((pick2(f3, "conid") ?? "").toUpperCase());
     return {
       symbol: sym2 || isin ? ibkrSymbol(
         {
           symbol: sym2,
           isin,
           listingExchange: ex,
-          currency: pick2(f, "currency", "currencyprimary"),
-          assetCategory: pick2(f, "assetcategory", "assetclass")
+          currency: pick2(f3, "currency", "currencyprimary"),
+          assetCategory: pick2(f3, "assetcategory", "assetclass")
         },
         warn
       ) : void 0,
       isin: isin && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin.toUpperCase()) ? isin.toUpperCase() : void 0
     };
   };
-  const dateOf = (f, ...keys) => {
+  const dateOf = (f3, ...keys) => {
     for (const k of keys) {
-      const v = f[k];
+      const v = f3[k];
       if (!v) continue;
-      const time = k === "tradedate" ? f.tradetime : void 0;
+      const time = k === "tradedate" ? f3.tradetime : void 0;
       const d = statementDate(time ? `${v};${time}` : v);
       if (d) return d;
     }
@@ -25191,13 +29880,13 @@ function parseIbkr(text, opts) {
   const levels = new Set(trades2.map((r2) => (pick2(r2.f, "levelofdetail", "datadiscriminator") ?? "EXECUTION").toUpperCase()));
   const wanted = levels.has("EXECUTION") ? "EXECUTION" : levels.has("TRADE") ? "TRADE" : "ORDER";
   for (const r2 of trades2) {
-    const f = r2.f;
-    const level = (pick2(f, "levelofdetail", "datadiscriminator") ?? "EXECUTION").toUpperCase();
+    const f3 = r2.f;
+    const level = (pick2(f3, "levelofdetail", "datadiscriminator") ?? "EXECUTION").toUpperCase();
     if (level !== wanted) {
       res.skipped.push({ line: r2.line, reason: `${level.toLowerCase()} detail row (the ${wanted.toLowerCase()} rows are imported)` });
       continue;
     }
-    const cat = (pick2(f, "assetcategory", "assetclass") ?? "STK").toUpperCase();
+    const cat = (pick2(f3, "assetcategory", "assetclass") ?? "STK").toUpperCase();
     if (!IMPORTED_ASSETS.has(cat)) {
       res.skipped.push({
         line: r2.line,
@@ -25205,27 +29894,27 @@ function parseIbkr(text, opts) {
       });
       continue;
     }
-    const side2 = (pick2(f, "buysell") ?? "").toUpperCase();
+    const side2 = (pick2(f3, "buysell") ?? "").toUpperCase();
     if (/CA\.|CANCEL/.test(side2)) {
       res.skipped.push({ line: r2.line, reason: "cancelled trade" });
       continue;
     }
-    const qty = statementNumber(pick2(f, "quantity"));
-    const price = statementNumber(pick2(f, "tradeprice", "tprice", "price"));
-    const date = dateOf(f, "datetime", "tradedate", "date");
-    const currency = (pick2(f, "currency", "currencyprimary") ?? "").toUpperCase();
+    const qty = statementNumber(pick2(f3, "quantity"));
+    const price = statementNumber(pick2(f3, "tradeprice", "tprice", "price"));
+    const date = dateOf(f3, "datetime", "tradedate", "date");
+    const currency = (pick2(f3, "currency", "currencyprimary") ?? "").toUpperCase();
     if (qty === void 0 || qty === 0 || price === void 0 || !date) {
-      const bad = [qty === void 0 || qty === 0 ? `quantity "${pick2(f, "quantity") ?? ""}"` : "", price === void 0 ? "price" : "", date ? "" : "date"];
+      const bad = [qty === void 0 || qty === 0 ? `quantity "${pick2(f3, "quantity") ?? ""}"` : "", price === void 0 ? "price" : "", date ? "" : "date"];
       res.skipped.push({ line: r2.line, reason: `unreadable trade: ${bad.filter(Boolean).join(", ")}` });
       continue;
     }
     const type = side2.startsWith("SELL") || !side2.startsWith("BUY") && qty < 0 ? "sell" : "buy";
-    const commission = Math.abs(statementNumber(pick2(f, "ibcommission", "commfee", "commission")) ?? 0);
-    const taxes = Math.abs(statementNumber(pick2(f, "taxes")) ?? 0);
-    const commCcy = (pick2(f, "ibcommissioncurrency") ?? currency).toUpperCase();
-    const fx = statementNumber(pick2(f, "fxratetobase"));
-    const { symbol, isin } = symbolFor(f);
-    const tradeId = pick2(f, "tradeid", "transactionid");
+    const commission = Math.abs(statementNumber(pick2(f3, "ibcommission", "commfee", "commission")) ?? 0);
+    const taxes = Math.abs(statementNumber(pick2(f3, "taxes")) ?? 0);
+    const commCcy = (pick2(f3, "ibcommissioncurrency") ?? currency).toUpperCase();
+    const fx = statementNumber(pick2(f3, "fxratetobase"));
+    const { symbol, isin } = symbolFor(f3);
+    const tradeId = pick2(f3, "tradeid", "transactionid");
     const separateCommission = commission > 0 && commCcy !== currency;
     accept(res, r2.line, {
       date,
@@ -25256,23 +29945,23 @@ function parseIbkr(text, opts) {
   const cash = recs.filter((r2) => r2.kind === "cash");
   const hasDetail = cash.some((r2) => (pick2(r2.f, "levelofdetail") ?? "").toUpperCase() === "DETAIL");
   for (const r2 of cash) {
-    const f = r2.f;
-    if (hasDetail && (pick2(f, "levelofdetail") ?? "").toUpperCase() !== "DETAIL") continue;
-    const kind = (pick2(f, "type") ?? "").toLowerCase();
-    const amount = statementNumber(pick2(f, "amount"));
-    const date = dateOf(f, "datetime", "date", "settledate", "reportdate");
-    const currency = (pick2(f, "currency", "currencyprimary") ?? "").toUpperCase();
+    const f3 = r2.f;
+    if (hasDetail && (pick2(f3, "levelofdetail") ?? "").toUpperCase() !== "DETAIL") continue;
+    const kind = (pick2(f3, "type") ?? "").toLowerCase();
+    const amount = statementNumber(pick2(f3, "amount"));
+    const date = dateOf(f3, "datetime", "date", "settledate", "reportdate");
+    const currency = (pick2(f3, "currency", "currencyprimary") ?? "").toUpperCase();
     if (amount === void 0 || !date) {
-      res.skipped.push({ line: r2.line, reason: `unreadable cash transaction: ${amount === void 0 ? `amount "${pick2(f, "amount") ?? ""}"` : "date"}` });
+      res.skipped.push({ line: r2.line, reason: `unreadable cash transaction: ${amount === void 0 ? `amount "${pick2(f3, "amount") ?? ""}"` : "date"}` });
       continue;
     }
     const type = kind.includes("withholding") || /\btax/.test(kind) ? "tax" : kind.includes("dividend") ? "dividend" : kind.includes("deposit") || kind.includes("withdraw") ? amount >= 0 ? "deposit" : "withdrawal" : kind.includes("interest") ? "interest" : kind.includes("fee") || kind.includes("commission") ? "fee" : void 0;
     if (!type) {
-      res.skipped.push({ line: r2.line, reason: `cash transaction type "${pick2(f, "type") ?? ""}" is not imported` });
+      res.skipped.push({ line: r2.line, reason: `cash transaction type "${pick2(f3, "type") ?? ""}" is not imported` });
       continue;
     }
-    const { symbol, isin } = type === "dividend" || type === "tax" ? symbolFor(f, true) : { symbol: void 0, isin: void 0 };
-    const fx = statementNumber(pick2(f, "fxratetobase"));
+    const { symbol, isin } = type === "dividend" || type === "tax" ? symbolFor(f3, true) : { symbol: void 0, isin: void 0 };
+    const fx = statementNumber(pick2(f3, "fxratetobase"));
     accept(res, r2.line, {
       date,
       type,
@@ -25288,21 +29977,21 @@ function parseIbkr(text, opts) {
   }
   const splits = /* @__PURE__ */ new Set();
   for (const r2 of recs.filter((x) => x.kind === "corp")) {
-    const f = r2.f;
-    const desc = pick2(f, "description", "actiondescription") ?? "";
-    const code = (pick2(f, "type") ?? "").toUpperCase();
+    const f3 = r2.f;
+    const desc = pick2(f3, "description", "actiondescription") ?? "";
+    const code = (pick2(f3, "type") ?? "").toUpperCase();
     const m = /SPLIT\s+(\d+(?:\.\d+)?)\s+FOR\s+(\d+(?:\.\d+)?)/i.exec(desc);
     if (!m && code !== "FS" && code !== "RS") {
       res.skipped.push({ line: r2.line, reason: `corporate action ${code || "?"} is not imported (only splits are)` });
       continue;
     }
     const ratio = m ? Number(m[1]) / Number(m[2]) : void 0;
-    const date = dateOf(f, "datetime", "reportdate", "date");
+    const date = dateOf(f3, "datetime", "reportdate", "date");
     if (!ratio || !date) {
       res.skipped.push({ line: r2.line, reason: 'split without a readable ratio ("SPLIT n FOR m") or date' });
       continue;
     }
-    const { symbol, isin } = symbolFor(f, true);
+    const { symbol, isin } = symbolFor(f3, true);
     const key = `${date.slice(0, 10)}|${symbol}|${ratio}`;
     if (splits.has(key)) continue;
     splits.add(key);
@@ -25313,7 +30002,7 @@ function parseIbkr(text, opts) {
       symbol,
       isin,
       quantity: round3(ratio),
-      currency: (pick2(f, "currency", "currencyprimary") ?? "").toUpperCase(),
+      currency: (pick2(f3, "currency", "currencyprimary") ?? "").toUpperCase(),
       origin: ORIGIN4
     });
   }
@@ -25576,7 +30265,7 @@ function resolveMapOption(format, raw) {
 var USAGE = "usage: ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name>] [--dry-run]";
 var LIST_CAP = 60;
 function readStatement(path) {
-  const buf = readFileSync25(path);
+  const buf = readFileSync28(path);
   try {
     return { text: new TextDecoder("utf-8", { fatal: true }).decode(buf) };
   } catch {
@@ -25605,8 +30294,8 @@ async function importCommand(args, asJson) {
   if (book2 !== "real" && book2 !== "paper") throw new UsageError("--book is real or paper");
   const dryRun = args.bools.has("dry-run");
   let mapRaw = argValue(args, "map");
-  if (mapRaw !== void 0 && !mapRaw.trim().startsWith("{") && /\.json$/i.test(mapRaw) && existsSync22(resolve9(mapRaw)))
-    mapRaw = readFileSync25(resolve9(mapRaw), "utf8");
+  if (mapRaw !== void 0 && !mapRaw.trim().startsWith("{") && /\.json$/i.test(mapRaw) && existsSync24(resolve10(mapRaw)))
+    mapRaw = readFileSync28(resolve10(mapRaw), "utf8");
   let mapOpt;
   try {
     mapOpt = resolveMapOption(format, mapRaw);
@@ -25615,8 +30304,8 @@ async function importCommand(args, asJson) {
   }
   if (format === "generic" && !mapOpt.map)
     throw new UsageError("--format generic needs --map (a JSON column map, a .json file holding one, or boursorama|fortuneo|trade-republic)");
-  const path = resolve9(file);
-  if (!existsSync22(path)) throw new Error(`no such file: ${path}`);
+  const path = resolve10(file);
+  if (!existsSync24(path)) throw new Error(`no such file: ${path}`);
   const { text, warning } = readStatement(path);
   const res = parseStatement(format, text, { account, quote: mapOpt.quote, map: mapOpt.map, presetName: mapOpt.presetName });
   const warnings = [...warning ? [warning] : [], ...res.warnings];
@@ -25753,7 +30442,7 @@ async function referenceRates(currencies, base2) {
   for (const c of want) if (!rates[c]) notes.push(`no ${c}\u2192${base2} rate: positions in ${c} are left out of the total`);
   return { dataset: { ...ds, points: ds.points.filter((p) => /^EUR\.fx\.[A-Z]{3}$/.test(p.key)) }, rates, keys, notes };
 }
-async function loadMarkedBook(bookName, f, now) {
+async function loadMarkedBook(bookName, f3, now) {
   const profile = loadProfile();
   if (!profile) throw new Error("no profile: run `ultrastock profile init` first");
   const txs = readLedger(bookName);
@@ -25761,7 +30450,7 @@ async function loadMarkedBook(bookName, f, now) {
   const holdings = aggregateHoldings(book2, profile);
   if (!holdings.length && !book2.cash.length)
     throw new Error(`the ${bookName} book is empty \u2014 record a deposit and trades first (\`ultrastock portfolio deposit|add \u2026 --book ${bookName}\`)`);
-  const day2 = now.toISOString().slice(0, 10);
+  const day3 = now.toISOString().slice(0, 10);
   const P = `PORTFOLIO.${bookName}`;
   const ledgerPoints = [];
   for (const h of holdings) {
@@ -25783,17 +30472,17 @@ async function loadMarkedBook(bookName, f, now) {
       value: Number(c.amount.toFixed(2)),
       unit: c.currency
     });
-  f.input({
+  f3.input({
     kind: "ledger",
     title: `${bookName} book \u2014 ledger positions and cash`,
     subject: `portfolio:${bookName}`,
     points: ledgerPoints,
-    provenance: { source: "ultrastock-ledger", fetchedAt: now.toISOString(), official: false, asOf: day2 },
+    provenance: { source: "ultrastock-ledger", fetchedAt: now.toISOString(), official: false, asOf: day3 },
     notes: [`recomputed from ${txs.length} ledger transactions`]
   });
   const priced = holdings.slice(0, MAX_SYMBOLS);
   if (holdings.length > MAX_SYMBOLS)
-    f.note(
+    f3.note(
       `only the first ${MAX_SYMBOLS} of ${holdings.length} symbols are priced (polite fan-out): ${holdings.slice(MAX_SYMBOLS).map((h) => h.symbol).join(", ")} left out`
     );
   const quotes = await mapLimit(priced, 4, async (h) => {
@@ -25807,7 +30496,7 @@ async function loadMarkedBook(bookName, f, now) {
   priced.forEach((h, i) => {
     const r2 = quotes[i];
     if ("error" in r2) {
-      f.note(`could not price ${h.symbol}: ${r2.error}`);
+      f3.note(`could not price ${h.symbol}: ${r2.error}`);
       return;
     }
     h.resolved = r2.resolved;
@@ -25817,7 +30506,7 @@ async function loadMarkedBook(bookName, f, now) {
     const q = r2.quote;
     h.price = q.price;
     h.keys.price = `${h.symbol}.quote.price`;
-    f.input({
+    f3.input({
       kind: "quote",
       title: `${h.symbol} quote`,
       subject: h.symbol,
@@ -25830,13 +30519,13 @@ async function loadMarkedBook(bookName, f, now) {
       notes: q.notes
     });
     if (q.instrument.currency !== h.currency)
-      f.note(`${h.symbol}: quoted in ${q.instrument.currency} but booked in ${h.currency} \u2014 the quote currency is used`);
+      f3.note(`${h.symbol}: quoted in ${q.instrument.currency} but booked in ${h.currency} \u2014 the quote currency is used`);
     h.currency = q.instrument.currency;
   });
   const base2 = profile.baseCurrency;
   const fx = await referenceRates([...holdings.map((h) => h.currency), ...book2.cash.map((c) => c.currency)], base2);
-  if (fx.dataset) f.input(fx.dataset);
-  f.note(...fx.notes);
+  if (fx.dataset) f3.input(fx.dataset);
+  f3.note(...fx.notes);
   const cash = book2.cash.map((c) => ({ ...c, amountBase: fx.rates[c.currency] !== void 0 ? c.amount * fx.rates[c.currency] : void 0 }));
   const cashKeys = book2.cash.map((c) => `${P}.cash.${c.account}.${c.currency}`);
   const cashFx = book2.cash.map((c) => fx.keys[c.currency]).filter((k) => !!k);
@@ -25850,7 +30539,7 @@ async function loadMarkedBook(bookName, f, now) {
     h.keys.fx = fx.keys[h.currency];
     h.valueBase = h.quantity * h.price * rate;
     invested += h.valueBase;
-    h.keys.value = f.derive(
+    h.keys.value = f3.derive(
       "positions",
       `${P}.${h.symbol}.value`,
       `${h.symbol} position value in ${base2}`,
@@ -25862,7 +30551,7 @@ async function loadMarkedBook(bookName, f, now) {
     if (h.keys.value) totalFrom.push(h.keys.value);
   }
   const totalBase = invested + cashBase;
-  const cashKey = f.derive(
+  const cashKey = f3.derive(
     "positions",
     `${P}.cashTotal`,
     `cash in ${base2} (${bookName} book)`,
@@ -25871,7 +30560,7 @@ async function loadMarkedBook(bookName, f, now) {
     [...cashKeys, ...cashFx, ...ledgerPoints.map((p) => p.key)],
     "\u03A3 cash balances \xD7 rate to base"
   );
-  const totalKey = f.derive(
+  const totalKey = f3.derive(
     "positions",
     `${P}.total`,
     `portfolio total in ${base2} (${bookName} book)`,
@@ -25883,7 +30572,7 @@ async function loadMarkedBook(bookName, f, now) {
   for (const h of holdings) {
     if (h.valueBase === void 0 || !(totalBase > 0)) continue;
     h.weightPct = h.valueBase / totalBase * 100;
-    h.keys.weight = f.derive(
+    h.keys.weight = f3.derive(
       "positions",
       `${P}.${h.symbol}.weight`,
       `${h.symbol} weight in the portfolio`,
@@ -25944,13 +30633,13 @@ var Findings = class {
     for (const l of lines) if (l && !this.notes.includes(l)) this.notes.push(l);
   }
 };
-function registerFindings(dir, f, subject, now) {
+function registerFindings(dir, f3, subject, now) {
   const store = EvidenceStore.open(dir, { run: dir, subject, createdAt: now.toISOString() });
-  const registered = registerDatasets(store, f.inputs);
+  const registered = registerDatasets(store, f3.inputs);
   const ids = /* @__PURE__ */ new Map();
   for (const r2 of registered) r2.items.forEach((it) => ids.set(it.key, it.id));
   const derived = [];
-  for (const d of f.derived) {
+  for (const d of f3.derived) {
     const inputIds = d.from.map((k) => ids.get(k)).filter((x) => !!x);
     const id = store.addDerived(d.key, d.label, d.value, d.unit, inputIds, d.formula);
     ids.set(d.key, id);
@@ -25959,14 +30648,14 @@ function registerFindings(dir, f, subject, now) {
   store.save();
   return {
     store,
-    result: { dir, inputs: registered.map((r2) => ({ ...r2.dataset, ids: r2.ids })), derived, notes: f.notes }
+    result: { dir, inputs: registered.map((r2) => ({ ...r2.dataset, ids: r2.ids })), derived, notes: f3.notes }
   };
 }
-function formatFindings(title, f, emitted, store) {
+function formatFindings(title, f3, emitted, store) {
   const lines = [`# ${title}`, ""];
   const bySection = /* @__PURE__ */ new Map();
   emitted.derived.forEach((item, i) => {
-    const s = f.derived[i].section;
+    const s = f3.derived[i].section;
     bySection.set(s, [...bySection.get(s) ?? [], item]);
   });
   for (const [section, items] of bySection) {
@@ -25974,9 +30663,9 @@ function formatFindings(title, f, emitted, store) {
     for (const i of items) lines.push(`- ${formatEvidence(i)}`);
     lines.push("");
   }
-  if (f.notes.length) {
+  if (f3.notes.length) {
     lines.push("## notes");
-    for (const n of f.notes) lines.push(`- ${n}`);
+    for (const n of f3.notes) lines.push(`- ${n}`);
     lines.push("");
   }
   lines.push("## inputs", "");
@@ -25988,7 +30677,7 @@ function formatFindings(title, f, emitted, store) {
 }
 
 // src/analyze/portfolio/rebalance.ts
-import { existsSync as existsSync23, readFileSync as readFileSync26 } from "fs";
+import { existsSync as existsSync25, readFileSync as readFileSync29 } from "fs";
 
 // src/trading/paper.ts
 var FEE_MODELS = {
@@ -26166,7 +30855,7 @@ function readiness(trades2, equity, firstTrade, now = /* @__PURE__ */ new Date()
 
 // src/analyze/portfolio/rebalance.ts
 function parseTargets(raw) {
-  const text = raw.trim().startsWith("{") ? raw : existsSync23(raw) ? readFileSync26(raw, "utf8") : void 0;
+  const text = raw.trim().startsWith("{") ? raw : existsSync25(raw) ? readFileSync29(raw, "utf8") : void 0;
   if (text === void 0) throw new UsageError(`--targets is a JSON object of weights in % or a path to one, not "${raw}"`);
   let parsed;
   try {
@@ -26220,222 +30909,6 @@ function sellTaxNote(envelope) {
   if (envelope === "CTO" || envelope === "TAXABLE")
     return "in a CTO a sell realises a taxable gain or loss (the French flat tax, PFU, on the net gain) \u2014 the tax engine is to come";
   return "the envelope is unknown: whether this sell is taxable depends on it (a CTO realises a taxable gain, a PEA does not)";
-}
-
-// src/analytics/portfolio.ts
-function sampleCovariance(returns) {
-  const k = returns.length;
-  const n = Math.min(...returns.map((r2) => r2.length));
-  const m = returns.map((r2) => mean(r2.slice(-n)));
-  const cov = Array.from({ length: k }, () => new Array(k).fill(0));
-  for (let a = 0; a < k; a++)
-    for (let b = a; b < k; b++) {
-      let s = 0;
-      const ra = returns[a].slice(-n);
-      const rb = returns[b].slice(-n);
-      for (let t = 0; t < n; t++) s += (ra[t] - m[a]) * (rb[t] - m[b]);
-      cov[a][b] = cov[b][a] = s / (n - 1);
-    }
-  return cov;
-}
-function ledoitWolf(returns) {
-  const k = returns.length;
-  const n = Math.min(...returns.map((r2) => r2.length));
-  const X = returns.map((r2) => {
-    const s = r2.slice(-n);
-    const m = mean(s);
-    return s.map((v) => v - m);
-  });
-  const S = sampleCovariance(returns).map((row) => row.map((v) => v * (n - 1) / n));
-  const sd = S.map((row, i) => Math.sqrt(row[i]));
-  let rbar = 0;
-  for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) if (i !== j) rbar += S[i][j] / (sd[i] * sd[j]);
-  rbar /= k * (k - 1);
-  const F = S.map((row, i) => row.map((v, j) => i === j ? v : rbar * sd[i] * sd[j]));
-  let pi = 0;
-  const piMat = Array.from({ length: k }, () => new Array(k).fill(0));
-  for (let i = 0; i < k; i++)
-    for (let j = 0; j < k; j++) {
-      let s = 0;
-      for (let t = 0; t < n; t++) s += (X[i][t] * X[j][t] - S[i][j]) ** 2;
-      piMat[i][j] = s / n;
-      pi += piMat[i][j];
-    }
-  let rho = 0;
-  for (let i = 0; i < k; i++) rho += piMat[i][i];
-  for (let i = 0; i < k; i++)
-    for (let j = 0; j < k; j++) {
-      if (i === j) continue;
-      let thetaII = 0;
-      let thetaJJ = 0;
-      for (let t = 0; t < n; t++) {
-        const xi = X[i][t];
-        const xj = X[j][t];
-        thetaII += (xi * xi - S[i][i]) * (xi * xj - S[i][j]);
-        thetaJJ += (xj * xj - S[j][j]) * (xi * xj - S[i][j]);
-      }
-      rho += rbar / 2 * (sd[j] / sd[i] * (thetaII / n) + sd[i] / sd[j] * (thetaJJ / n));
-    }
-  let gamma = 0;
-  for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) gamma += (F[i][j] - S[i][j]) ** 2;
-  const kappa = (pi - rho) / gamma;
-  const shrinkage = Math.max(0, Math.min(1, kappa / n));
-  return { cov: S.map((row, i) => row.map((v, j) => shrinkage * F[i][j] + (1 - shrinkage) * v)), shrinkage };
-}
-var dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
-var mulMv = (M, v) => M.map((row) => dot(row, v));
-var portfolioVariance = (w, cov) => dot(w, mulMv(cov, w));
-function projectSimplex(v, cap = 1) {
-  let lo = Math.min(...v) - 1;
-  let hi = Math.max(...v);
-  for (let i = 0; i < 100; i++) {
-    const tau2 = (lo + hi) / 2;
-    const s = v.reduce((acc, x) => acc + Math.min(cap, Math.max(0, x - tau2)), 0);
-    if (s > 1) lo = tau2;
-    else hi = tau2;
-  }
-  const tau = (lo + hi) / 2;
-  return v.map((x) => Math.min(cap, Math.max(0, x - tau)));
-}
-function minVariance(cov, opts = {}) {
-  const k = cov.length;
-  let w = new Array(k).fill(1 / k);
-  const trace = cov.reduce((s, row, i) => s + row[i], 0);
-  const step = 0.5 / trace;
-  for (let it = 0; it < (opts.iterations ?? 5e3); it++) {
-    const g = mulMv(cov, w).map((x) => 2 * x);
-    w = projectSimplex(
-      w.map((wi, i) => wi - step * g[i]),
-      opts.maxWeight ?? 1
-    );
-  }
-  return w;
-}
-function maxSharpe(mu, cov, opts = {}) {
-  const k = cov.length;
-  let w = new Array(k).fill(1 / k);
-  const sharpeOf = (x) => dot(x, mu) / Math.sqrt(portfolioVariance(x, cov));
-  let best = w;
-  let bestS = sharpeOf(w);
-  const scale = Math.sqrt(cov.reduce((s, row, i) => s + row[i], 0) / k);
-  for (let it = 0; it < (opts.iterations ?? 4e3); it++) {
-    const v = portfolioVariance(w, cov);
-    const sd = Math.sqrt(v);
-    const r2 = dot(w, mu);
-    const cw = mulMv(cov, w);
-    const g = mu.map((m, i) => m / sd - r2 * cw[i] / (sd * v));
-    w = projectSimplex(
-      w.map((wi, i) => wi + 0.05 * scale * g[i]),
-      opts.maxWeight ?? 1
-    );
-    const s = sharpeOf(w);
-    if (s > bestS) {
-      bestS = s;
-      best = w;
-    }
-  }
-  return best;
-}
-function riskParity(cov, budgets, iterations = 2e3) {
-  const k = cov.length;
-  const b = budgets ?? new Array(k).fill(1 / k);
-  let w = cov.map((row, i) => 1 / Math.sqrt(row[i]));
-  const norm2 = (x) => {
-    const s = x.reduce((a, c) => a + c, 0);
-    return x.map((v) => v / s);
-  };
-  w = norm2(w);
-  for (let it = 0; it < iterations; it++) {
-    const mv = mulMv(cov, w);
-    const sigma = Math.sqrt(dot(w, mv));
-    w = norm2(
-      w.map((wi, i) => {
-        const c = mv[i] - cov[i][i] * wi;
-        const a = cov[i][i];
-        const target = b[i] * sigma * sigma;
-        return (-c + Math.sqrt(c * c + 4 * a * target)) / (2 * a);
-      })
-    );
-  }
-  return w;
-}
-function hierarchicalRiskParity(cov) {
-  const k = cov.length;
-  const sd = cov.map((row, i) => Math.sqrt(row[i]));
-  const dist = (i, j) => Math.sqrt(Math.max(0, 0.5 * (1 - cov[i][j] / (sd[i] * sd[j]))));
-  let clusters = Array.from({ length: k }, (_, i) => [i]);
-  while (clusters.length > 1) {
-    let best = [0, 1];
-    let bestD = Number.POSITIVE_INFINITY;
-    for (let a = 0; a < clusters.length; a++)
-      for (let b = a + 1; b < clusters.length; b++) {
-        let d = Number.POSITIVE_INFINITY;
-        for (const i of clusters[a]) for (const j of clusters[b]) d = Math.min(d, dist(i, j));
-        if (d < bestD) {
-          bestD = d;
-          best = [a, b];
-        }
-      }
-    const merged = [...clusters[best[0]], ...clusters[best[1]]];
-    clusters = clusters.filter((_, i) => i !== best[0] && i !== best[1]);
-    clusters.push(merged);
-  }
-  const order = clusters[0];
-  const w = new Array(k).fill(1);
-  const clusterVar = (items) => {
-    const iv = items.map((i) => 1 / cov[i][i]);
-    const s = iv.reduce((a, b) => a + b, 0);
-    const ww = iv.map((v2) => v2 / s);
-    let v = 0;
-    items.forEach((i, a) => items.forEach((j, b) => v += ww[a] * ww[b] * cov[i][j]));
-    return v;
-  };
-  const bisect = (items) => {
-    if (items.length < 2) return;
-    const half = Math.floor(items.length / 2);
-    const left = items.slice(0, half);
-    const right = items.slice(half);
-    const vl = clusterVar(left);
-    const vr = clusterVar(right);
-    const alpha = 1 - vl / (vl + vr);
-    for (const i of left) w[i] *= alpha;
-    for (const i of right) w[i] *= 1 - alpha;
-    bisect(left);
-    bisect(right);
-  };
-  bisect(order);
-  return w;
-}
-function rebalance(holdings, targets, opts = {}) {
-  const assets = [.../* @__PURE__ */ new Set([...Object.keys(holdings), ...Object.keys(targets)])];
-  const total = assets.reduce((s, a) => s + (holdings[a] ?? 0), 0) + (opts.contribution ?? 0);
-  if (total <= 0) return { trades: [], drift: [] };
-  const tsum = Object.values(targets).reduce((s, v) => s + v, 0);
-  const band = opts.bandPct ?? 5;
-  const rel = opts.relBand ?? 0.25;
-  const drift = assets.map((a) => ({ asset: a, drift: (holdings[a] ?? 0) / total * 100 - (targets[a] ?? 0) / tsum * 100 }));
-  const trades2 = [];
-  let cash = opts.contribution ?? 0;
-  for (const d of [...drift].sort((x, y) => x.drift - y.drift)) {
-    if (cash <= 0 || d.drift >= 0) break;
-    const need = -d.drift / 100 * total;
-    const amount = Math.min(need, cash);
-    cash -= amount;
-    trades2.push({ asset: d.asset, current: d.drift + (targets[d.asset] ?? 0) / tsum * 100, target: (targets[d.asset] ?? 0) / tsum * 100, amount });
-  }
-  for (const d of drift) {
-    const target = (targets[d.asset] ?? 0) / tsum * 100;
-    const alreadyBought = trades2.find((t) => t.asset === d.asset)?.amount ?? 0;
-    const residual = d.drift + alreadyBought / total * 100;
-    const outOfBand = Math.abs(residual) > band || target > 0 && Math.abs(residual) / target > rel;
-    if (!outOfBand) continue;
-    const amount = -residual / 100 * total;
-    if (Math.abs(amount) < (opts.minTrade ?? 0)) continue;
-    const existing = trades2.find((t) => t.asset === d.asset);
-    if (existing) existing.amount += amount;
-    else trades2.push({ asset: d.asset, current: target + d.drift, target, amount });
-  }
-  return { trades: trades2.filter((t) => Math.abs(t.amount) > 1e-9), drift };
 }
 
 // src/providers/funds/amundi.ts
@@ -26696,14 +31169,14 @@ function parseNportFeed(atom) {
 }
 function parseNport(xml) {
   const lines = xmlBlocks(xml, "invstOrSec").flatMap((b) => {
-    const pct8 = xmlNumber(b, "pctVal");
+    const pct9 = xmlNumber(b, "pctVal");
     const name = xmlValue(b, "name") ?? xmlValue(b, "title");
-    if (pct8 === void 0 || !name) return [];
+    if (pct9 === void 0 || !name) return [];
     if ((xmlValue(b, "payoffProfile") ?? "Long") === "Short") return [];
     const isin = /<isin\s+value="([A-Z0-9]{12})"/.exec(b)?.[1];
     const country2 = xmlValue(b, "invCountry");
     const cat = xmlValue(b, "assetCat");
-    return [{ name, weightPct: pct8, ...isin ? { isin } : {}, ...country2 ? { country: country2 } : {}, ...cat ? { assetClass: cat } : {} }];
+    return [{ name, weightPct: pct9, ...isin ? { isin } : {}, ...country2 ? { country: country2 } : {}, ...cat ? { assetClass: cat } : {} }];
   });
   lines.sort((a, b) => b.weightPct - a.weightPct);
   return { seriesId: xmlValue(xml, "seriesId"), periodDate: xmlValue(xml, "repPdDate"), lines };
@@ -26790,8 +31263,8 @@ function portfolioReturns(weights, returns) {
 function diversificationRatio(weights, returns) {
   const p = portfolioReturns(weights, returns);
   const sp = stdev(p);
-  const num10 = returns.reduce((s, r2, i) => s + weights[i] * stdev(r2), 0);
-  return sp > 0 ? num10 / sp : Number.NaN;
+  const num11 = returns.reduce((s, r2, i) => s + weights[i] * stdev(r2), 0);
+  return sp > 0 ? num11 / sp : Number.NaN;
 }
 function pairwiseCorrelations(names, returns) {
   const m = correlationMatrix(returns);
@@ -27000,10 +31473,10 @@ function peaDeposits(txs, peaAccounts) {
 }
 
 // src/analyze/portfolio/run-book.ts
-var DAY3 = 864e5;
-var pct5 = (x) => Number((x * 100).toFixed(6));
+var DAY4 = 864e5;
+var pct6 = (x) => Number((x * 100).toFixed(6));
 var money2 = (x) => Number(x.toFixed(2));
-async function rebalanceAnalysis(m, f, o) {
+async function rebalanceAnalysis(m, f3, o) {
   const P = `PORTFOLIO.${m.bookName}.rebalance`;
   const band = o.bandPct ?? 5;
   const rel = o.relBand ?? 0.25;
@@ -27023,11 +31496,11 @@ async function rebalanceAnalysis(m, f, o) {
     const x = quoted[i];
     if (!x.r || !x.q) {
       unknown.push(s);
-      f.note(`target ${s} left out: ${x.error}`);
+      f3.note(`target ${s} left out: ${x.error}`);
       return;
     }
     const key = `${x.r.instrument.symbol}.quote.price`;
-    f.input({
+    f3.input({
       kind: "quote",
       title: `${s} quote`,
       subject: s,
@@ -27052,7 +31525,7 @@ async function rebalanceAnalysis(m, f, o) {
   const missingCcy = extra.map((h) => h.currency).filter((c) => m.rates[c] === void 0);
   if (missingCcy.length) {
     const fx = await referenceRates(missingCcy, m.base);
-    if (fx.dataset) f.input(fx.dataset);
+    if (fx.dataset) f3.input(fx.dataset);
     Object.assign(m.rates, fx.rates);
     Object.assign(m.keys.fx, fx.keys);
   }
@@ -27061,16 +31534,16 @@ async function rebalanceAnalysis(m, f, o) {
   const holdings = Object.fromEntries(all.map((h) => [h.symbol, h.valueBase ?? 0]));
   if ("CASH" in targets) holdings.CASH = m.cashBase;
   else if (m.cashBase > 0)
-    f.note(
+    f3.note(
       `the ${money2(m.cashBase)} ${m.base} of cash is not in the targets, so it is left aside \u2014 add "CASH" to the targets, or pass --contribution to invest some`
     );
   const notTargeted = all.filter((h) => !(h.symbol in targets) && h.valueBase);
-  if (notTargeted.length) f.note(`not in the targets, so their target is 0 % (sold if out of band): ${notTargeted.map((h) => h.symbol).join(", ")}`);
+  if (notTargeted.length) f3.note(`not in the targets, so their target is 0 % (sold if out of band): ${notTargeted.map((h) => h.symbol).join(", ")}`);
   const res = rebalance(holdings, targets, { bandPct: band, relBand: rel, contribution: o.contribution });
   const base2 = [m.keys.total, ...all.map((h) => h.keys.value ?? h.keys.price).filter((k) => !!k)];
-  if (o.contribution) f.note(`a contribution of ${o.contribution} ${m.base} is added to the total and steered to the underweights first`);
+  if (o.contribution) f3.note(`a contribution of ${o.contribution} ${m.base} is added to the total and steered to the underweights first`);
   for (const d of res.drift)
-    f.derive(
+    f3.derive(
       "drift from target",
       `${P}.${d.asset}.drift`,
       `${d.asset} drift from target (points)`,
@@ -27081,7 +31554,7 @@ async function rebalanceAnalysis(m, f, o) {
     );
   const orders = [];
   for (const t of res.trades) {
-    const k = f.derive(
+    const k = f3.derive(
       "band rule",
       `${P}.${t.asset}.amount`,
       t.asset === "CASH" ? `cash ${t.amount >= 0 ? "set aside" : "spent"} to reach the targets (${m.base})` : `${t.asset} amount to ${t.amount >= 0 ? "buy" : "sell"} (${m.base})`,
@@ -27093,7 +31566,7 @@ async function rebalanceAnalysis(m, f, o) {
     if (t.asset === "CASH" || !k) continue;
     const h = all.find((x) => x.symbol === t.asset);
     if (!h?.price || m.rates[h.currency] === void 0) {
-      f.note(`${t.asset}: no price or rate \u2014 no order computed`);
+      f3.note(`${t.asset}: no price or rate \u2014 no order computed`);
       continue;
     }
     const main2 = [...h.accounts].sort((a, b) => b.quantity - a.quantity)[0];
@@ -27108,13 +31581,13 @@ async function rebalanceAnalysis(m, f, o) {
       averageCost: main2?.averageCost
     });
     if (!order) {
-      f.note(`${t.asset}: ${money2(t.amount)} ${m.base} is less than one share \u2014 no order`);
+      f3.note(`${t.asset}: ${money2(t.amount)} ${m.base} is less than one share \u2014 no order`);
       continue;
     }
     const from = [k, h.keys.price, ...m.keys.fx[h.currency] ? [m.keys.fx[h.currency]] : []];
     const sec = `orders (never placed): ${order.side} ${h.symbol}`;
-    f.derive(sec, `${P}.${h.symbol}.side`, `${h.symbol} order side`, order.side, void 0, from, "sign of the amount");
-    f.derive(
+    f3.derive(sec, `${P}.${h.symbol}.side`, `${h.symbol} order side`, order.side, void 0, from, "sign of the amount");
+    f3.derive(
       sec,
       `${P}.${h.symbol}.units`,
       `${h.symbol} units to ${order.side}`,
@@ -27123,7 +31596,7 @@ async function rebalanceAnalysis(m, f, o) {
       from,
       `amount \xF7 (price \xD7 rate), ${h.instrument?.market === "crypto" ? "to 1e-6 unit" : "rounded down to whole shares"}${order.reasons.length ? `; ${order.reasons.join("; ")}` : ""}`
     );
-    f.derive(
+    f3.derive(
       sec,
       `${P}.${h.symbol}.notional`,
       `${h.symbol} order notional (${m.base})`,
@@ -27132,7 +31605,7 @@ async function rebalanceAnalysis(m, f, o) {
       [`${P}.${h.symbol}.units`, ...from],
       "units \xD7 price \xD7 rate"
     );
-    f.derive(
+    f3.derive(
       sec,
       `${P}.${h.symbol}.fee`,
       `${h.symbol} estimated fee (${m.base})`,
@@ -27146,7 +31619,7 @@ async function rebalanceAnalysis(m, f, o) {
     if (order.side === "sell") {
       tax = sellTaxNote(env2);
       if (order.realisedPmp !== void 0)
-        f.derive(
+        f3.derive(
           sec,
           `${P}.${h.symbol}.realisedPmp`,
           `${h.symbol} gain realised by the sell, average-cost rule (${h.currency})`,
@@ -27155,7 +31628,7 @@ async function rebalanceAnalysis(m, f, o) {
           [`${P}.${h.symbol}.units`, h.keys.price, `PORTFOLIO.${m.bookName}.${h.symbol}.averageCost`],
           "units \xD7 price \u2212 fee \u2212 units \xD7 PMP"
         );
-      f.derive(
+      f3.derive(
         sec,
         `${P}.${h.symbol}.tax`,
         `${h.symbol} tax treatment of the sell (${main2?.account ?? "?"}, ${env2})`,
@@ -27166,7 +31639,7 @@ async function rebalanceAnalysis(m, f, o) {
       );
     }
     const account = main2?.account;
-    f.derive(
+    f3.derive(
       sec,
       `${P}.${h.symbol}.account`,
       `${h.symbol} account for the order`,
@@ -27175,16 +31648,16 @@ async function rebalanceAnalysis(m, f, o) {
       [h.keys.quantity],
       account ? "the account holding the most units" : "not held yet: choose the envelope (see `portfolio location`)"
     );
-    if (!main2) f.note(`${h.symbol} is not held: choose the envelope for the buy (see \`portfolio location\`)`);
+    if (!main2) f3.note(`${h.symbol} is not held: choose the envelope for the buy (see \`portfolio location\`)`);
     orders.push({ ...order, account, tax });
   }
-  f.note("nothing is ordered: each line is a proposal to check with `plan` and the risk gate");
+  f3.note("nothing is ordered: each line is a proposal to check with `plan` and the risk gate");
   return { trades: res.trades, drift: res.drift, orders };
 }
-async function locationAnalysis(m, f) {
+async function locationAnalysis(m, f3) {
   const P = `PORTFOLIO.${m.bookName}.location`;
   if (m.profile.jurisdiction !== "FR")
-    f.note(`the location rules are written for a French resident; the profile says ${m.profile.jurisdiction} \u2014 read them as such`);
+    f3.note(`the location rules are written for a French resident; the profile says ${m.profile.jurisdiction} \u2014 read them as such`);
   const accounts = [...new Set(m.txs.map((t) => t.account))];
   const envOf = (a) => envelopeOf(m.profile, a);
   const available = /* @__PURE__ */ new Set([
@@ -27193,7 +31666,7 @@ async function locationAnalysis(m, f) {
   ]);
   const inferred = accounts.filter((a) => !m.profile.envelopes.some((e) => e.id === a));
   if (inferred.length)
-    f.note(`envelope types read from the account ids (not declared in the profile): ${inferred.map((a) => `${a} \u2192 ${envOf(a)}`).join(", ")}`);
+    f3.note(`envelope types read from the account ids (not declared in the profile): ${inferred.map((a) => `${a} \u2192 ${envOf(a)}`).join(", ")}`);
   const peaAccounts = new Set(accounts.filter((a) => envOf(a) === "PEA"));
   const depositPoints = [...peaAccounts].map((a) => ({
     key: `PORTFOLIO.${m.bookName}.${a}.deposits`,
@@ -27203,7 +31676,7 @@ async function locationAnalysis(m, f) {
   }));
   let room = 0;
   if (peaAccounts.size) {
-    f.input({
+    f3.input({
       kind: "ledger",
       title: "deposits into the PEA (ledger)",
       subject: `portfolio:${m.bookName}`,
@@ -27213,7 +31686,7 @@ async function locationAnalysis(m, f) {
     });
     const deposited = depositPoints.reduce((s, p) => s + p.value, 0);
     room = PEA_CEILING - deposited;
-    f.derive(
+    f3.derive(
       "PEA",
       `${P}.pea.room`,
       "room left under the PEA deposit ceiling",
@@ -27222,7 +31695,7 @@ async function locationAnalysis(m, f) {
       depositPoints.map((p) => p.key),
       `${PEA_CEILING} \u20AC ceiling \u2212 \u03A3 deposits into the PEA (withdrawals do not give room back)`
     );
-  } else f.note("no PEA among the accounts or the profile's envelopes: a PEA would shelter the EU shares and PEA-eligible funds");
+  } else f3.note("no PEA among the accounts or the profile's envelopes: a PEA would shelter the EU shares and PEA-eligible funds");
   const funds = m.holdings.filter((h) => (h.assetClass === "etf" || h.assetClass === "fund") && h.isin && !h.isin.startsWith("US")).slice(0, 10);
   const flags = await mapLimit(funds, 2, async (h) => amundiPeaFlag(h.isin).catch(() => void 0));
   const peaFlag = /* @__PURE__ */ new Map();
@@ -27230,7 +31703,7 @@ async function locationAnalysis(m, f) {
     const r2 = flags[i];
     if (!r2 || r2.pea === void 0) return;
     const key = `${h.isin}.issuer.pea`;
-    f.input({
+    f3.input({
       kind: "fund",
       title: `${h.symbol} PEA eligibility per the issuer`,
       subject: h.symbol,
@@ -27256,7 +31729,7 @@ async function locationAnalysis(m, f) {
       ...peaAccounts.size ? [`${P}.pea.room`] : []
     ];
     const sec = `${h.symbol}`;
-    f.derive(
+    f3.derive(
       sec,
       `${P}.${h.symbol}.rule`,
       `${h.symbol} location rule`,
@@ -27265,9 +31738,9 @@ async function locationAnalysis(m, f) {
       from,
       `${r2.rule.applies}; sources: ${r2.rule.sources.map((s) => s.url).join(", ")}`
     );
-    f.derive(sec, `${P}.${h.symbol}.ideal`, `${h.symbol} ideal envelope (French resident)`, r2.ideal, void 0, from, r2.reason);
-    if (r2.best) f.derive(sec, `${P}.${h.symbol}.best`, `${h.symbol} best envelope among those held`, r2.best, void 0, from, r2.reason);
-    f.derive(
+    f3.derive(sec, `${P}.${h.symbol}.ideal`, `${h.symbol} ideal envelope (French resident)`, r2.ideal, void 0, from, r2.reason);
+    if (r2.best) f3.derive(sec, `${P}.${h.symbol}.best`, `${h.symbol} best envelope among those held`, r2.best, void 0, from, r2.reason);
+    f3.derive(
       sec,
       `${P}.${h.symbol}.current`,
       `${h.symbol} envelope(s) holding it`,
@@ -27276,10 +31749,10 @@ async function locationAnalysis(m, f) {
       [h.keys.quantity],
       "the ledger accounts with an open position"
     );
-    f.derive(sec, `${P}.${h.symbol}.misplaced`, `${h.symbol} sits in a worse envelope than one available`, r2.worse.length > 0, void 0, from, r2.reason);
+    f3.derive(sec, `${P}.${h.symbol}.misplaced`, `${h.symbol} sits in a worse envelope than one available`, r2.worse.length > 0, void 0, from, r2.reason);
     out4.push({ symbol: h.symbol, rule: r2.rule.id, ideal: r2.ideal, best: r2.best, current: envs, worse: r2.worse, reason: r2.reason });
   }
-  f.note(
+  f3.note(
     "PEA eligibility is a first pass (ISIN country prefix for shares, the issuer's flag for funds) \u2014 confirm with the broker before moving anything; a move between envelopes is a sale and a purchase"
   );
   return { rules: LOCATION_RULES, peaRoom: peaAccounts.size ? room : void 0, holdings: out4 };
@@ -27303,29 +31776,29 @@ async function compositionOf(h) {
     }
   throw new Error(tried.length ? tried.join("; ") : `no keyless holdings source covers ${isin ?? h.symbol} (iShares table, Amundi, SEC N-PORT)`);
 }
-async function lookthroughAnalysis(m, f) {
+async function lookthroughAnalysis(m, f3) {
   const P = `PORTFOLIO.${m.bookName}.lookthrough`;
   const funds = m.holdings.filter((h) => h.assetClass === "etf" || h.assetClass === "fund");
   if (!funds.length) {
-    f.note("no ETF or fund in the book: nothing to look through");
+    f3.note("no ETF or fund in the book: nothing to look through");
     return { funds: [] };
   }
   const shown = funds.slice(0, LOOKTHROUGH_MAX_FUNDS);
-  if (funds.length > shown.length) f.note(`only the first ${LOOKTHROUGH_MAX_FUNDS} funds are looked through`);
+  if (funds.length > shown.length) f3.note(`only the first ${LOOKTHROUGH_MAX_FUNDS} funds are looked through`);
   const comps = await mapLimit(shown, 2, async (h) => compositionOf(h).catch((e) => e));
   const out4 = [];
   shown.forEach((h, i) => {
     const c = comps[i];
     if (c instanceof Error) {
-      f.note(`${h.symbol}: look-through unavailable \u2014 ${c.message}`);
+      f3.note(`${h.symbol}: look-through unavailable \u2014 ${c.message}`);
       out4.push({ symbol: h.symbol, unavailable: c.message });
       return;
     }
     const ds = compositionDataset(h.symbol, c);
-    f.input(ds);
+    f3.input(ds);
     out4.push({ symbol: h.symbol, source: c.source, synthetic: c.synthetic });
     if (c.synthetic) {
-      f.note(`${h.symbol}: synthetic replication \u2014 the issuer's lines are a substitute basket; the exposure is the index`);
+      f3.note(`${h.symbol}: synthetic replication \u2014 the issuer's lines are a substitute basket; the exposure is the index`);
       return;
     }
     if (!h.keys.weight) return;
@@ -27333,7 +31806,7 @@ async function lookthroughAnalysis(m, f) {
       const wk = `${h.symbol}.lt.holding.${k}.weight`;
       const p = ds.points.find((x) => x.key === wk);
       if (!p || typeof p.value !== "number") break;
-      f.derive(
+      f3.derive(
         `${h.symbol} \u2014 top holdings, share of the portfolio`,
         `${P}.${h.symbol}.holding.${k}`,
         `${h.symbol} holding #${k} as a share of the whole portfolio`,
@@ -27348,7 +31821,7 @@ async function lookthroughAnalysis(m, f) {
         const wk = `${h.symbol}.lt.${field2}.${k}.weight`;
         const p = ds.points.find((x) => x.key === wk);
         if (!p || typeof p.value !== "number") break;
-        f.derive(
+        f3.derive(
           `${h.symbol} \u2014 ${field2} breakdown, share of the portfolio`,
           `${P}.${h.symbol}.${field2}.${k}`,
           `${h.symbol} ${field2} #${k} as a share of the whole portfolio`,
@@ -27359,13 +31832,13 @@ async function lookthroughAnalysis(m, f) {
         );
       }
   });
-  f.note("security, sector and country names are the issuer's text (fenced as external); fund holdings are as of the date the issuer or the filing states");
+  f3.note("security, sector and country names are the issuer's text (fenced as external); fund holdings are as of the date the issuer or the filing states");
   return { funds: out4 };
 }
-async function incomeAnalysis(m, f) {
+async function incomeAnalysis(m, f3) {
   const P = `PORTFOLIO.${m.bookName}.income`;
-  const day2 = m.now.toISOString().slice(0, 10);
-  const led = ledgerDividends(m.txs, day2);
+  const day3 = m.now.toISOString().slice(0, 10);
+  const led = ledgerDividends(m.txs, day3);
   const ledPoints = [...led.entries()].flatMap(([sym2, e]) => [
     {
       key: `PORTFOLIO.${m.bookName}.${sym2}.dividends.total`,
@@ -27378,24 +31851,24 @@ async function incomeAnalysis(m, f) {
       label: `${sym2} dividends recorded in the last 12 months`,
       value: money2(e.last12m),
       unit: e.currency,
-      formula: `${e.count12m} payments with a date after ${new Date(Date.parse(`${day2}T00:00:00Z`) - 365 * DAY3).toISOString().slice(0, 10)}`
+      formula: `${e.count12m} payments with a date after ${new Date(Date.parse(`${day3}T00:00:00Z`) - 365 * DAY4).toISOString().slice(0, 10)}`
     }
   ]);
   if (ledPoints.length)
-    f.input({
+    f3.input({
       kind: "ledger",
       title: `${m.bookName} book \u2014 dividends received`,
       subject: `portfolio:${m.bookName}`,
       points: ledPoints,
-      provenance: { source: "ultrastock-ledger", fetchedAt: m.now.toISOString(), official: false, asOf: day2 },
+      provenance: { source: "ultrastock-ledger", fetchedAt: m.now.toISOString(), official: false, asOf: day3 },
       notes: []
     });
-  else f.note("no dividend recorded in the ledger (`portfolio add dividend` records one)");
+  else f3.note("no dividend recorded in the ledger (`portfolio add dividend` records one)");
   for (const [sym2, e] of led) {
     const rate = m.rates[e.currency];
     const k = `PORTFOLIO.${m.bookName}.${sym2}.dividends.total`;
     if (rate !== void 0)
-      f.derive(
+      f3.derive(
         "received (ledger)",
         `${P}.${sym2}.received`,
         `${sym2} dividends received, in ${m.base} at today's rate`,
@@ -27406,7 +31879,7 @@ async function incomeAnalysis(m, f) {
       );
   }
   const hs = m.holdings.filter((h) => h.resolved && h.valueBase !== void 0 && h.assetClass !== "crypto").slice(0, 30);
-  if (m.holdings.some((h) => h.assetClass === "crypto")) f.note("crypto pays no dividend; staking rewards are not covered");
+  if (m.holdings.some((h) => h.assetClass === "crypto")) f3.note("crypto pays no dividend; staking rewards are not covered");
   const rates = await mapLimit(hs, 3, async (h) => {
     const notes = [];
     if (h.instrument?.market === "us" && h.assetClass === "equity")
@@ -27419,9 +31892,9 @@ async function incomeAnalysis(m, f) {
         notes.push(e.message);
       }
     try {
-      const y = await yahooChart(await resolveYahoo(h.instrument.symbol), new Date(m.now.getTime() - 372 * DAY3), m.now);
+      const y = await yahooChart(await resolveYahoo(h.instrument.symbol), new Date(m.now.getTime() - 372 * DAY4), m.now);
       const divs = y.chart.dividends;
-      const t = trailingPerShare(divs, day2);
+      const t = trailingPerShare(divs, day3);
       if (!y.actions.points.some((p) => p.key.includes(".action.dividend.")))
         return { notes: [...notes, "Yahoo lists no dividend in the last 12 months"], none: y.actions };
       return {
@@ -27445,7 +31918,7 @@ async function incomeAnalysis(m, f) {
       const l12 = led.get(h.symbol);
       if (l12 && l12.last12m > 0 && m.rates[l12.currency] !== void 0) {
         const v = l12.last12m * m.rates[l12.currency];
-        const k = f.derive(
+        const k = f3.derive(
           "forward 12 months (estimate)",
           `${P}.${h.symbol}.forward`,
           `${h.symbol} forward 12-month income estimate (${m.base}) \u2014 last 12 months' ledger dividends`,
@@ -27459,14 +31932,14 @@ async function incomeAnalysis(m, f) {
         costTotal += h.averageCost * h.quantity * (fx ?? 0);
         out4.push({ symbol: h.symbol, forwardBase: v, source: "ledger" });
       } else {
-        f.note(`${h.symbol}: forward income unavailable (${"notes" in r2 && r2.notes ? r2.notes.join("; ") : "no rate"})`);
+        f3.note(`${h.symbol}: forward income unavailable (${"notes" in r2 && r2.notes ? r2.notes.join("; ") : "no rate"})`);
         out4.push({ symbol: h.symbol });
       }
       return;
     }
-    f.input(r2.ds);
+    f3.input(r2.ds);
     const rateFrom = "rateKey" in r2 && r2.rateKey ? [r2.rateKey] : r2.rateKeys ?? [];
-    const rateKey = f.derive(
+    const rateKey = f3.derive(
       `${h.symbol}`,
       `${P}.${h.symbol}.rate`,
       `${h.symbol} dividend per share, next 12 months (estimate, ${h.currency})`,
@@ -27478,7 +31951,7 @@ async function incomeAnalysis(m, f) {
     if (!rateKey) return;
     const fig = incomeFigures(h.quantity, r2.rate, h.averageCost, h.price);
     const fwdBase = fig.forward * fx;
-    const fk = f.derive(
+    const fk = f3.derive(
       `${h.symbol}`,
       `${P}.${h.symbol}.forward`,
       `${h.symbol} forward 12-month income estimate (${m.base})`,
@@ -27488,20 +31961,20 @@ async function incomeAnalysis(m, f) {
       "units \xD7 per-share rate \xD7 rate to base"
     );
     if (fk) forwardKeys.push(fk);
-    f.derive(
+    f3.derive(
       `${h.symbol}`,
       `${P}.${h.symbol}.yieldOnCost`,
       `${h.symbol} yield on cost`,
-      pct5(fig.yieldOnCost),
+      pct6(fig.yieldOnCost),
       "%",
       [rateKey, `PORTFOLIO.${m.bookName}.${h.symbol}.averageCost`],
       "per-share rate \xF7 average cost (PMP) \xD7 100"
     );
-    f.derive(
+    f3.derive(
       `${h.symbol}`,
       `${P}.${h.symbol}.currentYield`,
       `${h.symbol} current yield`,
-      pct5(fig.currentYield),
+      pct6(fig.currentYield),
       "%",
       [rateKey, h.keys.price],
       "per-share rate \xF7 latest price \xD7 100"
@@ -27511,7 +31984,7 @@ async function incomeAnalysis(m, f) {
     out4.push({ symbol: h.symbol, rate: r2.rate, forwardBase: fwdBase, yieldOnCostPct: fig.yieldOnCost * 100, source: r2.ds.provenance.source });
   });
   if (forwardKeys.length) {
-    const kt = f.derive(
+    const kt = f3.derive(
       "portfolio",
       `${P}.forward`,
       `forward 12-month income estimate (${m.base})`,
@@ -27521,28 +31994,28 @@ async function incomeAnalysis(m, f) {
       "\u03A3 of the holdings' estimates"
     );
     if (kt) {
-      f.derive(
+      f3.derive(
         "portfolio",
         `${P}.yield`,
         "forward income \xF7 portfolio total",
-        pct5(forwardTotal / m.totalBase),
+        pct6(forwardTotal / m.totalBase),
         "%",
         [kt, m.keys.total],
         "forward income \xF7 total \xD7 100 (cash included)"
       );
       if (costTotal > 0)
-        f.derive(
+        f3.derive(
           "portfolio",
           `${P}.yieldOnCost`,
           "forward income \xF7 cost of the lines with an estimate",
-          pct5(forwardTotal / costTotal),
+          pct6(forwardTotal / costTotal),
           "%",
           [kt, ...hs.map((h) => `PORTFOLIO.${m.bookName}.${h.symbol}.averageCost`)],
           "forward income \xF7 \u03A3 units \xD7 PMP \xD7 today's rate \xD7 100"
         );
     }
   }
-  f.note(
+  f3.note(
     "forward figures repeat the last year's or the indicated rate: dividends get cut, raised and skipped; amounts before withholding and tax; accumulating funds pay none"
   );
   return { holdings: out4, forwardBase: forwardTotal };
@@ -27566,7 +32039,7 @@ function shocks(paths, months, seed) {
   for (let i = 0; i < z.length; i++) z[i] = normInv(Math.min(1 - 1e-12, Math.max(1e-12, rnd())));
   return z;
 }
-function simulate(i, z, paths, months) {
+function simulate2(i, z, paths, months) {
   const sm = i.vol / Math.sqrt(12);
   const mm = Math.log(1 + i.ret) / 12 - sm * sm / 2;
   const out4 = new Array(paths);
@@ -27581,7 +32054,7 @@ function goalMonteCarlo(i) {
   const paths = i.paths ?? GOAL_PATHS;
   const months = Math.max(1, Math.round(i.years * 12));
   const z = shocks(paths, months, i.seed ?? GOAL_SEED);
-  const run3 = (monthly) => simulate({ ...i, monthly }, z, paths, months);
+  const run3 = (monthly) => simulate2({ ...i, monthly }, z, paths, months);
   const prob = (xs) => xs.filter((v) => v >= i.target).length / xs.length;
   const base2 = run3(i.monthly);
   let monthlyFor80;
@@ -27625,11 +32098,11 @@ function goalMonteCarlo(i) {
 }
 
 // src/analyze/portfolio/history.ts
-var DAY4 = 864e5;
+var DAY5 = 864e5;
 var DEPTH_DAYS = { euronext: 725, us: 3640, europe: 1e5, crypto: 1e5 };
 async function dailyHistory(r2, from, to, now) {
-  const age = (now.getTime() - from.getTime()) / DAY4;
-  const ended = (now.getTime() - to.getTime()) / DAY4;
+  const age = (now.getTime() - from.getTime()) / DAY5;
+  const ended = (now.getTime() - to.getTime()) / DAY5;
   const market = r2.instrument.market;
   const tooOld = age > (DEPTH_DAYS[market] ?? 1e5);
   const pastWindow = (market === "us" || market === "euronext") && ended > 30;
@@ -27724,15 +32197,15 @@ function windowCloses(closes, from, to, slackDays = 7) {
   const start = closes.find((c) => c.date >= from);
   const end = [...closes].reverse().find((c) => c.date <= to);
   if (!start || !end || end.date <= start.date) return void 0;
-  const gap = (a, b) => Math.abs(Date.parse(a) - Date.parse(b)) / DAY4;
+  const gap = (a, b) => Math.abs(Date.parse(a) - Date.parse(b)) / DAY5;
   if (gap(start.date, from) > slackDays || gap(end.date, to) > slackDays) return void 0;
   return { start, end };
 }
 
 // src/analyze/portfolio/optimize.ts
 var MEAN_SHRINK = 0.5;
-function shrunkMeans(returns, periodsPerYear = 252, keep = MEAN_SHRINK) {
-  const mu = returns.map((r2) => mean(r2) * periodsPerYear);
+function shrunkMeans(returns, periodsPerYear2 = 252, keep = MEAN_SHRINK) {
+  const mu = returns.map((r2) => mean(r2) * periodsPerYear2);
   const avg = mean(mu);
   return mu.map((m) => keep * m + (1 - keep) * avg);
 }
@@ -27783,9 +32256,9 @@ function optimizeAll(returns, opts) {
 }
 
 // src/analyze/portfolio/series.ts
-var DAY5 = 864e5;
-async function baseHistories(items, days, tag, f, now) {
-  const from = new Date(now.getTime() - days * DAY5);
+var DAY6 = 864e5;
+async function baseHistories(items, days, tag, f3, now) {
+  const from = new Date(now.getTime() - days * DAY6);
   const fetched = await mapLimit(items, 4, async (it) => {
     try {
       return { series: await dailyHistory(it.resolved, from, now, now) };
@@ -27797,19 +32270,19 @@ async function baseHistories(items, days, tag, f, now) {
   items.forEach((it, i) => {
     const r2 = fetched[i];
     if ("error" in r2) {
-      f.note(`no ${tag} history for ${it.symbol}: ${r2.error}`);
+      f3.note(`no ${tag} history for ${it.symbol}: ${r2.error}`);
       return;
     }
     const s = r2.series;
     const local2 = closesOf2(s);
     if (local2.length < 2) {
-      f.note(`no ${tag} history for ${it.symbol}: fewer than two closes in the window`);
+      f3.note(`no ${tag} history for ${it.symbol}: fewer than two closes in the window`);
       return;
     }
     const first = local2[0];
     const last2 = local2[local2.length - 1];
     const key = `${it.symbol}.${tag}.lastClose`;
-    f.input({
+    f3.input({
       kind: "history",
       title: `${it.symbol} daily closes since ${iso(from)}`,
       subject: it.symbol,
@@ -27826,7 +32299,7 @@ async function baseHistories(items, days, tag, f, now) {
       provenance: { ...s.provenance, asOf: last2.date },
       notes: s.notes
     });
-    if (first.date > iso(new Date(from.getTime() + 10 * DAY5))) f.note(`${it.symbol}: history starts ${first.date}, later than the ${iso(from)} asked for`);
+    if (first.date > iso(new Date(from.getTime() + 10 * DAY6))) f3.note(`${it.symbol}: history starts ${first.date}, later than the ${iso(from)} asked for`);
     got.set(it.symbol, { local: local2, currency: s.instrument.currency, key });
   });
   const ccys = [...new Set([...got.values()].map((g) => g.currency))];
@@ -27837,11 +32310,11 @@ async function baseHistories(items, days, tag, f, now) {
       const r2 = await ecbDailyRates(ccys, Math.ceil(days * 5 / 7) + 15);
       rates = r2.rates;
       if (r2.dataset) {
-        f.input(r2.dataset);
+        f3.input(r2.dataset);
         fxKeys = Object.fromEntries(r2.dataset.points.map((p) => [p.key.split(".")[2], p.key]));
       }
     } catch (e) {
-      f.note(`ECB daily rates unavailable (${e.message}): non-EUR series stay in their own currency`);
+      f3.note(`ECB daily rates unavailable (${e.message}): non-EUR series stay in their own currency`);
     }
   }
   const out4 = /* @__PURE__ */ new Map();
@@ -27850,28 +32323,28 @@ async function baseHistories(items, days, tag, f, now) {
     if (!g) continue;
     const fxc = g.currency === "USDT" || g.currency === "USDC" || g.currency === "FDUSD" ? "USD" : g.currency;
     const r2 = g.currency === "EUR" ? void 0 : rates.get(g.currency);
-    if (g.currency !== "EUR" && !r2) f.note(`${it.symbol}: no daily ${g.currency} rate \u2014 its returns are in ${g.currency}, not EUR`);
+    if (g.currency !== "EUR" && !r2) f3.note(`${it.symbol}: no daily ${g.currency} rate \u2014 its returns are in ${g.currency}, not EUR`);
     out4.set(it.symbol, { symbol: it.symbol, closes: toBase(g.local, r2), local: g.local, currency: g.currency, key: g.key, fxKey: fxKeys[fxc] });
   }
   return out4;
 }
 
 // src/analyze/portfolio/run-optimize.ts
-var pct6 = (x) => Number((x * 100).toFixed(6));
+var pct7 = (x) => Number((x * 100).toFixed(6));
 var money3 = (x) => Number(x.toFixed(2));
 var FIVE_YEARS = 5 * 365 + 7;
 var OPTIMIZE_MAX_ASSETS = 30;
-async function optimizeAnalysis(m, f, opts = {}) {
+async function optimizeAnalysis(m, f3, opts = {}) {
   const P = `PORTFOLIO.${m.bookName}.optimize`;
   let items;
   if (opts.universe?.length) {
     const syms = [...new Set(opts.universe.map((s) => s.trim().toUpperCase()))].slice(0, OPTIMIZE_MAX_ASSETS);
-    if (opts.universe.length > syms.length) f.note(`the universe is capped at ${OPTIMIZE_MAX_ASSETS} symbols`);
+    if (opts.universe.length > syms.length) f3.note(`the universe is capped at ${OPTIMIZE_MAX_ASSETS} symbols`);
     const resolved = await mapLimit(syms, 4, async (s) => resolveSymbol(s).catch((e) => e));
     items = [];
     syms.forEach((s, i) => {
       const r2 = resolved[i];
-      if (r2 instanceof Error) f.note(`${s} left out: ${r2.message}`);
+      if (r2 instanceof Error) f3.note(`${s} left out: ${r2.message}`);
       else {
         const held = m.holdings.find((h) => h.symbol === r2.instrument.symbol || h.symbol === s);
         items.push({ symbol: r2.instrument.symbol, resolved: r2, weightKey: held?.keys.weight, value: held?.valueBase });
@@ -27879,31 +32352,31 @@ async function optimizeAnalysis(m, f, opts = {}) {
     });
   } else
     items = m.holdings.filter((h) => h.resolved && h.valueBase !== void 0).slice(0, OPTIMIZE_MAX_ASSETS).map((h) => ({ symbol: h.symbol, resolved: h.resolved, weightKey: h.keys.weight, value: h.valueBase }));
-  const series = await baseHistories(items, FIVE_YEARS, "hist5y", f, m.now);
+  const series = await baseHistories(items, FIVE_YEARS, "hist5y", f3, m.now);
   const used = items.filter((i) => series.has(i.symbol));
   if (used.length < 2) {
-    f.note("fewer than two assets with a price history: nothing to optimise");
+    f3.note("fewer than two assets with a price history: nothing to optimise");
     return void 0;
   }
   const aligned = alignReturns(used.map((u) => series.get(u.symbol).closes));
   const days = aligned.dates.length;
   if (days < 120) {
-    f.note(`only ${days} common daily returns across the assets: too few to estimate a covariance (120 at least)`);
+    f3.note(`only ${days} common daily returns across the assets: too few to estimate a covariance (120 at least)`);
     return void 0;
   }
   if (days < 1e3)
-    f.note(`the common window is ${days} daily returns (${aligned.dates[0]} \u2192 ${aligned.dates.at(-1)}), shorter than 5 years: the youngest asset sets it`);
+    f3.note(`the common window is ${days} daily returns (${aligned.dates[0]} \u2192 ${aligned.dates.at(-1)}), shorter than 5 years: the youngest asset sets it`);
   const { cap, raised } = effectiveCap(m.profile.limits.maxPositionPct, used.length);
   if (raised)
-    f.note(
+    f3.note(
       `the profile caps a position at ${m.profile.limits.maxPositionPct} %, which ${used.length} assets cannot reach 100 % under: the cap is raised to ${(cap * 100).toFixed(2)} % (1/n) here${cap * used.length <= 1 + 1e-9 ? " \u2014 which forces equal weights: add assets or raise limits.maxPositionPct for the methods to differ" : ""}`
     );
   const current2 = used.every((u) => u.value !== void 0) ? used.map((u) => u.value) : void 0;
   const { results, shrinkage, mu } = optimizeAll(aligned.returns, { cap, current: current2 });
   const histKeys = used.flatMap((u) => [series.get(u.symbol).key, ...series.get(u.symbol).fxKey ? [series.get(u.symbol).fxKey] : []]);
   const how = `${days} aligned daily ${m.base} returns (${aligned.dates[0]} \u2192 ${aligned.dates.at(-1)})`;
-  f.derive("estimation", `${P}.days`, "daily returns in the estimation window", days, "count", histKeys, how);
-  f.derive(
+  f3.derive("estimation", `${P}.days`, "daily returns in the estimation window", days, "count", histKeys, how);
+  f3.derive(
     "estimation",
     `${P}.shrinkage`,
     "Ledoit\u2013Wolf shrinkage intensity toward constant correlation",
@@ -27912,21 +32385,21 @@ async function optimizeAnalysis(m, f, opts = {}) {
     histKeys,
     `Ledoit & Wolf (2004) optimal intensity on ${how} (0 = sample covariance, 1 = target)`
   );
-  f.derive(
+  f3.derive(
     "estimation",
     `${P}.cap`,
     "weight cap per asset",
-    pct6(cap),
+    pct7(cap),
     "%",
     histKeys,
     raised ? "max(profile maxPositionPct, 1/n)" : "profile limits.maxPositionPct"
   );
   used.forEach(
-    (u, i) => f.derive(
+    (u, i) => f3.derive(
       "estimation",
       `${P}.mu.${u.symbol}`,
       `${u.symbol} expected return used by max Sharpe (weak estimate)`,
-      pct6(mu[i]),
+      pct7(mu[i]),
       "%",
       [series.get(u.symbol).key],
       `annualised mean daily return \xD7 252, shrunk ${MEAN_SHRINK * 100} % toward the cross-sectional average; past means predict future returns poorly`
@@ -27935,36 +32408,36 @@ async function optimizeAnalysis(m, f, opts = {}) {
   for (const r2 of results) {
     const from = r2.method === "current" ? [...histKeys, ...used.map((u) => u.weightKey).filter((k) => !!k)] : histKeys;
     used.forEach(
-      (u, i) => f.derive(
+      (u, i) => f3.derive(
         `${r2.label}`,
         `${P}.${r2.method}.${u.symbol}`,
         `${u.symbol} target weight \u2014 ${r2.label}`,
-        pct6(r2.weights[i]),
+        pct7(r2.weights[i]),
         "%",
         from,
-        r2.method === "current" ? "today's value \xF7 \u03A3 values over the universe" : `${r2.label}, long-only, cap ${pct6(cap).toFixed(2)} %, Ledoit\u2013Wolf covariance`
+        r2.method === "current" ? "today's value \xF7 \u03A3 values over the universe" : `${r2.label}, long-only, cap ${pct7(cap).toFixed(2)} %, Ledoit\u2013Wolf covariance`
       )
     );
-    f.derive(
+    f3.derive(
       `${r2.label}`,
       `${P}.${r2.method}.vol`,
       `expected annual volatility \u2014 ${r2.label}`,
-      pct6(r2.vol),
+      pct7(r2.vol),
       "%",
       from,
       "\u221A(w\u1D40 \u03A3 w \xD7 252) with the shrunk covariance"
     );
-    f.derive(
+    f3.derive(
       `${r2.label}`,
       `${P}.${r2.method}.return`,
       `expected annual return \u2014 ${r2.label} (weak)`,
-      pct6(r2.ret),
+      pct7(r2.ret),
       "%",
       [...from, ...used.map((u) => `${P}.mu.${u.symbol}`)],
       "\u03A3 w\u1D62 \u03BC\u1D62 with the shrunk historical means"
     );
   }
-  f.note(
+  f3.note(
     "max Sharpe leans on expected returns: the 5-year historical mean, shrunk halfway to the average, is a weak estimate \u2014 read its weights as a sensitivity, not a forecast; the risk-free rate is taken as 0",
     "risk parity and HRP have no cap of their own: their weights are clipped at the cap and the excess redistributed pro rata",
     "nothing is ordered: `portfolio rebalance --targets` turns chosen weights into a trade list"
@@ -27977,21 +32450,21 @@ async function optimizeAnalysis(m, f, opts = {}) {
     methods: results.map((r2) => ({
       method: r2.method,
       label: r2.label,
-      weights: Object.fromEntries(used.map((u, i) => [u.symbol, pct6(r2.weights[i])])),
-      volPct: pct6(r2.vol),
-      retPct: pct6(r2.ret)
+      weights: Object.fromEntries(used.map((u, i) => [u.symbol, pct7(r2.weights[i])])),
+      volPct: pct7(r2.vol),
+      retPct: pct7(r2.ret)
     }))
   };
 }
 var GOAL_MIN_DAYS = 756;
-async function goalsAnalysis(m, f, opts) {
+async function goalsAnalysis(m, f3, opts) {
   const P = `PORTFOLIO.${m.bookName}.goals`;
   const hs = m.holdings.filter((h) => h.resolved && h.valueBase !== void 0).slice(0, OPTIMIZE_MAX_ASSETS);
   const series = await baseHistories(
     hs.map((h) => ({ symbol: h.symbol, resolved: h.resolved })),
     FIVE_YEARS,
     "hist5y",
-    f,
+    f3,
     m.now
   );
   const withHist = hs.filter((h) => series.has(h.symbol));
@@ -28013,9 +32486,9 @@ async function goalsAnalysis(m, f, opts) {
       vol = stdev(r2) * Math.sqrt(252);
       from = [...withHist.map((h) => series.get(h.symbol).key), ...withHist.map((h) => h.keys.weight)];
       formula = `today's invested weights over ${r2.length} aligned daily ${m.base} returns (${aligned.dates[0]} \u2192 ${aligned.dates.at(-1)}): mean \xD7 252 and stdev \xD7 \u221A252`;
-      f.note("the history-based return is the past mean of today's holdings \u2014 a weak guide to the next years; cash is assumed invested like the rest");
-    } else f.note(`only ${r2.length} common daily returns (fewer than ${GOAL_MIN_DAYS}, 3 years): the profile-based assumption is used instead of the history`);
-  } else if (hs.length) f.note("not every holding has a 5-year history: the profile-based assumption is used");
+      f3.note("the history-based return is the past mean of today's holdings \u2014 a weak guide to the next years; cash is assumed invested like the rest");
+    } else f3.note(`only ${r2.length} common daily returns (fewer than ${GOAL_MIN_DAYS}, 3 years): the profile-based assumption is used instead of the history`);
+  } else if (hs.length) f3.note("not every holding has a 5-year history: the profile-based assumption is used");
   if (basis === "profile") {
     const score = m.profile.riskScore ?? 4;
     const a = PROFILE_ASSUMPTIONS[Math.min(7, Math.max(1, Math.round(score)))];
@@ -28024,26 +32497,26 @@ async function goalsAnalysis(m, f, opts) {
     from = [m.keys.total];
     formula = `assumption for risk score ${score}${m.profile.riskScore === void 0 ? " (no suitability score in the profile: 4, balanced, assumed)" : ""}: a blend from cash/bonds (1) to all-equity (5+)`;
   }
-  const kRet = f.derive("assumptions", `${P}.return`, `expected annual return used (${basis})`, pct6(ret2), "%", from, formula);
-  const kVol = f.derive("assumptions", `${P}.volatility`, `annual volatility used (${basis})`, pct6(vol), "%", from, formula);
+  const kRet = f3.derive("assumptions", `${P}.return`, `expected annual return used (${basis})`, pct7(ret2), "%", from, formula);
+  const kVol = f3.derive("assumptions", `${P}.volatility`, `annual volatility used (${basis})`, pct7(vol), "%", from, formula);
   const res = goalMonteCarlo({ start: m.totalBase, target: opts.target, years: opts.years, monthly: opts.monthly, ret: ret2, vol });
   const inputs = [kRet, kVol, m.keys.total].filter((k) => !!k);
   const how = `${GOAL_PATHS} seeded paths (seed ${GOAL_SEED}) of monthly log-normal returns over ${opts.years} years from ${money3(m.totalBase)} ${m.base}, +${opts.monthly} ${m.base} a month`;
-  f.derive(
+  f3.derive(
     "outcome",
     `${P}.probability`,
     `probability of reaching ${opts.target} ${m.base} in ${opts.years} years`,
-    pct6(res.probability),
+    pct7(res.probability),
     "%",
     inputs,
     `share of paths ending \u2265 target; ${how}`
   );
-  f.derive("outcome", `${P}.p5`, "5th percentile outcome", money3(res.p5), m.base, inputs, `quantile 5 % of the final values; ${how}`);
-  f.derive("outcome", `${P}.median`, "median outcome", money3(res.median), m.base, inputs, `quantile 50 %; ${how}`);
-  f.derive("outcome", `${P}.p95`, "95th percentile outcome", money3(res.p95), m.base, inputs, `quantile 95 %; ${how}`);
-  f.derive("outcome", `${P}.contributed`, "money put in (start + contributions)", money3(res.contributed), m.base, [m.keys.total], "start + monthly \xD7 months");
+  f3.derive("outcome", `${P}.p5`, "5th percentile outcome", money3(res.p5), m.base, inputs, `quantile 5 % of the final values; ${how}`);
+  f3.derive("outcome", `${P}.median`, "median outcome", money3(res.median), m.base, inputs, `quantile 50 %; ${how}`);
+  f3.derive("outcome", `${P}.p95`, "95th percentile outcome", money3(res.p95), m.base, inputs, `quantile 95 %; ${how}`);
+  f3.derive("outcome", `${P}.contributed`, "money put in (start + contributions)", money3(res.contributed), m.base, [m.keys.total], "start + monthly \xD7 months");
   if (res.monthlyFor80 !== void 0)
-    f.derive(
+    f3.derive(
       "outcome",
       `${P}.monthlyFor80`,
       "monthly contribution for an 80 % probability",
@@ -28052,8 +32525,8 @@ async function goalsAnalysis(m, f, opts) {
       inputs,
       `bisection on the contribution over the same seeded paths until P(final \u2265 target) = 80 %; ${how}`
     );
-  else f.note("no monthly contribution found that reaches 80 % (searched up to about a million a month)");
-  f.note("nominal euros, before tax and inflation; returns are i.i.d. log-normal \u2014 real markets have fatter tails and regimes");
+  else f3.note("no monthly contribution found that reaches 80 % (searched up to about a million a month)");
+  f3.note("nominal euros, before tax and inflation; returns are i.i.d. log-normal \u2014 real markets have fatter tails and regimes");
   return { basis, ret: ret2, vol, probabilityPct: res.probability * 100, p5: res.p5, median: res.median, p95: res.p95, monthlyFor80: res.monthlyFor80 };
 }
 
@@ -28096,7 +32569,7 @@ function parametricShocks(items) {
   const bonds = items.filter((i) => (i.assetClass === "etf" || i.assetClass === "fund") && looksLikeBondFund(i.name));
   const usd = items.filter((i) => i.currency === "USD" || i.currency === "USDT" || i.currency === "USDC");
   const crypto = items.filter((i) => i.assetClass === "crypto");
-  const sum = (xs, f) => xs.reduce((s, x) => s + x.weight * f(x), 0);
+  const sum = (xs, f3) => xs.reduce((s, x) => s + x.weight * f3(x), 0);
   return [
     {
       id: "equities",
@@ -28124,8 +32597,8 @@ function parametricShocks(items) {
 }
 
 // src/analyze/portfolio/run-risk.ts
-var DAY6 = 864e5;
-var pct7 = (x) => Number((x * 100).toFixed(6));
+var DAY7 = 864e5;
+var pct8 = (x) => Number((x * 100).toFixed(6));
 var money4 = (x) => Number(x.toFixed(2));
 var benchmarkFor = (base2) => base2 === "EUR" ? "CW8.PA" : "SPY";
 function tvTicker(h) {
@@ -28137,7 +32610,7 @@ function tvTicker(h) {
   return prefix ? `${prefix}:${i.symbol.replace(/\./g, "_")}` : void 0;
 }
 var valued = (m) => m.holdings.filter((h) => h.valueBase !== void 0 && h.keys.weight);
-function groupWeights(f, m, section, key, what, rows) {
+function groupWeights(f3, m, section, key, what, rows) {
   const groups = /* @__PURE__ */ new Map();
   for (const r2 of rows) {
     const g = groups.get(r2.label) ?? { weight: 0, from: [] };
@@ -28147,7 +32620,7 @@ function groupWeights(f, m, section, key, what, rows) {
   }
   const out4 = [...groups.entries()].map(([label2, g]) => ({ label: label2, weight: g.weight, from: g.from })).sort((a, b) => b.weight - a.weight);
   for (const g of out4)
-    f.derive(
+    f3.derive(
       section,
       `${key}.${keySlug(g.label)}`,
       `${what} ${g.label}, % of the portfolio`,
@@ -28158,21 +32631,21 @@ function groupWeights(f, m, section, key, what, rows) {
     );
   return out4.map(({ label: label2, weight }) => ({ label: label2, weight }));
 }
-async function riskAnalysis(m, f, opts = {}) {
+async function riskAnalysis(m, f3, opts = {}) {
   const P = `PORTFOLIO.${m.bookName}.risk`;
   const hs = valued(m);
   const cashW = m.totalBase > 0 ? m.cashBase / m.totalBase * 100 : 0;
-  const byClass = groupWeights(f, m, "exposure by asset class", `${P}.class`, "asset class", [
+  const byClass = groupWeights(f3, m, "exposure by asset class", `${P}.class`, "asset class", [
     ...hs.map((h) => ({ label: h.assetClass, weight: h.weightPct, from: [h.keys.weight, `${h.symbol}.instrument.kind`] })),
     ...m.cashBase ? [{ label: "cash", weight: cashW, from: [m.keys.cash] }] : []
   ]);
   const stable = (c) => c === "USDT" || c === "USDC" || c === "FDUSD" ? "USD" : c;
-  const byCurrency = groupWeights(f, m, "exposure by currency", `${P}.currency`, "currency", [
+  const byCurrency = groupWeights(f3, m, "exposure by currency", `${P}.currency`, "currency", [
     ...hs.map((h) => ({ label: stable(h.currency), weight: h.weightPct, from: [h.keys.weight] })),
     ...m.cash.filter((c) => c.amountBase !== void 0 && m.totalBase > 0).map((c) => ({ label: stable(c.currency), weight: c.amountBase / m.totalBase * 100, from: [m.keys.cash] }))
   ]);
   const foreign = byCurrency.filter((c) => c.label !== m.base).reduce((s, c) => s + c.weight, 0);
-  f.derive(
+  f3.derive(
     "exposure by currency",
     `${P}.fxExposure`,
     `share of the portfolio not in ${m.base} (currency risk of a ${m.base} investor)`,
@@ -28181,7 +32654,7 @@ async function riskAnalysis(m, f, opts = {}) {
     [...hs.map((h) => h.keys.weight), m.keys.cash],
     `\u03A3 weights of the lines priced in another currency than ${m.base}; stablecoins count as USD`
   );
-  if (hs.some((h) => h.currency !== stable(h.currency))) f.note("stablecoin-priced lines (USDT/USDC) are counted as US-dollar exposure");
+  if (hs.some((h) => h.currency !== stable(h.currency))) f3.note("stablecoin-priced lines (USDT/USDC) are counted as US-dollar exposure");
   const allEquities = hs.filter((h) => h.assetClass === "equity");
   const equities = allEquities.slice(0, 30);
   const sectorRows = [];
@@ -28203,7 +32676,7 @@ async function riskAnalysis(m, f, opts = {}) {
     let isinKey = h.isin ? `${h.symbol}.instrument.isin` : void 0;
     if (snap.ds) {
       const ds = snap.ds;
-      f.input({ ...ds, title: `${h.symbol} sector and ISIN (TradingView snapshot)`, subject: h.symbol });
+      f3.input({ ...ds, title: `${h.symbol} sector and ISIN (TradingView snapshot)`, subject: h.symbol });
       const sp = ds.points.find((p) => p.key.endsWith(".tv.sector"));
       sector = knownSector(sp?.value);
       sectorKey = sp?.key;
@@ -28212,27 +32685,27 @@ async function riskAnalysis(m, f, opts = {}) {
         isin = ip.value;
         isinKey = ip.key;
       }
-      if (sp && !sector) f.note(`${h.symbol}: TradingView's sector label is not one of its known sectors \u2014 counted as unclassified`);
-    } else f.note(`${h.symbol}: no sector (${snap.error})`);
+      if (sp && !sector) f3.note(`${h.symbol}: TradingView's sector label is not one of its known sectors \u2014 counted as unclassified`);
+    } else f3.note(`${h.symbol}: no sector (${snap.error})`);
     sectorRows.push({ label: sector ?? "unclassified", weight: h.weightPct, from: [h.keys.weight, ...sectorKey ? [sectorKey] : []] });
     const country2 = isinCountry(isin) ?? (h.instrument?.market === "us" ? "US" : void 0);
-    if (!isinCountry(isin) && country2 === "US") f.note(`${h.symbol}: country taken from its US listing (no ISIN read)`);
+    if (!isinCountry(isin) && country2 === "US") f3.note(`${h.symbol}: country taken from its US listing (no ISIN read)`);
     countryRows.push({ label: country2 ?? "unknown", weight: h.weightPct, from: [h.keys.weight, ...isinKey ? [isinKey] : []] });
   });
   for (const h of hs.filter((x) => x.assetClass !== "equity"))
     countryRows.push({ label: h.assetClass === "crypto" ? "crypto" : "funds", weight: h.weightPct, from: [h.keys.weight] });
   if (allEquities.length > equities.length)
-    f.note(
+    f3.note(
       `sector lookups are capped at 30 shares: ${allEquities.slice(30).map((h) => h.symbol).join(", ")} not classified`
     );
-  const bySector = groupWeights(f, m, "exposure by sector (direct shares)", `${P}.sector`, "sector", sectorRows);
-  const byCountry = groupWeights(f, m, "exposure by country (direct shares: ISIN prefix)", `${P}.country`, "country", countryRows);
+  const bySector = groupWeights(f3, m, "exposure by sector (direct shares)", `${P}.sector`, "sector", sectorRows);
+  const byCountry = groupWeights(f3, m, "exposure by country (direct shares: ISIN prefix)", `${P}.country`, "country", countryRows);
   if (hs.some((h) => h.assetClass === "etf" || h.assetClass === "fund"))
-    f.note("funds are not split by sector or country here: `portfolio lookthrough` reads their holdings where the issuer publishes them");
-  f.note("country = the ISIN's prefix, i.e. where the issuer is incorporated \u2014 not where it earns its revenue");
+    f3.note("funds are not split by sector or country here: `portfolio lookthrough` reads their holdings where the issuer publishes them");
+  f3.note("country = the ISIN's prefix, i.e. where the issuer is incorporated \u2014 not where it earns its revenue");
   const conc = concentration(hs.map((h) => h.valueBase));
   const wKeys = hs.map((h) => h.keys.weight);
-  f.derive(
+  f3.derive(
     "concentration",
     `${P}.hhi`,
     "Herfindahl\u2013Hirschman index of the invested weights",
@@ -28241,12 +32714,12 @@ async function riskAnalysis(m, f, opts = {}) {
     wKeys,
     "\u03A3 w\u1D62\xB2 with w\u1D62 = value \xF7 \u03A3 invested value (cash excluded)"
   );
-  f.derive("concentration", `${P}.effectiveN`, "effective number of positions", Number(conc.effectiveN.toFixed(4)), "count", [`${P}.hhi`], "1 \xF7 HHI");
-  f.derive(
+  f3.derive("concentration", `${P}.effectiveN`, "effective number of positions", Number(conc.effectiveN.toFixed(4)), "count", [`${P}.hhi`], "1 \xF7 HHI");
+  f3.derive(
     "concentration",
     `${P}.top5`,
     "weight of the 5 largest positions in the invested part",
-    pct7(conc.top5),
+    pct8(conc.top5),
     "%",
     wKeys,
     "\u03A3 of the 5 largest w\u1D62 (cash excluded) \xD7 100"
@@ -28257,16 +32730,16 @@ async function riskAnalysis(m, f, opts = {}) {
   try {
     benchResolved = await resolveSymbol(bench);
   } catch (e) {
-    f.note(`benchmark ${bench} unavailable: ${e.message}`);
+    f3.note(`benchmark ${bench} unavailable: ${e.message}`);
   }
   const items = hs.filter((h) => h.resolved).map((h) => ({ symbol: h.symbol, resolved: h.resolved }));
   if (benchResolved && !items.some((i) => i.symbol === benchResolved.instrument.symbol))
     items.push({ symbol: benchResolved.instrument.symbol, resolved: benchResolved });
-  const series = await baseHistories(items, 372, "hist1y", f, m.now);
+  const series = await baseHistories(items, 372, "hist1y", f3, m.now);
   const withHist = hs.filter((h) => series.has(h.symbol));
   const benchSeries = benchResolved ? series.get(benchResolved.instrument.symbol) : void 0;
   const missingW = hs.filter((h) => !series.has(h.symbol)).reduce((s, h) => s + h.weightPct, 0);
-  if (missingW > 0) f.note(`${missingW.toFixed(2)} % of the portfolio has no history and is left out of the return series (treated like cash)`);
+  if (missingW > 0) f3.note(`${missingW.toFixed(2)} % of the portfolio has no history and is left out of the return series (treated like cash)`);
   if (withHist.length) {
     const aligned = alignReturns([...withHist.map((h) => series.get(h.symbol).closes), ...benchSeries ? [benchSeries.closes] : []]);
     const assetR = aligned.returns.slice(0, withHist.length);
@@ -28276,16 +32749,16 @@ async function riskAnalysis(m, f, opts = {}) {
     const from = [...histKeys, ...withHist.map((h) => h.keys.weight)];
     const span = aligned.dates.length ? `${aligned.dates[0]}\u2026${aligned.dates[aligned.dates.length - 1]}` : "";
     const how = `daily returns of today's weights over ${r2.length} aligned weekdays (${span}), in ${m.base} at ECB daily rates; cash earns 0`;
-    if (r2.length < 60) f.note(`only ${r2.length} aligned daily returns: the risk figures are not computed (60 at least)`);
+    if (r2.length < 60) f3.note(`only ${r2.length} aligned daily returns: the risk figures are not computed (60 at least)`);
     else {
       result.days = r2.length;
-      f.derive("risk (1 year, daily)", `${P}.days`, "daily returns in the risk window", r2.length, "count", from, how);
+      f3.derive("risk (1 year, daily)", `${P}.days`, "daily returns in the risk window", r2.length, "count", from, how);
       result.volatility = stdev(r2) * Math.sqrt(252);
-      f.derive(
+      f3.derive(
         "risk (1 year, daily)",
         `${P}.volatility`,
         "annualised volatility of today's portfolio",
-        pct7(result.volatility),
+        pct8(result.volatility),
         "%",
         from,
         `stdev(daily returns) \xD7 \u221A252; ${how}`
@@ -28310,9 +32783,9 @@ async function riskAnalysis(m, f, opts = {}) {
         );
         for (const [k, label2, v, formula] of measures) {
           vars[k] = v;
-          const key = f.derive("value at risk", `${P}.${k}`, `${label2} (loss, % of the portfolio)`, pct7(v), "%", from, `${formula}; ${how}`);
+          const key = f3.derive("value at risk", `${P}.${k}`, `${label2} (loss, % of the portfolio)`, pct8(v), "%", from, `${formula}; ${how}`);
           if (key)
-            f.derive(
+            f3.derive(
               "value at risk",
               `${P}.${k}.amount`,
               `${label2} (loss in ${m.base})`,
@@ -28326,18 +32799,18 @@ async function riskAnalysis(m, f, opts = {}) {
       result.var = vars;
       const dd = drawdowns(equityCurve(r2));
       result.maxDrawdown = dd.maxDrawdown;
-      f.derive(
+      f3.derive(
         "risk (1 year, daily)",
         `${P}.maxDrawdown`,
         "maximum drawdown of today's weights over the window",
-        pct7(dd.maxDrawdown),
+        pct8(dd.maxDrawdown),
         "%",
         from,
         `worst peak-to-trough of the compounded daily returns; ${how}`
       );
       const dr = diversificationRatio(w, assetR);
       result.diversificationRatio = dr;
-      f.derive(
+      f3.derive(
         "risk (1 year, daily)",
         `${P}.diversificationRatio`,
         "diversification ratio",
@@ -28351,7 +32824,7 @@ async function riskAnalysis(m, f, opts = {}) {
         const rel = relativeTo(r2, br, 252);
         result.beta = rel.beta;
         const bfrom = [...from, benchSeries.key];
-        f.derive(
+        f3.derive(
           "risk (1 year, daily)",
           `${P}.beta`,
           `beta to ${benchSeries.symbol}`,
@@ -28360,7 +32833,7 @@ async function riskAnalysis(m, f, opts = {}) {
           bfrom,
           `cov(portfolio, ${benchSeries.symbol}) \xF7 var(${benchSeries.symbol}), daily, in ${m.base}`
         );
-        f.derive(
+        f3.derive(
           "risk (1 year, daily)",
           `${P}.benchCorrelation`,
           `correlation with ${benchSeries.symbol}`,
@@ -28377,7 +32850,7 @@ async function riskAnalysis(m, f, opts = {}) {
           top.map((t) => t.symbol),
           idx.map((i) => assetR[i])
         ))
-          f.derive(
+          f3.derive(
             "correlation of the top holdings",
             `${P}.corr.${c.a}.${c.b}`,
             `correlation of ${c.a} and ${c.b} (daily, 1 year)`,
@@ -28398,7 +32871,7 @@ async function riskAnalysis(m, f, opts = {}) {
   });
   for (const c of checks) {
     const from = c.kind === "position" ? [hs.find((h) => h.symbol === c.subject).keys.weight] : c.kind === "sector" ? [`${P}.sector.${keySlug(c.subject)}`] : c.kind === "crypto" ? [...hs.filter((h) => h.assetClass === "crypto").map((h) => h.keys.weight), m.keys.total] : [m.keys.cash, m.keys.total];
-    f.derive(
+    f3.derive(
       "profile limits",
       `${P}.limit.${c.kind}.${keySlug(c.subject)}`,
       `${c.kind} limit${c.kind === "position" || c.kind === "sector" ? ` \u2014 ${c.subject}` : ""}`,
@@ -28414,10 +32887,10 @@ async function riskAnalysis(m, f, opts = {}) {
 var PROXIES = { equity: ["CW8.PA", "SPY"], bond: ["AGG"], crypto: ["BTCUSDT"] };
 var CRYPTO_START = "2017-08-17";
 var STRESS_MAX_HOLDINGS = 15;
-async function stressAnalysis(m, f) {
+async function stressAnalysis(m, f3) {
   const P = `PORTFOLIO.${m.bookName}.stress`;
   const hs = valued(m).sort((a, b) => b.valueBase - a.valueBase).slice(0, STRESS_MAX_HOLDINGS);
-  if (valued(m).length > hs.length) f.note(`only the ${STRESS_MAX_HOLDINGS} largest holdings are replayed; the others count as uncovered`);
+  if (valued(m).length > hs.length) f3.note(`only the ${STRESS_MAX_HOLDINGS} largest holdings are replayed; the others count as uncovered`);
   const windowCache = /* @__PURE__ */ new Map();
   const windowOf = (symbol, resolved, from, to, id) => {
     const k = `${symbol}|${id}`;
@@ -28427,8 +32900,8 @@ async function stressAnalysis(m, f) {
         (async () => {
           const r2 = resolved ?? await resolveSymbol(symbol);
           if (r2.instrument.market === "crypto" && to < CRYPTO_START) return void 0;
-          const a = new Date(Date.parse(`${from}T00:00:00Z`) - 10 * DAY6);
-          const b = new Date(Date.parse(`${to}T00:00:00Z`) + 10 * DAY6);
+          const a = new Date(Date.parse(`${from}T00:00:00Z`) - 10 * DAY7);
+          const b = new Date(Date.parse(`${to}T00:00:00Z`) + 10 * DAY7);
           const s = r2.instrument.market === "crypto" ? await getHistory(r2, { from: a, to: b, interval: "1d" }) : await dailyHistory(r2, a, b, m.now);
           const w = windowCloses(closesOf2(s), from, to);
           return w ? { symbol, id, ...w, key: `${symbol}.stress.${id}`, series: s } : void 0;
@@ -28436,7 +32909,7 @@ async function stressAnalysis(m, f) {
       );
     return windowCache.get(k);
   };
-  const register = (w) => f.input({
+  const register = (w) => f3.input({
     kind: "history",
     title: `${w.symbol} over the ${w.id} window`,
     subject: w.symbol,
@@ -28482,11 +32955,11 @@ async function stressAnalysis(m, f) {
         line.basis = proxy ? "proxy" : "own";
         if (proxy) line.proxy = proxy;
         line.move = win.end.close / win.start.close - 1;
-        const key = f.derive(
+        const key = f3.derive(
           section,
           `${P}.${sc.id}.${h.symbol}.move`,
           `${h.symbol} move over the ${sc.label} window${proxy ? ` (proxy ${proxy})` : ""}`,
-          pct7(line.move),
+          pct8(line.move),
           "%",
           [`${win.key}.start`, `${win.key}.end`],
           `end close \xF7 start close \u2212 1, in the series' own currency${proxy ? `; ${h.symbol} had no prices then \u2014 ${proxy} stands in` : ""}`
@@ -28495,11 +32968,11 @@ async function stressAnalysis(m, f) {
       } else if (h.assetClass === "crypto" && sc.to < CRYPTO_START) {
         line.move = SHOCKS.crypto;
         line.basis = "shock";
-        const key = f.derive(
+        const key = f3.derive(
           section,
           `${P}.${sc.id}.${h.symbol}.move`,
           `${h.symbol} move over the ${sc.label} window (no crypto market then: the crypto shock stands in)`,
-          pct7(SHOCKS.crypto),
+          pct8(SHOCKS.crypto),
           "%",
           [h.keys.weight],
           "parametric crypto shock (no crypto prices exist for the window)"
@@ -28510,21 +32983,21 @@ async function stressAnalysis(m, f) {
     });
     const rp = replay(lines);
     if (!from.length) {
-      f.note(`${sc.label}: no holding or proxy has prices over ${sc.from} \u2192 ${sc.to}`);
+      f3.note(`${sc.label}: no holding or proxy has prices over ${sc.from} \u2192 ${sc.to}`);
       continue;
     }
     const proxied = lines.filter((l) => l.basis === "proxy").map((l) => `${l.symbol} \u2192 ${l.proxy}`);
-    const k = f.derive(
+    const k = f3.derive(
       section,
       `${P}.${sc.id}.impact`,
       `portfolio move if the ${sc.label} replayed on today's weights`,
-      pct7(rp.portfolio),
+      pct8(rp.portfolio),
       "%",
       from,
       `\u03A3 weight\u1D62 \xD7 move\u1D62; cash 0 %; moves in each series' currency (currency moves not included)${proxied.length ? `; proxies: ${proxied.join(", ")}` : ""}`
     );
     if (k)
-      f.derive(
+      f3.derive(
         section,
         `${P}.${sc.id}.loss`,
         `portfolio gain/loss in ${m.base} in the ${sc.label} replay`,
@@ -28534,8 +33007,8 @@ async function stressAnalysis(m, f) {
         "move \xD7 portfolio total"
       );
     if (rp.uncovered > 0)
-      f.note(`${sc.label}: ${(rp.uncovered * 100).toFixed(2)} % of the portfolio has neither its own prices nor a proxy for the window and is left at 0 %`);
-    if (proxied.length) f.note(`${sc.label}: proxies used \u2014 ${proxied.join(", ")}`);
+      f3.note(`${sc.label}: ${(rp.uncovered * 100).toFixed(2)} % of the portfolio has neither its own prices nor a proxy for the window and is left at 0 %`);
+    if (proxied.length) f3.note(`${sc.label}: proxies used \u2014 ${proxied.join(", ")}`);
     result.scenarios.push({ id: sc.id, label: sc.label, from: sc.from, to: sc.to, impactPct: rp.portfolio * 100, coveredPct: rp.covered * 100, lines });
   }
   const cashLines = m.cash.filter((c) => c.amountBase !== void 0 && c.currency !== m.base && m.totalBase > 0).map((c) => ({ symbol: `cash:${c.account}:${c.currency}`, weight: c.amountBase / m.totalBase, assetClass: "cash", currency: c.currency }));
@@ -28546,21 +33019,21 @@ async function stressAnalysis(m, f) {
     const hit = valued(m).filter((h) => s.hit.includes(h.symbol));
     const hitCash = cashLines.some((c) => s.hit.includes(c.symbol));
     if (!hit.length && !hitCash) {
-      f.note(`shock "${s.label}": no holding concerned`);
+      f3.note(`shock "${s.label}": no holding concerned`);
       result.shocks.push({ id: s.id, label: s.label, impactPct: 0 });
       continue;
     }
-    const k = f.derive(
+    const k = f3.derive(
       "parametric shocks",
       `${P}.shock.${s.id}`,
       `portfolio move under the shock: ${s.label}`,
-      pct7(s.impact),
+      pct8(s.impact),
       "%",
       [...hit.map((h) => h.keys.weight), ...hitCash ? [m.keys.cash, m.keys.total] : []],
       `${s.formula} (lines: ${s.hit.join(", ")})`
     );
     if (k)
-      f.derive(
+      f3.derive(
         "parametric shocks",
         `${P}.shock.${s.id}.loss`,
         `portfolio loss in ${m.base} under the shock: ${s.label}`,
@@ -28572,8 +33045,8 @@ async function stressAnalysis(m, f) {
     result.shocks.push({ id: s.id, label: s.label, impactPct: s.impact * 100 });
   }
   if (valued(m).some((h) => looksLikeBondFund(h.instrument?.name)))
-    f.note("bond funds are read from their names; durations are assumed (2 for 1\u20133-year funds, 6 otherwise), not read from the fund");
-  f.note("historical windows use each holding's own prices when it was listed then (Yahoo when the primary source keeps less history), else the stated proxy");
+    f3.note("bond funds are read from their names; durations are assumed (2 for 1\u20133-year funds, 6 otherwise), not read from the fund");
+  f3.note("historical windows use each holding's own prices when it was listed then (Yahoo when the primary source keeps less history), else the stated proxy");
   return result;
 }
 
@@ -28625,21 +33098,21 @@ async function portfolioAnalyticsCommand(args, asJson) {
   }
   const now = clockNow();
   const dir = runDirFor(argValue(args, "out"), `portfolio-${action}-${bookName}-${runId()}`);
-  const f = new Findings();
-  const m = await loadMarkedBook(bookName, f, now);
+  const f3 = new Findings();
+  const m = await loadMarkedBook(bookName, f3, now);
   let result;
   switch (action) {
     case "risk":
-      result = await riskAnalysis(m, f, { benchmark: argValue(args, "benchmark") });
+      result = await riskAnalysis(m, f3, { benchmark: argValue(args, "benchmark") });
       break;
     case "stress":
-      result = await stressAnalysis(m, f);
+      result = await stressAnalysis(m, f3);
       break;
     case "optimize":
-      result = await optimizeAnalysis(m, f, { universe: argList(args, "universe") });
+      result = await optimizeAnalysis(m, f3, { universe: argList(args, "universe") });
       break;
     case "rebalance":
-      result = await rebalanceAnalysis(m, f, {
+      result = await rebalanceAnalysis(m, f3, {
         targets,
         bandPct: band,
         relBand: relBandPct === void 0 ? void 0 : relBandPct / 100,
@@ -28647,40 +33120,40 @@ async function portfolioAnalyticsCommand(args, asJson) {
       });
       break;
     case "location":
-      result = await locationAnalysis(m, f);
+      result = await locationAnalysis(m, f3);
       break;
     case "lookthrough":
-      result = await lookthroughAnalysis(m, f);
+      result = await lookthroughAnalysis(m, f3);
       break;
     case "income":
-      result = await incomeAnalysis(m, f);
+      result = await incomeAnalysis(m, f3);
       break;
     case "goals":
-      result = await goalsAnalysis(m, f, goal);
+      result = await goalsAnalysis(m, f3, goal);
       break;
   }
-  const { store, result: emitted } = registerFindings(dir, f, `portfolio:${bookName}`, now);
+  const { store, result: emitted } = registerFindings(dir, f3, `portfolio:${bookName}`, now);
   const title = `${bookName} book \u2014 ${TITLES[action]} (${m.base}, ${now.toISOString().slice(0, 10)})`;
   if (asJson) process.stdout.write(jsonLine({ action, book: bookName, dir, result, evidence: emitted.derived, inputs: emitted.inputs, notes: emitted.notes }));
-  else process.stdout.write(formatFindings(title, f, emitted, store));
+  else process.stdout.write(formatFindings(title, f3, emitted, store));
 }
 
 // src/commands/trading.ts
-import { resolve as resolve10 } from "path";
+import { resolve as resolve11 } from "path";
 
 // src/trading/breaker.ts
-import { appendFileSync as appendFileSync6, existsSync as existsSync24, mkdirSync as mkdirSync18, readFileSync as readFileSync27 } from "fs";
-import { join as join27 } from "path";
+import { appendFileSync as appendFileSync6, existsSync as existsSync26, mkdirSync as mkdirSync20, readFileSync as readFileSync30 } from "fs";
+import { join as join31 } from "path";
 function equityPath(book2) {
-  return join27(homeDir(), "state", `equity-${book2}.jsonl`);
+  return join31(homeDir(), "state", `equity-${book2}.jsonl`);
 }
 function readEquity(book2) {
   const p = equityPath(book2);
-  if (!existsSync24(p)) return [];
-  return readFileSync27(p, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).sort((a, b) => a.at.localeCompare(b.at));
+  if (!existsSync26(p)) return [];
+  return readFileSync30(p, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).sort((a, b) => a.at.localeCompare(b.at));
 }
 function recordEquity(book2, equity, at) {
-  mkdirSync18(join27(homeDir(), "state"), { recursive: true });
+  mkdirSync20(join31(homeDir(), "state"), { recursive: true });
   appendFileSync6(equityPath(book2), `${JSON.stringify({ at: at.toISOString(), equity })}
 `, { mode: 384 });
 }
@@ -28968,7 +33441,7 @@ var out3 = (asJson, value, text) => {
   process.stdout.write(asJson ? jsonLine(value) : text.endsWith("\n") ? text : `${text}
 `);
 };
-var num8 = (v, flag) => {
+var num9 = (v, flag) => {
   if (v === void 0) return void 0;
   const n = Number(v);
   if (!Number.isFinite(n)) throw new UsageError(`--${flag} takes a number, not "${v}"`);
@@ -29007,7 +33480,7 @@ async function portfolioCommand(args, asJson) {
   if (PORTFOLIO_ANALYTICS_ACTIONS.includes(sub)) return portfolioAnalyticsCommand(args, asJson);
   if (sub === "deposit" || sub === "withdraw") {
     const [account, amountRaw] = rest;
-    const amount = num8(amountRaw, "amount");
+    const amount = num9(amountRaw, "amount");
     if (!account || amount === void 0 || amount <= 0)
       throw new UsageError(`usage: ultrastock portfolio ${sub} <account> <amount> [--currency EUR] [--date YYYY-MM-DD] [--book real|paper]`);
     const r2 = await appendTransactions(
@@ -29041,10 +33514,10 @@ async function portfolioCommand(args, asJson) {
           type,
           account,
           symbol: argValue(args, "symbol")?.toUpperCase(),
-          quantity: num8(argValue(args, "quantity"), "quantity"),
-          price: num8(argValue(args, "price"), "price"),
-          amount: num8(argValue(args, "amount"), "amount"),
-          fee: num8(argValue(args, "fee"), "fee"),
+          quantity: num9(argValue(args, "quantity"), "quantity"),
+          price: num9(argValue(args, "price"), "price"),
+          amount: num9(argValue(args, "amount"), "amount"),
+          fee: num9(argValue(args, "fee"), "fee"),
           currency: (argValue(args, "currency") ?? loadProfile()?.baseCurrency ?? "EUR").toUpperCase(),
           origin: "manual"
         }
@@ -29057,7 +33530,7 @@ async function portfolioCommand(args, asJson) {
     const m = await markBook(book2);
     const dir = argValue(args, "out");
     if (dir) {
-      const store = EvidenceStore.open(resolve10(dir), { subject: `portfolio:${book2}` });
+      const store = EvidenceStore.open(resolve11(dir), { subject: `portfolio:${book2}` });
       const fetchedAt = m.now.toISOString();
       const base2 = { source: "ultrastock-ledger", fetchedAt, asOf: fetchedAt.slice(0, 10), official: false };
       store.add({
@@ -29143,18 +33616,18 @@ async function planCommand(args, asJson) {
     throw new UsageError("usage: ultrastock plan <symbol> --account <id> [--entry n] [--stop n] [--target a,b] [--venue paper] [--ticket] [--out <dir>]");
   const account = argValue(args, "account");
   if (!account) throw new UsageError("--account names the envelope the order would go to (a profile envelope id, e.g. pea or ibkr)");
-  const targets = argList(args, "target").map((t) => num8(t, "target"));
+  const targets = argList(args, "target").map((t) => num9(t, "target"));
   const p = await planTrade({
     symbol: sym2,
     account,
-    entry: num8(argValue(args, "entry"), "entry"),
-    stop: num8(argValue(args, "stop"), "stop"),
+    entry: num9(argValue(args, "entry"), "entry"),
+    stop: num9(argValue(args, "stop"), "stop"),
     targets: targets.length ? targets : void 0,
     venue: argValue(args, "venue") ?? "paper"
   });
   const dir = argValue(args, "out");
   if (dir) {
-    const store = EvidenceStore.open(resolve10(dir), { subject: p.symbol });
+    const store = EvidenceStore.open(resolve11(dir), { subject: p.symbol });
     const base2 = { source: "ultrastock-plan", fetchedAt: clockNow().toISOString(), official: false, asOf: clockNow().toISOString().slice(0, 10) };
     const k = `${p.symbol}.plan`;
     store.add({ ...base2, key: `${k}.entry`, label: `${p.symbol} planned entry (limit)`, value: p.entry, unit: p.currency });
@@ -29172,7 +33645,7 @@ async function planCommand(args, asJson) {
   let ticketId;
   if (args.bools.has("ticket")) {
     if (p.quantity <= 0) throw new Error(`no ticket: ${p.verdict} \u2014 the size is zero (${p.sizingReasons.at(-1)})`);
-    const t = createTicket(p.order, { run: dir ? resolve10(dir) : void 0, note: `plan: stop ${p.stopMethod}; targets ${p.targets.join(", ")}` });
+    const t = createTicket(p.order, { run: dir ? resolve11(dir) : void 0, note: `plan: stop ${p.stopMethod}; targets ${p.targets.join(", ")}` });
     await recordCheck(t.id, p.gate);
     ticketId = t.id;
   }
@@ -29275,7 +33748,7 @@ var WINDOWS = { "1m": 21, "3m": 63, "6m": 126 };
 var RS_WEIGHTS = { "1m": 0.2, "3m": 0.4, "6m": 0.4 };
 var ret = (xs, n) => xs.length > n ? (xs[xs.length - 1] / xs[xs.length - 1 - n] - 1) * 100 : void 0;
 function etfVsBenchmark(id, closes, bench) {
-  const meta = SECTOR_ETFS[id] ?? { name: id, side: "neutral" };
+  const meta2 = SECTOR_ETFS[id] ?? { name: id, side: "neutral" };
   const perf = {};
   const rel = {};
   for (const [w, n] of Object.entries(WINDOWS)) {
@@ -29290,8 +33763,8 @@ function etfVsBenchmark(id, closes, bench) {
   const s200 = sma(closes, 200)[closes.length - 1];
   return {
     id,
-    name: meta.name,
-    side: meta.side,
+    name: meta2.name,
+    side: meta2.side,
     perf,
     rel,
     ...c !== void 0 && s50 !== void 0 && Number.isFinite(s50) ? { above50: c > s50 } : {},
@@ -29329,12 +33802,12 @@ function groupBySector(rows) {
   const groups = /* @__PURE__ */ new Map();
   let unknown = 0;
   for (const r2 of rows) {
-    const meta = typeof r2.values.sector === "string" ? TV_SECTORS[r2.values.sector] : void 0;
-    if (!meta) {
+    const meta2 = typeof r2.values.sector === "string" ? TV_SECTORS[r2.values.sector] : void 0;
+    if (!meta2) {
       unknown++;
       continue;
     }
-    groups.set(meta.id, [...groups.get(meta.id) ?? [], r2]);
+    groups.set(meta2.id, [...groups.get(meta2.id) ?? [], r2]);
   }
   const all = {};
   for (const w of Object.keys(WINDOWS)) {
@@ -29342,8 +33815,8 @@ function groupBySector(rows) {
     if (m !== void 0) all[w] = m;
   }
   const stats = [];
-  for (const meta of Object.values(TV_SECTORS)) {
-    const g = groups.get(meta.id);
+  for (const meta2 of Object.values(TV_SECTORS)) {
+    const g = groups.get(meta2.id);
     if (!g?.length) continue;
     const perf = {};
     const rel = {};
@@ -29356,9 +33829,9 @@ function groupBySector(rows) {
     const with200 = g.filter((r2) => typeof r2.values.close === "number" && typeof r2.values.SMA200 === "number" && r2.values.SMA200 > 0);
     const above = with200.filter((r2) => r2.values.close > r2.values.SMA200).length;
     stats.push({
-      id: meta.id,
-      name: meta.label,
-      side: meta.side,
+      id: meta2.id,
+      name: meta2.label,
+      side: meta2.side,
       perf,
       rel,
       members: g.length,
@@ -29401,7 +33874,7 @@ async function usSectors(now = clockNow()) {
   const ns = "US.sector";
   const ids = Object.keys(SECTOR_ETFS);
   const hist = await dailyHistories(["SPY", ...ids], 420, now);
-  const notes = hist.failed.map((f) => `history unavailable \u2014 ${f}`);
+  const notes = hist.failed.map((f3) => `history unavailable \u2014 ${f3}`);
   const spy = hist.series.get("SPY");
   if (!spy) throw new Error(`sectors: SPY history unavailable, nothing to compare against \u2014 ${notes.join("; ")}`);
   const datasets = [];
@@ -29483,7 +33956,7 @@ async function euSectors() {
     "performance is TradingView's (price only); medians, ranked against the median of every large cap in the screen",
     ...unknown ? [`${unknown} stock(s) with a sector outside TradingView's known taxonomy left out`] : [],
     ...ranked.some((s) => (s.members ?? 0) < 3) ? ["sectors with fewer than 3 members are noisy \u2014 read their rank with care"] : [],
-    ...tv.failed.map((f) => `unavailable \u2014 ${f}`)
+    ...tv.failed.map((f3) => `unavailable \u2014 ${f3}`)
   ];
   const leaders = ranked.filter((s) => s.rank !== void 0).slice(0, 3);
   const laggards = ranked.filter((s) => s.rank !== void 0).slice(-3);
@@ -29564,7 +34037,7 @@ var NEW_HIGH_WINDOW = 5;
 var CANSLIM_RS_PCT = 80;
 var RS_LEADERS_PCT = 90;
 var SIX_MONTHS = 126;
-var f22 = (x) => x.toFixed(2);
+var f23 = (x) => x.toFixed(2);
 var pctTxt = (x) => `${(x * 100).toFixed(2)} %`;
 function percentileRanks(values) {
   const defined = values.filter((v) => v !== void 0 && Number.isFinite(v));
@@ -29673,9 +34146,9 @@ function exhaustionHammer(bars) {
   const wick = Math.min(b.open, b.close) - b.low;
   const pull = bars[t - 1].close / bars[t - 1 - HAMMER_PULLBACK].close - 1;
   const checks = [
-    [wick > 0 && wick >= HAMMER_WICK_BODY * body, `lower wick ${f22(wick)} vs body ${f22(body)} (needs \u2265 ${HAMMER_WICK_BODY}\xD7)`],
+    [wick > 0 && wick >= HAMMER_WICK_BODY * body, `lower wick ${f23(wick)} vs body ${f23(body)} (needs \u2265 ${HAMMER_WICK_BODY}\xD7)`],
     [pull < 0, `${pctTxt(pull)} over the ${HAMMER_PULLBACK} sessions before (needs a decline)`],
-    [b.close > bars[t - 1].low, `close ${f22(b.close)} vs the previous low ${f22(bars[t - 1].low)}`]
+    [b.close > bars[t - 1].low, `close ${f23(b.close)} vs the previous low ${f23(bars[t - 1].low)}`]
   ];
   return {
     pass: checks.every(([ok]) => ok),
@@ -29701,9 +34174,9 @@ function pullbackTo50(bars) {
   if (s50 === void 0 || s200 === void 0 || r2 === void 0) return { pass: null, reasons: [`needs 200 sessions, have ${bars.length}`], metrics: [] };
   const dist = c[t] / s50 - 1;
   const checks = [
-    [c[t] > s200 && s50 > s200, `close ${f22(c[t])}, SMA50 ${f22(s50)}, SMA200 ${f22(s200)} (needs close and SMA50 above SMA200)`],
+    [c[t] > s200 && s50 > s200, `close ${f23(c[t])}, SMA50 ${f23(s50)}, SMA200 ${f23(s200)} (needs close and SMA50 above SMA200)`],
     [Math.abs(dist) <= PULLBACK_BAND, `close ${pctTxt(dist)} from the SMA50 (needs within ${pctTxt(PULLBACK_BAND)})`],
-    [r2 >= PULLBACK_RSI[0] && r2 <= PULLBACK_RSI[1], `RSI(14) ${f22(r2)} (needs ${PULLBACK_RSI[0]}\u2013${PULLBACK_RSI[1]})`]
+    [r2 >= PULLBACK_RSI[0] && r2 <= PULLBACK_RSI[1], `RSI(14) ${f23(r2)} (needs ${PULLBACK_RSI[0]}\u2013${PULLBACK_RSI[1]})`]
   ];
   return {
     pass: checks.every(([ok]) => ok),
@@ -29726,7 +34199,7 @@ function goldenCross(bars) {
   const above = s50[t] > s200[t];
   const reasons = [
     crossed >= 0 ? `pass: SMA50 crossed above SMA200 on ${bars[crossed].date}` : `fail: no upward cross of SMA50 over SMA200 in the last ${CROSS_WINDOW} sessions`,
-    `${above ? "pass" : "fail"}: SMA50 ${f22(s50[t])} vs SMA200 ${f22(s200[t])} now`
+    `${above ? "pass" : "fail"}: SMA50 ${f23(s50[t])} vs SMA200 ${f23(s200[t])} now`
   ];
   const metrics = [
     { name: "sma50vs200", label: "SMA50 vs SMA200", value: (s50[t] / s200[t] - 1) * 100, unit: "%", formula: "(SMA50 / SMA200 \u2212 1) \xD7 100" }
@@ -29782,11 +34255,11 @@ function technicalVerdict(id, bars, opts = {}) {
   return { id, asOf, ...run3() };
 }
 function applyUniverseRanks(verdicts) {
-  const pct8 = percentileRanks(verdicts.map((v) => v.rank?.value));
-  const n = pct8.filter((p) => p !== void 0).length;
+  const pct9 = percentileRanks(verdicts.map((v) => v.rank?.value));
+  const n = pct9.filter((p) => p !== void 0).length;
   return verdicts.map((v, i) => {
     if (!v.rank) return v;
-    const p = pct8[i];
+    const p = pct9[i];
     if (p === void 0) return { ...v, pass: v.pass === false ? false : null };
     const ok = p >= v.rank.minPercentile;
     return {
@@ -29905,7 +34378,7 @@ async function builtinScreen(id, opts) {
     `computed by ultrastock on closed daily bars up to the last session before ${today}; benchmark ${bench.name}`
   );
   if (shown.length < rows.length) notes.push(`showing ${shown.length} of ${rows.length} (matches first) \u2014 raise --limit to see the rest`);
-  for (const f of failures) notes.push(`unavailable \u2014 ${f}`);
+  for (const f3 of failures) notes.push(`unavailable \u2014 ${f3}`);
   const groups = /* @__PURE__ */ new Map();
   for (const r2 of shown) groups.set(provKey(r2.series), [...groups.get(provKey(r2.series)) ?? [], r2]);
   const datasets = [];
@@ -29978,17 +34451,17 @@ function cribleRowsToDataset(r2, opts) {
   const fetchedAt = opts.fetchedAt ?? clockNow().toISOString();
   const pid = opts.preset?.id.replace(/[^a-z0-9-]/gi, "");
   const label2 = pid ? `preset ${pid}` : "query";
-  const day2 = fetchedAt.slice(0, 10);
+  const day3 = fetchedAt.slice(0, 10);
   const points = [
     {
       key: "CRIBLE.screen.query",
       label: `crible DSL run for the ${label2}`,
       value: opts.preset?.dsl ?? (opts.query || "(no filter)"),
       untrusted: true,
-      asOf: day2
+      asOf: day3
     },
-    ...opts.preset ? [{ key: "CRIBLE.screen.preset", label: "crible preset description", value: opts.preset.description, untrusted: true, asOf: day2 }] : [],
-    { key: "CRIBLE.screen.matches", label: `crible matches for the ${label2}`, value: r2.total, unit: "count", asOf: day2 }
+    ...opts.preset ? [{ key: "CRIBLE.screen.preset", label: "crible preset description", value: opts.preset.description, untrusted: true, asOf: day3 }] : [],
+    { key: "CRIBLE.screen.matches", label: `crible matches for the ${label2}`, value: r2.total, unit: "count", asOf: day3 }
   ];
   let latest = "";
   r2.rows.forEach((row, i) => {
@@ -30001,16 +34474,16 @@ function cribleRowsToDataset(r2, opts) {
     if (asOf && asOf > latest) latest = asOf;
     const at = asOf ? { asOf } : {};
     points.push({ key: `${sym2}.crible.rank`, label: `${sym2} position in the crible ${label2}`, value: (opts.offset ?? 0) + i + 1, unit: "rank", ...at });
-    for (const f of fields) {
-      const v = row[f];
-      if (v === null || v === void 0 || f === "symbol") continue;
-      const key = `${sym2}.crible.${f}`;
-      const lbl = `${sym2} ${f.replace(/_/g, " ")}${period2 && !IDENTITY.includes(f) ? ` (period ${period2})` : ""}`;
+    for (const f3 of fields) {
+      const v = row[f3];
+      if (v === null || v === void 0 || f3 === "symbol") continue;
+      const key = `${sym2}.crible.${f3}`;
+      const lbl = `${sym2} ${f3.replace(/_/g, " ")}${period2 && !IDENTITY.includes(f3) ? ` (period ${period2})` : ""}`;
       if (typeof v === "number") {
         if (!Number.isFinite(v)) continue;
-        const unit = unitOf2(f, row.currency);
+        const unit = unitOf2(f3, row.currency);
         points.push({ key, label: lbl, value: v, ...unit ? { unit } : {}, ...at });
-      } else if (typeof v === "string") points.push({ key, label: lbl, value: v, ...CODE_FIELDS.has(f) ? {} : { untrusted: true }, ...at });
+      } else if (typeof v === "string") points.push({ key, label: lbl, value: v, ...CODE_FIELDS.has(f3) ? {} : { untrusted: true }, ...at });
       else if (typeof v === "boolean") points.push({ key, label: lbl, value: v, ...at });
     }
   });
@@ -30373,7 +34846,7 @@ var BUILTIN_PRESETS = [
     approximations: ["a percentile within the screened universe, not over all stocks"]
   }
 ];
-var OPS = {
+var OPS2 = {
   greater: ">",
   less: "<",
   egreater: "\u2265",
@@ -30382,26 +34855,26 @@ var OPS = {
   nequal: "\u2260"
 };
 var label = (col) => TV_COLUMNS[col]?.label ?? col;
-var num9 = (v) => typeof v === "number" ? Math.abs(v) >= 1e6 ? v.toExponential(1).replace("e+", "e") : String(v) : String(v);
+var num10 = (v) => typeof v === "number" ? Math.abs(v) >= 1e6 ? v.toExponential(1).replace("e+", "e") : String(v) : String(v);
 var side = (v, col) => {
   if (typeof v === "string" && TV_COLUMNS[v]) return label(v);
   const u = TV_COLUMNS[col]?.unit;
-  return `${num9(v)}${u === "%" ? " %" : ""}`;
+  return `${num10(v)}${u === "%" ? " %" : ""}`;
 };
-function describeFilter(f) {
-  const l = label(f.left);
-  if (OPS[f.operation]) return `${l} ${OPS[f.operation]} ${side(f.right, f.left)}`;
-  if (f.operation === "in_range" && Array.isArray(f.right) && f.right.length === 2 && f.right.every((x) => typeof x === "number"))
-    return `${l} between ${side(f.right[0], f.left)} and ${side(f.right[1], f.left)}`;
-  if (f.operation === "in_range" && Array.isArray(f.right))
-    return `${l} in ${f.right.length <= 4 ? f.right.join(", ") : `the ${f.right.length}-entry list (${f.right.join(", ")})`}`;
-  if (f.operation === "not_in_range" && Array.isArray(f.right)) return `${l} not ${f.right.join(" or ")}`;
-  if (f.operation === "has" && Array.isArray(f.right)) return `${l} is ${f.right.join(" or ")}`;
-  if (f.operation === "has_none_of" && Array.isArray(f.right)) return `${l} is not ${f.right.join(" or ")}`;
-  if (f.operation === "above%" && Array.isArray(f.right))
-    return `${l} above ${Number(f.right[1]) * 100} % of the ${label(String(f.right[0]))} (within ${Math.round((1 - Number(f.right[1])) * 100)} % of it)`;
-  if (f.operation === "match") return `${l} contains "${String(f.right)}"`;
-  return `${l} ${f.operation} ${JSON.stringify(f.right)}`;
+function describeFilter(f3) {
+  const l = label(f3.left);
+  if (OPS2[f3.operation]) return `${l} ${OPS2[f3.operation]} ${side(f3.right, f3.left)}`;
+  if (f3.operation === "in_range" && Array.isArray(f3.right) && f3.right.length === 2 && f3.right.every((x) => typeof x === "number"))
+    return `${l} between ${side(f3.right[0], f3.left)} and ${side(f3.right[1], f3.left)}`;
+  if (f3.operation === "in_range" && Array.isArray(f3.right))
+    return `${l} in ${f3.right.length <= 4 ? f3.right.join(", ") : `the ${f3.right.length}-entry list (${f3.right.join(", ")})`}`;
+  if (f3.operation === "not_in_range" && Array.isArray(f3.right)) return `${l} not ${f3.right.join(" or ")}`;
+  if (f3.operation === "has" && Array.isArray(f3.right)) return `${l} is ${f3.right.join(" or ")}`;
+  if (f3.operation === "has_none_of" && Array.isArray(f3.right)) return `${l} is not ${f3.right.join(" or ")}`;
+  if (f3.operation === "above%" && Array.isArray(f3.right))
+    return `${l} above ${Number(f3.right[1]) * 100} % of the ${label(String(f3.right[0]))} (within ${Math.round((1 - Number(f3.right[1])) * 100)} % of it)`;
+  if (f3.operation === "match") return `${l} contains "${String(f3.right)}"`;
+  return `${l} ${f3.operation} ${JSON.stringify(f3.right)}`;
 }
 function baseFilters(assets, market) {
   if (market === "coin") return [{ left: "crypto_common_categories", operation: "has_none_of", right: ["stablecoins"] }];
@@ -30614,14 +35087,14 @@ async function tradingviewScreen(preset, opts = {}) {
     if (etf) notes.push(`${hints.length} ETF(s) listed in Paris whose name contains "PEA" \u2014 a naming hint only, not proof of PEA eligibility`);
   }
   const first = scans[0].ds;
-  const day2 = first.provenance.asOf ?? first.provenance.fetchedAt.slice(0, 10);
+  const day3 = first.provenance.asOf ?? first.provenance.fetchedAt.slice(0, 10);
   const points = [
     {
       key: `TV.${marketArg}.screen.${preset.id}.matches`,
       label: `TradingView ${marketArg} matches for screen ${preset.id}`,
       value: total,
       unit: "count",
-      asOf: day2,
+      asOf: day3,
       ...scans.length > 1 ? { formula: `sum of the scanner's match counts over ${scans.map((s) => s.market).join(", ")}` } : {}
     }
   ];
@@ -30633,10 +35106,10 @@ async function tradingviewScreen(preset, opts = {}) {
       label: `${m.ticker} position in screen ${preset.id}`,
       value: i + 1,
       unit: "rank",
-      asOf: day2,
+      asOf: day3,
       formula: `order by ${rankLabel}`
     });
-    if (kind) points.push({ key: `${base2}.kind`, label: `${m.ticker} kind of match`, value: kind, asOf: day2 });
+    if (kind) points.push({ key: `${base2}.kind`, label: `${m.ticker} kind of match`, value: kind, asOf: day3 });
     points.push(...matchPoints(m, cols), ...m.derived);
     const sp = m.points.get(sortBy);
     const r2 = rates && sp?.unit ? rates.get(sp.unit) : void 0;
@@ -30648,7 +35121,7 @@ async function tradingviewScreen(preset, opts = {}) {
           label: `${m.ticker} ${TV_COLUMNS[sortBy]?.label ?? sortBy} in euros`,
           value: eur,
           unit: "EUR",
-          asOf: day2,
+          asOf: day3,
           formula: `${m.ticker}.tv.${sortBy} / EUR.fx.${sp.unit} (ECB reference rate${r2.date ? ` of ${r2.date}` : ""})`
         });
     }
@@ -30661,7 +35134,7 @@ async function tradingviewScreen(preset, opts = {}) {
           label: `${m.ticker} distance from the 52-week high`,
           value: (close / high - 1) * 100,
           unit: "%",
-          asOf: day2,
+          asOf: day3,
           formula: "(close / price_52_week_high \u2212 1) \xD7 100"
         });
     }
@@ -30681,14 +35154,14 @@ async function tradingviewScreen(preset, opts = {}) {
     );
   if (!picked.some((m) => matchNumber(m, sortBy) !== void 0) && picked.length && preset.id !== "magic-formula")
     notes.push(`no match carries a value for the sort column "${sortBy}" \u2014 check the column name`);
-  for (const f of failures) notes.push(`unavailable \u2014 ${f}`);
+  for (const f3 of failures) notes.push(`unavailable \u2014 ${f3}`);
   notes.push("unofficial endpoint (TradingView's screener backend); delayed snapshot");
   const screen = {
     kind: "screen",
     title: `Screen ${preset.id} \u2014 TradingView ${marketArg}`,
     subject: marketArg,
     points,
-    provenance: { ...first.provenance, asOf: day2 },
+    provenance: { ...first.provenance, asOf: day3 },
     notes
   };
   return fx ? [screen, fx] : [screen];
@@ -30871,7 +35344,7 @@ async function screenCommand(args, asJson) {
 }
 
 // src/analyze/quant/common.ts
-var PointList = class {
+var PointList2 = class {
   points = [];
   /** Add a point; returns false (and adds nothing) when its value is a non-finite number. */
   add(p) {
@@ -30992,10 +35465,10 @@ function yieldSustainability(p) {
 }
 
 // src/analyze/quant/options.ts
-import { existsSync as existsSync25, mkdirSync as mkdirSync19, readFileSync as readFileSync28 } from "fs";
-import { join as join28 } from "path";
-var DAY7 = 864e5;
-var YEAR = 365 * DAY7;
+import { existsSync as existsSync27, mkdirSync as mkdirSync21, readFileSync as readFileSync31 } from "fs";
+import { join as join32 } from "path";
+var DAY8 = 864e5;
+var YEAR = 365 * DAY8;
 var SETTLE_HOUR = { cboe: "20", deribit: "08" };
 function toQuantChain(chain2, venue, now, rate) {
   const inverse2 = chain2.premiumCurrency === chain2.underlying;
@@ -31035,7 +35508,7 @@ function toQuantChain(chain2, venue, now, rate) {
   }
   if (inverse2) notes.push(`premiums quoted in ${chain2.underlying} converted to ${chain2.strikeCurrency} at the index price ${chain2.underlyingPrice}`);
   if (filled) notes.push(`${filled} contract(s) had no greeks from the venue: delta and gamma are Black\u2013Scholes from their IV (r = ${r2})`);
-  const expiries = [...new Set(options.map((o) => o.expiry))].sort().map((expiry) => ({ expiry, dte: Math.max(0, Math.round((Date.parse(`${expiry}T00:00:00Z`) - now.getTime()) / DAY7)) }));
+  const expiries = [...new Set(options.map((o) => o.expiry))].sort().map((expiry) => ({ expiry, dte: Math.max(0, Math.round((Date.parse(`${expiry}T00:00:00Z`) - now.getTime()) / DAY8)) }));
   return {
     underlying: chain2.underlying,
     venue,
@@ -31051,10 +35524,10 @@ function toQuantChain(chain2, venue, now, rate) {
 function isMonthlyExpiry(expiry, venue) {
   const d = /* @__PURE__ */ new Date(`${expiry}T00:00:00Z`);
   if (Number.isNaN(d.getTime()) || d.getUTCDay() !== 5) return false;
-  const day2 = d.getUTCDate();
-  if (venue === "cboe") return day2 >= 15 && day2 <= 21;
+  const day3 = d.getUTCDate();
+  if (venue === "cboe") return day3 >= 15 && day3 <= 21;
   const daysInMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
-  return day2 + 7 > daysInMonth;
+  return day3 + 7 > daysInMonth;
 }
 function pickExpiries(expiries, venue, n = 3, minDays = 7) {
   const far = expiries.filter((e) => e.dte >= minDays);
@@ -31217,20 +35690,20 @@ function unusualPoints(q, expiries, out4, limit = 5) {
   return hits.length;
 }
 function ivHistoryPath(symbol) {
-  return join28(homeDir(), "state", "iv-history", `${symbol.replace(/[^A-Z0-9._-]/gi, "_")}.json`);
+  return join32(homeDir(), "state", "iv-history", `${symbol.replace(/[^A-Z0-9._-]/gi, "_")}.json`);
 }
 function recordIv(symbol, date, iv) {
   const path = ivHistoryPath(symbol);
   let h = { symbol, series: {} };
-  if (existsSync25(path)) {
+  if (existsSync27(path)) {
     try {
-      const raw = JSON.parse(readFileSync28(path, "utf8"));
+      const raw = JSON.parse(readFileSync31(path, "utf8"));
       if (raw && typeof raw.series === "object") h = { symbol, series: raw.series };
     } catch {
     }
   }
   h.series[date] = Number(iv.toFixed(4));
-  mkdirSync19(join28(homeDir(), "state", "iv-history"), { recursive: true });
+  mkdirSync21(join32(homeDir(), "state", "iv-history"), { recursive: true });
   writeFileAtomic(path, `${JSON.stringify(h, null, 2)}
 `);
   return h;
@@ -31264,14 +35737,14 @@ var ARITY = {
   "cash-secured-put": 1,
   collar: 2
 };
-var STRATEGY_USAGE = "--strategy long-call:K | long-put:K | bull-call:K1/K2 | bear-put:K1/K2 | iron-condor:Kp1/Kp2/Kc1/Kc2 | straddle:K | strangle:Kp/Kc | covered-call:K | cash-secured-put:K | collar:Kp/Kc";
+var STRATEGY_USAGE2 = "--strategy long-call:K | long-put:K | bull-call:K1/K2 | bear-put:K1/K2 | iron-condor:Kp1/Kp2/Kc1/Kc2 | straddle:K | strangle:Kp/Kc | covered-call:K | cash-secured-put:K | collar:Kp/Kc";
 function parseStrategySpec(spec) {
   const m = /^([a-z-]+):([0-9.]+(?:\/[0-9.]+)*)$/.exec(spec.trim().toLowerCase());
   const kind = m?.[1];
-  if (!m || !kind || !(kind in ARITY)) throw new UsageError(`unknown strategy "${spec}" \u2014 ${STRATEGY_USAGE}`);
+  if (!m || !kind || !(kind in ARITY)) throw new UsageError(`unknown strategy "${spec}" \u2014 ${STRATEGY_USAGE2}`);
   const strikes = m[2].split("/").map(Number);
   if (strikes.length !== ARITY[kind] || strikes.some((k) => !Number.isFinite(k) || k <= 0))
-    throw new UsageError(`${kind} takes ${ARITY[kind]} strike(s) \u2014 ${STRATEGY_USAGE}`);
+    throw new UsageError(`${kind} takes ${ARITY[kind]} strike(s) \u2014 ${STRATEGY_USAGE2}`);
   return { kind, strikes: [...strikes].sort((a, b) => a - b) };
 }
 var CAPPED = /* @__PURE__ */ new Set(["covered-call", "iron-condor", "collar", "bull-call", "cash-secured-put"]);
@@ -31768,7 +36241,7 @@ function multiStatsPoints(syms, aligned, out4) {
 }
 
 // src/commands/quant.ts
-var DAY8 = 864e5;
+var DAY9 = 864e5;
 var DERIBIT2 = /* @__PURE__ */ new Set(["BTC", "ETH", "BTCUSDT", "ETHUSDT", "BTC-USD", "ETH-USD"]);
 var STATS_MAX_SYMBOLS = 10;
 var PREDICT_MAX_BOOKS = 10;
@@ -31792,7 +36265,7 @@ var fraction = (v, flag, lo, hi) => {
   if (!Number.isFinite(n) || n < lo || n > hi) throw new UsageError(`--${flag} is a number between ${lo} and ${hi} (got ${v})`);
   return n;
 };
-var OPTIONS_USAGE = `usage: ultrastock options-analysis <symbol> [--expiry YYYY-MM-DD] [--strategy <spec>] [--spot-moves=-30,-10,0,10,50] [--rate <pct>] [--out <dir>] \u2014 ${STRATEGY_USAGE}`;
+var OPTIONS_USAGE = `usage: ultrastock options-analysis <symbol> [--expiry YYYY-MM-DD] [--strategy <spec>] [--spot-moves=-30,-10,0,10,50] [--rate <pct>] [--out <dir>] \u2014 ${STRATEGY_USAGE2}`;
 async function optionsAnalysisCommand(args, asJson) {
   const raw = args.positional[0]?.toUpperCase();
   if (!raw) throw new UsageError(OPTIONS_USAGE);
@@ -31817,13 +36290,13 @@ async function optionsAnalysisCommand(args, asJson) {
   } else expiries = pickExpiries(q.expiries, venue);
   if (!expiries.length) throw new Error(`${U}: no expiry at least 7 days out`);
   const prov5 = { ...chain2.provenance, asOf: chain2.asOf.slice(0, 10) };
-  const readings = new PointList();
+  const readings = new PointList2();
   readings.num(`${U}.quant.spot`, `${U} underlying price (${chain2.provenance.source})`, q.spot, q.currency);
   if (venue === "cboe")
     readings.num(`${U}.quant.rate`, `${U} risk-free rate assumed for Black\u2013Scholes marks`, rate * 100, "%", "assumption (--rate, default 4 %)");
   for (const e of expiries) expiryPoints(q, e, readings);
   unusualPoints(q, expiries, readings);
-  const vol = new PointList();
+  const vol = new PointList2();
   const term = termStructure(q);
   termPoints(U, term, vol);
   const volNotes = [];
@@ -31832,8 +36305,8 @@ async function optionsAnalysisCommand(args, asJson) {
       `${term.skipped.length} expiry(ies) left out of the term structure: no two-sided call and put quote near the money (${term.skipped.slice(0, 6).join(", ")}${term.skipped.length > 6 ? "\u2026" : ""})`
     );
   if (term.iv30 !== void 0) {
-    const day2 = chain2.asOf.slice(0, 10);
-    const hist = recordIv(U, day2, term.iv30);
+    const day3 = chain2.asOf.slice(0, 10);
+    const hist = recordIv(U, day3, term.iv30);
     ivRankPoints(U, hist, term.iv30, vol);
     volNotes.push(`today's 30-day ATM IV is stored in ${ivHistoryPath(U)} (one reading per date): IV rank becomes available after 20 stored days`);
   } else volNotes.push("no ATM IV could be read: no term structure, no IV history update");
@@ -31849,7 +36322,7 @@ async function optionsAnalysisCommand(args, asJson) {
   if (spec) {
     const expiry = asked ?? expiries[0];
     const legs = buildStrategy(q, expiry, spec);
-    const sp = new PointList();
+    const sp = new PointList2();
     const notes = strategyPoints(q, expiry, spec, legs, sp, { moves });
     out4.push(dataset2("options-strategy", `${U} ${spec.kind} ${spec.strikes.join("/")} on ${expiry}: payoff and P&L matrix`, U, sp, prov5, notes));
   }
@@ -31872,17 +36345,17 @@ async function statsCommand(args, asJson) {
   if (syms.length > STATS_MAX_SYMBOLS) throw new UsageError(`stats takes at most ${STATS_MAX_SYMBOLS} symbols (got ${syms.length})`);
   const days = argInt(args, "days", { min: 60, max: 3650 }) ?? 750;
   const now = clockNow();
-  const from = new Date(now.getTime() - days * DAY8);
+  const from = new Date(now.getTime() - days * DAY9);
   const got = await mapLimit(syms, 4, (s) => fetchBars(s, from, now));
   const ok = got.filter((g) => g.series && g.bars.length >= 30);
   const failed = got.filter((g) => !ok.includes(g)).map((g) => `${g.sym}: ${g.error ?? `only ${g.bars.length} closed daily bars`}`);
   if (!ok.length) throw new Error(`no usable history \u2014 ${failed.join("; ")}`);
-  const unavailable = failed.map((f) => `unavailable \u2014 ${f}`);
+  const unavailable = failed.map((f3) => `unavailable \u2014 ${f3}`);
   const out4 = [];
   if (syms.length === 1) {
     const a = ok[0];
     const perYear = a.crypto ? 365 : 252;
-    const pts = new PointList();
+    const pts = new PointList2();
     const notes = singleStatsPoints(a.sym, a.bars, perYear, pts);
     const asOf = a.bars[a.bars.length - 1].date;
     out4.push(
@@ -31895,7 +36368,7 @@ async function statsCommand(args, asJson) {
     const benchRaw = argValue(args, "benchmark") ?? (a.us ? "SPY" : "CW8.PA");
     const b = await fetchBars(benchRaw, from, now);
     if (b.series && b.bars.length >= 30 && b.sym !== a.sym) {
-      const rp = new PointList();
+      const rp = new PointList2();
       const perYearRel = a.crypto && b.crypto ? 365 : 252;
       const relNotes = benchmarkPoints(a.sym, b.sym, a.bars, b.bars, perYearRel, rp);
       out4.push(
@@ -31908,7 +36381,7 @@ async function statsCommand(args, asJson) {
   } else {
     const aligned = alignCloses2(ok.map((g) => g.bars));
     if (aligned.dates.length < 30) throw new Error(`only ${aligned.dates.length} dates shared by ${ok.map((g) => g.sym).join(", ")} \u2014 not enough to compare`);
-    const pts = new PointList();
+    const pts = new PointList2();
     const notes = multiStatsPoints(
       ok.map((g) => g.sym),
       aligned,
@@ -31972,7 +36445,7 @@ async function cryptoAnalysisCommand(args, asJson) {
       "daily bars",
       async () => {
         const r2 = await resolveSymbol(`${coin}USDT`);
-        const series = await getHistory(r2, { from: new Date(now.getTime() - days * DAY8), to: now, interval: "1d" });
+        const series = await getHistory(r2, { from: new Date(now.getTime() - days * DAY9), to: now, interval: "1d" });
         bars = { series, bars: closedBars3(series.bars, true, now) };
         return [];
       }
@@ -31999,7 +36472,7 @@ async function cryptoAnalysisCommand(args, asJson) {
   if (!major) notes.push(`${coin}: DVOL (Deribit) and MVRV (Coin Metrics community tier) cover BTC and ETH only`);
   let rv30;
   if (bars && bars.bars.length >= 31) {
-    const pts = new PointList();
+    const pts = new PointList2();
     realisedPoints(coin, bars.bars, pts, 365);
     const asOf = bars.bars[bars.bars.length - 1].date;
     const prov5 = { ...bars.series.provenance, asOf };
@@ -32014,7 +36487,7 @@ async function cryptoAnalysisCommand(args, asJson) {
   const fundMean = pointValue2(fut, `${coin}.deriv.funding.binance.mean`);
   const oiChange = pointValue2(fut, `${coin}.deriv.oi.binance.change`);
   if (fut) {
-    const pts = new PointList();
+    const pts = new PointList2();
     pts.num(
       `${coin}.quant.funding.mean30d.annualized`,
       `${coin} mean funding over the last 30 days, annualised (Binance)`,
@@ -32037,7 +36510,7 @@ async function cryptoAnalysisCommand(args, asJson) {
   }
   const dvol = pointValue2(datasets.get("Deribit DVOL"), `${coin}.deriv.dvol`);
   if (dvol && rv30) {
-    const pts = new PointList();
+    const pts = new PointList2();
     pts.num(
       `${coin}.quant.volPremium`,
       `${coin} DVOL minus 30-day realised volatility`,
@@ -32050,14 +36523,14 @@ async function cryptoAnalysisCommand(args, asJson) {
     );
   }
   if (!out4.length) throw new Error(`no source answered for ${coin} \u2014 ${failed.join("; ")}`);
-  out4[out4.length - 1].notes.push(...notes, ...failed.map((f) => `unavailable \u2014 ${f}`));
+  out4[out4.length - 1].notes.push(...notes, ...failed.map((f3) => `unavailable \u2014 ${f3}`));
   emitDatasets(args, out4, asJson);
 }
 async function yieldsAnalysis(args, symbol, asJson) {
   if (!symbol) throw new UsageError("usage: ultrastock crypto-analysis yields <symbol> [--limit 20] \u2014 e.g. USDC, ETH, SOL");
   const limit = argInt(args, "limit", { min: 1, max: 50 }) ?? 20;
   const ds = await llamaYields({ symbol, limit });
-  const pts = new PointList();
+  const pts = new PointList2();
   let fragile = 0;
   const pools = poolsFromPoints(ds.points);
   for (const p of pools) {
@@ -32117,7 +36590,7 @@ async function predictAnalysisCommand(args, asJson) {
         return void 0;
       }
     });
-    const pts2 = new PointList();
+    const pts2 = new PointList2();
     quotes2.forEach((q, i) => notes.push(...kalshiReadingPoints(q, books[i]?.book, opts, pts2)));
     const bookDs = books.filter((b) => !!b).map((b) => b.dataset);
     const feeNote = opts.feeCoefficient > 0 ? `Kalshi taker fee modelled as ceil_to_cent(${opts.feeCoefficient} \xD7 C \xD7 P \xD7 (1 \u2212 P)) per ${opts.contracts}-contract order (schedule of July 2026 as reported by secondary sources; some series carry a fee multiplier, and resting maker orders pay 0 or 0.0175) \u2014 check kalshi.com/docs/kalshi-fee-schedule.pdf` : "no Kalshi fee modelled: the published schedule (commonly 0.07 \xD7 C \xD7 P \xD7 (1 \u2212 P), rounded up to the cent) could not be verified here \u2014 pass --kalshi-fee 0.07 after checking kalshi.com/docs/kalshi-fee-schedule.pdf";
@@ -32144,7 +36617,7 @@ async function predictAnalysisCommand(args, asJson) {
     return;
   }
   const ds = await manifoldSearch(query2, { limit, filter: "open" });
-  const pts = new PointList();
+  const pts = new PointList2();
   const quotes = manifoldQuotesFromPoints(ds.points);
   for (const q of quotes) manifoldReadingPoints(q, opts, pts);
   emitDatasets(
@@ -32158,28 +36631,6 @@ async function predictAnalysisCommand(args, asJson) {
     ],
     asJson
   );
-}
-
-// src/providers/external/binance-historical.ts
-import { mkdtempSync as mkdtempSync2, readdirSync as readdirSync7, readFileSync as readFileSync29, rmSync as rmSync3 } from "fs";
-import { tmpdir } from "os";
-import { join as join29 } from "path";
-function binanceHistoricalInfo() {
-  if (!have("binance-historical")) return { installed: false, compatible: false };
-  const r2 = sh("binance-historical", ["describe", "--json"], { timeoutMs: 15e3 });
-  if (!r2.ok) return { installed: true, compatible: false };
-  try {
-    const d = JSON.parse(r2.stdout);
-    const fields = d.markets?.spot?.fields ?? [];
-    return {
-      installed: true,
-      version: d.version,
-      schemaVersion: d.schemaVersion,
-      compatible: d.schemaVersion === 1 && ["openTime", "open", "high", "low", "close", "volume"].every((f) => fields.includes(f))
-    };
-  } catch {
-    return { installed: true, compatible: false };
-  }
 }
 
 // src/doctor.ts
@@ -32315,6 +36766,11 @@ USAGE
   ultrastock journal thesis list|add|show|move [<id>] [<state>] [--symbol] [--thesis] [--invalidation] [--catalysts] [--review-by] [--note] [--outcome] [--ticket-id] [--json]
   ultrastock journal lesson <text> [--tags <a,b>] | journal lessons [--tag <t>] [--json]
   ultrastock knowledge import <file> [--title <text>] [--json]
+  ultrastock backtest run <strategy> <symbol> [--from] [--to] [--years N] [--interval 1d|4h|1h|15m] [--capital N] [--fee|--maker|--taker|--slippage %] [--leverage N] [--perp] [--benchmark <sym>|none] [--universe INDEX] [--trail %] [--atr-stop p:m] [--time-stop N] [--risk %] [--max-dd %] [--entry market|limit] [--limit-offset %] [--stop %] [--target %] [--out <dir>] [--json]
+  ultrastock backtest run <buy-and-hold|60-40|equal-weight|dual-momentum|risk-parity> <sym1,sym2,\u2026> [--rebalance monthly|quarterly] [--lookback 12] [--cash-rate 0] [--out <dir>] [--json]
+  ultrastock backtest walkforward|sweep|montecarlo|review <strategy> <symbol> [--grid alias.param=a,b;\u2026] [--objective sharpe|sortino|cagr|calmar|profit-factor] [--train N] [--test N] [--anchored] [--trials N] [--groups 6] [--test-groups 2] [--purge 5] [--embargo N] [--paths 5000] [--seed 42] [--out <dir>] [--json]
+  ultrastock backtest compare <s1,s2,\u2026> <symbol> \xB7 backtest decisions [--rating buy|\u2026] [--horizon 5|20|60] [--json]
+  ultrastock strategy list | show <name|file.json> | validate <name|file.json> | new <name> [--like <strategy>] [--json]
   ultrastock watch list|add <symbol> <condition>|add 8k <symbol>|add stops|rm <id>|run [--notify] [--message <text>] [--json]
   ultrastock options <symbol> [--expiries <n>] [--out <dir>] [--json]
   ultrastock options-analysis <symbol> [--expiry <date>] [--strategy <spec>] [--spot-moves=<list>] [--rate <pct>] [--out <dir>] [--json]
@@ -32494,6 +36950,23 @@ COMMANDS
             excursions), a digest, theses with a life cycle (idea \u2192 entry-ready \u2192
             active \u2192 closed) and review dates, and the user's own lessons.
   knowledge Keep a source document (an article, a report) as external text.
+  backtest  Backtests a declarative strategy (\`strategy list\`) or an allocation
+            rule (buy-and-hold, 60-40, equal-weight, dual-momentum, risk-parity) on
+            daily or crypto intraday bars. Signals use closed bars and fill at the
+            next open; a stop the market gaps through fills at the open; market
+            orders pay taker, limits maker; crypto leverage adds Binance funding
+            and liquidation. Every metric is an [E#]: CAGR, Sharpe, Sortino, max
+            drawdown, Calmar, Ulcer, Omega, VaR, trade statistics in money and R,
+            MAE/MFE, buy-and-hold, residual alpha (Newey-West t), probabilistic
+            Sharpe, and the result with costs doubled. walkforward picks parameters
+            on train windows and stitches the out-of-sample equity; sweep runs up
+            to 500 variants with the deflated Sharpe, PBO and CPCV; montecarlo
+            resamples the trades; review runs it all and answers PASS, REVISE or
+            REJECT with reasons; decisions gives the journal's hit rates with
+            Wilson intervals. Writes BACKTEST.md, equity.json, trades.json.
+  strategy  The strategies: 26 ported from ai-strategy-backtester plus sma-cross,
+            and the user's own in <home>/strategies/ \u2014 list, show, validate (each
+            error with its path), new (from a template or --like another).
   watch     Alerts that fire once when a condition becomes true and re-arm when
             it is false again: an expression over close, rsi14, sma50, sma200,
             macd_hist, atr14, high52w, volume_ratio\u2026 (e.g. "close < sma200 and
@@ -32627,9 +37100,37 @@ var VALUE_FLAGS = [
   "contracts",
   "engine",
   "universe",
-  "sort"
+  "sort",
+  "capital",
+  "maker",
+  "taker",
+  "slippage",
+  "leverage",
+  "trail",
+  "atr-stop",
+  "time-stop",
+  "risk",
+  "max-dd",
+  "limit-offset",
+  "grid",
+  "objective",
+  "train",
+  "test",
+  "groups",
+  "test-groups",
+  "purge",
+  "embargo",
+  "trials",
+  "paths",
+  "seed",
+  "rebalance",
+  "lookback",
+  "cash-rate",
+  "rating",
+  "horizon",
+  "like"
 ];
-var BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "dry-run", "list", "bootstrap", "notify"];
+var BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "dry-run", "list", "bootstrap", "notify", "perp", "anchored"];
 var COMMANDS = [
   "analyze",
   "report",
@@ -32679,6 +37180,8 @@ var COMMANDS = [
   "journal",
   "knowledge",
   "watch",
+  "backtest",
+  "strategy",
   "doctor"
 ];
 var NET = ["record", "fixture", "refresh", "offline", "json"];
@@ -32748,6 +37251,50 @@ var SPEC = {
     ticket: ["status", ...NET],
     paper: ["out", ...NET],
     decide: ["json"],
+    backtest: [
+      "from",
+      "to",
+      "years",
+      "interval",
+      "capital",
+      "fee",
+      "maker",
+      "taker",
+      "slippage",
+      "leverage",
+      "benchmark",
+      "universe",
+      "trail",
+      "atr-stop",
+      "time-stop",
+      "risk",
+      "max-dd",
+      "limit-offset",
+      "entry",
+      "stop",
+      "target",
+      "grid",
+      "objective",
+      "train",
+      "test",
+      "groups",
+      "test-groups",
+      "purge",
+      "embargo",
+      "trials",
+      "paths",
+      "seed",
+      "rebalance",
+      "lookback",
+      "cash-rate",
+      "rating",
+      "horizon",
+      "perp",
+      "anchored",
+      "out",
+      ...NET
+    ],
+    strategy: ["like", "json"],
     journal: ["book", "symbol", "thesis", "invalidation", "catalysts", "review-by", "note", "outcome", "ticket-id", "tags", "tag", "out", ...NET],
     knowledge: ["title", "json"],
     watch: ["notify", "message", ...NET],
@@ -32762,7 +37309,7 @@ var SPEC = {
     doctor: ["probe", "json"]
   }
 };
-var INTERVALS2 = ["1d", "1w", "4h", "1h", "15m"];
+var INTERVALS3 = ["1d", "1w", "4h", "1h", "15m"];
 function fail(msg, code = EXIT_FAILURE) {
   process.stderr.write(`ultrastock: ${msg}
 `);
@@ -32783,7 +37330,7 @@ function arity(args) {
   if (args.command === "congress") return 0;
   if (args.command === "portfolio") return 3;
   if (args.command === "ticket" || args.command === "paper" || args.command === "decide" || args.command === "knowledge") return 2;
-  if (args.command === "journal" || args.command === "watch") return Number.POSITIVE_INFINITY;
+  if (args.command === "journal" || args.command === "watch" || args.command === "backtest" || args.command === "strategy") return Number.POSITIVE_INFINITY;
   if (args.command === "predict") return Number.POSITIVE_INFINITY;
   return 1;
 }
@@ -32803,8 +37350,8 @@ function configureNetwork(args) {
   const record = argValue(args, "record");
   const fixture = argValue(args, "fixture");
   if (record && fixture) usage("--record and --fixture are opposites: record a fixture, or replay one");
-  if (fixture) setNetMode({ kind: "fixture", dir: resolve11(fixture) });
-  else if (record) setNetMode({ kind: "record", dir: resolve11(record) });
+  if (fixture) setNetMode({ kind: "fixture", dir: resolve12(fixture) });
+  else if (record) setNetMode({ kind: "record", dir: resolve12(record) });
   setCacheMode({ refresh: argBool(args, "refresh"), offline: argBool(args, "offline") });
 }
 async function run2(args) {
@@ -32818,7 +37365,7 @@ async function run2(args) {
     if (!DEPTHS.includes(depth)) usage(`--depth is one of ${DEPTHS.join(", ")}`);
     const dir = runDirFor(argValue(args, "out"), `${symbol.toUpperCase().replace(/[^A-Z0-9.-]/g, "_")}-${runId()}`);
     const since = argValue(args, "since");
-    const r2 = await analyzeFull(symbol, dir, { depth, since: since ? resolve11(since) : void 0 });
+    const r2 = await analyzeFull(symbol, dir, { depth, since: since ? resolve12(since) : void 0 });
     if (asJson) process.stdout.write(jsonLine(r2));
     else process.stdout.write(`${readBrief(dir)}
 run: ${dir}
@@ -32833,7 +37380,7 @@ run: ${dir}
     const out4 = argValue(args, "out");
     let id;
     if (out4) {
-      const store = EvidenceStore.open(resolve11(out4), { subject: q.instrument.symbol });
+      const store = EvidenceStore.open(resolve12(out4), { subject: q.instrument.symbol });
       id = store.add({
         key: `${q.instrument.symbol}.quote.price`,
         label: `${q.instrument.symbol} latest price`,
@@ -32859,7 +37406,7 @@ run: ${dir}
     const symbol = args.positional[0];
     if (!symbol) usage("usage: ultrastock history <symbol> [--from <date>] [--to <date>] [--interval 1d] [--limit <n>] [--json]");
     const interval = argValue(args, "interval") ?? "1d";
-    if (!INTERVALS2.includes(interval)) usage(`--interval must be one of ${INTERVALS2.join(", ")}, not "${interval}"`);
+    if (!INTERVALS3.includes(interval)) usage(`--interval must be one of ${INTERVALS3.join(", ")}, not "${interval}"`);
     const to = parseDate(argValue(args, "to"), "to") ?? clockNow();
     const from = parseDate(argValue(args, "from"), "from") ?? new Date(to.getTime() - 365 * 864e5);
     if (from > to) usage("--from is after --to");
@@ -32887,7 +37434,7 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
     if (!dir || !formula || !label2) usage('usage: ultrastock calc <run> "<formula over E ids>" --label <text> [--unit <unit>]');
     let r2;
     try {
-      r2 = calcEvidence(resolve11(dir), formula, { label: label2, unit: argValue(args, "unit"), key: argValue(args, "key") });
+      r2 = calcEvidence(resolve12(dir), formula, { label: label2, unit: argValue(args, "unit"), key: argValue(args, "key") });
     } catch (e) {
       if (e instanceof ExprError) usage(`formula: ${e.message}`);
       return fail(e.message);
@@ -32900,9 +37447,9 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
   if (cmd === "evidence") {
     const dir = args.positional[0];
     if (!dir) usage("usage: ultrastock evidence <run> [--json]");
-    const store = EvidenceStore.load(resolve11(dir));
+    const store = EvidenceStore.load(resolve12(dir));
     if (!store) fail(`${dir} holds no evidence.json`);
-    if (asJson) process.stdout.write(jsonLine({ dir: resolve11(dir), subject: store.subject, items: store.items }));
+    if (asJson) process.stdout.write(jsonLine({ dir: resolve12(dir), subject: store.subject, items: store.items }));
     else process.stdout.write(`${store.items.map(formatEvidence).join("\n")}
 `);
     return;
@@ -32914,11 +37461,11 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
     const maxAge = argValue(args, "max-age");
     let answer;
     try {
-      answer = readFileSync30(file, "utf8");
+      answer = readFileSync32(file, "utf8");
     } catch {
       return fail(`cannot read ${file}`);
     }
-    const r2 = checkAnswer(resolve11(dir), answer, { maxAgeMs: maxAge ? parseDuration(maxAge) : void 0 });
+    const r2 = checkAnswer(resolve12(dir), answer, { maxAgeMs: maxAge ? parseDuration(maxAge) : void 0 });
     if ("error" in r2) fail(r2.error);
     const failing = r2.problems.filter((p) => !NOTE_KINDS.has(p.kind));
     if (asJson) process.stdout.write(jsonLine({ ok: failing.length === 0, ...r2 }));
@@ -32958,6 +37505,8 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
   if (cmd === "journal") return journalCommand(args, asJson);
   if (cmd === "knowledge") return knowledgeCommand(args, asJson);
   if (cmd === "watch") return watchCommand(args, asJson);
+  if (cmd === "backtest") return backtestCommand(args, asJson);
+  if (cmd === "strategy") return strategyCommand(args, asJson);
   if (cmd === "plan") return planCommand(args, asJson);
   if (cmd === "ticket") return ticketCommand(args, asJson);
   if (cmd === "paper") return paperCommand(args, asJson);

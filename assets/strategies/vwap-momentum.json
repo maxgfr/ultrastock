@@ -1,0 +1,90 @@
+{
+  "name": "vwap-momentum",
+  "description": "VWAP and Supertrend gated momentum — requires uptrend and price above VWAP, scores momentum indicators, exits on trend break",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h"
+  ],
+  "indicators": {
+    "vwap": {},
+    "supertrend": {
+      "atrPeriod": 10,
+      "multiplier": 3
+    },
+    "roc": {
+      "period": 10
+    },
+    "mfi": {
+      "period": 14
+    },
+    "volumeSma": {
+      "period": 20
+    },
+    "rsi": {
+      "period": 10
+    }
+  },
+  "buy": {
+    "mode": "score",
+    "threshold": 3,
+    "required": [
+      [
+        "close",
+        ">",
+        "vwap"
+      ],
+      [
+        "close",
+        ">",
+        "supertrend"
+      ]
+    ],
+    "scored": [
+      [
+        "roc",
+        ">",
+        0
+      ],
+      [
+        "mfi",
+        "<",
+        40
+      ],
+      [
+        "volume",
+        ">",
+        "volumeSma"
+      ],
+      [
+        "rsi",
+        "<",
+        40
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ],
+      [
+        "rsi",
+        ">",
+        75
+      ],
+      [
+        "mfi",
+        ">",
+        85
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 12,
+    "maxDrawdownPct": 30
+  }
+}
