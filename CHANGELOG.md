@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [0.6.0](https://github.com/maxgfr/ultrastock/compare/v0.5.0...v0.6.0) (2026-10-24)
+
+
+### Features
+
+* **journal:** decisions settled at +5/+20/+60 sessions with alpha and hit rates, theses with a life cycle and review dates, post-trade reviews in R (plan first, then outcome), digest, lessons and source imports; edge-triggered alerts (expressions, 8-Ks, stops) with safe notification channels; decide, journal, knowledge and watch commands ([5e4ef82](https://github.com/maxgfr/ultrastock/commit/5e4ef82caddbbabc908216340683318f336869e2)), closes [#6](https://github.com/maxgfr/ultrastock/issues/6)
+* **journal:** lessons and open theses in the analysis brief; skill docs for decide, journal, theses, knowledge and alerts ([dce9e87](https://github.com/maxgfr/ultrastock/commit/dce9e87230a0c44d4498cae50e67f156edce6efd))
+
 # [0.5.0](https://github.com/maxgfr/ultrastock/compare/v0.4.0...v0.5.0) (2026-10-24)
 
 
