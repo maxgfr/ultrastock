@@ -38,7 +38,7 @@ describe("decisions", () => {
     expect(r.decision!.evidence).toEqual(["E1", "E2"]);
     const rec = recordDecision(r.decision!, dir);
     expect(existsSync(rec.file)).toBe(true);
-    expect(readFileSync(rec.journal, "utf8")).toMatch(/\[2026-10-24 \| MC\.PA \| overweight \| conviction 3 \| pending\]/);
+    expect(readFileSync(rec.journal, "utf8")).toMatch(/\[2026-10-24 \| MC\.PA \| overweight \| conviction 3 \| pending \| d-[0-9a-f]{12}\]/);
     expect(pastDecisions("MC.PA")[0]!.rating).toBe("overweight");
   });
   it("refuses unknown evidence, no falsifier, a stop on the wrong side and a contradictory plan", () => {

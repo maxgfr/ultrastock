@@ -23,6 +23,7 @@ import {
 } from "./commands/fundamentals.js";
 import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentimentCommand, universeCommand } from "./commands/macro.js";
 import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
+import { decideCommand, journalCommand, knowledgeCommand, watchCommand } from "./commands/journal.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
 import { paperCommand, planCommand, portfolioCommand, ticketCommand } from "./commands/trading.js";
 import { doctorReport, formatDoctor } from "./doctor.js";
@@ -89,6 +90,12 @@ USAGE
   ultrastock plan <symbol> --account <id> [--entry <n>] [--stop <n>] [--target <a,b>] [--venue paper] [--ticket] [--out <dir>] [--json]
   ultrastock ticket list|show|check|cancel [<ticket-id>] [--status <s>] [--json]
   ultrastock paper book|submit <ticket-id>|sweep|readiness [--json]
+  ultrastock decide <run> <decision.json> [--json]
+  ultrastock journal settle|hits|review|digest [--book real|paper] [--json]
+  ultrastock journal thesis list|add|show|move [<id>] [<state>] [--symbol] [--thesis] [--invalidation] [--catalysts] [--review-by] [--note] [--outcome] [--ticket-id] [--json]
+  ultrastock journal lesson <text> [--tags <a,b>] | journal lessons [--tag <t>] [--json]
+  ultrastock knowledge import <file> [--title <text>] [--json]
+  ultrastock watch list|add <symbol> <condition>|add 8k <symbol>|add stops|rm <id>|run [--notify] [--message <text>] [--json]
   ultrastock options <symbol> [--expiries <n>] [--out <dir>] [--json]
   ultrastock crypto global|top|coin|derivatives|defi|yields|stables|fees|onchain|dex|holders [<target>] [--limit <n>] [--out <dir>] [--json]
   ultrastock predict kalshi|manifold|polymarket [<query>] [--limit <n>] [--out <dir>] [--json]
@@ -192,6 +199,21 @@ COMMANDS
             since, book, and readiness — whether the paper record is good enough
             (20 trades, 30 days, positive expectancy, profit factor > 1.2,
             drawdown < 15 %) to consider real money.
+  decide    Validate a decision (rating, horizon, conviction, thesis, the [E#] it
+            rests on, falsifiers, an optional plan with a stop) against the run's
+            evidence, then record it in the journal for settlement.
+  journal   The learning loop: settle decisions at +5/+20/+60 sessions against a
+            benchmark (alpha, right or wrong), hit rates by rating, post-trade
+            reviews (the plan first, then the outcome in R, with best and worst
+            excursions), a digest, theses with a life cycle (idea → entry-ready →
+            active → closed) and review dates, and the user's own lessons.
+  knowledge Keep a source document (an article, a report) as external text.
+  watch     Alerts that fire once when a condition becomes true and re-arm when
+            it is false again: an expression over close, rsi14, sma50, sma200,
+            macd_hist, atr14, high52w, volume_ratio… (e.g. "close < sma200 and
+            rsi14 < 30"), important 8-Ks for a US symbol, or a stop reached by an
+            open position. \`watch run\` is idempotent: schedule it. --notify sends to
+            ULTRASTOCK_NTFY_URL (with ULTRASTOCK_NTFY_TOKEN) and allowlisted webhooks.
   options   An option chain summary per expiry — ATM IV, put/call open interest
             and volume, totals: US listings from CBOE (15 min delayed), BTC and
             ETH from Deribit with the DVOL volatility index.
@@ -269,8 +291,19 @@ export const VALUE_FLAGS = [
   "target",
   "venue",
   "status",
+  "thesis",
+  "invalidation",
+  "catalysts",
+  "review-by",
+  "note",
+  "outcome",
+  "tags",
+  "tag",
+  "title",
+  "message",
+  "ticket-id",
 ];
-export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket"];
+export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "notify"];
 export const COMMANDS = [
   "analyze",
   "quote",
@@ -307,6 +340,10 @@ export const COMMANDS = [
   "plan",
   "ticket",
   "paper",
+  "decide",
+  "journal",
+  "knowledge",
+  "watch",
   "doctor",
 ];
 
@@ -347,6 +384,10 @@ const SPEC: CliSpec = {
     plan: ["account", "entry", "stop", "target", "venue", "ticket", "out", ...NET],
     ticket: ["status", ...NET],
     paper: ["out", ...NET],
+    decide: ["json"],
+    journal: ["book", "symbol", "thesis", "invalidation", "catalysts", "review-by", "note", "outcome", "ticket-id", "tags", "tag", "out", ...NET],
+    knowledge: ["title", "json"],
+    watch: ["notify", "message", ...NET],
     options: ["expiries", "out", ...NET],
     crypto: ["limit", "out", ...NET],
     predict: ["limit", "out", ...NET],
@@ -374,7 +415,8 @@ function arity(args: CommandArgs): number {
   if (args.command === "news" || args.command === "cot" || args.command === "resolve") return Number.POSITIVE_INFINITY;
   if (args.command === "congress") return 0;
   if (args.command === "portfolio") return 3;
-  if (args.command === "ticket" || args.command === "paper") return 2;
+  if (args.command === "ticket" || args.command === "paper" || args.command === "decide" || args.command === "knowledge") return 2;
+  if (args.command === "journal" || args.command === "watch") return Number.POSITIVE_INFINITY;
   if (args.command === "predict") return Number.POSITIVE_INFINITY;
   return 1;
 }
@@ -538,6 +580,10 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "dividends") return dividendsCommand(args, asJson);
   if (cmd === "congress") return congressCommand(args, asJson);
   if (cmd === "portfolio") return portfolioCommand(args, asJson);
+  if (cmd === "decide") return decideCommand(args, asJson);
+  if (cmd === "journal") return journalCommand(args, asJson);
+  if (cmd === "knowledge") return knowledgeCommand(args, asJson);
+  if (cmd === "watch") return watchCommand(args, asJson);
   if (cmd === "plan") return planCommand(args, asJson);
   if (cmd === "ticket") return ticketCommand(args, asJson);
   if (cmd === "paper") return paperCommand(args, asJson);
