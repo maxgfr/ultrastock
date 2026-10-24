@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.llama.fi/tvl/aave"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "17769932102.828583",
+  "url": "https://api.llama.fi/tvl/aave",
+  "fetchedAt": "2026-10-24T15:18:17.805Z"
+ }
+}

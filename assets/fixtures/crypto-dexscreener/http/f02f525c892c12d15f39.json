@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.dexscreener.com/tokens/v1/solana/DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "[{\"chainId\":\"solana\",\"dexId\":\"orca\",\"url\":\"https://dexscreener.com/solana/5zpyutju9ee6jfymdgok7f6s5kczqtc9fomp3uekuya9\",\"pairAddress\":\"5zpyutJu9ee6jFymDGoK7F6S5Kczqtc9FomP3ueKuyA9\",\"labels\":[\"wp\"],\"baseToken\":{\"address\":\"DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263\",\"name\":\"Bonk\",\"symbol\":\"Bonk\"},\"quoteToken\":{\"address\":\"So11111111111111111111111111111111111111112\",\"name\":\"Wrapped SOL\",\"symbol\":\"SOL\"},\"priceNative\":\"0.00000002981\",\"priceUsd\":\"0.000002972\",\"txns\":{\"m5\":{\"buys\":65,\"sells\":23},\"h1\":{\"buys\":429,\"sells\":412},\"h6\":{\"buys\":1408,\"sells\":1535},\"h24\":{\"buys\":8236,\"sells\":7422}},\"volume\":{\"h24\":402171.94,\"h6\":65009.54,\"h1\":22212.76,\"m5\":1761.91},\"priceChange\":{\"m5\":-0.47,\"h1\":-0.88,\"h6\":-1.62,\"h24\":-8.61},\"liquidity\":{\"usd\":300117.14,\"base\":72591769798,\"quote\":845.9693},\"fdv\":264137908,\"marketCap\":261557016,\"pairCreatedAt\":1671980424000,\"info\":{\"imageUrl\":\"https://cdn.dexscreener.com/cms/images/ba03c0370670d176dc33bbd212eb023337a460ad7edfa053ca96ae22f31c3dcf?width=800&height=800&quality=95&format=auto\",\"header\":\"https://cdn.dexscreener.com/cms/images/e2667fc59737e727f0fd18e7e534c67e371ee40689068e72d30b5bc12bf63c2d?width=1500&height=500&quality=95&format=auto\",\"openGraph\":\"https://cdn.dexscreener.com/token-images/og/solana/DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263?timestamp=1792854900000\",\"websites\":[{\"url\":\"https://www.bonkcoin.com\",\"label\":\"Website\"}],\"socials\":[{\"url\":\"https://twitter.com/bonk_inu\",\"type\":\"twitter\"},{\"url\":\"https://t.me/Official_Bonk_Inu\",\"type\":\"telegram\"},{\"url\":\"https://discord.gg/qaQa6M6mN2\",\"type\":\"discord\"}]}}]",
+  "url": "https://api.dexscreener.com/tokens/v1/solana/DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+  "fetchedAt": "2026-10-24T15:18:17.931Z"
+ }
+}
