@@ -24,6 +24,7 @@ import {
 import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentimentCommand, universeCommand } from "./commands/macro.js";
 import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
+import { screenCommand } from "./commands/screen.js";
 import { cryptoAnalysisCommand, optionsAnalysisCommand, predictAnalysisCommand, statsCommand } from "./commands/quant.js";
 import { doctorReport, formatDoctor } from "./doctor.js";
 import {
@@ -74,6 +75,8 @@ USAGE
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
   ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
   ultrastock fundamentals <symbol> [--asof <date>] [--years <n>] [--quarters <n>] [--source sec|esef|crible] [--out <dir>] [--json]
+  ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market <m>] [--universe <idx|list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--out <dir>] [--json]
+  ultrastock screen --list [--engine tradingview|crible|builtin] [--json]
   ultrastock technicals <symbol> [--interval 1d|1w|4h|1h|15m] [--indicators <name:k=v;…,…>] [--benchmark <symbol>] [--out <dir>] [--json]
   ultrastock valuation <symbol> [--erp <pct>] [--terminal <pct>] [--out <dir>] [--json]
   ultrastock filings <US symbol> [--forms 8-K,10-Q] [--days <n>] [--limit <n>] | filings --search <text> [--out <dir>] [--json]
@@ -148,6 +151,17 @@ COMMANDS
             TTM; --asof keeps only what was filed by then — point in time), ESEF
             IFRS reports for European issuers, crible as fallback (with its
             Piotroski, Altman, Beneish and rank fields).
+  screen    Screens on three engines. tradingview (its presets: value,
+            quality-growth, momentum, breakout-52w, dividend-growth,
+            oversold-quality, small-cap-value, magic-formula, garp, etf,
+            pea-candidates) over a whole --market (america, france, germany, uk…,
+            europe = 14 markets merged, crypto); builtin technical screens on
+            daily bars for --universe SPX|NDX|CAC40|SBF120|DAX|SX5E|AEX|UKX|<list>
+            (≤ 120 symbols: minervini, vcp, canslim-technical, momentum-burst,
+            exhaustion-hammer, pullback-to-50, golden-cross, rs-leaders); crible
+            (--engine crible: a crible preset or any DSL, e.g. "piotroski_f >= 7
+            AND country IN ('FR','DE')"; --bootstrap downloads its dataset once,
+            about a minute). --list prints every preset's rules and source.
   technicals The full technical picture, each reading an [E#]: averages, ADX,
             Supertrend, Parabolic SAR, Ichimoku cloud, Aroon, RSI, MACD,
             stochastic, Williams %R, CCI, ROC, ATR, Bollinger %B and bandwidth,
@@ -266,8 +280,11 @@ export const VALUE_FLAGS = [
   "my-probability",
   "kalshi-fee",
   "contracts",
+  "engine",
+  "universe",
+  "sort",
 ];
-export const BOOL_FLAGS = ["json", "refresh", "offline", "probe"];
+export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "list", "bootstrap"];
 export const COMMANDS = [
   "analyze",
   "quote",
@@ -280,6 +297,7 @@ export const COMMANDS = [
   "calendar",
   "resolve",
   "fundamentals",
+  "screen",
   "technicals",
   "valuation",
   "filings",
@@ -331,6 +349,7 @@ const SPEC: CliSpec = {
     universe: ["out", ...NET],
     resolve: ["out", ...NET],
     fundamentals: ["asof", "years", "quarters", "source", "out", ...NET],
+    screen: ["engine", "market", "universe", "limit", "sort", "list", "bootstrap", "out", ...NET],
     technicals: ["interval", "indicators", "benchmark", "out", ...NET],
     valuation: ["erp", "terminal", "out", ...NET],
     filings: ["forms", "days", "limit", "search", "out", ...NET],
@@ -368,7 +387,7 @@ function arity(args: CommandArgs): number {
   if (args.command === "check" || args.command === "calc") return 2;
   if (args.command === "profile") return 3;
   if (args.command === "crypto" || args.command === "calendar" || args.command === "macro" || args.command === "crypto-analysis") return 2;
-  if (args.command === "stats" || args.command === "predict-analysis") return Number.POSITIVE_INFINITY;
+  if (args.command === "stats" || args.command === "predict-analysis" || args.command === "screen") return Number.POSITIVE_INFINITY;
   if (args.command === "news" || args.command === "cot" || args.command === "resolve") return Number.POSITIVE_INFINITY;
   if (args.command === "congress") return 0;
   if (args.command === "predict") return Number.POSITIVE_INFINITY;
@@ -526,6 +545,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "fundamentals") return fundamentalsCommand(args, asJson);
   if (cmd === "valuation") return valuationCommand(args, asJson);
   if (cmd === "technicals") return technicalsCommand(args, asJson);
+  if (cmd === "screen") return screenCommand(args, asJson);
   if (cmd === "filings") return filingsCommand(args, asJson);
   if (cmd === "insiders") return insidersCommand(args, asJson);
   if (cmd === "holdings") return holdingsCommand(args, asJson);
