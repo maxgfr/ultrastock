@@ -62,7 +62,12 @@ export function readCredentials(
 /** The commands the USER runs to store a key — ultrastock never takes a secret on its command line. */
 export function setupCommands(venue: Venue, env: Environment): string[] {
   const fields: Field[] = venue === "coinbase" ? ["keyname", "secret"] : venue === "ibkr" ? ["key"] : ["key", "secret"];
-  const label: Record<Field, string> = { key: "API key", secret: "API secret", keyname: "CDP key name", passphrase: "key password" };
+  const label: Record<Field, string> = {
+    key: venue === "kalshi" ? "API key id" : "API key",
+    secret: venue === "kalshi" ? "RSA private key (PEM)" : "API secret",
+    keyname: "CDP key name",
+    passphrase: "key password",
+  };
   if (process.platform === "darwin")
     return fields.map((f) => `security add-generic-password -U -s ultrastock -a ${venue}-${env}-${f} -w   # prompts for the ${label[f]}`);
   if (process.platform === "linux")

@@ -133,7 +133,8 @@ describe("live preconditions and the single submission", () => {
     const { a } = fakeVenue({ canWithdraw: true });
     const p = await preconditions({ ticket: t, venue: "kraken", env: "test", adapter: a, venueSym: "SOLEUR", micaAuthorised: false });
     const codes = p.refusals.map((r) => r.code);
-    expect(codes).toEqual(expect.arrayContaining(["VENUE_OFF", "BLOCKED_JURISDICTION", "WITHDRAW_RIGHT", "PRICE_BAND", "CODE"]));
+    expect(codes).toEqual(expect.arrayContaining(["VENUE_OFF", "WITHDRAW_RIGHT", "PRICE_BAND", "CODE"]));
+    expect(codes).not.toContain("BLOCKED_JURISDICTION");
     switchOn();
     mkdirSync(join(homeDir()), { recursive: true });
     writeFileSync(killSwitchPath(), "");
@@ -143,6 +144,8 @@ describe("live preconditions and the single submission", () => {
     // Live needs the switch, Node ≥ 22 and a ready paper record.
     const l = await preconditions({ ticket: t, venue: "kraken", env: "live", adapter: fakeVenue().a, venueSym: "SOLEUR", micaAuthorised: true });
     expect(l.refusals.map((r) => r.code)).toEqual(expect.arrayContaining(["LIVE_OFF", "NOT_READY"]));
+    const unauthorised = await preconditions({ ticket: t, venue: "kraken", env: "live", adapter: fakeVenue().a, venueSym: "SOLEUR", micaAuthorised: false });
+    expect(unauthorised.refusals.map((r) => r.code)).toContain("BLOCKED_JURISDICTION");
     // A sell needs the asset at the venue: no short.
     const s = await checkedTicket(order({ side: "sell", stop: undefined, price: 99.9 }));
     const n = await preconditions({ ticket: s, venue: "kraken", env: "test", adapter: fakeVenue({ free: 0.5 }).a, venueSym: "SOLEUR", micaAuthorised: true });
@@ -195,7 +198,8 @@ describe("live preconditions and the single submission", () => {
     expect(venueSymbol("coinbase", "ETHEUR", "EUR")).toBe("ETH-EUR");
     expect(venueSymbol("binance", "BTCUSDT", "USDT")).toBe("BTCUSDT");
     expect(() => venueSymbol("ibkr", "AAPL", "USD")).toThrow(/conid/);
-    expect(clientOrderIdFor("t-x", 1)).toMatch(/^us[0-9a-f]{20}-1$/);
+    expect(clientOrderIdFor("t-x", 1)).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(clientOrderIdFor("t-x", 2)).not.toBe(clientOrderIdFor("t-x", 1));
   });
 
   it("reads credentials from the keychain entries, then the environment, and never needs them on the command line", () => {

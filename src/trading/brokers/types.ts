@@ -15,7 +15,7 @@
 // - Credentials come in as an argument (from trading/secrets.ts) and never
 //   appear in an error message, a log line or a return value.
 
-export type Venue = "binance" | "kraken" | "coinbase" | "ibkr";
+export type Venue = "binance" | "kraken" | "coinbase" | "ibkr" | "kalshi";
 export type Environment = "test" | "live";
 
 export interface Credentials {
@@ -33,7 +33,7 @@ export interface LiveOrder {
   side: "buy" | "sell";
   quantity: number;
   limitPrice: number;
-  /** Ours, unique, sent to the venue so a lost answer can be found again. ≤ 32 chars, [A-Za-z0-9-_]. */
+  /** Ours, unique, sent to the venue so a lost answer can be found again: a UUID (36 chars). */
   clientOrderId: string;
   timeInForce?: "GTC" | "IOC" | "DAY";
 }

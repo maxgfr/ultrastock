@@ -4,9 +4,9 @@
 //   1. env "live": ULTRASTOCK_LIVE=1, Node ≥ 22, the paper record is ready;
 //      env "test" (Binance testnet, Kraken validate, Coinbase preview, IBKR
 //      paper): none of those, but everything below.
-//   2. the venue is switched on in the live limits, and allowed for the
-//      profile's jurisdiction (a crypto platform must be an authorised MiCA
-//      CASP serving that country: Binance is not, for France);
+//   2. the venue is switched on in the live limits; live, a crypto platform
+//      must be an authorised MiCA CASP serving the profile's country (Binance
+//      is not, for France — its testnet stays usable);
 //   3. no kill switch, the breaker is not tripped;
 //   4. the ticket is checked by the risk gate, unchanged since, within 15 min;
 //   5. a limit order (no market orders live), spot, no short: a sell needs
@@ -23,7 +23,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { checkMica } from "../core/jurisdiction.js";
+import { checkMica, ruleStatus } from "../core/jurisdiction.js";
 import { withFileLock } from "../core/lock.js";
 import { homeDir } from "../core/paths.js";
 import { loadProfile } from "../core/profile.js";
@@ -38,7 +38,7 @@ import { readiness } from "./paper.js";
 import { killSwitchPath, orderFingerprint } from "./riskgate.js";
 import { audit, executionRefusal, loadTicket, readAudit, type Ticket, transition } from "./tickets.js";
 
-export const VENUES: Venue[] = ["binance", "kraken", "coinbase", "ibkr"];
+export const VENUES: Venue[] = ["binance", "kraken", "coinbase", "ibkr", "kalshi"];
 export const CRYPTO_VENUES: Venue[] = ["binance", "kraken", "coinbase"];
 export const PRICE_BAND_PCT = 1;
 
@@ -50,6 +50,11 @@ export interface Refusal {
 /** The venue's symbol for an order's symbol (an IBKR conid must be given). */
 export function venueSymbol(venue: Venue, symbol: string, currency: string, override?: string): string {
   if (override) return override;
+  if (venue === "kalshi") {
+    const m = /^KALSHI:(.+):(YES|NO)$/i.exec(symbol);
+    if (!m) throw new Error(`a Kalshi order needs a contract symbol KALSHI:<TICKER>:YES|NO, not ${symbol}`);
+    return `${m[1]!.toUpperCase()}:${m[2]!.toUpperCase()}`;
+  }
   const { base, quote } = splitPair(symbol, currency);
   const q = quote ?? currency.toUpperCase();
   if (venue === "binance") return `${base}${q}`;
@@ -58,8 +63,14 @@ export function venueSymbol(venue: Venue, symbol: string, currency: string, over
   throw new Error("IBKR orders need the contract id: pass --conid (from the IBKR gateway's contract search)");
 }
 
-/** A stable clientOrderId per ticket and attempt (≤ 32 chars, [a-z0-9-]). */
-export const clientOrderIdFor = (ticketId: string, attempt: number) => `us${createHash("sha256").update(ticketId).digest("hex").slice(0, 20)}-${attempt}`;
+/**
+ * A stable clientOrderId per ticket and attempt, shaped as a UUID: every venue
+ * takes it (Binance ≤ 36 characters, Kraken a UUID or ≤ 18 characters).
+ */
+export function clientOrderIdFor(ticketId: string, attempt: number): string {
+  const h = createHash("sha256").update(`${ticketId}#${attempt}`).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-${((Number.parseInt(h[16]!, 16) & 0x3) | 0x8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
 
 /** Live fills so far (the experience tier) and today's live notional. */
 export function liveActivity(now = new Date()): { fills: number; todayNotional: number } {
@@ -112,7 +123,8 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
   const { limits, tier } = effectiveLimits(fills, now);
   if (!limits.venues.includes(p.venue)) no("VENUE_OFF", `${p.venue} is not switched on for live orders (\`broker limits set --venues …\`)`);
   if (o.venue !== p.venue) no("VENUE_MISMATCH", `the ticket was planned for ${o.venue}, not ${p.venue}`);
-  if (profile && CRYPTO_VENUES.includes(p.venue) && profile.jurisdiction !== "US") {
+  // The authorisation matters for real money; a testnet or a validate-only call moves none.
+  if (profile && p.env === "live" && CRYPTO_VENUES.includes(p.venue) && profile.jurisdiction !== "US") {
     let ok = p.micaAuthorised;
     if (ok === undefined) {
       try {
@@ -136,7 +148,13 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
   const refusal = executionRefusal(p.ticket, now);
   if (refusal) no("TICKET", refusal);
   if (o.orderType !== "limit") no("MARKET_ORDER", "live orders are limit orders only");
-  if (!["crypto", "equity", "etf"].includes(o.assetKind))
+  if (o.assetKind === "prediction") {
+    // Event contracts: Kalshi only (Polymarket's order signing is not implemented), and only where the jurisdiction allows it.
+    if (p.venue !== "kalshi") no("ASSET", "event contracts trade live on Kalshi only in this version");
+    const status = profile ? ruleStatus(profile.jurisdiction, "kalshi") : "unknown";
+    if (p.env === "live" && status !== "allowed")
+      no("BLOCKED_JURISDICTION", `Kalshi is ${status} for residents of ${profile?.jurisdiction ?? "an unknown country"}: no live orders (paper only)`);
+  } else if (!["crypto", "equity", "etf"].includes(o.assetKind))
     no("ASSET", `${o.assetKind} is not tradable live in this version (spot shares, ETFs and crypto only)`);
 
   // Notional in the base currency against the tier's limits.
@@ -160,7 +178,7 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
       no("ATTEST", `${p.venue} cannot be asked about the key's rights: the user attests the key has no withdrawal right (\`broker attest ${p.venue}\`)`);
     if (!perms.canTrade) no("TRADE_RIGHT", `this ${p.venue} key cannot trade`);
     if (o.side === "sell") {
-      const asset = p.venue === "ibkr" ? undefined : splitPair(o.symbol, o.currency).base;
+      const asset = p.venue === "ibkr" || p.venue === "kalshi" ? undefined : splitPair(o.symbol, o.currency).base;
       if (asset) {
         const bal = (await p.adapter.balances()).find((b) => b.asset.toUpperCase() === asset.toUpperCase());
         if (!bal || bal.free + 1e-12 < o.quantity)
