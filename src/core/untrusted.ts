@@ -10,6 +10,7 @@ export const UNTRUSTED_CLOSE = "UNTRUSTED_DATA>>>";
 export function sanitizeExternalText(raw: string, max = 400): string {
   let s = raw
     .normalize("NFKC")
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control and bidi-override characters is the point
     .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, " ")
     .replace(/<<<|>>>/g, " ")
     .replace(/UNTRUSTED_DATA/gi, "untrusted data")
