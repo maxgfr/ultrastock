@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.nasdaq.com/api/analyst/NVDA/ratings"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"data\":{\"symbol\":\"nvda\",\"meanRatingType\":\"Buy\",\"ratingsSummary\":\"Based on 39 analysts offering recommendations for 'NVDA'.\",\"upgradesDowngrades\":[],\"brokerNames\":[\"B OF A GLBL RES\",\"BAIRD R W\",\"BARCLAYS CAPITA\",\"BMO CAPITAL MKT\",\"CANTOR FITZGERA\",\"CITIGROUP\",\"CRAIG-HALLUM\",\"DAIWA AMERICA\",\"DAVIDSON D A\",\"DEUTSCHE BK SEC\",\"EDWARD JONES\",\"EXANE BNP PARIB\",\"GOLDMAN SACHS\",\"HSBC GLOBAL RES\",\"JEFFERIES & CO.\",\"JP MORGAN SECUR\",\"KEYBANC CAP MKT\",\"MIZUHO SECURITI\",\"MORGAN STANLEY\",\"NEEDHAM & CO.\",\"NEW STREET RESE\",\"OPPENHEIMER HLD\",\"PIPER SANDLER\",\"RAYMOND JAMES\",\"ROSENBLATT SEC\",\"SANFORD BERNSTE\",\"STIFEL NICOLAUS\",\"STONEX FINANCIA\",\"SUMMIT INSIGHTS\",\"SUSQUEHANNA\",\"TD COWEN\",\"TIGRESS FINANCI\",\"TRUIST SECURITI\",\"UBS\",\"WEDBUSH SECURIT\",\"WELLS FARGO SEC\",\"WESTPARK CAPITA\",\"WOLFE RESEARCH\",\"ZACKS RESEARCH\"]},\"message\":null,\"status\":{\"rCode\":200,\"bCodeMessage\":null,\"developerMessage\":null}}",
+  "url": "https://api.nasdaq.com/api/analyst/NVDA/ratings",
+  "fetchedAt": "2026-10-24T15:31:53.044Z"
+ }
+}

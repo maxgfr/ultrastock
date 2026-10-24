@@ -54,10 +54,27 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | a price, now | `quote <symbol> --out <dir>` | [data-sources](references/data-sources.md) |
 | bars to look at or to compute on | `history <symbol> --from … --to …` | [data-sources](references/data-sources.md) |
 | a ratio, a gap, a distance to a level | `calc <dir> "<formula over E ids>" --label …` | [citation-format](references/citation-format.md) |
+| to set up who they are (first use) | `profile init`, then `profile suitability` (ask the questions), `profile envelope` | [onboarding-profile](references/onboarding-profile.md) |
+| what their country allows (PEA, MiCA, Polymarket…) | `jurisdiction show`, `jurisdiction verify --out <dir>` | [onboarding-profile](references/onboarding-profile.md) |
+| market hours, holidays, the next sessions | `calendar sessions --market XPAR` | [data-sources](references/data-sources.md) |
+| a company's numbers: statements, filings | `fundamentals <sym> [--asof]`, `filings <US sym>` | [fundamentals-filings](references/fundamentals-filings.md) |
+| who is buying: insiders, institutions, Congress, short sellers | `insiders`, `holdings <manager>`, `congress`, `short` | [fundamentals-filings](references/fundamentals-filings.md) |
+| what analysts expect, the dividend record | `analyst <US sym>`, `dividends <US sym>` | [fundamentals-filings](references/fundamentals-filings.md) |
+| to find a listing from a name or an ISIN | `resolve "<name>"` | [data-sources](references/data-sources.md) |
+| the macro picture: inflation, jobs, growth | `macro us|ea|fr|<country>`, `macro fred <ID>` | [macro-markets](references/macro-markets.md) |
+| rates, curves, credit spreads, FX | `rates [us|ea]`, `fx USD,GBP` | [macro-markets](references/macro-markets.md) |
+| the week's events: data releases, earnings, dividends | `calendar econ|earnings|dividends [date]` | [macro-markets](references/macro-markets.md) |
+| sentiment and positioning | `sentiment`, `cot <market>` | [macro-markets](references/macro-markets.md) |
+| news on a company or a theme | `news "<query>" [--symbol] [--lang fr]` | [news-and-external-text](references/news-and-external-text.md) |
+| an option chain, implied volatility | `options <symbol>` (US: CBOE; BTC/ETH: Deribit) | [options-crypto-prediction](references/options-crypto-prediction.md) |
+| crypto market structure, DeFi, on-chain | `crypto global|top|coin|derivatives|defi|yields|stables|fees|onchain|dex|holders` | [options-crypto-prediction](references/options-crypto-prediction.md) |
+| what prediction markets price (Fed, recession, elections) | `predict kalshi|manifold …` (Polymarket only where lawful) | [options-crypto-prediction](references/options-crypto-prediction.md) |
+| a quick cross-market snapshot, the members of an index | `snapshot <symbol>`, `universe CAC40` | [data-sources](references/data-sources.md) |
 | to know why a source failed | the note, then `doctor --probe` | [engine-evidence](references/engine-evidence.md) |
 
-Symbols: `MC.PA`, `ASML.AS`, `CW8.PA` or an EU ISIN (Euronext); `NVDA`, `QQQ`
-(US); `BTCUSDT`, `ETH-EUR` (Binance spot).
+Symbols: `MC.PA`, `ASML.AS`, `CW8.PA` or an EU ISIN (Euronext); `SAP.DE`,
+`SHEL.L`, `NESN.SW` (other European venues); `NVDA`, `QQQ` (US); `BTCUSDT`,
+`ETH-EUR` (Binance, then Kraken and Coinbase).
 
 ## Commands
 
@@ -68,6 +85,14 @@ ultrastock history <symbol> [--from <date>] [--to <date>] [--interval 1d|1w|4h|1
 ultrastock calc <run> "<formula>" --label <text> [--unit <unit>] [--json]
 ultrastock evidence <run> [--json]
 ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
+ultrastock profile init|show|suitability|set|envelope [--json]
+ultrastock jurisdiction show|verify [--venues binance,kraken,coinbase] [--out <dir>] [--json]
+ultrastock calendar sessions|holidays|verify|econ|earnings|dividends [--market XPAR|XNYS|XMIL|XOSL|CRYPTO] [--json]
+ultrastock macro us|ea|fr|<country>|fred <ID> · rates [us|ea] · fx [USD,GBP] · cot <market> · sentiment [cnn|crypto|vix|putcall]
+ultrastock news "<query>" [--symbol <SYM>] [--lang fr] · universe <index> · snapshot <symbol> · resolve "<name|ISIN>"
+ultrastock fundamentals <sym> [--asof <date>] [--source sec|esef|crible] · filings <sym> [--forms 8-K] | --search "<text>"
+ultrastock insiders <sym> · holdings <manager> · analyst|short|dividends <US sym> · congress [--member] [--doc]
+ultrastock options <symbol> · crypto <view> [<target>] · predict kalshi|manifold|polymarket [<query>]
 ultrastock doctor [--probe] [--json]
 ```
 
@@ -78,6 +103,8 @@ ultrastock doctor [--probe] [--json]
 - `check` — exits 1 with a line-by-line report on any figure without an `[E#]`,
   any `[E#]` the run does not hold, any figure none of its `[E#]` holds, and
   (with `--max-age`) any figure read too long ago.
+- Every data command takes `--out <dir>`: its figures become `[E#]` in that
+  run (without it nothing is registered and nothing can be cited).
 - Network commands take `--record <dir>` / `--fixture <dir>` to save and replay
   what the sources answered, and `--refresh` / `--offline` for the cache.
 
@@ -106,4 +133,9 @@ Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
 - [analysis-workflow](references/analysis-workflow.md) — reading a brief, forming a view, writing the answer.
 - [citation-format](references/citation-format.md) — `[E#]`, grouping, `calc`, and what `check` refuses.
 - [data-sources](references/data-sources.md) — which source answers for which symbol, its delay and its limits.
+- [onboarding-profile](references/onboarding-profile.md) — the profile, the suitability questionnaire, envelopes, jurisdiction rules.
+- [fundamentals-filings](references/fundamentals-filings.md) — statements point in time, filings, insiders, 13F, short interest, analysts.
+- [macro-markets](references/macro-markets.md) — macro, rates, FX, positioning, sentiment, calendars: what each figure means.
+- [news-and-external-text](references/news-and-external-text.md) — reading headlines and other external text safely.
+- [options-crypto-prediction](references/options-crypto-prediction.md) — option chains, crypto structure, prediction markets and their limits.
 - [engine-evidence](references/engine-evidence.md) — failure notes, fixtures, caching and variables.

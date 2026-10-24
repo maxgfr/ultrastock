@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.exchange.coinbase.com/products/BTC-EUR/ticker"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"ask\":\"71127.19\",\"bid\":\"71104.05\",\"volume\":\"138.97946291\",\"trade_id\":110690087,\"price\":\"71166.31\",\"size\":\"0.00000154\",\"time\":\"2026-10-24T15:15:24.348956015Z\",\"rfq_volume\":\"1.613269\"}",
+  "url": "https://api.exchange.coinbase.com/products/BTC-EUR/ticker",
+  "fetchedAt": "2026-10-24T15:15:30.741Z"
+ }
+}

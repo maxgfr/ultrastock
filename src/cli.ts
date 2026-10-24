@@ -8,6 +8,21 @@ import { EvidenceStore, formatEvidence } from "./core/evidence.js";
 import { ExprError } from "./core/expr.js";
 import { clockNow, FixtureMiss, setNetMode } from "./core/net.js";
 import { runDirFor } from "./core/paths.js";
+import { calendarCommand } from "./commands/calendar.js";
+import {
+  analystCommand,
+  congressCommand,
+  dividendsCommand,
+  filingsCommand,
+  fundamentalsCommand,
+  holdingsCommand,
+  insidersCommand,
+  resolveCommand,
+  shortCommand,
+} from "./commands/fundamentals.js";
+import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentimentCommand, universeCommand } from "./commands/macro.js";
+import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
+import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
 import { doctorReport, formatDoctor } from "./doctor.js";
 import {
   argBool,
@@ -43,6 +58,31 @@ USAGE
   ultrastock calc <run> <formula> --label <text> [--unit <unit>] [--key <key>] [--json]
   ultrastock evidence <run> [--json]
   ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
+  ultrastock profile init [--jurisdiction FR] [--currency EUR] [--json]
+  ultrastock profile show|suitability [--answers <file>]|set <field> <value>|envelope <id> --type PEA [--broker <name>] [--json]
+  ultrastock jurisdiction show|verify [--jurisdiction FR] [--venues binance,kraken,coinbase] [--out <dir>] [--json]
+  ultrastock calendar sessions|holidays|verify [--market XPAR|XNYS|XMIL|XOSL|CRYPTO] [--days <n>] [--year <yyyy>] [--json]
+  ultrastock calendar econ|earnings|dividends [<date>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock macro us|ea|fr|<country>|fred <ID> [--days <n>] [--out <dir>] [--json]
+  ultrastock rates [us|ea] [--out <dir>] [--json]
+  ultrastock fx [USD,GBP,…] [--out <dir>] [--json]
+  ultrastock cot <market> [--report legacy|tff] [--out <dir>] [--json]
+  ultrastock sentiment [all|cnn|crypto|vix|putcall] [--out <dir>] [--json]
+  ultrastock news <query> [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
+  ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
+  ultrastock fundamentals <symbol> [--asof <date>] [--years <n>] [--quarters <n>] [--source sec|esef|crible] [--out <dir>] [--json]
+  ultrastock filings <US symbol> [--forms 8-K,10-Q] [--days <n>] [--limit <n>] | filings --search <text> [--out <dir>] [--json]
+  ultrastock insiders <symbol> [--limit <n>] [--out <dir>] [--json]
+  ultrastock holdings <manager|CIK> [--limit <n>] [--out <dir>] [--json]
+  ultrastock analyst <US symbol> [--out <dir>] [--json]
+  ultrastock short <US symbol> [--out <dir>] [--json]
+  ultrastock dividends <US symbol> [--limit <n>] [--out <dir>] [--json]
+  ultrastock congress [--member <name>] [--doc <DocID>] [--year <yyyy>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock options <symbol> [--expiries <n>] [--out <dir>] [--json]
+  ultrastock crypto global|top|coin|derivatives|defi|yields|stables|fees|onchain|dex|holders [<target>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock predict kalshi|manifold|polymarket [<query>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock snapshot <symbol> [--market <tv-market>] [--out <dir>] [--json]
   ultrastock doctor [--probe] [--json]
   ultrastock version
 
@@ -71,6 +111,57 @@ COMMANDS
             an [E#] of the run, and is one of the values those [E#] hold (rounding
             allowed). --max-age also fails figures read longer ago than that.
             Exits 1 with a line-by-line report otherwise.
+  profile   The investor: residence and tax residence, base currency, horizon,
+            risk score and limits (the risk gate's rules), envelopes (PEA, CTO,
+            AV…). \`suitability\` prints the questionnaire to ask; with --answers it
+            scores it (1–7) and sets the limits. Every change is kept in history.
+  jurisdiction  What the investor's country allows, rule by rule with sources;
+            \`verify\` checks crypto venues against ESMA's MiCA register and
+            regulator DNS blocks, and lists what a web search must confirm.
+  calendar  Exchange sessions, holidays and early closes, computed from the
+            exchanges' rules; \`verify\` lists what to confirm for a year;
+            econ / earnings / dividends list the day's scheduled events.
+  macro     Inflation, jobs, growth: US (BLS, FRED), euro area (ECB, Eurostat),
+            France (INSEE), any country (World Bank); \`fred <ID>\` for one series.
+  rates     Yield curves (US Treasury, euro AAA), policy rates and €STR, credit
+            spreads (high yield, investment grade).
+  fx        Euro reference rates (ECB; Frankfurter as fallback).
+  cot       CFTC Commitments of Traders: net positioning and its 26- and
+            156-week index (0–100) for a futures market.
+  sentiment CNN Fear & Greed, crypto Fear & Greed, the VIX term structure,
+            Cboe put/call ratios.
+  news      Recent articles (Google News, GDELT; Yahoo for a symbol) — titles
+            are external text, fenced as untrusted.
+  universe  An index's current members (Wikipedia) — current only: a backtest
+            over them has survivorship bias.
+  resolve   A name, ticker or ISIN → the Euronext listings, the SEC registrant,
+            the LEI (GLEIF) and FIGI identifiers that match.
+  fundamentals  Key statement figures: SEC XBRL for US filers (annual, quarters,
+            TTM; --asof keeps only what was filed by then — point in time), ESEF
+            IFRS reports for European issuers, crible as fallback (with its
+            Piotroski, Altman, Beneish and rank fields).
+  filings   Recent SEC filings, 8-K items named and the important ones flagged;
+            --search runs EDGAR full-text search.
+  insiders  Insider trades: SEC Form 4 (open-market buys and sells, 90-day net,
+            cluster buys) for US listings; AMF declarations for French issuers.
+  holdings  An institution's latest 13F: top positions, weights, and what it
+            bought, added, trimmed and sold since the previous quarter (45-day lag).
+  analyst   Price targets, ratings, EPS estimates and surprises (Nasdaq, unofficial).
+  short     Short interest and days to cover (Nasdaq) and daily short volume (FINRA).
+  dividends Dividend history, yield and ex-dates (Nasdaq).
+  congress  US House periodic transaction reports, and one report's trades.
+  options   An option chain summary per expiry — ATM IV, put/call open interest
+            and volume, totals: US listings from CBOE (15 min delayed), BTC and
+            ETH from Deribit with the DVOL volatility index.
+  crypto    Market structure: global caps and dominance, top coins, one coin,
+            derivatives positioning (funding, open interest, long/short ratios),
+            DeFi TVL, yields (base vs reward APY), stablecoins, fees, on-chain
+            metrics (CoinMetrics, mempool.space), DEX pairs, holder concentration.
+  predict   Prediction markets: Kalshi (regulated), Manifold (play money),
+            Polymarket — refused where the profile's jurisdiction blocks it.
+            Questions and rules are external text, fenced as untrusted.
+  snapshot  A cross-venue snapshot from TradingView's scanner (unofficial):
+            price, valuation ratios, performance, technical rating.
   doctor    Version, state directory, Node, external tools; --probe also times a
             live call to each data source.
 
@@ -81,12 +172,79 @@ ENVIRONMENT
   ULTRASTOCK_HOME        state directory (profile, runs, journal) — default ~/.ultrastock
   ULTRASTOCK_CACHE_DIR   dataset cache — default ULTRASTOCK_HOME/cache
   ULTRASTOCK_TIMEOUT_MS  network budget per attempt (default 20000)
+  ULTRASTOCK_SEC_CONTACT an e-mail for SEC EDGAR's fair-access User-Agent (required by the SEC)
+  ULTRASTOCK_FRED_API_KEY, ULTRASTOCK_COINGECKO_API_KEY, ULTRASTOCK_SOLANA_RPC   optional keys
+  ULTRASTOCK_CRIBLE_CMD, ULTRASTOCK_CRIBLE_DATA_DIR   how to run crible, and where its dataset lives
 
 Nothing here needs an API key. Exit codes: 0 done, 1 failed or refused, 2 bad invocation.`;
 
-export const VALUE_FLAGS = ["out", "from", "to", "interval", "limit", "label", "unit", "key", "max-age", "record", "fixture"];
+export const VALUE_FLAGS = [
+  "out",
+  "from",
+  "to",
+  "interval",
+  "limit",
+  "label",
+  "unit",
+  "key",
+  "max-age",
+  "record",
+  "fixture",
+  "jurisdiction",
+  "currency",
+  "answers",
+  "type",
+  "broker",
+  "venues",
+  "market",
+  "days",
+  "year",
+  "expiries",
+  "report",
+  "symbol",
+  "lang",
+  "asof",
+  "years",
+  "quarters",
+  "source",
+  "forms",
+  "search",
+  "member",
+  "doc",
+];
 export const BOOL_FLAGS = ["json", "refresh", "offline", "probe"];
-export const COMMANDS = ["analyze", "quote", "history", "calc", "evidence", "check", "doctor"];
+export const COMMANDS = [
+  "analyze",
+  "quote",
+  "history",
+  "calc",
+  "evidence",
+  "check",
+  "profile",
+  "jurisdiction",
+  "calendar",
+  "resolve",
+  "fundamentals",
+  "filings",
+  "insiders",
+  "holdings",
+  "analyst",
+  "short",
+  "dividends",
+  "congress",
+  "options",
+  "crypto",
+  "predict",
+  "snapshot",
+  "macro",
+  "rates",
+  "fx",
+  "cot",
+  "sentiment",
+  "news",
+  "universe",
+  "doctor",
+];
 
 const NET = ["record", "fixture", "refresh", "offline", "json"];
 const SPEC: CliSpec = {
@@ -100,6 +258,29 @@ const SPEC: CliSpec = {
     calc: ["label", "unit", "key", "json"],
     evidence: ["json"],
     check: ["max-age", "json"],
+    profile: ["jurisdiction", "currency", "answers", "type", "broker", "json"],
+    jurisdiction: ["jurisdiction", "venues", "out", ...NET],
+    calendar: ["market", "days", "year", "limit", "out", ...NET],
+    macro: ["days", "out", ...NET],
+    rates: ["out", ...NET],
+    fx: ["out", ...NET],
+    cot: ["report", "out", ...NET],
+    sentiment: ["out", ...NET],
+    news: ["symbol", "lang", "days", "limit", "out", ...NET],
+    universe: ["out", ...NET],
+    resolve: ["out", ...NET],
+    fundamentals: ["asof", "years", "quarters", "source", "out", ...NET],
+    filings: ["forms", "days", "limit", "search", "out", ...NET],
+    insiders: ["limit", "out", ...NET],
+    holdings: ["limit", "out", ...NET],
+    analyst: ["out", ...NET],
+    short: ["out", ...NET],
+    dividends: ["limit", "out", ...NET],
+    congress: ["member", "doc", "year", "limit", "out", ...NET],
+    options: ["expiries", "out", ...NET],
+    crypto: ["limit", "out", ...NET],
+    predict: ["limit", "out", ...NET],
+    snapshot: ["market", "out", ...NET],
     doctor: ["probe", "json"],
   },
 };
@@ -118,6 +299,11 @@ const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 function arity(args: CommandArgs): number {
   if (args.command === "doctor" || args.command === "version") return 0;
   if (args.command === "check" || args.command === "calc") return 2;
+  if (args.command === "profile") return 3;
+  if (args.command === "crypto" || args.command === "calendar" || args.command === "macro") return 2;
+  if (args.command === "news" || args.command === "cot" || args.command === "resolve") return Number.POSITIVE_INFINITY;
+  if (args.command === "congress") return 0;
+  if (args.command === "predict") return Number.POSITIVE_INFINITY;
   return 1;
 }
 
@@ -265,6 +451,30 @@ async function run(args: CommandArgs): Promise<void> {
     return;
   }
 
+  if (cmd === "profile") return profileCommand(args, asJson);
+  if (cmd === "jurisdiction") return jurisdictionCommand(args, asJson);
+  if (cmd === "calendar") return calendarCommand(args, asJson);
+  if (cmd === "resolve") return resolveCommand(args, asJson);
+  if (cmd === "fundamentals") return fundamentalsCommand(args, asJson);
+  if (cmd === "filings") return filingsCommand(args, asJson);
+  if (cmd === "insiders") return insidersCommand(args, asJson);
+  if (cmd === "holdings") return holdingsCommand(args, asJson);
+  if (cmd === "analyst") return analystCommand(args, asJson);
+  if (cmd === "short") return shortCommand(args, asJson);
+  if (cmd === "dividends") return dividendsCommand(args, asJson);
+  if (cmd === "congress") return congressCommand(args, asJson);
+  if (cmd === "options") return optionsCommand(args, asJson);
+  if (cmd === "crypto") return cryptoCommand(args, asJson);
+  if (cmd === "predict") return predictCommand(args, asJson);
+  if (cmd === "snapshot") return snapshotCommand(args, asJson);
+  if (cmd === "macro") return macroCommand(args, asJson);
+  if (cmd === "rates") return ratesCommand(args, asJson);
+  if (cmd === "fx") return fxCommand(args, asJson);
+  if (cmd === "cot") return cotCommand(args, asJson);
+  if (cmd === "sentiment") return sentimentCommand(args, asJson);
+  if (cmd === "news") return newsCommand(args, asJson);
+  if (cmd === "universe") return universeCommand(args, asJson);
+
   if (cmd === "doctor") {
     const report = await doctorReport({ probe: argBool(args, "probe") });
     if (asJson) process.stdout.write(jsonLine(report));
@@ -295,7 +505,7 @@ export async function main(argv: string[]): Promise<void> {
     await run(args);
   } catch (e) {
     if (e instanceof UsageError) usage(e.message);
-    if (e instanceof ProviderError || e instanceof FixtureMiss) fail(e.message);
+    if (e instanceof ProviderError || e instanceof FixtureMiss || e instanceof Error) fail(e.message);
     throw e;
   }
 }

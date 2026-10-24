@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1d&limit=2"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "[{\"symbol\":\"BTCUSDT\",\"longAccount\":\"0.6776\",\"longShortRatio\":\"2.1017\",\"shortAccount\":\"0.3224\",\"timestamp\":1792713600000},{\"symbol\":\"BTCUSDT\",\"longAccount\":\"0.6791\",\"longShortRatio\":\"2.1162\",\"shortAccount\":\"0.3209\",\"timestamp\":1792800000000}]",
+  "url": "https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1d&limit=2",
+  "fetchedAt": "2026-10-24T15:18:49.979Z"
+ }
+}

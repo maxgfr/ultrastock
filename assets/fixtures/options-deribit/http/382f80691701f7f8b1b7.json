@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://www.deribit.com/api/v2/public/get_index_price?index_name=btc_usd"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"jsonrpc\":\"2.0\",\"result\":{\"estimated_delivery_price\":79419.32,\"index_price\":79419.32},\"usIn\":1792855078526797,\"usOut\":1792855078527349,\"usDiff\":552,\"testnet\":false}",
+  "url": "https://www.deribit.com/api/v2/public/get_index_price?index_name=btc_usd",
+  "fetchedAt": "2026-10-24T15:17:58.504Z"
+ }
+}

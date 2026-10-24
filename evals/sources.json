@@ -1,0 +1,16 @@
+{
+  "_comment": "Network suite only: one live call per source family; each must answer and produce evidence keys with these prefixes. Report-only (upstreams change and throttle).",
+  "checks": [
+    { "args": ["quote", "SAP.DE"], "keys": ["SAP.DE.quote.price"] },
+    { "args": ["options", "NVDA", "--expiries", "2"], "keys": ["NVDA.opt."] },
+    { "args": ["crypto", "derivatives", "BTC"], "keys": ["BTC.deriv."] },
+    { "args": ["crypto", "global"], "keys": ["CRYPTO.global."] },
+    { "args": ["macro", "ea"], "keys": ["EA.macro."] },
+    { "args": ["rates", "us"], "keys": ["US.rates.ust."] },
+    { "args": ["fx", "USD"], "keys": ["EUR.fx.USD"] },
+    { "args": ["cot", "ES"], "keys": ["ES.cot."] },
+    { "args": ["sentiment", "vix"], "keys": ["US.vol."] },
+    { "args": ["universe", "CAC40"], "keys": ["CAC40.universe."] },
+    { "args": ["predict", "kalshi", "events", "--limit", "3"], "keys": ["KALSHI."] }
+  ]
+}

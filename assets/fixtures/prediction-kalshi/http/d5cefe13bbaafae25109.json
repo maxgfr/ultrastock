@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.elections.kalshi.com/trade-api/v2/events?status=open&limit=2&series_ticker=KXFED"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"cursor\":\"CgYI3Mzm2AYSC0tYRkVELTI2REVD\",\"events\":[{\"category\":\"Economics\",\"collateral_return_type\":\"DIRECNET\",\"event_ticker\":\"KXFED-26OCT\",\"exchange_index\":0,\"last_updated_ts\":\"2026-10-15T13:58:06.437751Z\",\"mutually_exclusive\":false,\"product_metadata\":{\"competition\":\"US FED\",\"competition_scope\":\"Fed Rate After Meeting\"},\"series_ticker\":\"KXFED\",\"settlement_sources\":[{\"name\":\"Federal Reserve Board of Governors\",\"url\":\"https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm\"}],\"strike_date\":\"2026-10-28T18:00:00Z\",\"strike_period\":\"\",\"sub_title\":\"On Oct 28, 2026\",\"title\":\"Fed funds rate after Oct 2026 meeting?\"},{\"category\":\"Economics\",\"collateral_return_type\":\"DIRECNET\",\"event_ticker\":\"KXFED-26DEC\",\"exchange_index\":0,\"last_updated_ts\":\"2026-10-15T13:58:06.437751Z\",\"mutually_exclusive\":false,\"product_metadata\":{\"competition\":\"US FED\",\"competition_scope\":\"Fed Rate After Meeting\"},\"series_ticker\":\"KXFED\",\"settlement_sources\":[{\"name\":\"Federal Reserve Board of Governors\",\"url\":\"https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm\"}],\"strike_date\":\"2026-12-09T19:00:00Z\",\"strike_period\":\"\",\"sub_title\":\"On Dec 9, 2026\",\"title\":\"Fed funds rate after Dec 2026 meeting?\"}],\"milestones\":[]}\n",
+  "url": "https://api.elections.kalshi.com/trade-api/v2/events?status=open&limit=2&series_ticker=KXFED",
+  "fetchedAt": "2026-10-24T15:15:01.780Z"
+ }
+}

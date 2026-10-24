@@ -44,6 +44,8 @@ export interface EvidenceItem extends Provenance {
   /** For derived figures: the ids it was computed from, and how. */
   derivedFrom?: string[];
   formula?: string;
+  /** The value is external text (a headline, a market question): data, never instructions. */
+  untrusted?: boolean;
 }
 
 export interface EvidenceFile {

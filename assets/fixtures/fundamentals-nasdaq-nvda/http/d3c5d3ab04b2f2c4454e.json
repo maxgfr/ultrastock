@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.nasdaq.com/api/analyst/NVDA/earnings-forecast"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"data\":{\"symbol\":\"nvda\",\"quarterlyForecast\":{\"asOf\":null,\"headers\":{\"fiscalEnd\":\"Fiscal Quarter End\",\"consensusEPSForecast\":\"Consensus EPS* Forecast\",\"highEPSForecast\":\"High EPS* Forecast\",\"lowEPSForecast\":\"Low EPS* Forecast\",\"noOfEstimates\":\"Number of Estimates\",\"up\":\"Over the Last 4 Weeks Number of Revisions - Up\",\"down\":\"Over the Last 4 Weeks Number of Revisions - Down\"},\"rows\":[{\"fiscalEnd\":\"Oct 2026\",\"consensusEPSForecast\":2.49,\"highEPSForecast\":2.7,\"lowEPSForecast\":2.34,\"noOfEstimates\":13,\"up\":1,\"down\":0},{\"fiscalEnd\":\"Jan 2027\",\"consensusEPSForecast\":2.75,\"highEPSForecast\":2.95,\"lowEPSForecast\":2.53,\"noOfEstimates\":12,\"up\":1,\"down\":0},{\"fiscalEnd\":\"Apr 2027\",\"consensusEPSForecast\":3.18,\"highEPSForecast\":3.53,\"lowEPSForecast\":2.9,\"noOfEstimates\":11,\"up\":1,\"down\":0},{\"fiscalEnd\":\"Jul 2027\",\"consensusEPSForecast\":3.64,\"highEPSForecast\":3.94,\"lowEPSForecast\":3.25,\"noOfEstimates\":11,\"up\":1,\"down\":0},{\"fiscalEnd\":\"Oct 2027\",\"consensusEPSForecast\":4.09,\"highEPSForecast\":4.47,\"lowEPSForecast\":3.65,\"noOfEstimates\":11,\"up\":1,\"down\":0}]},\"yearlyForecast\":{\"asOf\":null,\"headers\":{\"fiscalEnd\":\"Fiscal Year End\",\"consensusEPSForecast\":\"Consensus EPS* Forecast\",\"highEPSForecast\":\"High EPS* Forecast\",\"lowEPSForecast\":\"Low EPS* Forecast\",\"noOfEstimates\":\"Number of Estimates\",\"up\":\"Over the Last 4 Weeks Number of Revisions - Up\",\"down\":\"Over the Last 4 Weeks Number of Revisions - Down\"},\"rows\":[{\"fiscalEnd\":\"Jan 2027\",\"consensusEPSForecast\":9.3,\"highEPSForecast\":9.71,\"lowEPSForecast\":9.01,\"noOfEstimates\":17,\"up\":2,\"down\":0},{\"fiscalEnd\":\"Jan 2028\",\"consensusEPSForecast\":15.74,\"highEPSForecast\":17.04,\"lowEPSForecast\":13.96,\"noOfEstimates\":15,\"up\":2,\"down\":0},{\"fiscalEnd\":\"Jan 2029\",\"consensusEPSForecast\":21.82,\"highEPSForecast\":24.16,\"lowEPSForecast\":19.21,\"noOfEstimates\":9,\"up\":0,\"down\":0},{\"fiscalEnd\":\"Jan 2030\",\"consensusEPSForecast\":26.64,\"highEPSForecast\":30.37,\"lowEPSForecast\":22.33,\"noOfEstimates\":3,\"up\":0,\"down\":0}]}},\"message\":null,\"status\":{\"rCode\":200,\"bCodeMessage\":null,\"developerMessage\":null}}",
+  "url": "https://api.nasdaq.com/api/analyst/NVDA/earnings-forecast",
+  "fetchedAt": "2026-10-24T15:31:53.044Z"
+ }
+}

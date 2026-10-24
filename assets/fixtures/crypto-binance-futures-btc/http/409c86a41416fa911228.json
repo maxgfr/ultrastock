@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"symbol\":\"BTCUSDT\",\"openInterest\":\"95077.290\",\"time\":1792855123461}",
+  "url": "https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT",
+  "fetchedAt": "2026-10-24T15:18:49.477Z"
+ }
+}

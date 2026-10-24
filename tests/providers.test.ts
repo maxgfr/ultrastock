@@ -49,7 +49,8 @@ describe("routing", () => {
     expect(classifySymbol("BTCUSDT")).toBe("crypto");
     expect(classifySymbol("ETH-EUR")).toBe("crypto");
     expect(classifySymbol("US0378331005")).toHaveProperty("unsupported");
-    expect(classifySymbol("SAP.DE")).toHaveProperty("unsupported");
+    expect(classifySymbol("SAP.DE")).toBe("europe");
+    expect(classifySymbol("XYZ.ZZ")).toHaveProperty("unsupported");
   });
   it("maps a -USD crypto pair to USDT, and says so", () => {
     const r = resolveBinance("btc-usd");

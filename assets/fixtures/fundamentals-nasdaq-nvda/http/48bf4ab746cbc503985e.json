@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.nasdaq.com/api/analyst/NVDA/estimate-momentum"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"data\":{\"symbol\":\"nvda\",\"changeInConsensus\":{\"monthData\":{\"period\":\"1 Month \\n Ago\",\"qtrMean\":2.47,\"yrMean\":9.25},\"weekData\":{\"period\":\"1 Week \\n Ago\",\"qtrMean\":2.49,\"yrMean\":9.3},\"currentData\":{\"period\":\"Current\",\"qtrMean\":2.49,\"yrMean\":9.3},\"fiscalYearEndText\":\"Fiscal Year End Jan 2027\",\"fiscalQtrEndText\":\"Fiscal Quarter End Oct 2026\"},\"estimatesChanged\":{\"quarterDataDown\":{\"changeType\":\"Down\",\"changeValue\":0},\"quarterDataUp\":{\"changeType\":\"Up\",\"changeValue\":1},\"yearDataDown\":{\"changeType\":\"Down\",\"changeValue\":0},\"yearDataUp\":{\"changeType\":\"Up\",\"changeValue\":2},\"qtrFiscalQtrEndText\":\"Fiscal QE Oct 2026\",\"yrFiscalYearEndText\":\"Fiscal YR Jan 2027\"},\"textInfo\":\"Estimate Momentum measures change in analyst sentiment over time and may be an indicator of future price movements. The Change in Consensus chart shows the current, 1 week ago, and 1 month ago consensus earnings per share (EPS*) forecasts.\\n For the fiscal quarter endingOct 2026 , the consensus EPS* forecast has remained the same over the past week at 2.49 and increased over the past month from 2.47 to 2.49(0.81%). Of the 1 analysts making quarterly forecasts, 1raised and none lowered their forecast.\\n For the fiscal year ending Jan 2027 , the consensus EPS* forecast has remained the same over the past week at 9.3 and increased over the past month from 9.25 to 9.3(0.54%). Of the 2 analysts making yearly forecasts, 2raised and none lowered their forecast.\"},\"message\":null,\"status\":{\"rCode\":200,\"bCodeMessage\":null,\"developerMessage\":null}}",
+  "url": "https://api.nasdaq.com/api/analyst/NVDA/estimate-momentum",
+  "fetchedAt": "2026-10-24T15:31:53.044Z"
+ }
+}

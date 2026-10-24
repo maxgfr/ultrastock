@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://data-api.ecb.europa.eu/service/data/FM/B.U2.EUR.4F.KR.DFR+MRR_FR+MLFR.LEV?lastNObservations=2&format=csvdata&detail=dataonly"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "KEY,FREQ,REF_AREA,CURRENCY,PROVIDER_FM,INSTRUMENT_FM,PROVIDER_FM_ID,DATA_TYPE_FM,TIME_PERIOD,OBS_VALUE\r\nFM.B.U2.EUR.4F.KR.DFR.LEV,B,U2,EUR,4F,KR,DFR,LEV,2026-06-17,2.25\r\nFM.B.U2.EUR.4F.KR.DFR.LEV,B,U2,EUR,4F,KR,DFR,LEV,2026-09-16,2.5\r\nFM.B.U2.EUR.4F.KR.MLFR.LEV,B,U2,EUR,4F,KR,MLFR,LEV,2026-06-17,2.65\r\nFM.B.U2.EUR.4F.KR.MLFR.LEV,B,U2,EUR,4F,KR,MLFR,LEV,2026-09-16,2.9\r\nFM.B.U2.EUR.4F.KR.MRR_FR.LEV,B,U2,EUR,4F,KR,MRR_FR,LEV,2026-06-17,2.4\r\nFM.B.U2.EUR.4F.KR.MRR_FR.LEV,B,U2,EUR,4F,KR,MRR_FR,LEV,2026-09-16,2.65\r\n",
+  "url": "https://data-api.ecb.europa.eu/service/data/FM/B.U2.EUR.4F.KR.DFR+MRR_FR+MLFR.LEV?lastNObservations=2&format=csvdata&detail=dataonly",
+  "fetchedAt": "2026-10-24T15:24:25.006Z"
+ }
+}

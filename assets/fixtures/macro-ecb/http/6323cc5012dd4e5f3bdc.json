@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.USD+GBP.EUR.SP00.A?lastNObservations=2&format=csvdata&detail=dataonly"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "KEY,FREQ,CURRENCY,CURRENCY_DENOM,EXR_TYPE,EXR_SUFFIX,TIME_PERIOD,OBS_VALUE\r\nEXR.D.GBP.EUR.SP00.A,D,GBP,EUR,SP00,A,2026-10-22,0.8377\r\nEXR.D.GBP.EUR.SP00.A,D,GBP,EUR,SP00,A,2026-10-23,0.83728\r\nEXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-10-22,1.1205\r\nEXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-10-23,1.1193\r\n",
+  "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.USD+GBP.EUR.SP00.A?lastNObservations=2&format=csvdata&detail=dataonly",
+  "fetchedAt": "2026-10-24T15:24:25.538Z"
+ }
+}
