@@ -87,9 +87,13 @@ describe("calendars", () => {
       ],
       "2026-10-27",
     );
-    expect(ev[0]).toMatchObject({ at: "2026-10-27T01:00:00Z", country: "Japan", forecast: "0.4%", previous: "1.5%" });
+    // New York times: EDT in October, EST after the first Sunday of November.
+    expect(ev[0]).toMatchObject({ at: "2026-10-27T05:00:00Z", country: "Japan", forecast: "0.4%", previous: "1.5%" });
     expect(ev[0]!.actual).toBeUndefined();
     expect(ev[1]).toMatchObject({ at: "2026-10-27", actual: "9.8%" });
+    expect(parseNasdaqEconomic([{ gmt: "08:30", country: "United States", eventName: "Durable Goods Orders" }], "2026-11-04")[0]!.at).toBe(
+      "2026-11-04T13:30:00Z",
+    );
     const ff = parseForexFactory([
       { title: "Trade Balance", country: "NZD", date: "2026-10-18T17:45:00-04:00", impact: "Low", forecast: "-775M", previous: "-1349M" },
     ]);
