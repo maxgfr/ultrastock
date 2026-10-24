@@ -1,0 +1,86 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/denmark/scan",
+  "json": {
+   "columns": [
+    "description",
+    "close",
+    "country",
+    "market_cap_basic",
+    "isin",
+    "sector",
+    "currency",
+    "fundamental_currency_code"
+   ],
+   "range": [
+    0,
+    3
+   ],
+   "filter": [
+    {
+     "left": "type",
+     "operation": "equal",
+     "right": "stock"
+    },
+    {
+     "left": "is_primary",
+     "operation": "equal",
+     "right": true
+    },
+    {
+     "left": "country",
+     "operation": "in_range",
+     "right": [
+      "Austria",
+      "Belgium",
+      "Bulgaria",
+      "Croatia",
+      "Cyprus",
+      "Czech Republic",
+      "Denmark",
+      "Estonia",
+      "Finland",
+      "France",
+      "Germany",
+      "Greece",
+      "Hungary",
+      "Ireland",
+      "Italy",
+      "Latvia",
+      "Lithuania",
+      "Luxembourg",
+      "Malta",
+      "Netherlands",
+      "Poland",
+      "Portugal",
+      "Romania",
+      "Slovakia",
+      "Slovenia",
+      "Spain",
+      "Sweden",
+      "Iceland",
+      "Liechtenstein",
+      "Norway"
+     ]
+    },
+    {
+     "left": "market_cap_basic",
+     "operation": "greater",
+     "right": 0
+    }
+   ],
+   "sort": {
+    "sortBy": "market_cap_basic",
+    "sortOrder": "desc"
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":129,\"data\":[{\"s\":\"OMXCOP:NOVO_B\",\"d\":[\"Novo Nordisk A/S Class B\",260.15,\"Denmark\",1153206161610,\"DK0062498333\",\"Health Technology\",\"DKK\",\"DKK\"]},{\"s\":\"OMXCOP:MAERSK_A\",\"d\":[\"A.P. Moller - Maersk A/S Class A\",22200,\"Denmark\",325094204860,\"DK0010244425\",\"Transportation\",\"DKK\",\"DKK\"]},{\"s\":\"OMXCOP:DSV\",\"d\":[\"DSV A/S\",1372.5,\"Denmark\",322461352386,\"DK0060079531\",\"Transportation\",\"DKK\",\"DKK\"]}]}",
+  "url": "https://scanner.tradingview.com/denmark/scan",
+  "fetchedAt": "2026-10-24T16:06:18.602Z"
+ }
+}

@@ -1,0 +1,86 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/belgium/scan",
+  "json": {
+   "columns": [
+    "description",
+    "close",
+    "country",
+    "market_cap_basic",
+    "isin",
+    "sector",
+    "currency",
+    "fundamental_currency_code"
+   ],
+   "range": [
+    0,
+    3
+   ],
+   "filter": [
+    {
+     "left": "type",
+     "operation": "equal",
+     "right": "stock"
+    },
+    {
+     "left": "is_primary",
+     "operation": "equal",
+     "right": true
+    },
+    {
+     "left": "country",
+     "operation": "in_range",
+     "right": [
+      "Austria",
+      "Belgium",
+      "Bulgaria",
+      "Croatia",
+      "Cyprus",
+      "Czech Republic",
+      "Denmark",
+      "Estonia",
+      "Finland",
+      "France",
+      "Germany",
+      "Greece",
+      "Hungary",
+      "Ireland",
+      "Italy",
+      "Latvia",
+      "Lithuania",
+      "Luxembourg",
+      "Malta",
+      "Netherlands",
+      "Poland",
+      "Portugal",
+      "Romania",
+      "Slovakia",
+      "Slovenia",
+      "Spain",
+      "Sweden",
+      "Iceland",
+      "Liechtenstein",
+      "Norway"
+     ]
+    },
+    {
+     "left": "market_cap_basic",
+     "operation": "greater",
+     "right": 0
+    }
+   ],
+   "sort": {
+    "sortBy": "market_cap_basic",
+    "sortOrder": "desc"
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":103,\"data\":[{\"s\":\"EURONEXT:ABI\",\"d\":[\"Anheuser-Busch InBev SA/NV\",75.4,\"Belgium\",149581269949,\"BE0974293251\",\"Consumer Non-Durables\",\"EUR\",\"EUR\"]},{\"s\":\"EURONEXT:UCB\",\"d\":[\"UCB S.A.\",272.7,\"Belgium\",51811970373,\"BE0003739530\",\"Health Technology\",\"EUR\",\"EUR\"]},{\"s\":\"EURONEXT:ARGX\",\"d\":[\"argenx SE\",782.2,\"Netherlands\",49189487902,\"NL0010832176\",\"Health Technology\",\"EUR\",\"EUR\"]}]}",
+  "url": "https://scanner.tradingview.com/belgium/scan",
+  "fetchedAt": "2026-10-24T16:06:11.604Z"
+ }
+}

@@ -1,9 +1,9 @@
 ---
 name: ultrastock
-description: Investing copilot for real money — US and European stocks and ETFs (PEA/CTO), crypto — that analyses an instrument from public, keyless data read from the exchanges themselves (Euronext, Nasdaq, Binance), registers every figure as an evidence [E#], and checks that the answer states no number the evidence does not hold. Use only when the user explicitly asks for ultrastock or for an investment analysis, e.g. "analyse LVMH", "should I buy NVDA", "what is the trend on bitcoin", "technical read of CW8", "analyse cette action", "faut-il acheter", "quelle est la tendance du CAC", "lecture technique de MC.PA". Decision support, not a licensed adviser; places no order.
+description: Investing copilot for real money — US and European stocks and ETFs (PEA/CTO), crypto, prediction markets — that analyses, screens, values and reads the market regime from public, keyless data (exchanges, regulators, filings), registers every figure as an evidence [E#], and checks that the answer states no number the evidence does not hold. Use only when the user explicitly asks for ultrastock or for an investment analysis, e.g. "analyse LVMH", "should I buy NVDA", "find quality growth stocks in Europe", "is the market risk-on", "what is NVDA worth", "analyse cette action", "faut-il acheter", "trouve-moi des actions value éligibles PEA", "le marché est-il haussier". Decision support, not a licensed adviser; places no order.
 license: MIT
 metadata:
-  version: 0.1.0
+  version: 0.2.0
 ---
 
 # ultrastock — every figure has a source, every answer is checked
@@ -51,6 +51,15 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | The user wants | Do | Read |
 |---|---|---|
 | an analysis of a stock, an ETF or a coin | `analyze <symbol> --out <dir>`, read `BRIEF.md`, follow `RUNBOOK.md` | [analysis-workflow](references/analysis-workflow.md) |
+| the full technical picture of one instrument | `technicals <symbol> --out <dir>` → `TECHNICALS.md` | [technicals-screening](references/technicals-screening.md) |
+| ideas: stocks or ETFs matching a style | `screen --list`, then `screen <preset> --market <m>` or `--engine builtin --universe CAC40` | [technicals-screening](references/technicals-screening.md) |
+| what a company is worth, its quality, its scores | `valuation <symbol> --out <dir>` → `VALUATION.md` | [valuation-quant](references/valuation-quant.md) |
+| volatility, risk, correlation, a pair | `stats <symbol> [<symbol> …]` | [valuation-quant](references/valuation-quant.md) |
+| is the market risk-on, how much to be invested | `regime --market us|eu|crypto`, `sectors --market us|eu` | [market-regime](references/market-regime.md) |
+| what could move a stock soon (earnings, dividends, macro) | `catalysts <symbol> --days 30` | [market-regime](references/market-regime.md) |
+| expected move, GEX, pricing an option structure | `options-analysis <symbol> [--strategy …]` | [options-crypto-prediction](references/options-crypto-prediction.md) |
+| crypto leverage and DeFi yield quality | `crypto-analysis <coin>`, `crypto-analysis yields <symbol>` | [options-crypto-prediction](references/options-crypto-prediction.md) |
+| a prediction market's edge, arbitrage, a stake | `predict-analysis kalshi|manifold … [--my-probability]` | [options-crypto-prediction](references/options-crypto-prediction.md) |
 | a price, now | `quote <symbol> --out <dir>` | [data-sources](references/data-sources.md) |
 | bars to look at or to compute on | `history <symbol> --from … --to …` | [data-sources](references/data-sources.md) |
 | a ratio, a gap, a distance to a level | `calc <dir> "<formula over E ids>" --label …` | [citation-format](references/citation-format.md) |
@@ -85,6 +94,7 @@ ultrastock history <symbol> [--from <date>] [--to <date>] [--interval 1d|1w|4h|1
 ultrastock calc <run> "<formula>" --label <text> [--unit <unit>] [--json]
 ultrastock evidence <run> [--json]
 ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
+ultrastock report <run> [--answer <answer.md>] [--json]
 ultrastock profile init|show|suitability|set|envelope [--json]
 ultrastock jurisdiction show|verify [--venues binance,kraken,coinbase] [--out <dir>] [--json]
 ultrastock calendar sessions|holidays|verify|econ|earnings|dividends [--market XPAR|XNYS|XMIL|XOSL|CRYPTO] [--json]
@@ -93,6 +103,11 @@ ultrastock news "<query>" [--symbol <SYM>] [--lang fr] · universe <index> · sn
 ultrastock fundamentals <sym> [--asof <date>] [--source sec|esef|crible] · filings <sym> [--forms 8-K] | --search "<text>"
 ultrastock insiders <sym> · holdings <manager> · analyst|short|dividends <US sym> · congress [--member] [--doc]
 ultrastock options <symbol> · crypto <view> [<target>] · predict kalshi|manifold|polymarket [<query>]
+ultrastock technicals <symbol> [--interval] [--indicators <name:k=v;…>] [--benchmark] · valuation <symbol> [--erp] [--terminal]
+ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market] [--universe] [--sort] [--limit] · screen --list
+ultrastock regime [--market us|eu|crypto] · sectors [--market us|eu] · catalysts <symbol> [--days]
+ultrastock stats <sym> [<sym> …] [--benchmark] · options-analysis <sym> [--expiry] [--strategy] [--spot-moves=…]
+ultrastock crypto-analysis <coin> | yields <symbol> · predict-analysis kalshi|manifold … [--my-probability] [--kalshi-fee]
 ultrastock doctor [--probe] [--json]
 ```
 
@@ -117,8 +132,11 @@ Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
 2. Give the as-of date, the delay and any unofficial source in one line.
 3. Say what would change the view: a level (cite it), an event, a figure.
 4. Write it to `<dir>/answer.md`; run `ultrastock check <dir> <dir>/answer.md`;
-   fix and repeat until it passes. Then give the user the answer and the path
-   to `BRIEF.md`.
+   fix and repeat until it passes.
+5. `ultrastock report <dir>` writes `<dir>/report.html`: the answer, the
+   recorded decision, the debate's notes, a price chart and every cited `[E#]`
+   linked to its source. It refuses an answer that fails `check`. Give the
+   user the answer and the report's path.
 
 ## Will not
 
@@ -135,6 +153,9 @@ Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
 - [data-sources](references/data-sources.md) — which source answers for which symbol, its delay and its limits.
 - [onboarding-profile](references/onboarding-profile.md) — the profile, the suitability questionnaire, envelopes, jurisdiction rules.
 - [fundamentals-filings](references/fundamentals-filings.md) — statements point in time, filings, insiders, 13F, short interest, analysts.
+- [technicals-screening](references/technicals-screening.md) — the technical panel, how to read it, the three screening engines and their presets.
+- [valuation-quant](references/valuation-quant.md) — scores, quality, multiples, DCF and reverse DCF; return statistics, volatility, cointegration.
+- [market-regime](references/market-regime.md) — the regime signals and exposure coach, sector rotation, the catalyst timeline.
 - [macro-markets](references/macro-markets.md) — macro, rates, FX, positioning, sentiment, calendars: what each figure means.
 - [news-and-external-text](references/news-and-external-text.md) — reading headlines and other external text safely.
 - [options-crypto-prediction](references/options-crypto-prediction.md) — option chains, crypto structure, prediction markets and their limits.
