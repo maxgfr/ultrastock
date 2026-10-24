@@ -1,0 +1,86 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/switzerland/scan",
+  "json": {
+   "columns": [
+    "description",
+    "close",
+    "country",
+    "market_cap_basic",
+    "isin",
+    "sector",
+    "currency",
+    "fundamental_currency_code"
+   ],
+   "range": [
+    0,
+    3
+   ],
+   "filter": [
+    {
+     "left": "type",
+     "operation": "equal",
+     "right": "stock"
+    },
+    {
+     "left": "is_primary",
+     "operation": "equal",
+     "right": true
+    },
+    {
+     "left": "country",
+     "operation": "in_range",
+     "right": [
+      "Austria",
+      "Belgium",
+      "Bulgaria",
+      "Croatia",
+      "Cyprus",
+      "Czech Republic",
+      "Denmark",
+      "Estonia",
+      "Finland",
+      "France",
+      "Germany",
+      "Greece",
+      "Hungary",
+      "Ireland",
+      "Italy",
+      "Latvia",
+      "Lithuania",
+      "Luxembourg",
+      "Malta",
+      "Netherlands",
+      "Poland",
+      "Portugal",
+      "Romania",
+      "Slovakia",
+      "Slovenia",
+      "Spain",
+      "Sweden",
+      "Iceland",
+      "Liechtenstein",
+      "Norway"
+     ]
+    },
+    {
+     "left": "market_cap_basic",
+     "operation": "greater",
+     "right": 0
+    }
+   ],
+   "sort": {
+    "sortBy": "market_cap_basic",
+    "sortOrder": "desc"
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":8,\"data\":[{\"s\":\"SIX:LLBN\",\"d\":[\"Liechtensteinische Landesbank AG\",113.4,\"Liechtenstein\",3465840322,\"LI0355147575\",\"Finance\",\"CHF\",\"CHF\"]},{\"s\":\"SIX:AMS\",\"d\":[\"ams-OSRAM AG\",17.67,\"Austria\",1748001037,\"AT0000A3EPA4\",\"Electronic Technology\",\"CHF\",\"CHF\"]},{\"s\":\"SIX:BMAG\",\"d\":[\"Bajaj Mobility AG\",32.45,\"Austria\",1096697602,\"AT0000KTMI02\",\"Commercial Services\",\"CHF\",\"CHF\"]}]}",
+  "url": "https://scanner.tradingview.com/switzerland/scan",
+  "fetchedAt": "2026-10-24T16:06:21.603Z"
+ }
+}

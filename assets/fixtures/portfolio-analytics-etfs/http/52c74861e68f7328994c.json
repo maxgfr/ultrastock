@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://live.euronext.com/en/ajax/AwlHistoricalPrice/getFullDownloadAjax/IE0008471009-XAMS?format=csv&decimal_separator=.&date_form=d/m/Y&op=&adjusted=Y&base100=&startdate=2026-10-10&enddate=2026-10-24"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "\"Historical Data\"\n\"From 2026-10-10 to 2026-10-24\"\nIE0008471009\nDate;Open;High;Low;Last;Close;\"Number of Shares\";\"Number of Trades\";Turnover\n23/10/2026;62.09;62.09;61.40;61.86;61.86;11045;221;681752;61.725\n22/10/2026;62.46;62.55;62.07;62.07;62.07;15337;142;955265;62.284968\n21/10/2026;62.56;63.29;62.50;63.29;63.29;13893;104;874979;62.979835\n20/10/2026;62.36;62.69;61.90;62.46;62.45;15778;152;981360;62.197966\n19/10/2026;62.85;62.90;62.36;62.63;62.63;17696;168;1108457;62.638827\n16/10/2026;63.15;63.46;63.14;63.23;63.23;10153;104;642738;63.305208\n15/10/2026;62.49;62.92;62.45;62.85;62.85;20611;330;1291677;62.669285\n14/10/2026;63.23;63.35;63.00;63.13;63.13;13926;100;879969;63.188952\n13/10/2026;63.18;63.44;62.86;62.87;62.87;11267;112;711878;63.182611\n12/10/2026;63.21;63.40;63.13;63.20;63.20;11991;114;758838;63.283978\n",
+  "url": "https://live.euronext.com/en/ajax/AwlHistoricalPrice/getFullDownloadAjax/IE0008471009-XAMS?format=csv&decimal_separator=.&date_form=d/m/Y&op=&adjusted=Y&base100=&startdate=2026-10-10&enddate=2026-10-24",
+  "fetchedAt": "2026-10-24T16:26:54.360Z"
+ }
+}

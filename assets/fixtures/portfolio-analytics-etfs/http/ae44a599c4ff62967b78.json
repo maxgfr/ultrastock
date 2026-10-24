@@ -1,0 +1,30 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://www.amundietf.fr/mapi/ProductAPI/getProductsData",
+  "json": {
+   "context": {
+    "countryCode": "FRA",
+    "languageCode": "fr",
+    "userProfileName": "RETAIL"
+   },
+   "productIds": [
+    "LU1681043599"
+   ],
+   "productType": "PRODUCT",
+   "characteristics": [
+    "SHARE_MARKETING_NAME",
+    "REPLICATION_METHODOLOGY",
+    "FUND_PEA",
+    "ASSET_CLASS"
+   ]
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"products\":[{\"productId\":\"LU1681043599\",\"characteristics\":{\"SHARE_MARKETING_NAME\":\"Amundi MSCI World Swap UCITS ETF EUR Acc\",\"REPLICATION_METHODOLOGY\":\"Indirect (Unfunded swap)\",\"FUND_PEA\":true,\"ASSET_CLASS\":\"Equity\"},\"productType\":\"PRODUCT\",\"currencies\":{\"CURRENCY\":\"EUR\",\"BASE_CURRENCY\":\"EUR\",\"INDEX_CURRENCY\":\"EUR\"},\"metrics\":[],\"historics\":[],\"passportingCountries\":null,\"composition\":null,\"breakDowns\":[]}]}",
+  "url": "https://www.amundietf.fr/mapi/ProductAPI/getProductsData",
+  "fetchedAt": "2026-10-24T16:26:54.723Z"
+ }
+}

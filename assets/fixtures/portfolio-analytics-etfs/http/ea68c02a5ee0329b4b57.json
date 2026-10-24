@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://live.euronext.com/en/instrumentSearch/searchJSON?q=EUEA"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "[{\"value\":\"IE0008471009\",\"isin\":\"IE0008471009\",\"mic\":\"XAMS\",\"label\":\"\\u003Cspan class=\\u0027name\\u0027\\u003E\\u003Ca href=\\u0027\\/en\\/product\\/etfs\\/IE0008471009-XAMS\\u0027 style=\\u0027color: #007aff !important;\\u0027\\u003EiShares Core EURO STOXX 50 UCITS ETF EUR (Dist)\\u003C\\/a\\u003E\\u003C\\/span\\u003E\\u003Cspan class=\\u0027symbol\\u0027\\u003EEUEA\\u003C\\/span\\u003E\\u003Cspan class=\\u0027mic\\u0027\\u003EXAMS\\u003C\\/span\\u003E\",\"link\":\"\\/en\\/product\\/etfs\\/IE0008471009-XAMS\",\"name\":\"ISHARES EURO STX50\"},{\"value\":\"\",\"isin\":\"\",\"mic\":\"\",\"label\":\"See all results\",\"link\":\"\\/en\\/search_instruments\\/euea?restMic\",\"name\":\"\"}]",
+  "url": "https://live.euronext.com/en/instrumentSearch/searchJSON?q=EUEA",
+  "fetchedAt": "2026-10-24T16:26:54.339Z"
+ }
+}

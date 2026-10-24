@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://mempool.space/api/v1/difficulty-adjustment"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"progressPercent\":61.111111111111114,\"difficultyChange\":5.182491195693739,\"estimatedRetargetDate\":1793305185600,\"remainingBlocks\":784,\"remainingTime\":447585600,\"previousRetarget\":5.923684832227039,\"previousTime\":1792154251,\"nextRetargetHeight\":973728,\"timeAvg\":570900,\"adjustedTimeAvg\":570900,\"timeOffset\":0,\"expectedBlocks\":1172.2483333333332}",
+  "url": "https://mempool.space/api/v1/difficulty-adjustment",
+  "fetchedAt": "2026-10-24T16:00:00.662Z"
+ }
+}

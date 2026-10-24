@@ -1,0 +1,77 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/france/scan",
+  "json": {
+   "columns": [
+    "description",
+    "close",
+    "price_earnings_ttm",
+    "price_book_fq",
+    "dividends_yield_current",
+    "market_cap_basic",
+    "sector",
+    "currency",
+    "fundamental_currency_code",
+    "isin"
+   ],
+   "range": [
+    0,
+    3
+   ],
+   "filter": [
+    {
+     "left": "type",
+     "operation": "equal",
+     "right": "stock"
+    },
+    {
+     "left": "is_primary",
+     "operation": "equal",
+     "right": true
+    },
+    {
+     "left": "price_earnings_ttm",
+     "operation": "greater",
+     "right": 0
+    },
+    {
+     "left": "price_earnings_ttm",
+     "operation": "less",
+     "right": 15
+    },
+    {
+     "left": "price_book_fq",
+     "operation": "greater",
+     "right": 0
+    },
+    {
+     "left": "price_book_fq",
+     "operation": "less",
+     "right": 2
+    },
+    {
+     "left": "dividends_yield_current",
+     "operation": "greater",
+     "right": 3
+    },
+    {
+     "left": "market_cap_basic",
+     "operation": "greater",
+     "right": 1000000000
+    }
+   ],
+   "sort": {
+    "sortBy": "price_earnings_ttm",
+    "sortOrder": "asc"
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":36,\"data\":[{\"s\":\"EURONEXT:MAU\",\"d\":[\"Etablissements Maurel & Prom SA\",8.055,3.849646339132097,1.1507915531471398,4.71756672873991,1584436603,\"Energy Minerals\",\"EUR\",\"EUR\",\"FR0000051070\"]},{\"s\":\"EURONEXT:PEUG\",\"d\":[\"Peugeot Invest SA\",52,5.425086853553953,0.3617443898836512,6.25,1289511490,\"Finance\",\"EUR\",\"EUR\",\"FR0000064784\"]},{\"s\":\"EURONEXT:ARG\",\"d\":[\"Argan\",67.4,6.541847441011755,0.7010325877182627,5.1186943620178,1736611778,\"Finance\",\"EUR\",\"EUR\",\"FR0010481960\"]}]}",
+  "url": "https://scanner.tradingview.com/france/scan",
+  "fetchedAt": "2026-10-24T16:05:50.952Z"
+ }
+}
