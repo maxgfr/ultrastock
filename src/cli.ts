@@ -84,6 +84,7 @@ USAGE
   ultrastock dividends <US symbol> [--limit <n>] [--out <dir>] [--json]
   ultrastock congress [--member <name>] [--doc <DocID>] [--year <yyyy>] [--limit <n>] [--out <dir>] [--json]
   ultrastock portfolio show|perf [--book real|paper] [--out <dir>] [--json]
+  ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name|file.json>] [--dry-run] [--json]
   ultrastock portfolio deposit|withdraw <account> <amount> [--currency EUR] [--date <date>] [--book real|paper]
   ultrastock portfolio add buy|sell|dividend|fee|interest|tax|split --account <id> [--symbol] [--quantity] [--price] [--amount] [--fee] [--currency] [--date] [--book]
   ultrastock plan <symbol> --account <id> [--entry <n>] [--stop <n>] [--target <a,b>] [--venue paper] [--ticket] [--out <dir>] [--json]
@@ -179,7 +180,19 @@ COMMANDS
             they hold, "paper" for simulation) — positions, cash, average cost
             (PMP) and FIFO lots recomputed from the transactions, marked to market
             in the base currency (ECB rates); perf gives the money-weighted return
-            (XIRR), realised results and the circuit breaker's state.
+            (XIRR), realised results and the circuit breaker's state. import
+            reads a broker statement into the ledger: IBKR Flex Query (XML or
+            CSV) and Activity Statement CSV, Binance trade and transaction
+            history, Kraken trades.csv and ledgers.csv, Coinbase history, or any
+            CSV through a column map (--map '{"date":"Date","type":"Type",
+            "symbol":"Ticker","quantity":"Qty","price":"Price","fee":"Fees",
+            "amount":"Amount","currency":"Ccy"}', or boursorama, fortuneo,
+            trade-republic — unverified layouts, checked against the file's
+            headers). French or English numbers, dates and type words; re-import
+            adds nothing (content ids); a sell beyond holdings refuses the whole
+            file; skipped rows are listed with their reason; --dry-run writes
+            nothing. For crypto, --map '{"quote":"EUR"}' names the pair coin
+            deposits and rewards are booked against.
   plan      From a view to an order within the profile's limits: entry, a stop
             below support or 2 ATR, targets at 2R and 3R, the size from the risk
             per trade (and every cap), dry-run through the risk gate → ready,
@@ -269,8 +282,10 @@ export const VALUE_FLAGS = [
   "target",
   "venue",
   "status",
+  "format",
+  "map",
 ];
-export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket"];
+export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "dry-run"];
 export const COMMANDS = [
   "analyze",
   "quote",
@@ -343,7 +358,7 @@ const SPEC: CliSpec = {
     short: ["out", ...NET],
     dividends: ["limit", "out", ...NET],
     congress: ["member", "doc", "year", "limit", "out", ...NET],
-    portfolio: ["book", "account", "symbol", "quantity", "price", "amount", "fee", "currency", "date", "out", ...NET],
+    portfolio: ["book", "account", "symbol", "quantity", "price", "amount", "fee", "currency", "date", "format", "map", "dry-run", "out", ...NET],
     plan: ["account", "entry", "stop", "target", "venue", "ticket", "out", ...NET],
     ticket: ["status", ...NET],
     paper: ["out", ...NET],

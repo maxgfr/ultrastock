@@ -1,4 +1,5 @@
 // Portfolio, plans, tickets and paper trading.
+import { importCommand } from "./import.js";
 import { resolve } from "node:path";
 import { EvidenceStore } from "../core/evidence.js";
 import { clockNow } from "../core/net.js";
@@ -54,6 +55,7 @@ async function markBook(book: string) {
 export async function portfolioCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const [sub = "show", ...rest] = args.positional;
   const book = bookOf(args);
+  if (sub === "import") return importCommand(args, asJson);
   if (sub === "deposit" || sub === "withdraw") {
     const [account, amountRaw] = rest;
     const amount = num(amountRaw, "amount");
