@@ -1,0 +1,11 @@
+node_modules/
+coverage/
+*.tsbuildinfo
+*.tgz
+.DS_Store
+.impeccable/
+
+# agent skill installs (produced by `npx skills add .`, never committed)
+.agents/skills/
+.claude/skills/
+skills-lock.json
