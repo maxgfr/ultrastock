@@ -14,6 +14,7 @@ import { fetchJson } from "../core/net.js";
 import { appendTransactions, buildBook, readLedger } from "../portfolio/ledger.js";
 import { getHistory, getQuote, resolveSymbol } from "../providers/router.js";
 import { executionRefusal, type Fill, listTickets, loadTicket, type Ticket, transition } from "./tickets.js";
+import { simulatePredictionFill } from "./prediction.js";
 import type { Order } from "./riskgate.js";
 
 export interface FeeModel {
@@ -59,6 +60,7 @@ export type PaperOutcome = { kind: "fill"; fill: Fill; note?: string } | { kind:
 
 /** What filling this order now would give, without booking anything. */
 export async function simulateFill(order: Order, now: Date): Promise<PaperOutcome> {
+  if (order.assetKind === "prediction") return simulatePredictionFill(order, now);
   const resolved = await resolveSymbol(order.symbol);
   const market = resolved.instrument.market;
   if (market === "crypto") {

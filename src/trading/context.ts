@@ -10,6 +10,7 @@ import { ecbFx } from "../providers/macro/ecb.js";
 import { frankfurterLatest } from "../providers/macro/frankfurter.js";
 import { getQuote, resolveSymbol } from "../providers/router.js";
 import type { QuoteResult } from "../providers/types.js";
+import { parsePredictionSymbol, predictionQuote } from "./prediction.js";
 import { breakerState, closedTradeResults, readEquity, recordEquity } from "./breaker.js";
 import type { GateContext, Order } from "./riskgate.js";
 import { listTickets, readAudit } from "./tickets.js";
@@ -52,14 +53,20 @@ export async function gateContextFor(order: Order, opts: { book?: string; now?: 
   const txs = readLedger(bookName);
   const book = buildBook(txs);
   const held = book.positions.filter((p) => p.quantity > 0);
-  const resolved = await resolveSymbol(order.symbol);
-  const quote = await getQuote(resolved, now);
+  const contract = parsePredictionSymbol(order.symbol);
+  const resolved = contract ? undefined : await resolveSymbol(order.symbol);
+  const quote = contract ? await predictionQuote(order.symbol) : await getQuote(resolved!, now);
   const symbols = [...new Set(held.map((p) => p.symbol))].filter((s) => s !== order.symbol).slice(0, 40);
   const notes: string[] = [];
   const prices: Record<string, number> = { [order.symbol]: quote.price };
-  const kinds: Record<string, string> = { [order.symbol]: resolved.instrument.market };
+  const kinds: Record<string, string> = { [order.symbol]: resolved?.instrument.market ?? "prediction" };
   await mapLimit(symbols, 4, async (s) => {
     try {
+      if (parsePredictionSymbol(s)) {
+        prices[s] = (await predictionQuote(s)).price;
+        kinds[s] = "prediction";
+        return;
+      }
       const r = await resolveSymbol(s);
       prices[s] = (await getQuote(r, now)).price;
       kinds[s] = r.instrument.market;

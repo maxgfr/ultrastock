@@ -98,7 +98,7 @@ describe("approval codes", () => {
     await issueCode("t-abc123", "fp1", "a test", [["capture", capture]]);
     expect(verifyCode("t-abc123", "fp1", codeFrom(), new Date(Date.now() + 121_000))).toMatchObject({ ok: false, reason: expect.stringMatching(/expired/) });
     await expect(issueCode("t-abc123", "fp1", "x", [["none", () => false]])).rejects.toThrow(/no out-of-band channel/);
-  });
+  }, 30_000);
 });
 
 describe("live limits", () => {

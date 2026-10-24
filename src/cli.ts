@@ -128,6 +128,7 @@ USAGE
   ultrastock predict-analysis kalshi <SERIES|market:TICKER> | manifold <terms> [--my-probability <p>] [--kalshi-fee <coef>] [--contracts <n>] [--limit <n>] [--out <dir>] [--json]
   ultrastock crypto global|top|coin|derivatives|defi|yields|stables|fees|onchain|dex|holders [<target>] [--limit <n>] [--out <dir>] [--json]
   ultrastock predict kalshi|manifold|polymarket [<query>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock predict order kalshi <TICKER> yes|no [buy|sell] --contracts <n> --price <0-1> [--account <id>] [--json]
   ultrastock snapshot <symbol> [--market <tv-market>] [--out <dir>] [--json]
   ultrastock doctor [--probe] [--json]
   ultrastock version
@@ -368,6 +369,10 @@ COMMANDS
             metrics (CoinMetrics, mempool.space), DEX pairs, holder concentration.
   predict   Prediction markets: Kalshi (regulated), Manifold (play money),
             Polymarket — refused where the profile's jurisdiction blocks it.
+            order: a paper ticket for a Kalshi contract (KALSHI:<TICKER>:YES|NO),
+            checked by the risk gate — a venue blocked for the jurisdiction is
+            refused even on paper, an unverified one is paper only — then filled
+            by \`paper submit\` against Kalshi's live book with its taker fee.
             Questions and rules are external text, fenced as untrusted.
   snapshot  A cross-venue snapshot from TradingView's scanner (unofficial):
             price, valuation ratios, performance, technical rating.
@@ -697,7 +702,7 @@ const SPEC: CliSpec = {
     "crypto-analysis": ["days", "limit", "out", ...NET],
     "predict-analysis": ["my-probability", "kalshi-fee", "contracts", "limit", "out", ...NET],
     crypto: ["limit", "out", ...NET],
-    predict: ["limit", "out", ...NET],
+    predict: ["limit", "contracts", "price", "account", "out", ...NET],
     snapshot: ["market", "out", ...NET],
     doctor: ["probe", "json"],
   },

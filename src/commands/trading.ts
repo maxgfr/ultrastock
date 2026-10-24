@@ -1,4 +1,5 @@
 // Portfolio, plans, tickets and paper trading.
+import { parsePredictionSymbol, predictionQuote } from "../trading/prediction.js";
 import { importCommand } from "./import.js";
 import { PORTFOLIO_ANALYTICS_ACTIONS, portfolioAnalyticsCommand } from "./portfolio-analytics.js";
 import { resolve } from "node:path";
@@ -42,7 +43,7 @@ async function markBook(book: string) {
   const notes: string[] = [];
   await mapLimit([...new Set(held.map((p) => p.symbol))], 4, async (s) => {
     try {
-      prices[s] = (await getQuote(await resolveSymbol(s), now)).price;
+      prices[s] = parsePredictionSymbol(s) ? (await predictionQuote(s)).price : (await getQuote(await resolveSymbol(s), now)).price;
     } catch (e) {
       notes.push(`could not price ${s}: ${(e as Error).message}`);
     }
