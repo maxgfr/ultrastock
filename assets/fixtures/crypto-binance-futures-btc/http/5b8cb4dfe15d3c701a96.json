@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://fapi.binance.com/futures/data/takerlongshortRatio?symbol=BTCUSDT&period=1d&limit=2"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "[{\"buySellRatio\":\"0.9085\",\"sellVol\":\"92281.3750\",\"buyVol\":\"83838.2840\",\"timestamp\":1792627200000},{\"buySellRatio\":\"1.0037\",\"sellVol\":\"55679.0920\",\"buyVol\":\"55887.0680\",\"timestamp\":1792713600000}]",
+  "url": "https://fapi.binance.com/futures/data/takerlongshortRatio?symbol=BTCUSDT&period=1d&limit=2",
+  "fetchedAt": "2026-10-24T15:18:50.478Z"
+ }
+}

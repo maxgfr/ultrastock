@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.exchange.coinbase.com/products/BTC-EUR/stats"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"open\":\"72842.17\",\"high\":\"73023.13\",\"low\":\"71010.01\",\"last\":\"71154.36\",\"volume\":\"139.20837895\",\"volume_30day\":\"5176.69728463\",\"rfq_volume_24hour\":\"1.613269\",\"rfq_volume_30day\":\"147.254434\"}",
+  "url": "https://api.exchange.coinbase.com/products/BTC-EUR/stats",
+  "fetchedAt": "2026-10-24T15:15:30.893Z"
+ }
+}

@@ -1,0 +1,52 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/global/scan",
+  "json": {
+   "symbols": {
+    "tickers": [
+     "XETR:SAP"
+    ]
+   },
+   "columns": [
+    "description",
+    "close",
+    "change",
+    "currency",
+    "volume",
+    "market_cap_basic",
+    "price_earnings_ttm",
+    "earnings_per_share_basic_ttm",
+    "dividends_yield_current",
+    "beta_1_year",
+    "Recommend.All",
+    "RSI",
+    "SMA50",
+    "SMA200",
+    "price_52_week_high",
+    "price_52_week_low",
+    "Perf.W",
+    "Perf.1M",
+    "Perf.3M",
+    "Perf.6M",
+    "Perf.Y",
+    "Perf.YTD",
+    "sector",
+    "industry",
+    "country",
+    "isin",
+    "exchange",
+    "type",
+    "fundamental_currency_code",
+    "update_mode"
+   ]
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":1,\"data\":[{\"s\":\"XETR:SAP\",\"d\":[\"SAP SE\",214.4,-0.44114232644531626,\"EUR\",2056239,280786638586.95245,30.442005423902085,8.030476192,1.1660447761194,1.1342772,0.3090909090909091,76.51770337763874,188.61239999999987,164.96655000000027,235.8,127.5,6.879361914257234,15.954570037858302,63.81418092909537,44.7279600378021,-10.442773600668337,3.1265031265031262,\"Technology Services\",\"Packaged Software\",\"Germany\",\"DE0007164600\",\"XETR\",\"stock\",\"USD\",\"delayed_streaming_900\"]}]}",
+  "url": "https://scanner.tradingview.com/global/scan",
+  "fetchedAt": "2026-10-24T15:14:14.892Z"
+ }
+}
