@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://mempool.space/api/v1/mining/hashrate/3d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"hashrates\":[{\"timestamp\":1792627200,\"avgHashrate\":1.093159018523595e+21},{\"timestamp\":1792713600,\"avgHashrate\":867196770427240300000},{\"timestamp\":1792800000,\"avgHashrate\":1.228440877731275e+21}],\"difficulty\":[],\"currentHashrate\":1.075610714506304e+21,\"currentDifficulty\":140577680051919.6}",
+  "url": "https://mempool.space/api/v1/mining/hashrate/3d",
+  "fetchedAt": "2026-10-24T16:00:00.360Z"
+ }
+}

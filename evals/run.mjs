@@ -65,7 +65,7 @@ for (const name of readdirSync(join(here, "cases")).sort()) {
   console.log(`${name} — ${spec.kind}`);
   const run = mkdtempSync(join(scratch, `${name}-`));
   const source = suite === "offline" ? ["--fixture", join(root, spec.fixture)] : [];
-  const a = cli(["analyze", spec.symbol, "--out", run, ...source]);
+  const a = cli(["analyze", spec.symbol, "--depth", spec.depth ?? "quick", "--out", run, ...source]);
   ok(a.status === 0, `analyze ${spec.symbol} (${a.status === 0 ? `${a.json.evidence} evidence, as of ${a.json.asOf}` : a.stderr.trim()})`);
   if (a.status !== 0) continue;
   ok(a.json.evidence >= spec.expect.evidenceMin, `at least ${spec.expect.evidenceMin} evidence items (got ${a.json.evidence})`);

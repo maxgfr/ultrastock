@@ -39,6 +39,9 @@ const FILING_FIELDS: Record<string, Field> = {
   ppe: "ppe",
   retainedEarnings: "retainedEarnings",
   longTermDebtNoncurrent: "longTermDebt",
+  // The year's weighted average count stands in when no period-end count is filed (IFRS filings rarely tag one);
+  // the latest reported count, when there is one, replaces it on the newest year.
+  weightedAverageShares: "sharesOutstanding",
 };
 
 /** crible period columns → period fields. */

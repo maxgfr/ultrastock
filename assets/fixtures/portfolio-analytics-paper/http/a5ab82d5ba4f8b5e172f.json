@@ -1,0 +1,25 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/global/scan",
+  "json": {
+   "symbols": {
+    "tickers": [
+     "NASDAQ:NVDA"
+    ]
+   },
+   "columns": [
+    "sector",
+    "isin",
+    "country"
+   ]
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":1,\"data\":[{\"s\":\"NASDAQ:NVDA\",\"d\":[\"Electronic Technology\",\"US67066G1040\",\"United States\"]}]}",
+  "url": "https://scanner.tradingview.com/global/scan",
+  "fetchedAt": "2026-10-24T16:25:00.278Z"
+ }
+}
