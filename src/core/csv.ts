@@ -73,3 +73,12 @@ export function parseLooseNumber(raw: string | undefined): number | undefined {
   const n = Number(s);
   return Number.isFinite(n) ? n : undefined;
 }
+
+/** Rows as RFC 4180 CSV (quotes doubled, fields with a comma, quote or newline quoted), CRLF line ends. */
+export function toCsv(rows: ReadonlyArray<ReadonlyArray<string | number | boolean | undefined>>): string {
+  const cell = (v: string | number | boolean | undefined) => {
+    const s = v === undefined ? "" : String(v);
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return `${rows.map((r) => r.map(cell).join(",")).join("\r\n")}\r\n`;
+}
