@@ -90,5 +90,20 @@ for (const name of readdirSync(join(here, "cases")).sort()) {
   );
 }
 
+if (suite === "network") {
+  console.log("sources — one live call per family");
+  const { checks } = JSON.parse(readFileSync(join(here, "sources.json"), "utf8"));
+  for (const c of checks) {
+    const run = mkdtempSync(join(scratch, "src-"));
+    const r = cli([...c.args, "--out", run]);
+    const keys = (cli(["evidence", run]).json?.items ?? []).map((i) => i.key);
+    const missing = c.keys.filter((k) => !keys.some((x) => x.startsWith(k)));
+    ok(
+      r.status === 0 && missing.length === 0,
+      `${c.args.join(" ")} (${r.status === 0 ? (missing.length ? `missing ${missing.join(", ")}` : `${keys.length} evidence`) : r.stderr.trim().slice(0, 160)})`,
+    );
+  }
+}
+
 console.log(`\nevals (${suite}): ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
