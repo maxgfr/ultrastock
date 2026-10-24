@@ -1,6 +1,7 @@
 // What this machine can do: the version, where state lives, whether Node is
 // recent enough for live trading, which external tools are installed, and —
 // with --probe — whether each data source answers right now, and how fast.
+import { MATURITY } from "./core/maturity.js";
 import { checkDnsBlock, ruleStatus } from "./core/jurisdiction.js";
 import { fetchText } from "./core/net.js";
 import { dataCacheDir, homeDir } from "./core/paths.js";
@@ -41,6 +42,8 @@ export interface DoctorReport {
   secContact: boolean;
   probes?: ProbeReport[];
   blocks?: Array<{ host: string; blocked: boolean; detail: string }>;
+  /** Commands by maturity: stable, beta (unofficial sources), experimental (live venues). */
+  maturity: Record<string, string[]>;
 }
 
 const PROBES: Array<{ source: string; url: string }> = [
@@ -82,6 +85,7 @@ export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) 
     tools,
     crible: { dataDir: cribleDataDir(), bootstrapped: cribleBootstrapped(), tag: CRIBLE_TAG },
     secContact: !!process.env.ULTRASTOCK_SEC_CONTACT?.trim(),
+    maturity: byMaturity(),
   };
   if (opts.probe) {
     report.probes = await Promise.all(
@@ -117,5 +121,12 @@ export function formatDoctor(r: DoctorReport): string {
     for (const p of r.probes) lines.push(`    ${p.source.padEnd(10)} ${p.ok ? "ok" : "FAIL"} ${String(p.ms).padStart(5)} ms${p.note ? ` — ${p.note}` : ""}`);
   }
   for (const b of r.blocks ?? []) lines.push(`  block       ${b.host}: ${b.blocked ? `BLOCKED — ${b.detail}` : b.detail}`);
+  for (const [level, cmds] of Object.entries(r.maturity)) lines.push(`  ${level.padEnd(12)}${cmds.join(" ")}`);
   return `${lines.join("\n")}\n`;
+}
+
+function byMaturity(): Record<string, string[]> {
+  const out: Record<string, string[]> = { stable: [], beta: [], experimental: [] };
+  for (const [cmd, level] of Object.entries(MATURITY)) out[level]!.push(cmd);
+  return out;
 }

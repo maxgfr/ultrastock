@@ -1,96 +1,146 @@
 # ultrastock
 
-An investing copilot for an agent, built for real money: it reads prices from
-the exchanges and regulators themselves — Euronext, Nasdaq, Binance — computes
-the indicators, and numbers every figure as an evidence `[E#]` with its source,
-its date and its delay. The agent writes the analysis; `ultrastock check`
-refuses any answer that states a number the evidence does not hold. Keyless.
+An investing copilot for an agent, built for real money. It covers US and
+European stocks and ETFs (PEA, CTO, assurance-vie), crypto and prediction
+markets. It reads public, keyless data from the exchanges, regulators and
+filings themselves, and numbers every figure as an evidence `[E#]` with its
+source, its date and its delay.
+
+The agent analyses, debates, decides and writes. `ultrastock check` refuses
+any answer that states a number the evidence does not hold. From there the
+same tool sizes the trade within the user's limits, runs it through a
+deterministic risk gate, paper-trades it, journals the call and settles it
+against the market. It prepares the tax return. It can also send a real order,
+but only behind hard guards and a code only the human can read.
 
 ```bash
 npx skills add maxgfr/ultrastock
 ```
 
 Works with any skills-compatible agent (Claude Code, Codex, Cursor, Gemini CLI,
-OpenCode and [many more](https://github.com/vercel-labs/skills)); add `-a <agent>`
-to pick one, `-g` to install it for every project.
+OpenCode and [many more](https://github.com/vercel-labs/skills)). Add
+`-a <agent>` to pick one, or `-g` to install it for every project. It also
+runs as an MCP server (`ultrastock mcp`).
 
-> **Status — 0.x, under construction.** Today: analysis of Euronext, US and
-> crypto instruments with cited, checked evidence. Coming, milestone by
-> milestone ([issues](https://github.com/maxgfr/ultrastock/issues)): profile and
-> jurisdiction rules (PEA, MiCA, PRIIPs), every public data source
-> (fundamentals from SEC and ESEF filings, macro, options, smart money, news),
-> screening, a multi-perspective debate, portfolio and risk, a deterministic
-> risk gate, paper trading, backtesting without look-ahead, FR/US tax, and
-> guarded opt-in brokers. ultrastock is decision support, not a licensed
-> adviser, and it places no order today.
+> ultrastock is decision support, not a licensed adviser (CIF/AMF, RIA). Its
+> output is information, not personalised advice.
 
 ## Invocation
 
 ```text
-/ultrastock analyse LVMH
-/ultrastock should I buy NVDA? technical read only
-/ultrastock quelle est la tendance du bitcoin ?
+/ultrastock analyse LVMH — faut-il renforcer ?
+/ultrastock find quality-growth stocks eligible for a PEA
+/ultrastock is the US market risk-on? how much should I be invested?
+/ultrastock backtest a 50/200 moving-average cross on bitcoin, honestly
+/ultrastock prépare ma déclaration 2025 : PEA, CTO chez IBKR, crypto sur Kraken
 ```
 
 ## Why
 
 An agent asked about a stock answers from memory: last year's price, a P/E it
-half remembers, a target it made up. ultrastock makes every figure a fetched,
-dated, sourced fact, and makes the answer prove it:
+half remembers, a target it made up, a backtest that peeks at tomorrow.
+ultrastock makes every figure a fetched, dated, sourced fact, and makes the
+answer prove it:
 
-1. `analyze MC.PA --out <dir>` writes `evidence.json` — `[E1] MC.PA latest price
-   = 383 EUR (euronext, as of 2026-10-23, eod)` and 25 more — and `BRIEF.md`.
+1. `analyze MC.PA --out <dir>` gathers the evidence and writes `BRIEF.md` and
+   `RUNBOOK.md`. The evidence covers price and risk, the technical panel,
+   valuation, catalysts, the market regime, news, insiders, analysts, the
+   user's position, limits and jurisdiction, and past decisions. The runbook
+   is a TradingAgents-style debate: analysts → bull / bear → judge → trader →
+   risk trio → portfolio manager.
 2. The agent computes anything else with `calc <dir> "(E1 / E6 - 1) * 100"`,
    which registers the result as a new `[E#]`.
-3. `check <dir> answer.md` exits 1 on a figure with no `[E#]`, an `[E#]` the run
-   does not hold, or a figure none of its `[E#]` holds — "385,00 € is in none
-   of [E1] [E2]".
+3. `decide` records the call. It refuses a call with no falsifier, or a plan
+   with no stop. `check` exits 1 on any figure without an `[E#]`, or with one
+   that does not hold it. `report` renders the page.
+4. `journal settle` scores the call at +5, +20 and +60 sessions against a
+   benchmark. The hit rates are the honest record.
 
-## What you get
+## What it covers
 
-| Data | Source | Delay | Official |
-|---|---|---|---|
-| Euronext equities, ETFs, indices (Paris, Amsterdam, Brussels, Lisbon, Milan, Oslo, Dublin) | live.euronext.com | end of day, 2 years | yes |
-| US stocks and ETFs | api.nasdaq.com | delayed / last sale, 10 years | no |
-| Crypto spot pairs | api.binance.com | real time, closed bars | yes |
+| Area | Commands | Sources (keyless) |
+|---|---|---|
+| Prices | `quote`, `history`, `analyze`, `technicals` (107 indicators, patterns, Minervini, VCP) | Euronext (official, end of day), Nasdaq, Yahoo for other EU venues, Binance → Kraken → Coinbase |
+| Companies | `fundamentals` (point in time), `valuation` (Piotroski, Altman, Beneish, DCF, reverse DCF), `filings`, `insiders`, `holdings`, `analyst`, `short`, `dividends`, `congress` | SEC EDGAR, ESEF filings (filings.xbrl.org), crible, AMF, FINRA, House Clerk |
+| Ideas | `screen` (TradingView presets per market, builtin technical screens per index, crible DSL), `universe` | TradingView scanner, crible, Wikipedia |
+| Market | `regime` (exposure coach), `sectors`, `catalysts`, `macro`, `rates`, `fx`, `calendar`, `sentiment`, `cot`, `news` | Treasury, ECB, Eurostat, INSEE, BLS, World Bank, CBOE, CNN, CFTC, Nasdaq, Google News, GDELT |
+| Derivatives, crypto, prediction | `options`, `options-analysis` (GEX, skew, P&L matrix), `crypto`, `crypto-analysis`, `predict`, `predict-analysis` | CBOE, Deribit, Binance futures, CoinGecko, DefiLlama, CoinMetrics, Kalshi, Manifold; Polymarket only where lawful |
+| Portfolio | `portfolio show/perf/import/risk/stress/optimize/rebalance/location/lookthrough/income/goals` | The user's ledger, with statements imported from IBKR, Binance, Kraken, Coinbase or any CSV |
+| Trading | `plan`, `ticket`, `paper`, `broker` | The risk gate; paper fills on live books; Binance, Kraken, Coinbase, IBKR and Kalshi behind every guard |
+| Learning | `decide`, `journal`, `watch`, `knowledge`, `report` | The user's own journal |
+| Research | `backtest` (walk-forward, CPCV, deflated Sharpe, PBO, Monte Carlo, review), `strategy`, `stats` | The same price sources |
+| Tax | `tax report/lots/harvest/rules/verify/export` (FR and US) | Sourced, yearly parameters, with a verification checklist |
 
-Per instrument: latest price, 52-week range, 1m/3m/6m/1y returns, SMA50/SMA200
-and the trend state, RSI(14), MACD(12,26,9), ATR(14), Bollinger(20,2),
-annualised volatility and maximum drawdown — each an `[E#]`.
+Optional free keys add sources: FRED, CoinGecko, a Solana RPC.
+`doctor --probe` lists what is reachable and what is active, and the maturity
+of each command: **stable**, **beta** (unofficial sources) or
+**experimental** (live venues).
+
+## Safety
+
+- **No figure from the model.** Every number is an `[E#]` with its
+  provenance, and the answer is checked against them.
+- **External text is data.** Headlines, filings and market rules are fenced as
+  untrusted. They never fill a ticket, an alert or a profile.
+- **A deterministic risk gate.** Every check has a reason code: stop, risk per
+  trade, position, sector and crypto caps, cash buffer, the kill switch, the
+  circuit breaker (daily, weekly and monthly loss), the overtrading guard,
+  PRIIPs and the jurisdiction.
+- **Live orders behind every guard.**
+  - The switches: `ULTRASTOCK_LIVE=1`, set by the user, plus a ready paper
+    record.
+  - Venue and key: the venue must be authorised for the user's country (the
+    ESMA MiCA register for crypto platforms; Binance is not, for France), and
+    the key must not be able to withdraw.
+  - The order: a limit within 1 % of the venue's book, inside the per-order
+    and per-day limits of the experience tier.
+  - Approval: a **6-digit code delivered out of band**, never in the agent's
+    output, bound to that exact order.
+  - Sending: **one request**. A lost answer is reconciled with the venue,
+    never resent.
+- **Limits ratchet.** They tighten at once. Loosening takes a code and 24
+  hours.
+- **Keys stay in the OS keychain**, are never taken on a command line, and
+  are redacted everywhere. No withdrawal or transfer endpoint exists in the
+  code.
+- **Jurisdiction.** Polymarket is blocked for France (ANJ) and not even
+  paper-traded. Kalshi is paper only from France. A block is never worked
+  around.
+- **Tax figures** carry their sources and verification date. The skill makes
+  the agent re-check each year's parameters by web search before stating an
+  amount.
 
 ## Commands
 
-| Command | What it does |
-|---|---|
-| `ultrastock analyze <symbol>` | The instrument's evidence into a run: `evidence.json`, `BRIEF.md`, `RUNBOOK.md`. |
-| `ultrastock quote <symbol>` | The latest price; `--out <dir>` registers it as evidence. |
-| `ultrastock history <symbol>` | Daily bars (`--from`, `--to`, `--limit`), crypto down to 15 minutes (`--interval`). |
-| `ultrastock calc <run> <formula>` | A derived figure from `E` ids, registered as a new `[E#]` (`--label`, `--unit`). |
-| `ultrastock evidence <run>` | The run's evidence, one `[E#]` per line. |
-| `ultrastock check <run> <answer.md>` | Every figure cited and found; `--max-age 1d` also fails stale figures. Exits 1 with a report otherwise. |
-| `ultrastock doctor` | Version, state directory, Node, external tools; `--probe` times each source. |
-
-Network commands take `--record <dir>` / `--fixture <dir>` (record and replay
-what the sources answered), `--refresh` and `--offline` (the dataset cache);
-every command takes `--json`. Node ≥ 18, nothing to install.
+`ultrastock --help` lists every command and flag. Everything takes `--json`.
+Data commands take `--out <run>` so their figures become citable evidence.
+Network commands take `--record <dir>` / `--fixture <dir>` (record and replay)
+and `--refresh` / `--offline` (the dataset cache). Node ≥ 18 for analysis and
+paper trading, Node ≥ 22 for live orders. Nothing to install.
 
 | Variable | Sets |
 |---|---|
-| `ULTRASTOCK_HOME` | state directory — runs now; profile, ledger and journal later (default `~/.ultrastock`) |
-| `ULTRASTOCK_CACHE_DIR` | dataset cache (default `ULTRASTOCK_HOME/cache`) |
-| `ULTRASTOCK_TIMEOUT_MS` | network budget per attempt (default 20000) |
+| `ULTRASTOCK_HOME` | the state directory — profile, ledger, tickets, journal, runs, audit trail (default `~/.ultrastock`) |
+| `ULTRASTOCK_CACHE_DIR` | the dataset cache (default `ULTRASTOCK_HOME/cache`) |
+| `ULTRASTOCK_SEC_CONTACT` | your e-mail for SEC EDGAR's fair-access policy |
+| `ULTRASTOCK_FRED_API_KEY`, `ULTRASTOCK_COINGECKO_API_KEY`, `ULTRASTOCK_SOLANA_RPC` | optional keys |
+| `ULTRASTOCK_NTFY_URL` + `ULTRASTOCK_NTFY_TOKEN`, `ULTRASTOCK_WEBHOOK_URLS` + `ULTRASTOCK_WEBHOOK_ALLOWLIST` | alert and approval-code channels |
+| `ULTRASTOCK_LIVE`, `ULTRASTOCK_IBKR_CA_FILE`, `ULTRASTOCK_IBKR_CERT_SHA256`, `ULTRASTOCK_IBKR_URL` | live trading, and the pinned IBKR gateway |
+| `ULTRASTOCK_MCP_TOKEN` | the bearer token of `mcp --transport http` |
 
-## Security
+## MCP
 
-- No API key, no account, nothing sent anywhere but the public data sources it reads.
-- State lives outside the skill directory, under `ULTRASTOCK_HOME`; the repository holds no personal data.
-- The formula language of `calc` is parsed, never evaluated as code: it reads only evidence ids and a whitelist of functions.
-- A source's refusal (a jurisdiction block, a rate limit) is reported, never worked around.
-- The engine is [webindex](https://github.com/maxgfr/webindex), vendored by tag and sha256 (`src/vendor/webindex.meta.json`) and checked in CI (`webindex skill vendor --check`).
+`ultrastock mcp` serves the commands as tools over stdio. With
+`--transport http --token <24+ chars>` it serves them over HTTP on 127.0.0.1,
+and the bearer token is mandatory. The tools are read-only, plus ticket
+creation through `plan`. No tool submits an order, edits the profile or the
+ledger, stores a key or moves a limit: those stay in front of the user.
 
 ## Maintenance
 
-How it works: [DOCUMENTATION.md](DOCUMENTATION.md). Contributing: [CONTRIBUTING.md](CONTRIBUTING.md). See [shared engine maintenance](ENGINE-MAINTENANCE.md) for the engine pin and the daily repin workflow.
+How it works: [DOCUMENTATION.md](DOCUMENTATION.md). Contributing:
+[CONTRIBUTING.md](CONTRIBUTING.md). The engine pin and the daily repin
+workflow: [shared engine maintenance](ENGINE-MAINTENANCE.md).
 
 ## License
 

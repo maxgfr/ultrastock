@@ -32,7 +32,7 @@ if (suite !== "offline" && suite !== "network") {
 
 // Never read or write the user's own state while evaluating.
 const scratch = mkdtempSync(join(tmpdir(), "ultrastock-evals-"));
-const env = { ...process.env, ULTRASTOCK_HOME: join(scratch, "home"), ULTRASTOCK_CACHE_DIR: join(scratch, "cache") };
+const env = { ...process.env, ULTRASTOCK_HOME: join(scratch, "home"), ULTRASTOCK_CACHE_DIR: join(scratch, "cache"), ULTRASTOCK_CODE_CHANNELS: "none" };
 
 /** Run the bundle; returns exit status and parsed JSON stdout. */
 function cli(args) {
@@ -88,6 +88,25 @@ for (const name of readdirSync(join(here, "cases")).sort()) {
     bad.status === 1 && badFails.length === spec.answers.bad,
     `bad answer fails check with ${spec.answers.bad} problems (got ${badFails.length}${badFails.length !== spec.answers.bad ? `: ${badFails.map((p) => p.message).join("; ")}` : ""})`,
   );
+}
+
+if (suite === "offline") {
+  // The safety contracts: what must be refused, whatever the agent asks.
+  console.log("guards — refusals that never need the network");
+  cli(["profile", "init", "--jurisdiction", "FR"]);
+  const poly = cli(["predict", "polymarket", "election"]);
+  ok(poly.status !== 0 && /BLOCKED_JURISDICTION/.test(poly.stderr), "Polymarket is refused for a French resident (BLOCKED_JURISDICTION), before any request");
+  const noKey = cli(["broker", "submit", "t-20260101000000-deadbeef", "--venue", "kraken", "--env", "live"]);
+  ok(noKey.status !== 0, "broker submit on an unknown ticket is refused");
+  const loosen = cli(["broker", "limits", "set", "--max-order", "100000", "--max-daily", "100000"]);
+  ok(
+    loosen.status === 0 && loosen.json?.applied === false && /approval code/.test(loosen.json?.reason ?? ""),
+    "loosening the live limits without an approval code is refused",
+  );
+  const tighten = cli(["broker", "limits", "set", "--max-order", "100", "--max-daily", "200"]);
+  ok(tighten.status === 0 && tighten.json?.applied === true, "tightening the live limits applies at once");
+  const code = cli(["broker", "code", "limits", "--max-order", "500"]);
+  ok(!JSON.stringify(code.json ?? {}).match(/\b\d{6}\b/) && !/\b\d{6}\b/.test(code.stderr ?? ""), "an approval code never appears in the command's output");
 }
 
 if (suite === "network") {
