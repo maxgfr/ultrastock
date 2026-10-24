@@ -1,0 +1,40 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://api.openfigi.com/v3/mapping",
+  "json": [
+   {
+    "idType": "ID_CUSIP",
+    "idValue": "037833100",
+    "exchCode": "US"
+   },
+   {
+    "idType": "ID_CUSIP",
+    "idValue": "025816109",
+    "exchCode": "US"
+   },
+   {
+    "idType": "ID_CUSIP",
+    "idValue": "191216100",
+    "exchCode": "US"
+   },
+   {
+    "idType": "ID_CUSIP",
+    "idValue": "02079K305",
+    "exchCode": "US"
+   },
+   {
+    "idType": "ID_CUSIP",
+    "idValue": "060505104",
+    "exchCode": "US"
+   }
+  ]
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "[{\"data\":[{\"figi\":\"BBG000B9XRY4\",\"name\":\"APPLE INC\",\"ticker\":\"AAPL\",\"exchCode\":\"US\",\"compositeFIGI\":\"BBG000B9XRY4\",\"securityType\":\"Common Stock\",\"marketSector\":\"Equity\",\"shareClassFIGI\":\"BBG001S5N8V8\",\"securityType2\":\"Common Stock\",\"securityDescription\":\"AAPL\"}]},{\"data\":[{\"figi\":\"BBG000BCQZS4\",\"name\":\"AMERICAN EXPRESS CO\",\"ticker\":\"AXP\",\"exchCode\":\"US\",\"compositeFIGI\":\"BBG000BCQZS4\",\"securityType\":\"Common Stock\",\"marketSector\":\"Equity\",\"shareClassFIGI\":\"BBG001S5P034\",\"securityType2\":\"Common Stock\",\"securityDescription\":\"AXP\"}]},{\"data\":[{\"figi\":\"BBG000BMX289\",\"name\":\"COCA-COLA CO/THE\",\"ticker\":\"KO\",\"exchCode\":\"US\",\"compositeFIGI\":\"BBG000BMX289\",\"securityType\":\"Common Stock\",\"marketSector\":\"Equity\",\"shareClassFIGI\":\"BBG001S5SMQ8\",\"securityType2\":\"Common Stock\",\"securityDescription\":\"KO\"}]},{\"data\":[{\"figi\":\"BBG009S39JX6\",\"name\":\"ALPHABET INC-CL A\",\"ticker\":\"GOOGL\",\"exchCode\":\"US\",\"compositeFIGI\":\"BBG009S39JX6\",\"securityType\":\"Common Stock\",\"marketSector\":\"Equity\",\"shareClassFIGI\":\"BBG009S39JY5\",\"securityType2\":\"Common Stock\",\"securityDescription\":\"GOOGL\"}]},{\"data\":[{\"figi\":\"BBG000BCTLF6\",\"name\":\"BANK OF AMERICA CORP\",\"ticker\":\"BAC\",\"exchCode\":\"US\",\"compositeFIGI\":\"BBG000BCTLF6\",\"securityType\":\"Common Stock\",\"marketSector\":\"Equity\",\"shareClassFIGI\":\"BBG001S5P0Y0\",\"securityType2\":\"Common Stock\",\"securityDescription\":\"BAC\"}]}]",
+  "url": "https://api.openfigi.com/v3/mapping",
+  "fetchedAt": "2026-10-24T15:29:36.453Z"
+ }
+}

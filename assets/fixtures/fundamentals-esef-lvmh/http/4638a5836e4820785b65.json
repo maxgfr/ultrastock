@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://filings.xbrl.org/api/entities?filter=%5B%7B%22name%22%3A%22name%22%2C%22op%22%3A%22ilike%22%2C%22val%22%3A%22%25lvmh%25%22%7D%5D&page[size]=10"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"data\": [{\"type\": \"entity\", \"id\": \"14\", \"attributes\": {\"identifier\": \"IOG4E947OATN0KJYSD45\", \"name\": \"LVMH MOET HENNESSY LOUIS VUITTON\"}, \"relationships\": {\"filings\": {\"links\": {\"related\": \"/api/entities/IOG4E947OATN0KJYSD45/filings\"}}}, \"links\": {\"self\": \"/api/entities/IOG4E947OATN0KJYSD45\"}}], \"links\": {\"self\": \"https://filings.xbrl.org/api/entities?filter=%5B%7B%22name%22%3A%22name%22%2C%22op%22%3A%22ilike%22%2C%22val%22%3A%22%25lvmh%25%22%7D%5D&page%5Bsize%5D=10\"}, \"meta\": {\"count\": 1}, \"jsonapi\": {\"version\": \"1.0\"}}",
+  "url": "https://filings.xbrl.org/api/entities?filter=%5B%7B%22name%22%3A%22name%22%2C%22op%22%3A%22ilike%22%2C%22val%22%3A%22%25lvmh%25%22%7D%5D&page[size]=10",
+  "fetchedAt": "2026-10-24T15:30:28.098Z"
+ }
+}

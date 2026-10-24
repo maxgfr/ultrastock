@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.nasdaq.com/api/analyst/NVDA/targetprice"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"data\":{\"symbol\":\"nvda\",\"consensusOverview\":{\"lowPriceTarget\":275.0,\"highPriceTarget\":465.0,\"priceTarget\":323.45,\"buy\":33,\"sell\":0,\"hold\":0},\"historicalConsensus\":[{\"z\":{\"buy\":35,\"hold\":1,\"sell\":1,\"date\":\"10/01/2025\",\"consensus\":\"Buy\",\"latest\":null},\"x\":1759276800,\"y\":187.24},{\"z\":{\"buy\":37,\"hold\":1,\"sell\":1,\"date\":\"11/01/2025\",\"consensus\":\"Buy\",\"latest\":null},\"x\":1761955200,\"y\":202.49},{\"z\":{\"buy\":39,\"hold\":1,\"sell\":1,\"date\":\"12/01/2025\",\"consensus\":\"Buy\",\"latest\":null},\"x\":1764547200,\"y\":179.92},{\"z\":{\"buy\":39,\"hold\":1,\"sell\":1,\"date\":\"01/01/2026\",\"consensus\":\"Buy\",\"latest\":null},\"x\":1767225600,\"y\":186.5},{\"z\":{\"buy\":37,\"hold\":1,\"sell\":1,\"date\":\"02/01/2026\",\"consensus\":\"Buy\",\"latest\":null},\"x\":1769904000,\"y\":191.13},{\"z\":{\"buy\":39,\"hold\":1,\"sell\":1,\"date\":\"03/01/2026\",\"consensus\":\"Buy\",\"latest\":null},\"x\":1772323200,\"y\":177.19},{\"z\":{\"buy\":41,\"hold\":1,\"sell\":1,\"date\":\"04/01/2026\",\"consensus\":\"Buy\",\"latest\":null},\"x\":1775001600,\"y\":175.75},{\"z\":{\"buy\":40,\"hold\":1,\"sell\":1,\"date\":\"05/01/2026\",\"consensus\":\"Buy\",\"latest\":null},\"x\":1777593600,\"y\":198.45},{\"z\":{\"buy\":37,\"hold\":1,\"sell\":1,\"date\":\"06/01/2026\",\"consensus\":\"Buy\",\"latest\":null},\"x\":1780272000,\"y\":224.36},{\"z\":{\"buy\":36,\"hold\":1,\"sell\":0,\"date\":\"07/01/2026\",\"consensus\":\"Buy\",\"latest\":null},\"x\":1782864000,\"y\":197.58},{\"z\":{\"buy\":36,\"hold\":1,\"sell\":0,\"date\":\"08/01/2026\",\"consensus\":\"Buy\",\"latest\":null},\"x\":1785542400,\"y\":200.75},{\"z\":{\"buy\":30,\"hold\":0,\"sell\":0,\"date\":\"09/01/2026\",\"consensus\":\"Buy\",\"latest\":null},\"x\":1788220800,\"y\":217.44},{\"z\":{\"buy\":31,\"hold\":0,\"sell\":0,\"date\":\"10/01/2026\",\"consensus\":\"Buy\",\"latest\":{\"high\":232.285,\"avg\":230.22,\"low\":228.16}},\"x\":1790812800,\"y\":323.45}]},\"message\":null,\"status\":{\"rCode\":200,\"bCodeMessage\":null,\"developerMessage\":null}}",
+  "url": "https://api.nasdaq.com/api/analyst/NVDA/targetprice",
+  "fetchedAt": "2026-10-24T15:31:53.032Z"
+ }
+}
