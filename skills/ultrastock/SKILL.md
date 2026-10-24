@@ -54,6 +54,9 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | a price, now | `quote <symbol> --out <dir>` | [data-sources](references/data-sources.md) |
 | bars to look at or to compute on | `history <symbol> --from … --to …` | [data-sources](references/data-sources.md) |
 | a ratio, a gap, a distance to a level | `calc <dir> "<formula over E ids>" --label …` | [citation-format](references/citation-format.md) |
+| to set up who they are (first use) | `profile init`, then `profile suitability` (ask the questions), `profile envelope` | [onboarding-profile](references/onboarding-profile.md) |
+| what their country allows (PEA, MiCA, Polymarket…) | `jurisdiction show`, `jurisdiction verify --out <dir>` | [onboarding-profile](references/onboarding-profile.md) |
+| market hours, holidays, the next sessions | `calendar sessions --market XPAR` | [data-sources](references/data-sources.md) |
 | to know why a source failed | the note, then `doctor --probe` | [engine-evidence](references/engine-evidence.md) |
 
 Symbols: `MC.PA`, `ASML.AS`, `CW8.PA` or an EU ISIN (Euronext); `NVDA`, `QQQ`
@@ -68,6 +71,9 @@ ultrastock history <symbol> [--from <date>] [--to <date>] [--interval 1d|1w|4h|1
 ultrastock calc <run> "<formula>" --label <text> [--unit <unit>] [--json]
 ultrastock evidence <run> [--json]
 ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
+ultrastock profile init|show|suitability|set|envelope [--json]
+ultrastock jurisdiction show|verify [--venues binance,kraken,coinbase] [--out <dir>] [--json]
+ultrastock calendar sessions|holidays|verify [--market XPAR|XNYS|XMIL|XOSL|CRYPTO] [--json]
 ultrastock doctor [--probe] [--json]
 ```
 
@@ -106,4 +112,5 @@ Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
 - [analysis-workflow](references/analysis-workflow.md) — reading a brief, forming a view, writing the answer.
 - [citation-format](references/citation-format.md) — `[E#]`, grouping, `calc`, and what `check` refuses.
 - [data-sources](references/data-sources.md) — which source answers for which symbol, its delay and its limits.
+- [onboarding-profile](references/onboarding-profile.md) — the profile, the suitability questionnaire, envelopes, jurisdiction rules.
 - [engine-evidence](references/engine-evidence.md) — failure notes, fixtures, caching and variables.

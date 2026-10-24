@@ -211,14 +211,12 @@ export async function checkMica(venue: string, country = "FR"): Promise<MicaChec
       website: r.ae_website ?? "",
     }))
     .filter((e) => e.homeState === country || e.passportedTo.includes(country) || e.passportedTo.length === 0);
-  const warnings = ncasp.rows
-    .filter(hit)
-    .map((r) => ({
-      name: r.ae_lei_name || r.ae_commercial_name || "",
-      authority: r.ae_competentAuthority ?? "",
-      reason: r.ae_reason ?? "",
-      decidedOn: r.ae_decision_date ?? "",
-    }));
+  const warnings = ncasp.rows.filter(hit).map((r) => ({
+    name: r.ae_lei_name || r.ae_commercial_name || "",
+    authority: r.ae_competentAuthority ?? "",
+    reason: r.ae_reason ?? "",
+    decidedOn: r.ae_decision_date ?? "",
+  }));
   return { venue, authorised, warnings, url: ESMA_CASPS, fetchedAt: casps.fetchedAt };
 }
 

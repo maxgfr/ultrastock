@@ -8,6 +8,8 @@ import { EvidenceStore, formatEvidence } from "./core/evidence.js";
 import { ExprError } from "./core/expr.js";
 import { clockNow, FixtureMiss, setNetMode } from "./core/net.js";
 import { runDirFor } from "./core/paths.js";
+import { calendarCommand } from "./commands/calendar.js";
+import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
 import { doctorReport, formatDoctor } from "./doctor.js";
 import {
   argBool,
@@ -43,6 +45,10 @@ USAGE
   ultrastock calc <run> <formula> --label <text> [--unit <unit>] [--key <key>] [--json]
   ultrastock evidence <run> [--json]
   ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
+  ultrastock profile init [--jurisdiction FR] [--currency EUR] [--json]
+  ultrastock profile show|suitability [--answers <file>]|set <field> <value>|envelope <id> --type PEA [--broker <name>] [--json]
+  ultrastock jurisdiction show|verify [--jurisdiction FR] [--venues binance,kraken,coinbase] [--out <dir>] [--json]
+  ultrastock calendar sessions|holidays|verify [--market XPAR|XNYS|XMIL|XOSL|CRYPTO] [--days <n>] [--year <yyyy>] [--json]
   ultrastock doctor [--probe] [--json]
   ultrastock version
 
@@ -71,6 +77,15 @@ COMMANDS
             an [E#] of the run, and is one of the values those [E#] hold (rounding
             allowed). --max-age also fails figures read longer ago than that.
             Exits 1 with a line-by-line report otherwise.
+  profile   The investor: residence and tax residence, base currency, horizon,
+            risk score and limits (the risk gate's rules), envelopes (PEA, CTO,
+            AV…). \`suitability\` prints the questionnaire to ask; with --answers it
+            scores it (1–7) and sets the limits. Every change is kept in history.
+  jurisdiction  What the investor's country allows, rule by rule with sources;
+            \`verify\` checks crypto venues against ESMA's MiCA register and
+            regulator DNS blocks, and lists what a web search must confirm.
+  calendar  Exchange sessions, holidays and early closes, computed from the
+            exchanges' rules; \`verify\` lists what to confirm for a year.
   doctor    Version, state directory, Node, external tools; --probe also times a
             live call to each data source.
 
@@ -84,9 +99,30 @@ ENVIRONMENT
 
 Nothing here needs an API key. Exit codes: 0 done, 1 failed or refused, 2 bad invocation.`;
 
-export const VALUE_FLAGS = ["out", "from", "to", "interval", "limit", "label", "unit", "key", "max-age", "record", "fixture"];
+export const VALUE_FLAGS = [
+  "out",
+  "from",
+  "to",
+  "interval",
+  "limit",
+  "label",
+  "unit",
+  "key",
+  "max-age",
+  "record",
+  "fixture",
+  "jurisdiction",
+  "currency",
+  "answers",
+  "type",
+  "broker",
+  "venues",
+  "market",
+  "days",
+  "year",
+];
 export const BOOL_FLAGS = ["json", "refresh", "offline", "probe"];
-export const COMMANDS = ["analyze", "quote", "history", "calc", "evidence", "check", "doctor"];
+export const COMMANDS = ["analyze", "quote", "history", "calc", "evidence", "check", "profile", "jurisdiction", "calendar", "doctor"];
 
 const NET = ["record", "fixture", "refresh", "offline", "json"];
 const SPEC: CliSpec = {
@@ -100,6 +136,9 @@ const SPEC: CliSpec = {
     calc: ["label", "unit", "key", "json"],
     evidence: ["json"],
     check: ["max-age", "json"],
+    profile: ["jurisdiction", "currency", "answers", "type", "broker", "json"],
+    jurisdiction: ["jurisdiction", "venues", "out", ...NET],
+    calendar: ["market", "days", "year", "json"],
     doctor: ["probe", "json"],
   },
 };
@@ -118,6 +157,7 @@ const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 function arity(args: CommandArgs): number {
   if (args.command === "doctor" || args.command === "version") return 0;
   if (args.command === "check" || args.command === "calc") return 2;
+  if (args.command === "profile") return 3;
   return 1;
 }
 
@@ -265,6 +305,10 @@ async function run(args: CommandArgs): Promise<void> {
     return;
   }
 
+  if (cmd === "profile") return profileCommand(args, asJson);
+  if (cmd === "jurisdiction") return jurisdictionCommand(args, asJson);
+  if (cmd === "calendar") return calendarCommand(args, asJson);
+
   if (cmd === "doctor") {
     const report = await doctorReport({ probe: argBool(args, "probe") });
     if (asJson) process.stdout.write(jsonLine(report));
@@ -295,7 +339,7 @@ export async function main(argv: string[]): Promise<void> {
     await run(args);
   } catch (e) {
     if (e instanceof UsageError) usage(e.message);
-    if (e instanceof ProviderError || e instanceof FixtureMiss) fail(e.message);
+    if (e instanceof ProviderError || e instanceof FixtureMiss || e instanceof Error) fail(e.message);
     throw e;
   }
 }
