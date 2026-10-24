@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [0.7.0](https://github.com/maxgfr/ultrastock/compare/v0.6.0...v0.7.0) (2026-10-24)
+
+
+### Features
+
+* **backtest:** declarative strategies ported from ai-strategy-backtester with next-open fills, gapped stops and taker/maker fees; walk-forward, CPCV, PBO, Monte Carlo, sweeps, cost stress and a PASS/REVISE/REJECT review; allocation backtests; decision-quality replay; backtest and strategy commands ([29ce69c](https://github.com/maxgfr/ultrastock/commit/29ce69c88b9cbdb60d047a90af437291990de18b))
+* **backtest:** wire backtest and strategy into the CLI; skill routing and the backtesting reference ([cc08ba1](https://github.com/maxgfr/ultrastock/commit/cc08ba1da17d0e89e6088e1e3599a9d6ded949c2))
+
 # [0.6.0](https://github.com/maxgfr/ultrastock/compare/v0.5.0...v0.6.0) (2026-10-24)
 
 
