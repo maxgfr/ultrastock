@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/SAP.DE?range=5d&interval=1d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"EUR\",\"symbol\":\"SAP.DE\",\"exchangeName\":\"GER\",\"fullExchangeName\":\"XETRA\",\"instrumentType\":\"EQUITY\",\"firstTradeDate\":892105200,\"regularMarketTime\":1792769726,\"hasPrePostMarketData\":false,\"gmtoffset\":7200,\"timezone\":\"CEST\",\"exchangeTimezoneName\":\"Europe/Berlin\",\"regularMarketPrice\":214.4,\"regularMarketChangePercent\":-0.441,\"fulldayPrice\":214.4,\"fulldayChange\":-0.95,\"fulldayChangePercent\":-0.441,\"fiftyTwoWeekHigh\":235.8,\"fiftyTwoWeekLow\":127.5,\"regularMarketDayHigh\":215.85,\"regularMarketDayLow\":210.05,\"regularMarketVolume\":2055364,\"longName\":\"SAP SE\",\"shortName\":\"SAP SE                        I\",\"chartPreviousClose\":199.22,\"priceHint\":2,\"currentTradingPeriod\":{\"pre\":{\"timezone\":\"CEST\",\"start\":1792731600,\"end\":1792738800,\"gmtoffset\":7200},\"regular\":{\"timezone\":\"CEST\",\"start\":1792738800,\"end\":1792769400,\"gmtoffset\":7200},\"post\":{\"timezone\":\"CEST\",\"start\":1792769400,\"end\":1792780200,\"gmtoffset\":7200}},\"dataGranularity\":\"1d\",\"range\":\"5d\",\"validRanges\":[\"1d\",\"5d\",\"1mo\",\"3mo\",\"6mo\",\"1y\",\"2y\",\"5y\",\"10y\",\"ytd\",\"max\"]},\"timestamp\":[1792393200,1792479600,1792566000,1792652400,1792738800],\"indicators\":{\"quote\":[{\"open\":[199.55999755859375,201.3000030517578,201.8000030517578,207.75,213.5500030517578],\"volume\":[1749869,1673840,2738671,3403741,2056249],\"low\":[197.32000732421875,199.4600067138672,200.0,205.10000610351562,210.0500030517578],\"high\":[200.8000030517578,203.4499969482422,208.64999389648438,216.64999389648438,215.85000610351562],\"close\":[199.83999633789062,201.5500030517578,208.64999389648438,215.35000610351562,214.39999389648438]}],\"adjclose\":[{\"adjclose\":[199.83999633789062,201.5500030517578,208.64999389648438,215.35000610351562,214.39999389648438]}]}}],\"error\":null}}",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/SAP.DE?range=5d&interval=1d",
+  "fetchedAt": "2026-10-24T15:13:19.354Z"
+ }
+}

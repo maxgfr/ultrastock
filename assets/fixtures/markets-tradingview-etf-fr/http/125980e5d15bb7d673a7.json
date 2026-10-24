@@ -1,0 +1,40 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/france/scan",
+  "json": {
+   "columns": [
+    "description",
+    "close",
+    "currency",
+    "expense_ratio",
+    "aum",
+    "isin"
+   ],
+   "range": [
+    0,
+    5
+   ],
+   "filter": [
+    {
+     "left": "typespecs",
+     "operation": "has",
+     "right": [
+      "etf"
+     ]
+    }
+   ],
+   "sort": {
+    "sortBy": "aum",
+    "sortOrder": "desc"
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":3203,\"data\":[{\"s\":\"EURONEXT:CSSPX\",\"d\":[\"iShares Core S&P 500 UCITS ETF\",738.18,\"EUR\",0.07,138446429790.0079,\"IE00B5BMR087\"]},{\"s\":\"EURONEXT:SWDA\",\"d\":[\"iShares Core MSCI World UCITS ETF\",129.89,\"EUR\",0.2,131562926764.91455,\"IE00B4L5Y983\"]},{\"s\":\"EURONEXT:VWCE-ETFP\",\"d\":[\"Vanguard FTSE All-World UCITS ETF Accum USD\",169.34,\"EUR\",0.16,55871763173.11521,\"IE00BK5BQT80\"]},{\"s\":\"EURONEXT:VUSA-ETFP\",\"d\":[\"Vanguard S&P 500 UCITS ETF\",129.62,\"EUR\",0.07,47879378203.87949,\"IE00B3XXRP09\"]},{\"s\":\"EURONEXT:EIMI\",\"d\":[\"iShares Core MSCI EM IMI UCITS ETF\",45.52,\"EUR\",0.22,38531277715.73937,\"IE00BKM4GZ66\"]}]}",
+  "url": "https://scanner.tradingview.com/france/scan",
+  "fetchedAt": "2026-10-24T15:14:15.895Z"
+ }
+}
