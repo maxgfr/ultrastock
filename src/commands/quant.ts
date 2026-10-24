@@ -434,7 +434,10 @@ export async function predictAnalysisCommand(args: CommandArgs, asJson: boolean)
   const opts: PredictOptions = {
     now: clockNow(),
     myProbability: myP,
-    feeCoefficient: fraction(argValue(args, "kalshi-fee"), "kalshi-fee", 0, 0.5) ?? 0,
+    // Kalshi taker fees: ceil(M × 0.07 × C × P × (1 − P)), M = 1 by default (July 2026 schedule as reported by
+    // oddsshopper.com and quantvps.com; the official PDF was not reachable here). 0.07 is the cautious default:
+    // a fee left out invents arbitrage that does not exist.
+    feeCoefficient: fraction(argValue(args, "kalshi-fee"), "kalshi-fee", 0, 0.5) ?? 0.07,
     contracts: argInt(args, "contracts", { min: 1, max: 100_000 }) ?? 100,
   };
   const limit = argInt(args, "limit", { min: 1, max: PREDICT_MAX_BOOKS }) ?? 5;
@@ -463,7 +466,7 @@ export async function predictAnalysisCommand(args: CommandArgs, asJson: boolean)
     const bookDs = books.filter((b): b is NonNullable<typeof b> => !!b).map((b) => b.dataset);
     const feeNote =
       opts.feeCoefficient > 0
-        ? `Kalshi taker fee modelled as ceil_to_cent(${opts.feeCoefficient} × C × P × (1 − P)) per ${opts.contracts}-contract order — check the series' fee_multiplier`
+        ? `Kalshi taker fee modelled as ceil_to_cent(${opts.feeCoefficient} × C × P × (1 − P)) per ${opts.contracts}-contract order (schedule of July 2026 as reported by secondary sources; some series carry a fee multiplier, and resting maker orders pay 0 or 0.0175) — check kalshi.com/docs/kalshi-fee-schedule.pdf`
         : "no Kalshi fee modelled: the published schedule (commonly 0.07 × C × P × (1 − P), rounded up to the cent) could not be verified here — pass --kalshi-fee 0.07 after checking kalshi.com/docs/kalshi-fee-schedule.pdf";
     emitDatasets(
       args,

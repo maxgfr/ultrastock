@@ -24,6 +24,7 @@ import {
 import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentimentCommand, universeCommand } from "./commands/macro.js";
 import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
+import { cryptoAnalysisCommand, optionsAnalysisCommand, predictAnalysisCommand, statsCommand } from "./commands/quant.js";
 import { doctorReport, formatDoctor } from "./doctor.js";
 import {
   argBool,
@@ -83,6 +84,10 @@ USAGE
   ultrastock dividends <US symbol> [--limit <n>] [--out <dir>] [--json]
   ultrastock congress [--member <name>] [--doc <DocID>] [--year <yyyy>] [--limit <n>] [--out <dir>] [--json]
   ultrastock options <symbol> [--expiries <n>] [--out <dir>] [--json]
+  ultrastock options-analysis <symbol> [--expiry <date>] [--strategy <spec>] [--spot-moves=<list>] [--rate <pct>] [--out <dir>] [--json]
+  ultrastock stats <symbol> [<symbol> …] [--days <n>] [--benchmark <symbol>] [--out <dir>] [--json]
+  ultrastock crypto-analysis <coin> [--days <n>] | crypto-analysis yields <symbol> [--limit <n>] [--out <dir>] [--json]
+  ultrastock predict-analysis kalshi <SERIES|market:TICKER> | manifold <terms> [--my-probability <p>] [--kalshi-fee <coef>] [--contracts <n>] [--limit <n>] [--out <dir>] [--json]
   ultrastock crypto global|top|coin|derivatives|defi|yields|stables|fees|onchain|dex|holders [<target>] [--limit <n>] [--out <dir>] [--json]
   ultrastock predict kalshi|manifold|polymarket [<query>] [--limit <n>] [--out <dir>] [--json]
   ultrastock snapshot <symbol> [--market <tv-market>] [--out <dir>] [--json]
@@ -171,6 +176,27 @@ COMMANDS
   options   An option chain summary per expiry — ATM IV, put/call open interest
             and volume, totals: US listings from CBOE (15 min delayed), BTC and
             ETH from Deribit with the DVOL volatility index.
+  options-analysis  Per expiry: expected move (straddle and 1 sd), max pain, dealer
+            gamma exposure (total, flip, call and put walls), put/call ratios,
+            25-delta skew; the ATM-IV term structure, unusual activity, and IV
+            rank once 20 days of IV are stored. --strategy prices a structure
+            (long-call:K, bull-call:K1/K2, bear-put:K1/K2, iron-condor:Kp1/Kp2/Kc1/Kc2,
+            straddle:K, strangle:Kp/Kc, covered-call:K, cash-secured-put:K,
+            collar:Kp/Kc) at mid: max profit and loss, breakevens, and a P&L
+            matrix by move, date and volatility. Pass --spot-moves=-30,0,30 with "=".
+  stats     One symbol: return distribution, five volatility estimators, a GARCH
+            forecast, Hurst, ADF, the HMM turbulent-state probability, drawdowns,
+            VaR/CVaR/Cornish-Fisher, performance against a benchmark. Several (≤ 10):
+            Pearson and Spearman correlations, tail dependence, pairwise cointegration.
+  crypto-analysis  Funding (annualised, 30-day mean), basis, open interest, long/short
+            ratios, DVOL, MVRV, realised volatility, drawdown from the all-time high,
+            and a "leverage heat" reading; \`yields <symbol>\` judges DeFi pools'
+            sustainability (reward share of the APY, TVL).
+  predict-analysis  Kalshi or Manifold markets: implied probability, spread, YES+NO
+            arbitrage net of fees (Kalshi taker fee 0.07 × C × P × (1 − P) by
+            default), order-book imbalance, time to close; --my-probability adds a
+            half-Kelly stake on an edge discounted by half the spread and the fee.
+            Paper only for French residents; never Polymarket here.
   crypto    Market structure: global caps and dominance, top coins, one coin,
             derivatives positioning (funding, open interest, long/short ratios),
             DeFi TVL, yields (base vs reward APY), stablecoins, fees, on-chain
@@ -233,6 +259,13 @@ export const VALUE_FLAGS = [
   "terminal",
   "indicators",
   "benchmark",
+  "expiry",
+  "strategy",
+  "spot-moves",
+  "rate",
+  "my-probability",
+  "kalshi-fee",
+  "contracts",
 ];
 export const BOOL_FLAGS = ["json", "refresh", "offline", "probe"];
 export const COMMANDS = [
@@ -257,6 +290,10 @@ export const COMMANDS = [
   "dividends",
   "congress",
   "options",
+  "options-analysis",
+  "stats",
+  "crypto-analysis",
+  "predict-analysis",
   "crypto",
   "predict",
   "snapshot",
@@ -304,6 +341,10 @@ const SPEC: CliSpec = {
     dividends: ["limit", "out", ...NET],
     congress: ["member", "doc", "year", "limit", "out", ...NET],
     options: ["expiries", "out", ...NET],
+    "options-analysis": ["expiry", "strategy", "spot-moves", "rate", "out", ...NET],
+    stats: ["days", "benchmark", "out", ...NET],
+    "crypto-analysis": ["days", "limit", "out", ...NET],
+    "predict-analysis": ["my-probability", "kalshi-fee", "contracts", "limit", "out", ...NET],
     crypto: ["limit", "out", ...NET],
     predict: ["limit", "out", ...NET],
     snapshot: ["market", "out", ...NET],
@@ -326,7 +367,8 @@ function arity(args: CommandArgs): number {
   if (args.command === "doctor" || args.command === "version") return 0;
   if (args.command === "check" || args.command === "calc") return 2;
   if (args.command === "profile") return 3;
-  if (args.command === "crypto" || args.command === "calendar" || args.command === "macro") return 2;
+  if (args.command === "crypto" || args.command === "calendar" || args.command === "macro" || args.command === "crypto-analysis") return 2;
+  if (args.command === "stats" || args.command === "predict-analysis") return Number.POSITIVE_INFINITY;
   if (args.command === "news" || args.command === "cot" || args.command === "resolve") return Number.POSITIVE_INFINITY;
   if (args.command === "congress") return 0;
   if (args.command === "predict") return Number.POSITIVE_INFINITY;
@@ -492,6 +534,10 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "dividends") return dividendsCommand(args, asJson);
   if (cmd === "congress") return congressCommand(args, asJson);
   if (cmd === "options") return optionsCommand(args, asJson);
+  if (cmd === "options-analysis") return optionsAnalysisCommand(args, asJson);
+  if (cmd === "stats") return statsCommand(args, asJson);
+  if (cmd === "crypto-analysis") return cryptoAnalysisCommand(args, asJson);
+  if (cmd === "predict-analysis") return predictAnalysisCommand(args, asJson);
   if (cmd === "crypto") return cryptoCommand(args, asJson);
   if (cmd === "predict") return predictCommand(args, asJson);
   if (cmd === "snapshot") return snapshotCommand(args, asJson);
