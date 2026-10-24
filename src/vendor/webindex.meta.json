@@ -1,0 +1,10 @@
+{
+  "tag": "v1.34.1",
+  "engineVersion": "1.34.1",
+  "sha256": {
+    "webindex-engine.mjs": "d11e64eda4088d812f286695b862d1e7e8ef94c8e5678c0bd118dc2bf07e687a",
+    "webindex-engine.d.mts": "623e586d15a2bdeaf4a1924bb5e2a23107296421ad2a66efd21f5f2b2d354389"
+  },
+  "syncedAt": "2026-10-23T17:08:10.555Z",
+  "commit": "bef4ce0e3cbb6b00000d0d6814d76b0e5916e3a3"
+}

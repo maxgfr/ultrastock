@@ -1,0 +1,109 @@
+---
+name: ultrastock
+description: Investing copilot for real money — US and European stocks and ETFs (PEA/CTO), crypto — that analyses an instrument from public, keyless data read from the exchanges themselves (Euronext, Nasdaq, Binance), registers every figure as an evidence [E#], and checks that the answer states no number the evidence does not hold. Use only when the user explicitly asks for ultrastock or for an investment analysis, e.g. "analyse LVMH", "should I buy NVDA", "what is the trend on bitcoin", "technical read of CW8", "analyse cette action", "faut-il acheter", "quelle est la tendance du CAC", "lecture technique de MC.PA". Decision support, not a licensed adviser; places no order.
+license: MIT
+metadata:
+  version: 0.0.0
+---
+
+# ultrastock — every figure has a source, every answer is checked
+
+**The tool reads the market; you reason.** `ultrastock` fetches prices from the
+exchanges and regulators themselves, computes the indicators, and numbers every
+figure as an evidence `[E#]` with its source, its date and its delay. You read
+the evidence, form a view, and write an answer in which every number cites the
+`[E#]` that holds it — then `check` proves it.
+
+## Invariants
+
+1. **No figure from memory or from the model.** Every number in an answer comes
+   from a command: read it in `BRIEF.md` / `evidence`, or compute it with
+   `calc`, which registers it as a new `[E#]`. Mental arithmetic is not evidence.
+2. **Every figure cites its `[E#]`**, in the same sentence or table row. See
+   [citation-format](references/citation-format.md).
+3. **Say how fresh and how official.** State the as-of date and the delay
+   (end of day, delayed, real time); say when a source is unofficial.
+4. **Run `check` before you answer.** Fix every line it reports; never ship a
+   failing answer. Use `--max-age` when the user acts today.
+5. **A view is yours; say what would change it.** Bullish, expensive, risky are
+   judgements — name the evidence they rest on and the level or event that
+   would invalidate them. Missing data is "unavailable", never guessed.
+6. **Decision support, not an order.** ultrastock places no order; the user
+   decides and executes. Say once per answer that this is not personalised
+   advice from a licensed adviser.
+
+## Run it
+
+The bundle is self-contained — Node ≥ 18, no install, no API key. Call it by
+absolute path: `<skill-dir>` is the directory holding this file, and every
+`ultrastock …` below stands for `node <skill-dir>/scripts/ultrastock.mjs …`.
+
+```bash
+node <skill-dir>/scripts/ultrastock.mjs doctor --probe                       # sources reachable?
+node <skill-dir>/scripts/ultrastock.mjs analyze MC.PA --out <dir> --json      # → <dir>/BRIEF.md
+```
+
+Pick one absolute `--out <dir>` per task and pass it to every command, so
+`analyze`, `quote`, `calc` and `check` share one evidence register.
+
+## Routing
+
+| The user wants | Do | Read |
+|---|---|---|
+| an analysis of a stock, an ETF or a coin | `analyze <symbol> --out <dir>`, read `BRIEF.md`, follow `RUNBOOK.md` | [analysis-workflow](references/analysis-workflow.md) |
+| a price, now | `quote <symbol> --out <dir>` | [data-sources](references/data-sources.md) |
+| bars to look at or to compute on | `history <symbol> --from … --to …` | [data-sources](references/data-sources.md) |
+| a ratio, a gap, a distance to a level | `calc <dir> "<formula over E ids>" --label …` | [citation-format](references/citation-format.md) |
+| to know why a source failed | the note, then `doctor --probe` | [engine-evidence](references/engine-evidence.md) |
+
+Symbols: `MC.PA`, `ASML.AS`, `CW8.PA` or an EU ISIN (Euronext); `NVDA`, `QQQ`
+(US); `BTCUSDT`, `ETH-EUR` (Binance spot).
+
+## Commands
+
+```bash
+ultrastock analyze <symbol> [--out <dir>] [--json]
+ultrastock quote <symbol> [--out <dir>] [--json]
+ultrastock history <symbol> [--from <date>] [--to <date>] [--interval 1d|1w|4h|1h|15m] [--limit <n>] [--json]
+ultrastock calc <run> "<formula>" --label <text> [--unit <unit>] [--json]
+ultrastock evidence <run> [--json]
+ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
+ultrastock doctor [--probe] [--json]
+```
+
+- `analyze` — price, 52-week range, returns, SMA50/SMA200 and the trend state,
+  RSI(14), MACD, ATR(14), Bollinger, volatility and drawdown, each an `[E#]`, in
+  `<dir>/evidence.json`, `BRIEF.md` (by theme) and `RUNBOOK.md`.
+- `calc` — `abs min max round pct share cagr` and arithmetic over `E` ids only.
+- `check` — exits 1 with a line-by-line report on any figure without an `[E#]`,
+  any `[E#]` the run does not hold, any figure none of its `[E#]` holds, and
+  (with `--max-age`) any figure read too long ago.
+- Network commands take `--record <dir>` / `--fixture <dir>` to save and replay
+  what the sources answered, and `--refresh` / `--offline` for the cache.
+
+Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
+
+## Write the answer
+
+1. Lead with the conclusion and its horizon, then the evidence, one idea per
+   bullet or table row; each figure with its `[E#]`.
+2. Give the as-of date, the delay and any unofficial source in one line.
+3. Say what would change the view: a level (cite it), an event, a figure.
+4. Write it to `<dir>/answer.md`; run `ultrastock check <dir> <dir>/answer.md`;
+   fix and repeat until it passes. Then give the user the answer and the path
+   to `BRIEF.md`.
+
+## Will not
+
+- Place, prepare or simulate an order — that arrives with tickets, paper
+  trading and a deterministic risk gate, never without the user's own approval.
+- Invent a figure, a target price or a fundamental the evidence does not hold.
+- Get around a source's refusal (a 451 from Binance, a jurisdiction block).
+- Send the user's holdings or identity anywhere.
+
+## References
+
+- [analysis-workflow](references/analysis-workflow.md) — reading a brief, forming a view, writing the answer.
+- [citation-format](references/citation-format.md) — `[E#]`, grouping, `calc`, and what `check` refuses.
+- [data-sources](references/data-sources.md) — which source answers for which symbol, its delay and its limits.
+- [engine-evidence](references/engine-evidence.md) — failure notes, fixtures, caching and variables.

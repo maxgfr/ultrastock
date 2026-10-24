@@ -1,0 +1,44 @@
+name: Evals (network)
+
+# The network suite runs `analyze` live on each eval instrument and asserts the
+# same evidence keys come back — proof that Euronext, Nasdaq and Binance still
+# answer in the shape the parsers expect. Upstreams change, throttle and refuse
+# some datacenter addresses (Binance answers 451 to several jurisdictions), so
+# this is report-only: weekly and on dispatch, never gating a PR.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  network-evals:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build the bundle
+        run: pnpm run build
+      - name: Doctor
+        run: node scripts/ultrastock.mjs doctor --probe || true
+      - name: Network evals (report-only)
+        run: |
+          set -o pipefail
+          pnpm run eval:network 2>&1 | tee eval-network-report.txt
+      - name: Publish the report to the run summary
+        if: always()
+        run: |
+          { echo '```'; cat eval-network-report.txt 2>/dev/null || echo "no report produced"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the network report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: eval-network-report
+          path: eval-network-report.txt
+          if-no-files-found: ignore

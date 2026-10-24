@@ -1,0 +1,79 @@
+{
+  "name": "ultrastock",
+  "version": "0.0.0",
+  "description": "Investing copilot for real money — US/EU stocks & ETFs (PEA), crypto and prediction markets: keyless public data (Euronext, SEC, Nasdaq, ECB, Binance…), every figure an evidence [E#] the answer must cite and `check` verifies, multi-perspective analysis, a deterministic risk gate, paper trading and guarded opt-in brokers, FR/US tax. A skills.sh agent skill.",
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "bin": {
+    "ultrastock": "scripts/ultrastock.mjs"
+  },
+  "files": [
+    "skills",
+    "scripts",
+    "src",
+    "assets"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup && webindex skill copy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome ci .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "check:build": "tsup && webindex skill copy && git diff --exit-code -- scripts/ultrastock.mjs skills/ultrastock/scripts/ultrastock.mjs && webindex skill check && webindex skill bundle && webindex skill vendor --check",
+    "eval": "node evals/run.mjs --suite offline",
+    "eval:network": "node evals/run.mjs --suite network",
+    "release": "semantic-release",
+    "engine:prepare": "pnpm run build",
+    "engine:gate": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run check:build && pnpm run eval",
+    "verify:bundle": "webindex skill bundle",
+    "verify:engine": "webindex skill check && webindex skill vendor --check"
+  },
+  "keywords": [
+    "skills",
+    "agent-skill",
+    "skills.sh",
+    "investing",
+    "stocks",
+    "etf",
+    "pea",
+    "crypto",
+    "portfolio",
+    "risk-management",
+    "backtesting",
+    "citations",
+    "ai-agent"
+  ],
+  "license": "MIT",
+  "author": "maxgfr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maxgfr/ultrastock"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.11",
+    "@semantic-release/changelog": "^7.0.0",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^11.0.1",
+    "@types/node": "^20.19.43",
+    "@vitest/coverage-v8": "^4.1.11",
+    "semantic-release": "^25.0.9",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11",
+    "@maxgfr/webindex": "https://codeload.github.com/maxgfr/webindex/tar.gz/bef4ce0e3cbb6b00000d0d6814d76b0e5916e3a3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ],
+    "overrides": {
+      "esbuild": "0.28.1"
+    }
+  }
+}

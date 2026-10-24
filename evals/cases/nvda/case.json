@@ -1,0 +1,8 @@
+{
+  "kind": "analyze — US equity (unofficial source), English answer",
+  "symbol": "NVDA",
+  "fixture": "assets/fixtures/nvda",
+  "calcs": [{ "formula": "E1 - E23", "label": "NVDA above its lower Bollinger band", "unit": "USD", "expectId": "E27" }],
+  "expect": { "evidenceMin": 25, "keys": ["NVDA.close", "NVDA.sma50", "NVDA.atr14"] },
+  "answers": { "good": 0, "bad": 4 }
+}
