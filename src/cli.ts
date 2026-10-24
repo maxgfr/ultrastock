@@ -2,6 +2,7 @@ import { readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readBrief, analyzeSymbol } from "./analyze/pack.js";
+import { analyzeFull, DEPTHS, type Depth } from "./analyze/full.js";
 import { calcEvidence } from "./calc.js";
 import { checkAnswer, NOTE_KINDS } from "./check.js";
 import { reportCommand } from "./commands/report.js";
@@ -58,7 +59,7 @@ figure registered as an evidence [E#] that the answer must cite, and a check
 that refuses a figure the evidence does not hold.
 
 USAGE
-  ultrastock analyze <symbol> [--out <dir>] [--json]
+  ultrastock analyze <symbol> [--depth quick|standard|deep] [--since <run>] [--out <dir>] [--json]
   ultrastock quote <symbol> [--out <dir>] [--json]
   ultrastock history <symbol> [--from <date>] [--to <date>] [--interval 1d|1w|4h|1h|15m] [--limit <n>] [--json]
   ultrastock calc <run> <formula> --label <text> [--unit <unit>] [--key <key>] [--json]
@@ -125,11 +126,18 @@ SYMBOLS
   BTCUSDT, ETH-EUR, SOL/USDC           Binance spot (official, real time; -USD reads USDT)
 
 COMMANDS
-  analyze   Gather an instrument's evidence into a run directory: latest price,
-            52-week range, 1m/3m/6m/1y returns, SMA50/SMA200 and the trend state,
-            RSI(14), MACD(12,26,9), ATR(14), Bollinger(20,2), 1-year volatility and
-            maximum drawdown. Writes evidence.json, BRIEF.md (the figures, by
-            theme, each with its [E#]) and RUNBOOK.md (how to answer).
+  analyze   Gather an instrument's evidence into one run directory. quick: price,
+            52-week range, returns, averages and the trend state, RSI, MACD, ATR,
+            Bollinger, volatility and drawdown. standard (default) adds the
+            technical panel (TECHNICALS.md), valuation for a company
+            (VALUATION.md), the 30-day catalysts, the market regime, a week of
+            news, insiders (US, Paris) and analysts (US), the user's portfolio
+            context (holding / flat / not provided), the profile's limits, the
+            jurisdiction's rules and past decisions. deep: three debate rounds
+            and more headlines. --since <run> writes DELTA.md against an earlier
+            run. BRIEF.md indexes the slices (a failed one is named, never
+            filled in); RUNBOOK.md is the debate: analysts → bull / bear → judge
+            → trader → risk trio → portfolio manager → decide → check → report.
   quote     The latest price. With --out, registers it in that run's evidence.
   history   Daily (or crypto intraday) bars, oldest first; --limit keeps the last n.
   calc      Compute a derived figure from evidence ids — "(E3 / E7 - 1) * 100" —
@@ -330,6 +338,8 @@ export const VALUE_FLAGS = [
   "currency",
   "answers",
   "answer",
+  "depth",
+  "since",
   "type",
   "broker",
   "venues",
@@ -437,7 +447,7 @@ const SPEC: CliSpec = {
   valueFlags: VALUE_FLAGS,
   boolFlags: BOOL_FLAGS,
   commandFlags: {
-    analyze: ["out", ...NET],
+    analyze: ["depth", "since", "out", ...NET],
     quote: ["out", ...NET],
     history: ["from", "to", "interval", "limit", ...NET],
     calc: ["label", "unit", "key", "json"],
@@ -573,9 +583,12 @@ async function run(args: CommandArgs): Promise<void> {
 
   if (cmd === "analyze") {
     const symbol = args.positional[0];
-    if (!symbol) usage("usage: ultrastock analyze <symbol> [--out <dir>] [--json]");
+    if (!symbol) usage("usage: ultrastock analyze <symbol> [--depth quick|standard|deep] [--since <run>] [--out <dir>] [--json]");
+    const depth = (argValue(args, "depth") ?? "standard") as Depth;
+    if (!(DEPTHS as readonly string[]).includes(depth)) usage(`--depth is one of ${DEPTHS.join(", ")}`);
     const dir = runDirFor(argValue(args, "out"), `${symbol.toUpperCase().replace(/[^A-Z0-9.-]/g, "_")}-${runId()}`);
-    const r = await analyzeSymbol(symbol, dir);
+    const since = argValue(args, "since");
+    const r = await analyzeFull(symbol, dir, { depth, since: since ? resolve(since) : undefined });
     if (asJson) process.stdout.write(jsonLine(r));
     else process.stdout.write(`${readBrief(dir)}\nrun: ${dir}\n`);
     return;
