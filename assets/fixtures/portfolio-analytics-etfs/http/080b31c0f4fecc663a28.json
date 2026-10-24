@@ -1,0 +1,30 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://www.amundietf.fr/mapi/ProductAPI/getProductsData",
+  "json": {
+   "context": {
+    "countryCode": "FRA",
+    "languageCode": "fr",
+    "userProfileName": "RETAIL"
+   },
+   "productIds": [
+    "IE0008471009"
+   ],
+   "productType": "PRODUCT",
+   "characteristics": [
+    "SHARE_MARKETING_NAME",
+    "REPLICATION_METHODOLOGY",
+    "FUND_PEA",
+    "ASSET_CLASS"
+   ]
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"products\":[]}",
+  "url": "https://www.amundietf.fr/mapi/ProductAPI/getProductsData",
+  "fetchedAt": "2026-10-24T16:26:55.222Z"
+ }
+}
