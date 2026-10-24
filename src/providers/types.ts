@@ -57,7 +57,11 @@ export interface QuoteResult {
   notes: string[];
 }
 
-/** A provider refused or failed: the reason is kept, never an empty success. */
+/**
+ * A provider refused or failed: the reason is kept, never an empty success.
+ * `status` 0 (no answer), 429 and 5xx are transient — another source may stand
+ * in; a 4xx or "no such listing" is an answer, and must not be routed around.
+ */
 export class ProviderError extends Error {
   constructor(
     readonly source: string,
@@ -65,5 +69,9 @@ export class ProviderError extends Error {
     readonly status?: number,
   ) {
     super(`${source}: ${message}`);
+  }
+
+  get transient(): boolean {
+    return this.status === undefined || this.status === 0 || this.status === 429 || this.status >= 500;
   }
 }
