@@ -1,0 +1,86 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/france/scan",
+  "json": {
+   "columns": [
+    "description",
+    "close",
+    "country",
+    "market_cap_basic",
+    "isin",
+    "sector",
+    "currency",
+    "fundamental_currency_code"
+   ],
+   "range": [
+    0,
+    3
+   ],
+   "filter": [
+    {
+     "left": "type",
+     "operation": "equal",
+     "right": "stock"
+    },
+    {
+     "left": "is_primary",
+     "operation": "equal",
+     "right": true
+    },
+    {
+     "left": "country",
+     "operation": "in_range",
+     "right": [
+      "Austria",
+      "Belgium",
+      "Bulgaria",
+      "Croatia",
+      "Cyprus",
+      "Czech Republic",
+      "Denmark",
+      "Estonia",
+      "Finland",
+      "France",
+      "Germany",
+      "Greece",
+      "Hungary",
+      "Ireland",
+      "Italy",
+      "Latvia",
+      "Lithuania",
+      "Luxembourg",
+      "Malta",
+      "Netherlands",
+      "Poland",
+      "Portugal",
+      "Romania",
+      "Slovakia",
+      "Slovenia",
+      "Spain",
+      "Sweden",
+      "Iceland",
+      "Liechtenstein",
+      "Norway"
+     ]
+    },
+    {
+     "left": "market_cap_basic",
+     "operation": "greater",
+     "right": 0
+    }
+   ],
+   "sort": {
+    "sortBy": "market_cap_basic",
+    "sortOrder": "desc"
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":573,\"data\":[{\"s\":\"EURONEXT:OR\",\"d\":[\"L'Oreal S.A.\",436.3,\"France\",232093405463,\"FR0000120321\",\"Consumer Non-Durables\",\"EUR\",\"EUR\"]},{\"s\":\"EURONEXT:MC\",\"d\":[\"LVMH Moet Hennessy Louis Vuitton SE\",383,\"France\",188576644501,\"FR0000121014\",\"Consumer Non-Durables\",\"EUR\",\"EUR\"]},{\"s\":\"EURONEXT:TTE\",\"d\":[\"TotalEnergies SE\",83.45,\"France\",186276060436,\"FR0000120271\",\"Energy Minerals\",\"EUR\",\"EUR\"]}]}",
+  "url": "https://scanner.tradingview.com/france/scan",
+  "fetchedAt": "2026-10-24T16:06:08.602Z"
+ }
+}
