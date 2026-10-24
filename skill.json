@@ -1,0 +1,29 @@
+{
+  "_comment": "The packaging contract for this skill, read by `skill vendor|check|bundle`. `forks` is a ratchet: entries may leave, never arrive — so the next declaration shadowing an engine export is an argued decision rather than a quiet copy. `usageFloor` goes up when a layer lands and never down to make a red run pass.",
+  "name": "ultrastock",
+  "engines": {
+    "webindex": {
+      "repo": "maxgfr/webindex",
+      "minRef": "v1.26.0",
+      "meta": "webindex.meta.json"
+    }
+  },
+  "usageFloor": 34,
+  "forks": {},
+  "allowedForeignFlags": [],
+  "repin": {
+    "artifacts": [
+      "src/vendor",
+      "scripts",
+      "skills",
+      "package.json",
+      "pnpm-lock.yaml",
+      "skill.json",
+      ".github/workflows/engine-repin.yml"
+    ],
+    "workflows": [
+      "ci.yml",
+      "release.yml"
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "kind": "analyze — Euronext equity, French answer (decimal commas, € and −)",
+  "symbol": "MC.PA",
+  "fixture": "assets/fixtures/mc-pa",
+  "calcs": [{ "formula": "(E1 / E6 - 1) * 100", "label": "MC.PA above its 52-week low", "unit": "%", "expectId": "E27" }],
+  "expect": { "evidenceMin": 25, "keys": ["MC.PA.close", "MC.PA.sma200", "MC.PA.rsi14", "MC.PA.trend"] },
+  "answers": { "good": 0, "bad": 5 }
+}

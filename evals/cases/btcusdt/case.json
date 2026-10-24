@@ -1,0 +1,8 @@
+{
+  "kind": "analyze — crypto pair on Binance (24/7, closed daily bars only)",
+  "symbol": "BTCUSDT",
+  "fixture": "assets/fixtures/btcusdt",
+  "calcs": [],
+  "expect": { "evidenceMin": 25, "keys": ["BTCUSDT.close", "BTCUSDT.vol1y", "BTCUSDT.maxDrawdown1y"] },
+  "answers": { "good": 0, "bad": 3 }
+}

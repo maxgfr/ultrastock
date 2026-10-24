@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Dispatched by engine-repin.yml — see the note in release.yml.
+  workflow_dispatch: {}
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20 is the dev-toolchain floor (vitest 4 needs >=20.19); 24 is current.
+        # The published bundle's Node 18 floor is covered by runtime-node-floor.
+        node-version: [20, 24]
+    name: build-test (node ${{ matrix.node-version }})
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm run lint
+      # tsup + skill copy, the committed bundle unchanged, then the packaging
+      # gates: no engine export re-declared, the skill installs whole, the pin
+      # matches its tag and is not older than the source needs.
+      - name: Build is reproducible, packaging gates hold
+        run: pnpm run check:build
+      - run: pnpm test
+      - name: Offline evals (recorded fixtures, deterministic)
+        run: pnpm run eval
+
+  install-bundle:
+    runs-on: ubuntu-latest
+    name: install-bundle (skill installs whole, not just SKILL.md)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - name: End-to-end — `skills add` bundles the engine and references, not SKILL.md alone
+        run: |
+          WORK="$(mktemp -d)"
+          cd "$WORK"
+          npx --yes skills add "$GITHUB_WORKSPACE" --skill ultrastock --agent universal --copy -y
+          DIR=.agents/skills/ultrastock
+          test -f "$DIR/SKILL.md"                || { echo "::error::SKILL.md not installed"; exit 1; }
+          test -f "$DIR/scripts/ultrastock.mjs"  || { echo "::error::engine not bundled — skills add dropped scripts/"; exit 1; }
+          test -d "$DIR/references"              || { echo "::error::references/ not bundled"; exit 1; }
+          node "$DIR/scripts/ultrastock.mjs" --help > /dev/null || { echo "::error::installed engine does not run"; exit 1; }
+          echo "install-bundle: skill installed whole and the engine runs."
+
+  # The shipped bundle declares engines.node ">=18" but the dev toolchain needs
+  # Node >=20.19, so build-test cannot prove the floor. This job runs only the
+  # committed bundle on Node 18, with no install.
+  runtime-node-floor:
+    runs-on: ubuntu-latest
+    name: runtime (Node 18 floor, zero-dep bundle)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 18
+      - name: The bundle starts, analyzes a fixture and checks an answer, on Node 18
+        run: |
+          node scripts/ultrastock.mjs --help > /dev/null
+          node scripts/ultrastock.mjs version
+          RUN="$(mktemp -d)"
+          ULTRASTOCK_HOME="$(mktemp -d)" node scripts/ultrastock.mjs analyze BTCUSDT --fixture assets/fixtures/btcusdt --out "$RUN" > /dev/null
+          node scripts/ultrastock.mjs check "$RUN" evals/cases/btcusdt/answer.good.md
+          node evals/run.mjs --suite offline

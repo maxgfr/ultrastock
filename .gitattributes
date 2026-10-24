@@ -1,0 +1,2 @@
+assets/fixtures/** -text
+tests/fixtures/** -text
