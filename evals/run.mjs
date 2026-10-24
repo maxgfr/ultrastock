@@ -99,7 +99,10 @@ if (suite === "offline") {
   const noKey = cli(["broker", "submit", "t-20260101000000-deadbeef", "--venue", "kraken", "--env", "live"]);
   ok(noKey.status !== 0, "broker submit on an unknown ticket is refused");
   const loosen = cli(["broker", "limits", "set", "--max-order", "100000", "--max-daily", "100000"]);
-  ok(loosen.status === 0 && loosen.json?.applied === false && /approval code/.test(loosen.json?.reason ?? ""), "loosening the live limits without an approval code is refused");
+  ok(
+    loosen.status === 0 && loosen.json?.applied === false && /approval code/.test(loosen.json?.reason ?? ""),
+    "loosening the live limits without an approval code is refused",
+  );
   const tighten = cli(["broker", "limits", "set", "--max-order", "100", "--max-daily", "200"]);
   ok(tighten.status === 0 && tighten.json?.applied === true, "tightening the live limits applies at once");
   const code = cli(["broker", "code", "limits", "--max-order", "500"]);
