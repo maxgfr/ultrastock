@@ -1,0 +1,86 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/ireland/scan",
+  "json": {
+   "columns": [
+    "description",
+    "close",
+    "country",
+    "market_cap_basic",
+    "isin",
+    "sector",
+    "currency",
+    "fundamental_currency_code"
+   ],
+   "range": [
+    0,
+    3
+   ],
+   "filter": [
+    {
+     "left": "type",
+     "operation": "equal",
+     "right": "stock"
+    },
+    {
+     "left": "is_primary",
+     "operation": "equal",
+     "right": true
+    },
+    {
+     "left": "country",
+     "operation": "in_range",
+     "right": [
+      "Austria",
+      "Belgium",
+      "Bulgaria",
+      "Croatia",
+      "Cyprus",
+      "Czech Republic",
+      "Denmark",
+      "Estonia",
+      "Finland",
+      "France",
+      "Germany",
+      "Greece",
+      "Hungary",
+      "Ireland",
+      "Italy",
+      "Latvia",
+      "Lithuania",
+      "Luxembourg",
+      "Malta",
+      "Netherlands",
+      "Poland",
+      "Portugal",
+      "Romania",
+      "Slovakia",
+      "Slovenia",
+      "Spain",
+      "Sweden",
+      "Iceland",
+      "Liechtenstein",
+      "Norway"
+     ]
+    },
+    {
+     "left": "market_cap_basic",
+     "operation": "greater",
+     "right": 0
+    }
+   ],
+   "sort": {
+    "sortBy": "market_cap_basic",
+    "sortOrder": "desc"
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":17,\"data\":[{\"s\":\"EURONEXT:RYA\",\"d\":[\"Ryanair Holdings PLC\",22.53,\"Ireland\",23337651157,\"IE00BYTBXV33\",\"Transportation\",\"EUR\",\"EUR\"]},{\"s\":\"EURONEXT:A5G\",\"d\":[\"AIB Group PLC\",10.81,\"Ireland\",22256173059,\"IE00BF0L3536\",\"Finance\",\"EUR\",\"EUR\"]},{\"s\":\"EURONEXT:BIRG\",\"d\":[\"Bank of Ireland Group PLC\",17.92,\"Ireland\",16615431946,\"IE00BD1RP616\",\"Finance\",\"EUR\",\"EUR\"]}]}",
+  "url": "https://scanner.tradingview.com/ireland/scan",
+  "fetchedAt": "2026-10-24T16:06:13.605Z"
+ }
+}

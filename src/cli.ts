@@ -8,6 +8,7 @@ import { EvidenceStore, formatEvidence } from "./core/evidence.js";
 import { ExprError } from "./core/expr.js";
 import { clockNow, FixtureMiss, setNetMode } from "./core/net.js";
 import { runDirFor } from "./core/paths.js";
+import { technicalsCommand, valuationCommand } from "./commands/analytics.js";
 import { calendarCommand } from "./commands/calendar.js";
 import {
   analystCommand,
@@ -23,6 +24,9 @@ import {
 import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentimentCommand, universeCommand } from "./commands/macro.js";
 import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
+import { catalystsCommand, regimeCommand, sectorsCommand } from "./commands/regime.js";
+import { screenCommand } from "./commands/screen.js";
+import { cryptoAnalysisCommand, optionsAnalysisCommand, predictAnalysisCommand, statsCommand } from "./commands/quant.js";
 import { doctorReport, formatDoctor } from "./doctor.js";
 import {
   argBool,
@@ -72,6 +76,13 @@ USAGE
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
   ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
   ultrastock fundamentals <symbol> [--asof <date>] [--years <n>] [--quarters <n>] [--source sec|esef|crible] [--out <dir>] [--json]
+  ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market <m>] [--universe <idx|list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--out <dir>] [--json]
+  ultrastock screen --list [--engine tradingview|crible|builtin] [--json]
+  ultrastock regime [--market us|eu|crypto] [--out <dir>] [--json]
+  ultrastock sectors [--market us|eu] [--out <dir>] [--json]
+  ultrastock catalysts <symbol> [--days <1-90>] [--out <dir>] [--json]
+  ultrastock technicals <symbol> [--interval 1d|1w|4h|1h|15m] [--indicators <name:k=v;…,…>] [--benchmark <symbol>] [--out <dir>] [--json]
+  ultrastock valuation <symbol> [--erp <pct>] [--terminal <pct>] [--out <dir>] [--json]
   ultrastock filings <US symbol> [--forms 8-K,10-Q] [--days <n>] [--limit <n>] | filings --search <text> [--out <dir>] [--json]
   ultrastock insiders <symbol> [--limit <n>] [--out <dir>] [--json]
   ultrastock holdings <manager|CIK> [--limit <n>] [--out <dir>] [--json]
@@ -80,6 +91,10 @@ USAGE
   ultrastock dividends <US symbol> [--limit <n>] [--out <dir>] [--json]
   ultrastock congress [--member <name>] [--doc <DocID>] [--year <yyyy>] [--limit <n>] [--out <dir>] [--json]
   ultrastock options <symbol> [--expiries <n>] [--out <dir>] [--json]
+  ultrastock options-analysis <symbol> [--expiry <date>] [--strategy <spec>] [--spot-moves=<list>] [--rate <pct>] [--out <dir>] [--json]
+  ultrastock stats <symbol> [<symbol> …] [--days <n>] [--benchmark <symbol>] [--out <dir>] [--json]
+  ultrastock crypto-analysis <coin> [--days <n>] | crypto-analysis yields <symbol> [--limit <n>] [--out <dir>] [--json]
+  ultrastock predict-analysis kalshi <SERIES|market:TICKER> | manifold <terms> [--my-probability <p>] [--kalshi-fee <coef>] [--contracts <n>] [--limit <n>] [--out <dir>] [--json]
   ultrastock crypto global|top|coin|derivatives|defi|yields|stables|fees|onchain|dex|holders [<target>] [--limit <n>] [--out <dir>] [--json]
   ultrastock predict kalshi|manifold|polymarket [<query>] [--limit <n>] [--out <dir>] [--json]
   ultrastock snapshot <symbol> [--market <tv-market>] [--out <dir>] [--json]
@@ -140,6 +155,49 @@ COMMANDS
             TTM; --asof keeps only what was filed by then — point in time), ESEF
             IFRS reports for European issuers, crible as fallback (with its
             Piotroski, Altman, Beneish and rank fields).
+  screen    Screens on three engines. tradingview (its presets: value,
+            quality-growth, momentum, breakout-52w, dividend-growth,
+            oversold-quality, small-cap-value, magic-formula, garp, etf,
+            pea-candidates) over a whole --market (america, france, germany, uk…,
+            europe = 14 markets merged, crypto); builtin technical screens on
+            daily bars for --universe SPX|NDX|CAC40|SBF120|DAX|SX5E|AEX|UKX|<list>
+            (≤ 120 symbols: minervini, vcp, canslim-technical, momentum-burst,
+            exhaustion-hammer, pullback-to-50, golden-cross, rs-leaders); crible
+            (--engine crible: a crible preset or any DSL, e.g. "piotroski_f >= 7
+            AND country IN ('FR','DE')"; --bootstrap downloads its dataset once,
+            about a minute). --list prints every preset's rules and source.
+  regime    Market regime and an exposure ceiling. us: SPY trend, RSP/SPY
+            breadth, HYG/LQD credit, SPY/QQQ distribution days and follow-through,
+            VIX/VIX3M, CNN Fear & Greed read contrarian, % of US large caps above
+            their 200-day. eu: CAC 40 trend, euro-area large-cap breadth, VIX term;
+            CW8 and the ECB AAA 2s10s as context. crypto: BTC trend and 30-day
+            return, alt breadth, funding, drawdown from the high. Every signal,
+            component, weight and the zone / max exposure / new-entries call is
+            evidence; missing inputs renormalise the weights and are named.
+  sectors   Sector leadership. us: the 11 SPDR sector ETFs vs SPY (1/3/6-month
+            relative performance, RS rank, above the 50/200-day). eu: large caps
+            of FR/DE/NL/IT/ES grouped by sector. Two or more defensives in the
+            top four reads as risk-off.
+  catalysts What can move an instrument in the next --days (default 30): next
+            earnings, ex-dividend dates, important 8-Ks and insider cluster buys
+            (US), high-impact macro releases for its currency, exchange holidays,
+            the options-implied move to the first expiry after the window (US),
+            and clusters of two or more catalysts within 3 sessions.
+  technicals The full technical picture, each reading an [E#]: averages, ADX,
+            Supertrend, Parabolic SAR, Ichimoku cloud, Aroon, RSI, MACD,
+            stochastic, Williams %R, CCI, ROC, ATR, Bollinger %B and bandwidth,
+            Keltner, Donchian, chandelier exit, MFI, Chaikin money flow,
+            relative strength vs a benchmark, the 52-week range, Minervini's
+            trend template, VCP, support and resistance, recent gaps, breakouts
+            and candlesticks, and a bullish score with a reason per point;
+            --indicators adds any of the 107 registry indicators. Writes TECHNICALS.md.
+  valuation What the business earns and what the price assumes: Piotroski,
+            Altman Z″ and Beneish scores with their components, quality (margins,
+            ROIC, FCF after SBC, leverage, accruals), multiples, a bear/base/bull
+            DCF on free cash flow at a CAPM cost of equity (10-year government
+            rate, 2-year beta, --erp 5 by default), the growth the price implies,
+            and the margin of safety — every input and output an [E#]. Writes
+            VALUATION.md.
   filings   Recent SEC filings, 8-K items named and the important ones flagged;
             --search runs EDGAR full-text search.
   insiders  Insider trades: SEC Form 4 (open-market buys and sells, 90-day net,
@@ -153,6 +211,27 @@ COMMANDS
   options   An option chain summary per expiry — ATM IV, put/call open interest
             and volume, totals: US listings from CBOE (15 min delayed), BTC and
             ETH from Deribit with the DVOL volatility index.
+  options-analysis  Per expiry: expected move (straddle and 1 sd), max pain, dealer
+            gamma exposure (total, flip, call and put walls), put/call ratios,
+            25-delta skew; the ATM-IV term structure, unusual activity, and IV
+            rank once 20 days of IV are stored. --strategy prices a structure
+            (long-call:K, bull-call:K1/K2, bear-put:K1/K2, iron-condor:Kp1/Kp2/Kc1/Kc2,
+            straddle:K, strangle:Kp/Kc, covered-call:K, cash-secured-put:K,
+            collar:Kp/Kc) at mid: max profit and loss, breakevens, and a P&L
+            matrix by move, date and volatility. Pass --spot-moves=-30,0,30 with "=".
+  stats     One symbol: return distribution, five volatility estimators, a GARCH
+            forecast, Hurst, ADF, the HMM turbulent-state probability, drawdowns,
+            VaR/CVaR/Cornish-Fisher, performance against a benchmark. Several (≤ 10):
+            Pearson and Spearman correlations, tail dependence, pairwise cointegration.
+  crypto-analysis  Funding (annualised, 30-day mean), basis, open interest, long/short
+            ratios, DVOL, MVRV, realised volatility, drawdown from the all-time high,
+            and a "leverage heat" reading; \`yields <symbol>\` judges DeFi pools'
+            sustainability (reward share of the APY, TVL).
+  predict-analysis  Kalshi or Manifold markets: implied probability, spread, YES+NO
+            arbitrage net of fees (Kalshi taker fee 0.07 × C × P × (1 − P) by
+            default), order-book imbalance, time to close; --my-probability adds a
+            half-Kelly stake on an edge discounted by half the spread and the fee.
+            Paper only for French residents; never Polymarket here.
   crypto    Market structure: global caps and dominance, top coins, one coin,
             derivatives positioning (funding, open interest, long/short ratios),
             DeFi TVL, yields (base vs reward APY), stablecoins, fees, on-chain
@@ -211,8 +290,22 @@ export const VALUE_FLAGS = [
   "search",
   "member",
   "doc",
+  "erp",
+  "terminal",
+  "indicators",
+  "benchmark",
+  "expiry",
+  "strategy",
+  "spot-moves",
+  "rate",
+  "my-probability",
+  "kalshi-fee",
+  "contracts",
+  "engine",
+  "universe",
+  "sort",
 ];
-export const BOOL_FLAGS = ["json", "refresh", "offline", "probe"];
+export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "list", "bootstrap"];
 export const COMMANDS = [
   "analyze",
   "quote",
@@ -225,6 +318,12 @@ export const COMMANDS = [
   "calendar",
   "resolve",
   "fundamentals",
+  "screen",
+  "regime",
+  "sectors",
+  "catalysts",
+  "technicals",
+  "valuation",
   "filings",
   "insiders",
   "holdings",
@@ -233,6 +332,10 @@ export const COMMANDS = [
   "dividends",
   "congress",
   "options",
+  "options-analysis",
+  "stats",
+  "crypto-analysis",
+  "predict-analysis",
   "crypto",
   "predict",
   "snapshot",
@@ -270,6 +373,12 @@ const SPEC: CliSpec = {
     universe: ["out", ...NET],
     resolve: ["out", ...NET],
     fundamentals: ["asof", "years", "quarters", "source", "out", ...NET],
+    regime: ["market", "out", ...NET],
+    sectors: ["market", "out", ...NET],
+    catalysts: ["days", "out", ...NET],
+    screen: ["engine", "market", "universe", "limit", "sort", "list", "bootstrap", "out", ...NET],
+    technicals: ["interval", "indicators", "benchmark", "out", ...NET],
+    valuation: ["erp", "terminal", "out", ...NET],
     filings: ["forms", "days", "limit", "search", "out", ...NET],
     insiders: ["limit", "out", ...NET],
     holdings: ["limit", "out", ...NET],
@@ -278,6 +387,10 @@ const SPEC: CliSpec = {
     dividends: ["limit", "out", ...NET],
     congress: ["member", "doc", "year", "limit", "out", ...NET],
     options: ["expiries", "out", ...NET],
+    "options-analysis": ["expiry", "strategy", "spot-moves", "rate", "out", ...NET],
+    stats: ["days", "benchmark", "out", ...NET],
+    "crypto-analysis": ["days", "limit", "out", ...NET],
+    "predict-analysis": ["my-probability", "kalshi-fee", "contracts", "limit", "out", ...NET],
     crypto: ["limit", "out", ...NET],
     predict: ["limit", "out", ...NET],
     snapshot: ["market", "out", ...NET],
@@ -300,7 +413,16 @@ function arity(args: CommandArgs): number {
   if (args.command === "doctor" || args.command === "version") return 0;
   if (args.command === "check" || args.command === "calc") return 2;
   if (args.command === "profile") return 3;
-  if (args.command === "crypto" || args.command === "calendar" || args.command === "macro") return 2;
+  if (args.command === "crypto" || args.command === "calendar" || args.command === "macro" || args.command === "crypto-analysis") return 2;
+  if (
+    args.command === "stats" ||
+    args.command === "predict-analysis" ||
+    args.command === "screen" ||
+    args.command === "regime" ||
+    args.command === "sectors" ||
+    args.command === "catalysts"
+  )
+    return Number.POSITIVE_INFINITY;
   if (args.command === "news" || args.command === "cot" || args.command === "resolve") return Number.POSITIVE_INFINITY;
   if (args.command === "congress") return 0;
   if (args.command === "predict") return Number.POSITIVE_INFINITY;
@@ -456,6 +578,12 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "calendar") return calendarCommand(args, asJson);
   if (cmd === "resolve") return resolveCommand(args, asJson);
   if (cmd === "fundamentals") return fundamentalsCommand(args, asJson);
+  if (cmd === "valuation") return valuationCommand(args, asJson);
+  if (cmd === "technicals") return technicalsCommand(args, asJson);
+  if (cmd === "screen") return screenCommand(args, asJson);
+  if (cmd === "regime") return regimeCommand(args, asJson);
+  if (cmd === "sectors") return sectorsCommand(args, asJson);
+  if (cmd === "catalysts") return catalystsCommand(args, asJson);
   if (cmd === "filings") return filingsCommand(args, asJson);
   if (cmd === "insiders") return insidersCommand(args, asJson);
   if (cmd === "holdings") return holdingsCommand(args, asJson);
@@ -464,6 +592,10 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "dividends") return dividendsCommand(args, asJson);
   if (cmd === "congress") return congressCommand(args, asJson);
   if (cmd === "options") return optionsCommand(args, asJson);
+  if (cmd === "options-analysis") return optionsAnalysisCommand(args, asJson);
+  if (cmd === "stats") return statsCommand(args, asJson);
+  if (cmd === "crypto-analysis") return cryptoAnalysisCommand(args, asJson);
+  if (cmd === "predict-analysis") return predictAnalysisCommand(args, asJson);
   if (cmd === "crypto") return cryptoCommand(args, asJson);
   if (cmd === "predict") return predictCommand(args, asJson);
   if (cmd === "snapshot") return snapshotCommand(args, asJson);

@@ -40,7 +40,27 @@ const clean = (s: unknown): string | undefined => {
   return t ? t : undefined;
 };
 
-/** Nasdaq's economicevents rows for `date` as events ("24H" = all day). */
+/** The UTC instant of a wall-clock time in New York (DST from the platform's tz database). */
+export function newYorkToUtc(date: string, hh: number, mm: number): string {
+  const guess = Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)), hh, mm);
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+      .formatToParts(new Date(guess))
+      .map((p) => [p.type, p.value]),
+  );
+  const shown = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute));
+  return new Date(guess + (guess - shown)).toISOString().replace(/\.000Z$/, "Z");
+}
+
+/** Nasdaq's economicevents rows for `date` as events ("24H" = all day). The `gmt` field holds New York times despite its name (durable goods at 08:30). */
 export function parseNasdaqEconomic(rows: ReadonlyArray<Record<string, unknown>>, date: string): EconEvent[] {
   return rows.flatMap((r) => {
     const event = clean(r.eventName);
@@ -48,7 +68,7 @@ export function parseNasdaqEconomic(rows: ReadonlyArray<Record<string, unknown>>
     const t = /^(\d{2}):(\d{2})$/.exec(String(r.gmt ?? "").trim());
     return [
       {
-        at: t ? `${date}T${t[1]}:${t[2]}:00Z` : date,
+        at: t ? newYorkToUtc(date, Number(t[1]), Number(t[2])) : date,
         country: clean(r.country) ?? "",
         event,
         actual: clean(r.actual),

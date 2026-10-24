@@ -1,0 +1,44 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/netherlands/scan",
+  "json": {
+   "columns": [
+    "close",
+    "SMA200"
+   ],
+   "range": [
+    0,
+    300
+   ],
+   "filter": [
+    {
+     "left": "market_cap_basic",
+     "operation": "greater",
+     "right": 5000000000
+    },
+    {
+     "left": "type",
+     "operation": "equal",
+     "right": "stock"
+    },
+    {
+     "left": "is_primary",
+     "operation": "equal",
+     "right": true
+    }
+   ],
+   "sort": {
+    "sortBy": "market_cap_basic",
+    "sortOrder": "desc"
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":31,\"data\":[{\"s\":\"EURONEXT:ASML\",\"d\":[1407.2,1382.951]},{\"s\":\"EURONEXT:INGA\",\"d\":[28.46,27.06389999999999]},{\"s\":\"EURONEXT:PRX\",\"d\":[34.17,40.44519999999997]},{\"s\":\"EURONEXT:HEIA\",\"d\":[77.52,71.51490000000025]},{\"s\":\"EURONEXT:MT\",\"d\":[53.3,55.12945]},{\"s\":\"EURONEXT:ASM\",\"d\":[699.8,812.0095000000005]},{\"s\":\"EURONEXT:ADYEN\",\"d\":[945.4,956.3580000000022]},{\"s\":\"EURONEXT:UMG\",\"d\":[16,17.73795]},{\"s\":\"EURONEXT:AD\",\"d\":[33.14,35.867]},{\"s\":\"EURONEXT:DSFIR\",\"d\":[108.9,77.02309999999994]},{\"s\":\"EURONEXT:PHIA\",\"d\":[24.08,23.557399999999994]},{\"s\":\"EURONEXT:EXO\",\"d\":[67.6,69.09799999999994]},{\"s\":\"EURONEXT:HEIO\",\"d\":[74.2,66.15599999999999]},{\"s\":\"EURONEXT:WKL\",\"d\":[88.18,67.31729999999997]},{\"s\":\"EURONEXT:NN\",\"d\":[76.08,73.72689999999997]},{\"s\":\"EURONEXT:KPN\",\"d\":[4.113,4.346315000000001]},{\"s\":\"EURONEXT:HAL\",\"d\":[167,165.65800000000002]},{\"s\":\"EURONEXT:ASRNL\",\"d\":[74.06,66.20559999999998]},{\"s\":\"EURONEXT:CSG\",\"d\":[13.798,null]},{\"s\":\"EURONEXT:CVC\",\"d\":[12.67,13.157400000000006]},{\"s\":\"EURONEXT:BESI\",\"d\":[145.1,214.80024999999986]},{\"s\":\"EURONEXT:AGN\",\"d\":[7.308,7.226559999999998]},{\"s\":\"EURONEXT:MICC\",\"d\":[17.026,14.822370000000001]},{\"s\":\"EURONEXT:AKZA\",\"d\":[58.62,56.949049999999936]},{\"s\":\"EURONEXT:RAND\",\"d\":[41.23,30.29500000000001]},{\"s\":\"EURONEXT:CTPNV\",\"d\":[12.66,15.709200000000019]},{\"s\":\"EURONEXT:IMCD\",\"d\":[101.2,89.67190000000032]},{\"s\":\"EURONEXT:VPK\",\"d\":[54.4,46.10074999999997]},{\"s\":\"EURONEXT:ALLFG\",\"d\":[9.78,8.678525000000006]},{\"s\":\"EURONEXT:SBMO\",\"d\":[34.9,33.53240000000002]},{\"s\":\"EURONEXT:SWICH\",\"d\":[10.9,null]}]}",
+  "url": "https://scanner.tradingview.com/netherlands/scan",
+  "fetchedAt": "2026-10-24T16:07:09.725Z"
+ }
+}

@@ -1,0 +1,86 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/portugal/scan",
+  "json": {
+   "columns": [
+    "description",
+    "close",
+    "country",
+    "market_cap_basic",
+    "isin",
+    "sector",
+    "currency",
+    "fundamental_currency_code"
+   ],
+   "range": [
+    0,
+    3
+   ],
+   "filter": [
+    {
+     "left": "type",
+     "operation": "equal",
+     "right": "stock"
+    },
+    {
+     "left": "is_primary",
+     "operation": "equal",
+     "right": true
+    },
+    {
+     "left": "country",
+     "operation": "in_range",
+     "right": [
+      "Austria",
+      "Belgium",
+      "Bulgaria",
+      "Croatia",
+      "Cyprus",
+      "Czech Republic",
+      "Denmark",
+      "Estonia",
+      "Finland",
+      "France",
+      "Germany",
+      "Greece",
+      "Hungary",
+      "Ireland",
+      "Italy",
+      "Latvia",
+      "Lithuania",
+      "Luxembourg",
+      "Malta",
+      "Netherlands",
+      "Poland",
+      "Portugal",
+      "Romania",
+      "Slovakia",
+      "Slovenia",
+      "Spain",
+      "Sweden",
+      "Iceland",
+      "Liechtenstein",
+      "Norway"
+     ]
+    },
+    {
+     "left": "market_cap_basic",
+     "operation": "greater",
+     "right": 0
+    }
+   ],
+   "sort": {
+    "sortBy": "market_cap_basic",
+    "sortOrder": "desc"
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":31,\"data\":[{\"s\":\"EURONEXT:EDP\",\"d\":[\"EDP S.A.\",4.69,\"Portugal\",19383254978,\"PTEDP0AM0009\",\"Utilities\",\"EUR\",\"EUR\"]},{\"s\":\"EURONEXT:GALP\",\"d\":[\"Galp Energia, SGPS S.A. Class B\",22.96,\"Portugal\",16922044498,\"PTGAL0AM0009\",\"Energy Minerals\",\"EUR\",\"EUR\"]},{\"s\":\"EURONEXT:BCP\",\"d\":[\"Banco Comercial Portugues S.A.\",1.0595,\"Portugal\",15685501946,\"PTBCP0AM0015\",\"Finance\",\"EUR\",\"EUR\"]}]}",
+  "url": "https://scanner.tradingview.com/portugal/scan",
+  "fetchedAt": "2026-10-24T16:06:12.602Z"
+ }
+}

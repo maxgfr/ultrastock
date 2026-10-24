@@ -40,9 +40,9 @@ export interface Registered {
 
 const round = (v: number) => (Number.isInteger(v) ? v : Number(v.toPrecision(12)));
 
-/** Register datasets in the run at `dir` (when given) and return their ids. */
-export function registerDatasets(dir: string | undefined, datasets: readonly Dataset[]): Registered[] {
-  const store = dir ? EvidenceStore.open(dir, { subject: datasets[0]?.subject }) : undefined;
+/** Register datasets in the run at `dir` — or in an open store — and return their ids. */
+export function registerDatasets(target: string | EvidenceStore | undefined, datasets: readonly Dataset[]): Registered[] {
+  const store = typeof target === "string" ? EvidenceStore.open(target, { subject: datasets[0]?.subject }) : target;
   const out: Registered[] = [];
   for (const ds of datasets) {
     const items: EvidenceItem[] = [];
