@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [0.9.0](https://github.com/maxgfr/ultrastock/compare/v0.8.0...v0.9.0) (2026-10-24)
+
+
+### Bug Fixes
+
+* **secrets:** do not shadow the engine's envName ([5c20bb5](https://github.com/maxgfr/ultrastock/commit/5c20bb50612f7a6b0dd44c3c928d19f778d92ac0))
+
+
+### Features
+
+* **brokers:** Binance, Kraken, Coinbase and IBKR live adapters — one signed request per order, unknown on timeout, credentials scrubbed, pinned TLS for the IBKR gateway ([6300d88](https://github.com/maxgfr/ultrastock/commit/6300d88597803cf9f68fbff7e622d7b942599cea))
+* **broker:** the broker command — status, setup, balances, preview, approval codes, submit, reconcile, cancel, ratcheted limits and panic; Kalshi live on the V2 order API, refused where the jurisdiction does not allow it; UUID client order ids; the live-execution reference ([b7653f2](https://github.com/maxgfr/ultrastock/commit/b7653f2e819ea6b60ac4d40a7111668cc8f0f4ca))
+* **live:** the live safety core — keychain credentials, out-of-band approval codes bound to the order, ratcheted limits by experience tier, every precondition named, one request per approval with unknown → reconcile ([078988b](https://github.com/maxgfr/ultrastock/commit/078988b2056c364de6d2d6181b352ba72d404f3b))
+* **predict:** paper tickets for Kalshi contracts — book walk with the taker fee, the stake as the risk, venues blocked for the jurisdiction refused even on paper and unverified ones paper only ([b5d604e](https://github.com/maxgfr/ultrastock/commit/b5d604e6220dbf2c460f523c1d7022ed3a0fe6bd))
+
 # [0.8.0](https://github.com/maxgfr/ultrastock/compare/v0.7.0...v0.8.0) (2026-10-24)
 
 
