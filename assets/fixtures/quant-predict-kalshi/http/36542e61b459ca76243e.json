@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.elections.kalshi.com/trade-api/v2/markets/KXFED-27APR-T5.75/orderbook"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"orderbook_fp\":{\"no_dollars\":[[\"0.0100\",\"898043.00\"],[\"0.1000\",\"70649.00\"],[\"0.1100\",\"3664.00\"],[\"0.2000\",\"24980.00\"],[\"0.2900\",\"5306.00\"],[\"0.3000\",\"151.00\"],[\"0.3900\",\"1639.00\"],[\"0.4000\",\"1.58\"]],\"yes_dollars\":[[\"0.0100\",\"100.00\"]]}}",
+  "url": "https://api.elections.kalshi.com/trade-api/v2/markets/KXFED-27APR-T5.75/orderbook",
+  "fetchedAt": "2026-10-24T15:59:40.004Z"
+ }
+}

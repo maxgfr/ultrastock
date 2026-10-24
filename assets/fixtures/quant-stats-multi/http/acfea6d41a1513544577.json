@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.nasdaq.com/api/quote/AMD/info?assetclass=stocks"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"data\":{\"symbol\":\"AMD\",\"companyName\":\"Advanced Micro Devices, Inc. Common Stock\",\"stockType\":\"Common Stock\",\"exchange\":\"NASDAQ-GS\",\"isNasdaqListed\":true,\"isNasdaq100\":true,\"isHeld\":false,\"primaryData\":{\"lastSalePrice\":\"$516.79\",\"netChange\":\"+8.86\",\"percentageChange\":\"+1.74%\",\"deltaIndicator\":\"up\",\"lastTradeTimestamp\":\"Oct 22, 2026\",\"isRealTime\":false,\"bidPrice\":\"N/A\",\"askPrice\":\"N/A\",\"bidSize\":\"N/A\",\"askSize\":\"N/A\",\"volume\":\"15,178,289\",\"currency\":null},\"secondaryData\":null,\"marketStatus\":\"Closed\",\"assetClass\":\"STOCKS\",\"keyStats\":{\"fiftyTwoWeekHighLow\":{\"label\":\"52 Week Range:\",\"value\":\"188.22 - 658.52\"},\"dayrange\":{\"label\":\"High/Low:\",\"value\":\"NA\"}},\"notifications\":[{\"headline\":\"UPCOMING EVENTS\",\"eventTypes\":[{\"message\":\"Earnings Date : Nov 3, 2026\",\"eventName\":\"Earnings Date\",\"url\":{\"label\":\"AMD Earnings Date : Nov 3, 2026\",\"value\":\"/market-activity/stocks/AMD/earnings\"},\"id\":\"upcoming_events\"}]},{\"headline\":\"HIGH TECHNICAL ATTRIBUTE\",\"eventTypes\":[{\"message\":\"AMD has a High Technical Rating by Nasdaq Dorsey Wright. Discover why technical analysis matters\",\"eventName\":\"High Technical Attribute\",\"url\":{\"label\":\"Discover why technical analysis matters\",\"value\":\"https://www.nasdaq.com/solutions/nasdaq-dorsey-wright/technical-analysis\"},\"id\":\"tech_attribute\"}]}]},\"message\":null,\"status\":{\"rCode\":200,\"bCodeMessage\":null,\"developerMessage\":null}}",
+  "url": "https://api.nasdaq.com/api/quote/AMD/info?assetclass=stocks",
+  "fetchedAt": "2026-10-24T15:59:31.850Z"
+ }
+}
