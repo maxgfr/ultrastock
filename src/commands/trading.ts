@@ -1,5 +1,6 @@
 // Portfolio, plans, tickets and paper trading.
 import { importCommand } from "./import.js";
+import { PORTFOLIO_ANALYTICS_ACTIONS, portfolioAnalyticsCommand } from "./portfolio-analytics.js";
 import { resolve } from "node:path";
 import { EvidenceStore } from "../core/evidence.js";
 import { clockNow } from "../core/net.js";
@@ -56,6 +57,7 @@ export async function portfolioCommand(args: CommandArgs, asJson: boolean): Prom
   const [sub = "show", ...rest] = args.positional;
   const book = bookOf(args);
   if (sub === "import") return importCommand(args, asJson);
+  if ((PORTFOLIO_ANALYTICS_ACTIONS as readonly string[]).includes(sub)) return portfolioAnalyticsCommand(args, asJson);
   if (sub === "deposit" || sub === "withdraw") {
     const [account, amountRaw] = rest;
     const amount = num(amountRaw, "amount");

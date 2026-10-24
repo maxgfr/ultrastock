@@ -84,6 +84,9 @@ USAGE
   ultrastock dividends <US symbol> [--limit <n>] [--out <dir>] [--json]
   ultrastock congress [--member <name>] [--doc <DocID>] [--year <yyyy>] [--limit <n>] [--out <dir>] [--json]
   ultrastock portfolio show|perf [--book real|paper] [--out <dir>] [--json]
+  ultrastock portfolio risk|stress|optimize|location|lookthrough|income [--book real|paper] [--benchmark <sym>] [--universe a,b,c] [--out <dir>] [--json]
+  ultrastock portfolio rebalance --targets <file.json|{"CW8.PA":60,"CASH":5}> [--band <pts>] [--rel-band <%>] [--contribution <amount>] [--book] [--out <dir>] [--json]
+  ultrastock portfolio goals --target <amount> --years <n> [--monthly <amount>] [--book] [--out <dir>] [--json]
   ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name|file.json>] [--dry-run] [--json]
   ultrastock portfolio deposit|withdraw <account> <amount> [--currency EUR] [--date <date>] [--book real|paper]
   ultrastock portfolio add buy|sell|dividend|fee|interest|tax|split --account <id> [--symbol] [--quantity] [--price] [--amount] [--fee] [--currency] [--date] [--book]
@@ -193,6 +196,17 @@ COMMANDS
             file; skipped rows are listed with their reason; --dry-run writes
             nothing. For crypto, --map '{"quote":"EUR"}' names the pair coin
             deposits and rewards are booked against.
+            Analyses of a book marked to market, every figure an [E#]: risk
+            (exposures by class, currency, sector, country; HHI, volatility,
+            VaR/CVaR historical, Cornish-Fisher and 10-day bootstrap, beta,
+            drawdown, correlations, limit breaches), stress (GFC, COVID, 2022
+            rates, crypto winter replays and parametric shocks), optimize
+            (min-variance, risk parity, HRP, max-Sharpe on Ledoit-Wolf, capped
+            at maxPositionPct), rebalance (bands into whole-share orders with
+            fees and tax notes), location (best envelope per holding, PEA room),
+            lookthrough (ETF holdings from iShares, Amundi, SEC N-PORT), income
+            (received, forward 12 months, yield on cost), goals (seeded Monte
+            Carlo, the monthly contribution for 80 %). None places an order.
   plan      From a view to an order within the profile's limits: entry, a stop
             below support or 2 ATR, targets at 2R and 3R, the size from the risk
             per trade (and every cap), dry-run through the risk gate → ready,
@@ -284,6 +298,11 @@ export const VALUE_FLAGS = [
   "status",
   "format",
   "map",
+  "targets",
+  "band",
+  "rel-band",
+  "contribution",
+  "monthly",
 ];
 export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "dry-run"];
 export const COMMANDS = [
@@ -358,7 +377,31 @@ const SPEC: CliSpec = {
     short: ["out", ...NET],
     dividends: ["limit", "out", ...NET],
     congress: ["member", "doc", "year", "limit", "out", ...NET],
-    portfolio: ["book", "account", "symbol", "quantity", "price", "amount", "fee", "currency", "date", "format", "map", "dry-run", "out", ...NET],
+    portfolio: [
+      "book",
+      "account",
+      "symbol",
+      "quantity",
+      "price",
+      "amount",
+      "fee",
+      "currency",
+      "date",
+      "format",
+      "map",
+      "dry-run",
+      "benchmark",
+      "universe",
+      "targets",
+      "band",
+      "rel-band",
+      "contribution",
+      "target",
+      "years",
+      "monthly",
+      "out",
+      ...NET,
+    ],
     plan: ["account", "entry", "stop", "target", "venue", "ticket", "out", ...NET],
     ticket: ["status", ...NET],
     paper: ["out", ...NET],
