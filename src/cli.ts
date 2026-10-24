@@ -24,6 +24,7 @@ import {
 import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentimentCommand, universeCommand } from "./commands/macro.js";
 import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
+import { paperCommand, planCommand, portfolioCommand, ticketCommand } from "./commands/trading.js";
 import { doctorReport, formatDoctor } from "./doctor.js";
 import {
   argBool,
@@ -82,6 +83,12 @@ USAGE
   ultrastock short <US symbol> [--out <dir>] [--json]
   ultrastock dividends <US symbol> [--limit <n>] [--out <dir>] [--json]
   ultrastock congress [--member <name>] [--doc <DocID>] [--year <yyyy>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock portfolio show|perf [--book real|paper] [--out <dir>] [--json]
+  ultrastock portfolio deposit|withdraw <account> <amount> [--currency EUR] [--date <date>] [--book real|paper]
+  ultrastock portfolio add buy|sell|dividend|fee|interest|tax|split --account <id> [--symbol] [--quantity] [--price] [--amount] [--fee] [--currency] [--date] [--book]
+  ultrastock plan <symbol> --account <id> [--entry <n>] [--stop <n>] [--target <a,b>] [--venue paper] [--ticket] [--out <dir>] [--json]
+  ultrastock ticket list|show|check|cancel [<ticket-id>] [--status <s>] [--json]
+  ultrastock paper book|submit <ticket-id>|sweep|readiness [--json]
   ultrastock options <symbol> [--expiries <n>] [--out <dir>] [--json]
   ultrastock crypto global|top|coin|derivatives|defi|yields|stables|fees|onchain|dex|holders [<target>] [--limit <n>] [--out <dir>] [--json]
   ultrastock predict kalshi|manifold|polymarket [<query>] [--limit <n>] [--out <dir>] [--json]
@@ -168,6 +175,23 @@ COMMANDS
   short     Short interest and days to cover (Nasdaq) and daily short volume (FINRA).
   dividends Dividend history, yield and ex-dates (Nasdaq).
   congress  US House periodic transaction reports, and one report's trades.
+  portfolio The user's holdings: an append-only ledger per book ("real" for what
+            they hold, "paper" for simulation) — positions, cash, average cost
+            (PMP) and FIFO lots recomputed from the transactions, marked to market
+            in the base currency (ECB rates); perf gives the money-weighted return
+            (XIRR), realised results and the circuit breaker's state.
+  plan      From a view to an order within the profile's limits: entry, a stop
+            below support or 2 ATR, targets at 2R and 3R, the size from the risk
+            per trade (and every cap), dry-run through the risk gate → ready,
+            ready with conditions, not ready or reject. --ticket creates the ticket.
+  ticket    The only way to an execution: list, show, check (re-runs the risk
+            gate on fresh prices; a check lasts 15 minutes), cancel.
+  paper     Paper trading on real prices: submit a checked ticket (crypto walks
+            Binance's order book; others fill at the last price plus slippage,
+            fees included), sweep working limit orders against the bars traded
+            since, book, and readiness — whether the paper record is good enough
+            (20 trades, 30 days, positive expectancy, profit factor > 1.2,
+            drawdown < 15 %) to consider real money.
   options   An option chain summary per expiry — ATM IV, put/call open interest
             and volume, totals: US listings from CBOE (15 min delayed), BTC and
             ETH from Deribit with the DVOL volatility index.
@@ -233,8 +257,20 @@ export const VALUE_FLAGS = [
   "terminal",
   "indicators",
   "benchmark",
+  "book",
+  "account",
+  "quantity",
+  "price",
+  "amount",
+  "fee",
+  "date",
+  "entry",
+  "stop",
+  "target",
+  "venue",
+  "status",
 ];
-export const BOOL_FLAGS = ["json", "refresh", "offline", "probe"];
+export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket"];
 export const COMMANDS = [
   "analyze",
   "quote",
@@ -267,6 +303,10 @@ export const COMMANDS = [
   "sentiment",
   "news",
   "universe",
+  "portfolio",
+  "plan",
+  "ticket",
+  "paper",
   "doctor",
 ];
 
@@ -303,6 +343,10 @@ const SPEC: CliSpec = {
     short: ["out", ...NET],
     dividends: ["limit", "out", ...NET],
     congress: ["member", "doc", "year", "limit", "out", ...NET],
+    portfolio: ["book", "account", "symbol", "quantity", "price", "amount", "fee", "currency", "date", "out", ...NET],
+    plan: ["account", "entry", "stop", "target", "venue", "ticket", "out", ...NET],
+    ticket: ["status", ...NET],
+    paper: ["out", ...NET],
     options: ["expiries", "out", ...NET],
     crypto: ["limit", "out", ...NET],
     predict: ["limit", "out", ...NET],
@@ -329,6 +373,8 @@ function arity(args: CommandArgs): number {
   if (args.command === "crypto" || args.command === "calendar" || args.command === "macro") return 2;
   if (args.command === "news" || args.command === "cot" || args.command === "resolve") return Number.POSITIVE_INFINITY;
   if (args.command === "congress") return 0;
+  if (args.command === "portfolio") return 3;
+  if (args.command === "ticket" || args.command === "paper") return 2;
   if (args.command === "predict") return Number.POSITIVE_INFINITY;
   return 1;
 }
@@ -491,6 +537,10 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "short") return shortCommand(args, asJson);
   if (cmd === "dividends") return dividendsCommand(args, asJson);
   if (cmd === "congress") return congressCommand(args, asJson);
+  if (cmd === "portfolio") return portfolioCommand(args, asJson);
+  if (cmd === "plan") return planCommand(args, asJson);
+  if (cmd === "ticket") return ticketCommand(args, asJson);
+  if (cmd === "paper") return paperCommand(args, asJson);
   if (cmd === "options") return optionsCommand(args, asJson);
   if (cmd === "crypto") return cryptoCommand(args, asJson);
   if (cmd === "predict") return predictCommand(args, asJson);
