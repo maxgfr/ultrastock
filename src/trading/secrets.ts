@@ -30,7 +30,7 @@ function keychain(account: string): string | undefined {
   return undefined;
 }
 
-const envName = (venue: Venue, env: Environment, field: Field) => `ULTRASTOCK_${venue.toUpperCase()}_${env.toUpperCase()}_${field.toUpperCase()}`;
+const credentialEnvName = (venue: Venue, env: Environment, field: Field) => `ULTRASTOCK_${venue.toUpperCase()}_${env.toUpperCase()}_${field.toUpperCase()}`;
 
 /** The venue's credentials and where they came from; undefined when no key is stored. */
 export function readCredentials(
@@ -47,7 +47,7 @@ export function readCredentials(
       source = process.platform === "darwin" ? "macOS keychain" : "secret-tool";
       continue;
     }
-    const e = process.env[envName(venue, env, f)];
+    const e = process.env[credentialEnvName(venue, env, f)];
     if (e) {
       got[f] = e;
       source ||= "environment";
@@ -72,7 +72,7 @@ export function setupCommands(venue: Venue, env: Environment): string[] {
     return fields.map((f) => `security add-generic-password -U -s ultrastock -a ${venue}-${env}-${f} -w   # prompts for the ${label[f]}`);
   if (process.platform === "linux")
     return fields.map((f) => `secret-tool store --label="ultrastock ${venue} ${env} ${f}" service ultrastock account ${venue}-${env}-${f}`);
-  return fields.map((f) => `set ${envName(venue, env, f)} in your environment (no keychain on ${process.platform})`);
+  return fields.map((f) => `set ${credentialEnvName(venue, env, f)} in your environment (no keychain on ${process.platform})`);
 }
 
 /** Remove every credential value from a text before it is shown or logged. */
