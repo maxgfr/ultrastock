@@ -7036,7 +7036,7 @@ var MAX_BODY_BYTES2 = 4 * 1024 * 1024;
 var DRAIN_LIMIT = MAX_BODY_BYTES2 * 8;
 
 // src/version.ts
-var VERSION = "0.0.0";
+var VERSION = "0.1.0";
 
 // src/engine.ts
 configure({
