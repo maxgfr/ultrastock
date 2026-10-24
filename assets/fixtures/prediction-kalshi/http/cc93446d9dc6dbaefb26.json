@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.elections.kalshi.com/trade-api/v2/markets/KXFED-27APR-T6.00/orderbook"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"orderbook_fp\":{\"no_dollars\":[[\"0.0100\",\"884655.00\"],[\"0.1100\",\"100243.00\"],[\"0.1800\",\"2232.00\"],[\"0.2200\",\"18484.00\"],[\"0.2300\",\"115.00\"],[\"0.3300\",\"5692.00\"],[\"0.3400\",\"43.00\"],[\"0.4400\",\"1694.00\"]],\"yes_dollars\":[[\"0.0100\",\"100.00\"]]}}",
+  "url": "https://api.elections.kalshi.com/trade-api/v2/markets/KXFED-27APR-T6.00/orderbook",
+  "fetchedAt": "2026-10-24T15:15:01.660Z"
+ }
+}

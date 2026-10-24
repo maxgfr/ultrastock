@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.manifold.markets/v0/market/ElSLRhzqyR"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"id\":\"ElSLRhzqyR\",\"creatorId\":\"P9beSdXRrjQWCALMIPgF0MQ3NTD3\",\"creatorUsername\":\"brod\",\"creatorName\":\"Brad\",\"createdTime\":1756904841086,\"creatorAvatarUrl\":\"https://firebasestorage.googleapis.com/v0/b/mantic-markets.appspot.com/o/user-images%2Fsummer_of_bliss%2FTpSVBzapMz.jpeg?alt=media&token=0b9f1c7c-5a7a-43f6-92a4-c539f0d4fb50\",\"closeTime\":1798761540000,\"question\":\"US recession in 2026?\",\"slug\":\"us-recession-in-2026\",\"url\":\"https://manifold.markets/brod/us-recession-in-2026\",\"pool\":{\"NO\":2233.5331208128464,\"YES\":44840.075271841895},\"probability\":0.04744767178632883,\"p\":0.5000000000000012,\"totalLiquidity\":10000,\"outcomeType\":\"BINARY\",\"mechanism\":\"cpmm-1\",\"volume\":127156.66166807535,\"volume24Hours\":0,\"isResolved\":false,\"uniqueBettorCount\":142,\"lastUpdatedTime\":1792331761553,\"lastBetTime\":1792331761553,\"lastCommentTime\":1778395748705,\"token\":\"MANA\",\"description\":{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"text\":\"Resolves yes if there are two consecutive quarters of negative economic growth in the United States from Q1 2026 to Q4 2026 inclusive, according to advance estimates from the \",\"type\":\"text\"},{\"text\":\"Bureau of Economic Analysis\",\"type\":\"text\",\"marks\":[{\"type\":\"link\",\"attrs\":{\"href\":\"https://www.bea.gov/data/gdp/gross-domestic-product\",\"class\":\"break-anywhere hover:underline hover:decoration-primary-400 hover:decoration-2 active:underline active:decoration-primary-400\",\"target\":\"_blank\"}}]},{\"text\":\". Otherwise resolves no. \",\"type\":\"text\"}]}]},\"textDescription\":\"Resolves yes if there are two consecutive quarters of negative economic growth in the United States from Q1 2026 to Q4 2026 inclusive, according to advance estimates from the Bureau of Economic Analysis. Otherwise resolves no. \"}",
+  "url": "https://api.manifold.markets/v0/market/ElSLRhzqyR",
+  "fetchedAt": "2026-10-24T15:15:01.418Z"
+ }
+}
