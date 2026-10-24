@@ -9,6 +9,7 @@ import { ExprError } from "./core/expr.js";
 import { clockNow, FixtureMiss, setNetMode } from "./core/net.js";
 import { runDirFor } from "./core/paths.js";
 import { calendarCommand } from "./commands/calendar.js";
+import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
 import { doctorReport, formatDoctor } from "./doctor.js";
 import {
@@ -49,6 +50,10 @@ USAGE
   ultrastock profile show|suitability [--answers <file>]|set <field> <value>|envelope <id> --type PEA [--broker <name>] [--json]
   ultrastock jurisdiction show|verify [--jurisdiction FR] [--venues binance,kraken,coinbase] [--out <dir>] [--json]
   ultrastock calendar sessions|holidays|verify [--market XPAR|XNYS|XMIL|XOSL|CRYPTO] [--days <n>] [--year <yyyy>] [--json]
+  ultrastock options <symbol> [--expiries <n>] [--out <dir>] [--json]
+  ultrastock crypto global|top|coin|derivatives|defi|yields|stables|fees|onchain|dex|holders [<target>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock predict kalshi|manifold|polymarket [<query>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock snapshot <symbol> [--market <tv-market>] [--out <dir>] [--json]
   ultrastock doctor [--probe] [--json]
   ultrastock version
 
@@ -86,6 +91,18 @@ COMMANDS
             regulator DNS blocks, and lists what a web search must confirm.
   calendar  Exchange sessions, holidays and early closes, computed from the
             exchanges' rules; \`verify\` lists what to confirm for a year.
+  options   An option chain summary per expiry — ATM IV, put/call open interest
+            and volume, totals: US listings from CBOE (15 min delayed), BTC and
+            ETH from Deribit with the DVOL volatility index.
+  crypto    Market structure: global caps and dominance, top coins, one coin,
+            derivatives positioning (funding, open interest, long/short ratios),
+            DeFi TVL, yields (base vs reward APY), stablecoins, fees, on-chain
+            metrics (CoinMetrics, mempool.space), DEX pairs, holder concentration.
+  predict   Prediction markets: Kalshi (regulated), Manifold (play money),
+            Polymarket — refused where the profile's jurisdiction blocks it.
+            Questions and rules are external text, fenced as untrusted.
+  snapshot  A cross-venue snapshot from TradingView's scanner (unofficial):
+            price, valuation ratios, performance, technical rating.
   doctor    Version, state directory, Node, external tools; --probe also times a
             live call to each data source.
 
@@ -120,9 +137,25 @@ export const VALUE_FLAGS = [
   "market",
   "days",
   "year",
+  "expiries",
 ];
 export const BOOL_FLAGS = ["json", "refresh", "offline", "probe"];
-export const COMMANDS = ["analyze", "quote", "history", "calc", "evidence", "check", "profile", "jurisdiction", "calendar", "doctor"];
+export const COMMANDS = [
+  "analyze",
+  "quote",
+  "history",
+  "calc",
+  "evidence",
+  "check",
+  "profile",
+  "jurisdiction",
+  "calendar",
+  "options",
+  "crypto",
+  "predict",
+  "snapshot",
+  "doctor",
+];
 
 const NET = ["record", "fixture", "refresh", "offline", "json"];
 const SPEC: CliSpec = {
@@ -139,6 +172,10 @@ const SPEC: CliSpec = {
     profile: ["jurisdiction", "currency", "answers", "type", "broker", "json"],
     jurisdiction: ["jurisdiction", "venues", "out", ...NET],
     calendar: ["market", "days", "year", "json"],
+    options: ["expiries", "out", ...NET],
+    crypto: ["limit", "out", ...NET],
+    predict: ["limit", "out", ...NET],
+    snapshot: ["market", "out", ...NET],
     doctor: ["probe", "json"],
   },
 };
@@ -158,6 +195,8 @@ function arity(args: CommandArgs): number {
   if (args.command === "doctor" || args.command === "version") return 0;
   if (args.command === "check" || args.command === "calc") return 2;
   if (args.command === "profile") return 3;
+  if (args.command === "crypto") return 2;
+  if (args.command === "predict") return Number.POSITIVE_INFINITY;
   return 1;
 }
 
@@ -308,6 +347,10 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "profile") return profileCommand(args, asJson);
   if (cmd === "jurisdiction") return jurisdictionCommand(args, asJson);
   if (cmd === "calendar") return calendarCommand(args, asJson);
+  if (cmd === "options") return optionsCommand(args, asJson);
+  if (cmd === "crypto") return cryptoCommand(args, asJson);
+  if (cmd === "predict") return predictCommand(args, asJson);
+  if (cmd === "snapshot") return snapshotCommand(args, asJson);
 
   if (cmd === "doctor") {
     const report = await doctorReport({ probe: argBool(args, "probe") });

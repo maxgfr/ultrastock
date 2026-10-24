@@ -1,7 +1,7 @@
 // The shapes every price provider returns, whatever it read.
 import type { Provenance } from "../core/evidence.js";
 
-export type Market = "euronext" | "us" | "crypto";
+export type Market = "euronext" | "us" | "europe" | "crypto";
 export type AssetKind = "equity" | "etf" | "index" | "crypto" | "fund";
 
 export interface Instrument {

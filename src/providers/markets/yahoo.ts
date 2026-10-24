@@ -35,9 +35,8 @@ export interface YahooVenue {
 }
 
 /**
- * European venues outside Euronext, by Yahoo suffix. Their instruments are
- * neither "euronext" nor "us": the Market type needs a value for them (see
- * the TODO in resolveYahoo).
+ * European venues outside Euronext, by Yahoo suffix: market "europe", the MIC
+ * naming the venue.
  */
 export const YAHOO_EU_VENUES: Record<string, YahooVenue> = {
   DE: { mic: "XETR", name: "Xetra", country: "DE", currency: "EUR", tradingview: "XETR" },
@@ -184,8 +183,7 @@ export function yahooInstrument(symbol: string, meta: YahooMeta): Instrument {
   const sub = meta.currency ? SUBUNITS[meta.currency] : undefined;
   return {
     symbol: sym,
-    // TODO(lead): Market has no value for non-Euronext European venues; "europe" is the proposed addition (the mic names the venue).
-    market: (venue ? "europe" : meta.instrumentType === "CRYPTOCURRENCY" ? "crypto" : "us") as Instrument["market"],
+    market: venue ? "europe" : meta.instrumentType === "CRYPTOCURRENCY" ? "crypto" : "us",
     kind: KINDS[meta.instrumentType ?? ""] ?? "equity",
     name: meta.longName ?? meta.shortName,
     mic: venue?.mic,
