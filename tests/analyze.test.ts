@@ -87,3 +87,30 @@ describe("doctor", () => {
     expect(formatDoctor(r)).toContain("not installed");
   });
 });
+
+describe("report", () => {
+  it("renders a checked answer with its decision, the debate and the chart; refuses an unchecked one", async () => {
+    const { mkdirSync, writeFileSync, existsSync } = await import("node:fs");
+    const run = mkdtempSync(join(tmpdir(), "us-rep-"));
+    await cli(["analyze", "MC.PA", "--out", run, "--fixture", join(FIX, "mc-pa")]);
+    expect(existsSync(join(run, "bars.json"))).toBe(true);
+    const close = EvidenceStore.load(run)!.byKey("MC.PA.close")!;
+    writeFileSync(join(run, "answer.md"), `# LVMH\n\nThe last close is ${close.value} EUR [${close.id}].\n`);
+    mkdirSync(join(run, "notes"));
+    writeFileSync(join(run, "notes", "bull.md"), "The bull case.");
+    writeFileSync(join(run, "notes", "bear.md"), "The bear case.");
+    writeFileSync(
+      join(run, "decision.json"),
+      JSON.stringify({ rating: "hold", horizon: "months", conviction: 2, thesis: "x", falsifiers: ["a close below the low"], portfolioContext: "flat" }),
+    );
+    expect(await cli(["report", run])).toMatch(/report written/);
+    const page = readFileSync(join(run, "report.html"), "utf8");
+    expect(page).toContain("<svg");
+    expect(page).toContain("The debate");
+    expect(page.indexOf(">bull<")).toBeLessThan(page.indexOf(">bear<"));
+    expect(page).toContain("a close below the low");
+    writeFileSync(join(run, "answer.md"), "# LVMH\n\nThe close is 999 EUR.\n");
+    expect(await cli(["report", run])).toMatch(/report refused/);
+    process.exitCode = 0;
+  });
+});

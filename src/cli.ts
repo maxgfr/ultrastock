@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { readBrief, analyzeSymbol } from "./analyze/pack.js";
 import { calcEvidence } from "./calc.js";
 import { checkAnswer, NOTE_KINDS } from "./check.js";
+import { reportCommand } from "./commands/report.js";
 import { EvidenceStore, formatEvidence } from "./core/evidence.js";
 import { ExprError } from "./core/expr.js";
 import { clockNow, FixtureMiss, setNetMode } from "./core/net.js";
@@ -62,6 +63,7 @@ USAGE
   ultrastock calc <run> <formula> --label <text> [--unit <unit>] [--key <key>] [--json]
   ultrastock evidence <run> [--json]
   ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
+  ultrastock report <run> [--answer <answer.md>] [--json]
   ultrastock profile init [--jurisdiction FR] [--currency EUR] [--json]
   ultrastock profile show|suitability [--answers <file>]|set <field> <value>|envelope <id> --type PEA [--broker <name>] [--json]
   ultrastock jurisdiction show|verify [--jurisdiction FR] [--venues binance,kraken,coinbase] [--out <dir>] [--json]
@@ -122,6 +124,10 @@ COMMANDS
   calc      Compute a derived figure from evidence ids — "(E3 / E7 - 1) * 100" —
             and register it as a new [E#] (abs, min, max, round, pct, share, cagr…).
   evidence  List a run's evidence, one [E#] per line.
+  report    The run as a self-contained HTML page (report.html): the answer, the
+            recorded decision, the debate's notes (notes/*.md), a price chart
+            and every cited [E#] linked to its source. Refused while the answer
+            fails check.
   check     Check an answer against its run: every figure sits in a claim citing
             an [E#] of the run, and is one of the values those [E#] hold (rounding
             allowed). --max-age also fails figures read longer ago than that.
@@ -272,6 +278,7 @@ export const VALUE_FLAGS = [
   "jurisdiction",
   "currency",
   "answers",
+  "answer",
   "type",
   "broker",
   "venues",
@@ -308,6 +315,7 @@ export const VALUE_FLAGS = [
 export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "list", "bootstrap"];
 export const COMMANDS = [
   "analyze",
+  "report",
   "quote",
   "history",
   "calc",
@@ -361,6 +369,7 @@ const SPEC: CliSpec = {
     calc: ["label", "unit", "key", "json"],
     evidence: ["json"],
     check: ["max-age", "json"],
+    report: ["answer", "json"],
     profile: ["jurisdiction", "currency", "answers", "type", "broker", "json"],
     jurisdiction: ["jurisdiction", "venues", "out", ...NET],
     calendar: ["market", "days", "year", "limit", "out", ...NET],
@@ -548,6 +557,7 @@ async function run(args: CommandArgs): Promise<void> {
     return;
   }
 
+  if (cmd === "report") return reportCommand(args, asJson);
   if (cmd === "check") {
     const [dir, file] = args.positional;
     if (!dir || !file) usage("usage: ultrastock check <run> <answer.md> [--max-age <duration>] [--json]");
