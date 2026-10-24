@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [0.4.0](https://github.com/maxgfr/ultrastock/compare/v0.3.0...v0.4.0) (2026-10-24)
+
+
+### Features
+
+* **analyze:** typed decision schema with validation and journal entry, run-to-run delta, self-contained HTML report with linked evidence and an SVG price chart ([686bceb](https://github.com/maxgfr/ultrastock/commit/686bcebec69fda0ffee992ee322bbc675d37a421)), closes [#4](https://github.com/maxgfr/ultrastock/issues/4)
+* **report:** report command — the checked answer, the decision, the debate notes and a price chart as one page; analyze keeps the year of bars for it ([4201f8d](https://github.com/maxgfr/ultrastock/commit/4201f8d8eac08f578b01143afd35ad624189b1c5))
+
 # [0.3.0](https://github.com/maxgfr/ultrastock/compare/v0.2.0...v0.3.0) (2026-10-24)
 
 
