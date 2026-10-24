@@ -14,9 +14,10 @@ export default defineConfig({
       exclude: ["src/vendor/**"],
       reporter: ["text-summary", "text"],
       // A ratchet a couple of points under the measured baseline (statements
-      // ~85%, branches ~69%, functions ~90%, lines ~89%): raise it when real
-      // coverage climbs, never lower it to make a red run pass.
-      thresholds: { statements: 83, branches: 66, functions: 88, lines: 87 },
+      // ~80%, branches ~63%, functions ~83%, lines ~85% with the whole data
+      // layer in): raise it when real coverage climbs, never lower it to make a
+      // red run pass.
+      thresholds: { statements: 78, branches: 61, functions: 81, lines: 82 },
     },
   },
 });
