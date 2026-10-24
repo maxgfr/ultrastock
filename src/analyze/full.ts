@@ -19,6 +19,7 @@ import { rulesFor as jurisdictionRules } from "../core/jurisdiction.js";
 import { clockNow } from "../core/net.js";
 import { loadProfile } from "../core/profile.js";
 import { writeArtifact } from "../engine.js";
+import { listTheses, readLessons } from "../journal/journal.js";
 import { buildBook, readLedger } from "../portfolio/ledger.js";
 import { amfInsiderDeclarations } from "../providers/fundamentals/amf.js";
 import { nasdaqAnalyst } from "../providers/fundamentals/nasdaq-analyst.js";
@@ -225,6 +226,18 @@ export async function analyzeFull(raw: string, dir: string, opts: { depth?: Dept
         (d) =>
           `- ${d.decidedAt.slice(0, 10)} ${d.rating} (conviction ${d.conviction}, ${d.status ?? "pending"}): ${d.thesis} — falsifiers: ${d.falsifiers.join("; ")}`,
       ),
+      "",
+    );
+
+  // The user's own lessons from past trades: what to do differently (theirs, not external text).
+  const lessons = readLessons().slice(-10);
+  if (lessons.length) sections.push("## Lessons from the journal (the user's own, newest last)", "", ...lessons, "");
+  const theses = listTheses().filter((t) => t.symbol.toUpperCase() === sym.toUpperCase() && t.state !== "closed" && t.state !== "dropped");
+  if (theses.length)
+    sections.push(
+      "## Open theses on this symbol",
+      "",
+      ...theses.map((t) => `- ${t.id} (${t.state}${t.reviewBy ? `, review by ${t.reviewBy}` : ""}): ${t.thesis} — invalidation: ${t.invalidation}`),
       "",
     );
 
