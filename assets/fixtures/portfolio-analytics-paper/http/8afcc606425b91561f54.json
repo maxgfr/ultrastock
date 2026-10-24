@@ -1,0 +1,25 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/global/scan",
+  "json": {
+   "symbols": {
+    "tickers": [
+     "EURONEXT:MC"
+    ]
+   },
+   "columns": [
+    "sector",
+    "isin",
+    "country"
+   ]
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":1,\"data\":[{\"s\":\"EURONEXT:MC\",\"d\":[\"Consumer Non-Durables\",\"FR0000121014\",\"France\"]}]}",
+  "url": "https://scanner.tradingview.com/global/scan",
+  "fetchedAt": "2026-10-24T16:24:59.277Z"
+ }
+}

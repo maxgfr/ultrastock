@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/MC.PA?range=5d&interval=1d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"EUR\",\"symbol\":\"MC.PA\",\"exchangeName\":\"PAR\",\"fullExchangeName\":\"Paris\",\"instrumentType\":\"EQUITY\",\"firstTradeDate\":946886400,\"regularMarketTime\":1792769703,\"hasPrePostMarketData\":false,\"gmtoffset\":7200,\"timezone\":\"CEST\",\"exchangeTimezoneName\":\"Europe/Paris\",\"regularMarketPrice\":383.0,\"regularMarketChangePercent\":-1.238,\"fulldayPrice\":383.0,\"fulldayChange\":-4.8,\"fulldayChangePercent\":-1.238,\"fiftyTwoWeekHigh\":654.7,\"fiftyTwoWeekLow\":375.65,\"regularMarketDayHigh\":388.2,\"regularMarketDayLow\":380.05,\"regularMarketVolume\":794428,\"longName\":\"LVMH Moët Hennessy - Louis Vuitton, Société Européenne\",\"shortName\":\"LVMH\",\"chartPreviousClose\":390.0,\"priceHint\":2,\"currentTradingPeriod\":{\"pre\":{\"timezone\":\"CEST\",\"end\":1792738800,\"start\":1792738800,\"gmtoffset\":7200},\"regular\":{\"timezone\":\"CEST\",\"end\":1792769400,\"start\":1792738800,\"gmtoffset\":7200},\"post\":{\"timezone\":\"CEST\",\"end\":1792769400,\"start\":1792769400,\"gmtoffset\":7200}},\"dataGranularity\":\"1d\",\"range\":\"5d\",\"validRanges\":[\"1d\",\"5d\",\"1mo\",\"3mo\",\"6mo\",\"1y\",\"2y\",\"5y\",\"10y\",\"ytd\",\"max\"]},\"timestamp\":[1792393200,1792479600,1792566000,1792652400,1792738800],\"indicators\":{\"quote\":[{\"close\":[390.0,386.75,388.6000061035156,387.79998779296875,383.0],\"volume\":[581343,516321,482914,561780,794428],\"open\":[389.79998779296875,393.1000061035156,387.1499938964844,387.45001220703125,387.20001220703125],\"high\":[391.3500061035156,394.0,389.8500061035156,389.20001220703125,388.20001220703125],\"low\":[385.92498779296875,385.95001220703125,384.45001220703125,380.1000061035156,380.04998779296875]}],\"adjclose\":[{\"adjclose\":[390.0,386.75,388.6000061035156,387.79998779296875,383.0]}]}}],\"error\":null}}",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/MC.PA?range=5d&interval=1d",
+  "fetchedAt": "2026-10-24T16:25:16.071Z"
+ }
+}
