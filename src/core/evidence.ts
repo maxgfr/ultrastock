@@ -126,7 +126,10 @@ export class EvidenceStore {
   addDerived(key: string, label: string, value: number | string | boolean, unit: string | undefined, inputs: readonly string[], formula: string): string {
     const src = inputs.map((id) => this.get(id)).filter((i): i is EvidenceItem => !!i);
     const oldest = src.reduce<EvidenceItem | undefined>((a, b) => (!a || Date.parse(b.fetchedAt) < Date.parse(a.fetchedAt) ? b : a), undefined);
-    const asOfs = src.map((i) => i.asOf).filter((x): x is string => !!x).sort();
+    const asOfs = src
+      .map((i) => i.asOf)
+      .filter((x): x is string => !!x)
+      .sort();
     return this.add({
       key,
       label,

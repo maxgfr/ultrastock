@@ -226,7 +226,13 @@ export const SEC_METRICS: MetricDef[] = [
     ],
   },
   { id: "incomeTax", label: "income tax expense", kind: "flow", unit: "USD", concepts: ["IncomeTaxExpenseBenefit"] },
-  { id: "interestExpense", label: "interest expense", kind: "flow", unit: "USD", concepts: ["InterestExpense", "InterestExpenseNonoperating", "InterestExpenseDebt"] },
+  {
+    id: "interestExpense",
+    label: "interest expense",
+    kind: "flow",
+    unit: "USD",
+    concepts: ["InterestExpense", "InterestExpenseNonoperating", "InterestExpenseDebt"],
+  },
   {
     id: "depreciation",
     label: "depreciation and amortisation",
@@ -240,7 +246,13 @@ export const SEC_METRICS: MetricDef[] = [
   { id: "inventory", label: "inventory", kind: "instant", unit: "USD", concepts: ["InventoryNet"] },
   { id: "ppe", label: "net property, plant and equipment", kind: "instant", unit: "USD", concepts: ["PropertyPlantAndEquipmentNet"] },
   { id: "retainedEarnings", label: "retained earnings", kind: "instant", unit: "USD", concepts: ["RetainedEarningsAccumulatedDeficit"] },
-  { id: "longTermDebtNoncurrent", label: "long-term debt (non-current)", kind: "instant", unit: "USD", concepts: ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations"] },
+  {
+    id: "longTermDebtNoncurrent",
+    label: "long-term debt (non-current)",
+    kind: "instant",
+    unit: "USD",
+    concepts: ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations"],
+  },
 ];
 
 const DEBT_TOTAL = ["LongTermDebt", "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"];

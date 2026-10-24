@@ -17,7 +17,9 @@ const pct = (v: string | undefined, flag: string) => {
 export async function valuationCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const sym = args.positional[0];
   if (!sym) throw new UsageError("usage: ultrastock valuation <symbol> [--erp <pct>] [--terminal <pct>] [--out <dir>] [--json]");
-  const dir = argValue(args, "out") ? resolve(argValue(args, "out")!) : runDirFor(undefined, `${sym.toUpperCase().replace(/[^A-Z0-9.-]/g, "_")}-valuation-${runId()}`);
+  const dir = argValue(args, "out")
+    ? resolve(argValue(args, "out")!)
+    : runDirFor(undefined, `${sym.toUpperCase().replace(/[^A-Z0-9.-]/g, "_")}-valuation-${runId()}`);
   const r = await valuationRun(sym, dir, { erp: pct(argValue(args, "erp"), "erp"), terminalGrowth: pct(argValue(args, "terminal"), "terminal") });
   if (asJson) process.stdout.write(jsonLine(r));
   else process.stdout.write(`${readFileSync(join(dir, "VALUATION.md"), "utf8")}\nrun: ${dir}\n`);

@@ -116,7 +116,10 @@ export function periodsFromFilingEvidence(items: readonly EvidenceItem[], symbol
 }
 
 /** Periods from crible's company history (newest first); `register` turns a value into an evidence id. */
-export function periodsFromCrible(periods: ReadonlyArray<Record<string, unknown>>, register: (field: string, period: string, value: number) => string): SourcedPeriod[] {
+export function periodsFromCrible(
+  periods: ReadonlyArray<Record<string, unknown>>,
+  register: (field: string, period: string, value: number) => string,
+): SourcedPeriod[] {
   return periods
     .filter((p) => typeof p.period === "string")
     .sort((a, b) => String(b.period).localeCompare(String(a.period)))

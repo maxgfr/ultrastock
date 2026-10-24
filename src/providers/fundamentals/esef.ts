@@ -123,7 +123,11 @@ export const ESEF_METRICS: IfrsDef[] = [
     id: "depreciation",
     label: "depreciation and amortisation",
     kind: "flow",
-    concepts: ["DepreciationAndAmortisationExpense", "DepreciationAmortisationAndImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss", "AdjustmentsForDepreciationAndAmortisationExpense"],
+    concepts: [
+      "DepreciationAndAmortisationExpense",
+      "DepreciationAmortisationAndImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss",
+      "AdjustmentsForDepreciationAndAmortisationExpense",
+    ],
   },
   { id: "currentAssets", label: "current assets", kind: "instant", concepts: ["CurrentAssets"] },
   { id: "currentLiabilities", label: "current liabilities", kind: "instant", concepts: ["CurrentLiabilities"] },
