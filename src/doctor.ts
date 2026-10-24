@@ -1,9 +1,13 @@
 // What this machine can do: the version, where state lives, whether Node is
 // recent enough for live trading, which external tools are installed, and —
 // with --probe — whether each data source answers right now, and how fast.
-import { ENGINE_VERSION, have, sh } from "./engine.js";
-import { dataCacheDir, homeDir } from "./core/paths.js";
+import { checkDnsBlock, ruleStatus } from "./core/jurisdiction.js";
 import { fetchText } from "./core/net.js";
+import { dataCacheDir, homeDir } from "./core/paths.js";
+import { loadProfile } from "./core/profile.js";
+import { ENGINE_VERSION, have } from "./engine.js";
+import { binanceHistoricalInfo } from "./providers/external/binance-historical.js";
+import { CRIBLE_TAG, cribleBootstrapped, cribleDataDir } from "./providers/external/crible.js";
 import { VERSION } from "./version.js";
 
 /** Live order submission refuses Node releases that no longer get security fixes. */
@@ -30,14 +34,11 @@ export interface DoctorReport {
   node: { version: string; major: number; liveCapable: boolean };
   home: string;
   cache: string;
+  profile: { exists: boolean; jurisdiction?: string; riskScore?: number; envelopes?: number };
   tools: Record<string, ToolReport>;
+  crible: { dataDir: string; bootstrapped: boolean; tag: string };
   probes?: ProbeReport[];
-}
-
-function toolVersion(cmd: string, args: string[]): string | undefined {
-  const r = sh(cmd, args, { timeoutMs: 10_000 });
-  const line = r.ok ? r.stdout.trim().split("\n")[0] : undefined;
-  return line || undefined;
+  blocks?: Array<{ host: string; blocked: boolean; detail: string }>;
 }
 
 const PROBES: Array<{ source: string; url: string }> = [
@@ -57,14 +58,27 @@ export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) 
     uvx: { installed: has("uvx"), purpose: "runs maxgfr/crible, the global fundamental screener" },
     pdftotext: { installed: has("pdftotext"), purpose: "optional: faster reading of Congress trade PDFs" },
   };
-  if (tools["binance-historical"]!.installed) tools["binance-historical"]!.version = toolVersion("binance-historical", ["--version"]);
+  if (tools["binance-historical"]!.installed && !opts.has) {
+    const info = binanceHistoricalInfo();
+    tools["binance-historical"]!.version =
+      `${info.version ?? "?"}${info.compatible ? "" : ", describe contract changed — update ultrastock or pin binance-historical 2.x"}`;
+  }
+  let profile: DoctorReport["profile"] = { exists: false };
+  try {
+    const p = loadProfile();
+    if (p) profile = { exists: true, jurisdiction: p.jurisdiction, riskScore: p.riskScore, envelopes: p.envelopes.length };
+  } catch {
+    profile = { exists: true };
+  }
   const report: DoctorReport = {
     version: VERSION,
     engine: ENGINE_VERSION,
     node: { version: process.versions.node, major, liveCapable: major >= LIVE_NODE_MAJOR },
     home: homeDir(),
     cache: dataCacheDir(),
+    profile,
     tools,
+    crible: { dataDir: cribleDataDir(), bootstrapped: cribleBootstrapped(), tag: CRIBLE_TAG },
   };
   if (opts.probe) {
     report.probes = await Promise.all(
@@ -76,6 +90,8 @@ export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) 
         return { source, url, ok: r.ok, status: r.status, ms: Date.now() - t0, ...(note ? { note } : {}) };
       }),
     );
+    // Reported, never worked around: a regulator's block is the user's law.
+    if (ruleStatus(profile.jurisdiction ?? "FR", "polymarket") !== "allowed") report.blocks = [await checkDnsBlock("gamma-api.polymarket.com")];
   }
   return report;
 }
@@ -86,6 +102,8 @@ export function formatDoctor(r: DoctorReport): string {
     `  node        ${r.node.version}${r.node.liveCapable ? "" : ` — analysis and paper only; live orders need Node >= ${LIVE_NODE_MAJOR}`}`,
     `  state       ${r.home}`,
     `  cache       ${r.cache}`,
+    `  profile     ${r.profile.exists ? `${r.profile.jurisdiction ?? "?"}, risk score ${r.profile.riskScore ?? "not assessed — run profile suitability"}, ${r.profile.envelopes ?? 0} envelope(s)` : "none — run `ultrastock profile init`"}`,
+    `  crible      ${r.crible.bootstrapped ? "dataset ready" : "no dataset yet (first `screen --engine crible` bootstraps it, ~1 min)"} in ${r.crible.dataDir} (pinned ${r.crible.tag})`,
     ...Object.entries(r.tools).map(
       ([name, t]) => `  ${name.padEnd(19)} ${t.installed ? `installed${t.version ? ` (${t.version})` : ""}` : "not installed"} — ${t.purpose}`,
     ),
@@ -94,5 +112,6 @@ export function formatDoctor(r: DoctorReport): string {
     lines.push("  sources");
     for (const p of r.probes) lines.push(`    ${p.source.padEnd(10)} ${p.ok ? "ok" : "FAIL"} ${String(p.ms).padStart(5)} ms${p.note ? ` — ${p.note}` : ""}`);
   }
+  for (const b of r.blocks ?? []) lines.push(`  block       ${b.host}: ${b.blocked ? `BLOCKED — ${b.detail}` : b.detail}`);
   return `${lines.join("\n")}\n`;
 }
