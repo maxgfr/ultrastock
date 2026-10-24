@@ -8,7 +8,7 @@ import { EvidenceStore, formatEvidence } from "./core/evidence.js";
 import { ExprError } from "./core/expr.js";
 import { clockNow, FixtureMiss, setNetMode } from "./core/net.js";
 import { runDirFor } from "./core/paths.js";
-import { valuationCommand } from "./commands/analytics.js";
+import { technicalsCommand, valuationCommand } from "./commands/analytics.js";
 import { calendarCommand } from "./commands/calendar.js";
 import {
   analystCommand,
@@ -73,6 +73,7 @@ USAGE
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
   ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
   ultrastock fundamentals <symbol> [--asof <date>] [--years <n>] [--quarters <n>] [--source sec|esef|crible] [--out <dir>] [--json]
+  ultrastock technicals <symbol> [--interval 1d|1w|4h|1h|15m] [--indicators <name:k=v;…,…>] [--benchmark <symbol>] [--out <dir>] [--json]
   ultrastock valuation <symbol> [--erp <pct>] [--terminal <pct>] [--out <dir>] [--json]
   ultrastock filings <US symbol> [--forms 8-K,10-Q] [--days <n>] [--limit <n>] | filings --search <text> [--out <dir>] [--json]
   ultrastock insiders <symbol> [--limit <n>] [--out <dir>] [--json]
@@ -142,6 +143,14 @@ COMMANDS
             TTM; --asof keeps only what was filed by then — point in time), ESEF
             IFRS reports for European issuers, crible as fallback (with its
             Piotroski, Altman, Beneish and rank fields).
+  technicals The full technical picture, each reading an [E#]: averages, ADX,
+            Supertrend, Parabolic SAR, Ichimoku cloud, Aroon, RSI, MACD,
+            stochastic, Williams %R, CCI, ROC, ATR, Bollinger %B and bandwidth,
+            Keltner, Donchian, chandelier exit, MFI, Chaikin money flow,
+            relative strength vs a benchmark, the 52-week range, Minervini's
+            trend template, VCP, support and resistance, recent gaps, breakouts
+            and candlesticks, and a bullish score with a reason per point;
+            --indicators adds any of the 107 registry indicators. Writes TECHNICALS.md.
   valuation What the business earns and what the price assumes: Piotroski,
             Altman Z″ and Beneish scores with their components, quality (margins,
             ROIC, FCF after SBC, leverage, accruals), multiples, a bear/base/bull
@@ -222,6 +231,8 @@ export const VALUE_FLAGS = [
   "doc",
   "erp",
   "terminal",
+  "indicators",
+  "benchmark",
 ];
 export const BOOL_FLAGS = ["json", "refresh", "offline", "probe"];
 export const COMMANDS = [
@@ -236,6 +247,7 @@ export const COMMANDS = [
   "calendar",
   "resolve",
   "fundamentals",
+  "technicals",
   "valuation",
   "filings",
   "insiders",
@@ -282,6 +294,7 @@ const SPEC: CliSpec = {
     universe: ["out", ...NET],
     resolve: ["out", ...NET],
     fundamentals: ["asof", "years", "quarters", "source", "out", ...NET],
+    technicals: ["interval", "indicators", "benchmark", "out", ...NET],
     valuation: ["erp", "terminal", "out", ...NET],
     filings: ["forms", "days", "limit", "search", "out", ...NET],
     insiders: ["limit", "out", ...NET],
@@ -470,6 +483,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "resolve") return resolveCommand(args, asJson);
   if (cmd === "fundamentals") return fundamentalsCommand(args, asJson);
   if (cmd === "valuation") return valuationCommand(args, asJson);
+  if (cmd === "technicals") return technicalsCommand(args, asJson);
   if (cmd === "filings") return filingsCommand(args, asJson);
   if (cmd === "insiders") return insidersCommand(args, asJson);
   if (cmd === "holdings") return holdingsCommand(args, asJson);
