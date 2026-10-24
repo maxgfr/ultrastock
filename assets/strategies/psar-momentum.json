@@ -1,0 +1,60 @@
+{
+  "name": "psar-momentum",
+  "description": "Parabolic SAR trend following with ROC momentum and RSI filter",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h"
+  ],
+  "indicators": {
+    "psar": {
+      "step": 0.02,
+      "max": 0.2
+    },
+    "roc": {
+      "period": 12
+    },
+    "rsi": {
+      "period": 14
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "close",
+        ">",
+        "psar"
+      ],
+      [
+        "roc",
+        ">",
+        0
+      ],
+      [
+        "rsi",
+        "<",
+        60
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "close",
+        "<",
+        "psar"
+      ],
+      [
+        "rsi",
+        ">",
+        75
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 12,
+    "maxDrawdownPct": 30
+  }
+}

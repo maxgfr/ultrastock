@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.nasdaq.com/api/quote/TLT/info?assetclass=stocks"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"data\":null,\"message\":null,\"status\":{\"rCode\":400,\"bCodeMessage\":[{\"code\":1001,\"errorMessage\":\"Symbol not exists.\"}],\"developerMessage\":null}}",
+  "url": "https://api.nasdaq.com/api/quote/TLT/info?assetclass=stocks",
+  "fetchedAt": "2026-10-24T16:31:37.167Z"
+ }
+}

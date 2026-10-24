@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.nasdaq.com/api/quote/TLT/info?assetclass=etf"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"data\":{\"symbol\":\"TLT\",\"companyName\":\"iShares 20+ Year Treasury Bond ETF\",\"stockType\":null,\"exchange\":\"NASDAQ-GM\",\"isNasdaqListed\":false,\"isNasdaq100\":false,\"isHeld\":false,\"primaryData\":{\"lastSalePrice\":\"$81.34\",\"netChange\":\"-0.40\",\"percentageChange\":\"-0.49%\",\"deltaIndicator\":\"down\",\"lastTradeTimestamp\":\"Oct 22, 2026\",\"isRealTime\":false,\"bidPrice\":\"N/A\",\"askPrice\":\"N/A\",\"bidSize\":\"N/A\",\"askSize\":\"N/A\",\"volume\":\"35,149,602\",\"currency\":null},\"secondaryData\":null,\"marketStatus\":\"Closed\",\"assetClass\":\"ETF\",\"keyStats\":null,\"notifications\":[]},\"message\":null,\"status\":{\"rCode\":200,\"bCodeMessage\":null,\"developerMessage\":null}}",
+  "url": "https://api.nasdaq.com/api/quote/TLT/info?assetclass=etf",
+  "fetchedAt": "2026-10-24T16:31:38.420Z"
+ }
+}

@@ -1,0 +1,54 @@
+{
+  "name": "breakout-momentum-rider",
+  "description": "Hybrid turtle + trend-momentum-rider: 100-period Donchian breakout entry (strong bull filter) + MACD momentum confirmation + adaptive Supertrend exit. Shorter breakout period than turtle for earlier entries, MACD prevents false breakouts, Supertrend exit adapts to volatility.",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h",
+    "12h"
+  ],
+  "indicators": {
+    "breakout": {
+      "_type": "donchian",
+      "period": 100
+    },
+    "macd": {
+      "fast": 12,
+      "slow": 26,
+      "signal": 9
+    },
+    "supertrend": {
+      "atrPeriod": 10,
+      "multiplier": 3
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "close",
+        ">",
+        "breakout.upper[-1]"
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "all",
+    "conditions": [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 22,
+    "maxDrawdownPct": 30
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "name": "fast-supertrend",
+  "description": "Supertrend uptrend with RSI pullback entry — buy dips in confirmed trend, exit only on trend break",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h"
+  ],
+  "indicators": {
+    "supertrend": {
+      "atrPeriod": 10,
+      "multiplier": 3
+    },
+    "rsi": {
+      "period": 10
+    },
+    "adx": {
+      "period": 14
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "close",
+        ">",
+        "supertrend"
+      ],
+      [
+        "rsi",
+        "<",
+        40
+      ],
+      [
+        "adx.adx",
+        ">",
+        18
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ],
+      [
+        "rsi",
+        ">",
+        75
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 12,
+    "maxDrawdownPct": 30
+  }
+}

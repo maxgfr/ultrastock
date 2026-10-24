@@ -1,0 +1,40 @@
+{
+  "name": "supertrend",
+  "description": "Supertrend trend following — buy when close is above supertrend, sell when below",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h",
+    "12h"
+  ],
+  "indicators": {
+    "supertrend": {
+      "atrPeriod": 10,
+      "multiplier": 3
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "close",
+        ">",
+        "supertrend"
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "all",
+    "conditions": [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 22,
+    "maxDrawdownPct": 30
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "name": "adaptive-momentum-reversal",
+  "description": "Asymmetric dual-mode: contrarian bottom picker (RSI extreme + MACD momentum turn) for longs, trend-following (Supertrend + MACD + ADX strong trend) for shorts. Dual exits via overbought/oversold + Supertrend reversals.",
+  "leverage": 2,
+  "baseInterval": "4h",
+  "intervals": [
+    "6h"
+  ],
+  "indicators": {
+    "rsi": {
+      "period": 14
+    },
+    "macd": {
+      "fast": 12,
+      "slow": 26,
+      "signal": 9
+    },
+    "supertrend": {
+      "atrPeriod": 10,
+      "multiplier": 3
+    },
+    "adx": {
+      "period": 14
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "rsi",
+        "<",
+        30
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "rsi",
+        ">",
+        80
+      ],
+      [
+        "close",
+        "<",
+        "supertrend"
+      ]
+    ]
+  },
+  "short": {
+    "mode": "all",
+    "conditions": [
+      [
+        "close",
+        "<",
+        "supertrend"
+      ],
+      [
+        "macd.histogram",
+        "<",
+        0
+      ],
+      [
+        "adx.adx",
+        ">",
+        25
+      ]
+    ]
+  },
+  "cover": {
+    "mode": "any",
+    "conditions": [
+      [
+        "rsi",
+        "<",
+        25
+      ],
+      [
+        "close",
+        ">",
+        "supertrend"
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 6,
+    "trailingStopPct": 10,
+    "maxDrawdownPct": 20,
+    "riskPerTradePct": 2
+  }
+}

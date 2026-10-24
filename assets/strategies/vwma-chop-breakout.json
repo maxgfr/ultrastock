@@ -1,0 +1,67 @@
+{
+  "name": "vwma-chop-breakout",
+  "description": "VWMA/SMA volume divergence + Choppiness exit from ranging — catches volume-confirmed breakouts when market transitions from choppy to trending",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h"
+  ],
+  "indicators": {
+    "vwma": {
+      "period": 20
+    },
+    "movingAverage": {
+      "period": 20
+    },
+    "choppinessIndex": {
+      "period": 14
+    },
+    "rsi": {
+      "period": 14
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "close",
+        ">",
+        "vwma"
+      ],
+      [
+        "vwma",
+        ">",
+        "movingAverage"
+      ],
+      [
+        "choppinessIndex",
+        "<",
+        50
+      ],
+      [
+        "rsi",
+        ">",
+        55
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "close",
+        "<",
+        "vwma"
+      ],
+      [
+        "choppinessIndex",
+        ">",
+        60
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 12,
+    "maxDrawdownPct": 30
+  }
+}

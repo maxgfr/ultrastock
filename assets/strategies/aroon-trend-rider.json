@@ -1,0 +1,59 @@
+{
+  "name": "aroon-trend-rider",
+  "description": "Aroon trend detection with RSI pullback entry and ADX filter",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h"
+  ],
+  "indicators": {
+    "aroon": {
+      "period": 25
+    },
+    "rsi": {
+      "period": 14
+    },
+    "adx": {
+      "period": 14
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "aroon.up",
+        ">",
+        80
+      ],
+      [
+        "rsi",
+        "<",
+        45
+      ],
+      [
+        "adx.adx",
+        ">",
+        20
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "aroon.down",
+        ">",
+        70
+      ],
+      [
+        "rsi",
+        ">",
+        75
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 12,
+    "maxDrawdownPct": 30
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "name": "rsi-macd-trend-ride",
+  "description": "RSI deeply oversold + MACD momentum positive entry, sell only at extreme overbought RSI > 80 — catches bottoms and holds through the full rally",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h"
+  ],
+  "indicators": {
+    "rsi": {
+      "period": 14
+    },
+    "macd": {
+      "fast": 12,
+      "slow": 26,
+      "signal": 9
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "rsi",
+        "<",
+        30
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "rsi",
+        ">",
+        80
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 15,
+    "trailingStopPct": 15,
+    "maxDrawdownPct": 30
+  }
+}

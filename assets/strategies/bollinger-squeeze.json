@@ -1,0 +1,70 @@
+{
+  "name": "bollinger-squeeze",
+  "description": "Bollinger Bands squeeze breakout — buy when BBR near zero with MACD positive and ADX rising, sell on upper band or momentum loss",
+  "baseInterval": "4h",
+  "intervals": [
+    "6h"
+  ],
+  "indicators": {
+    "bollingerBands": {
+      "period": 20,
+      "stdDev": 2
+    },
+    "macd": {
+      "fast": 12,
+      "slow": 26,
+      "signal": 9
+    },
+    "adx": {
+      "period": 14
+    },
+    "rsi": {
+      "period": 14
+    }
+  },
+  "buy": {
+    "mode": "all",
+    "conditions": [
+      [
+        "bollingerBands.bbr",
+        ">",
+        -0.1
+      ],
+      [
+        "bollingerBands.bbr",
+        "<",
+        0.3
+      ],
+      [
+        "macd.histogram",
+        ">",
+        0
+      ],
+      [
+        "adx.adx",
+        ">",
+        20
+      ]
+    ]
+  },
+  "sell": {
+    "mode": "any",
+    "conditions": [
+      [
+        "bollingerBands.bbr",
+        ">",
+        1
+      ],
+      [
+        "rsi",
+        ">",
+        75
+      ]
+    ]
+  },
+  "risk": {
+    "stopLossPct": 8,
+    "trailingStopPct": 12,
+    "maxDrawdownPct": 30
+  }
+}
