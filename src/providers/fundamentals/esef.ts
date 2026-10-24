@@ -114,6 +114,24 @@ export const ESEF_METRICS: IfrsDef[] = [
   { id: "equity", label: "total equity", kind: "instant", concepts: ["Equity"] },
   { id: "equityParent", label: "equity attributable to owners", kind: "instant", concepts: ["EquityAttributableToOwnersOfParent"] },
   { id: "cash", label: "cash and equivalents", kind: "instant", concepts: ["CashAndCashEquivalents"] },
+  { id: "costOfRevenue", label: "cost of sales", kind: "flow", concepts: ["CostOfSales"] },
+  { id: "sga", label: "selling, general and administrative expense", kind: "flow", concepts: ["SellingGeneralAndAdministrativeExpense", "DistributionCosts"] },
+  { id: "pretaxIncome", label: "profit before tax", kind: "flow", concepts: ["ProfitLossBeforeTax"] },
+  { id: "incomeTax", label: "income tax expense", kind: "flow", concepts: ["IncomeTaxExpenseContinuingOperations"] },
+  { id: "interestExpense", label: "finance costs", kind: "flow", concepts: ["FinanceCosts", "InterestExpense"] },
+  {
+    id: "depreciation",
+    label: "depreciation and amortisation",
+    kind: "flow",
+    concepts: ["DepreciationAndAmortisationExpense", "DepreciationAmortisationAndImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss", "AdjustmentsForDepreciationAndAmortisationExpense"],
+  },
+  { id: "currentAssets", label: "current assets", kind: "instant", concepts: ["CurrentAssets"] },
+  { id: "currentLiabilities", label: "current liabilities", kind: "instant", concepts: ["CurrentLiabilities"] },
+  { id: "receivables", label: "trade receivables", kind: "instant", concepts: ["TradeAndOtherCurrentReceivables", "CurrentTradeReceivables"] },
+  { id: "inventory", label: "inventories", kind: "instant", concepts: ["Inventories"] },
+  { id: "ppe", label: "property, plant and equipment", kind: "instant", concepts: ["PropertyPlantAndEquipment"] },
+  { id: "retainedEarnings", label: "retained earnings", kind: "instant", concepts: ["RetainedEarnings"] },
+  { id: "longTermDebtNoncurrent", label: "non-current borrowings", kind: "instant", concepts: ["NoncurrentBorrowings", "LongtermBorrowings"] },
 ];
 
 export interface IfrsValue {

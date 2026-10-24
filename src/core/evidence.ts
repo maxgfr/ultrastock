@@ -119,6 +119,28 @@ export class EvidenceStore {
     return id;
   }
 
+  /**
+   * Register a figure computed from other evidence: its provenance is the
+   * stalest and least official of its inputs, and it records them and how.
+   */
+  addDerived(key: string, label: string, value: number | string | boolean, unit: string | undefined, inputs: readonly string[], formula: string): string {
+    const src = inputs.map((id) => this.get(id)).filter((i): i is EvidenceItem => !!i);
+    const oldest = src.reduce<EvidenceItem | undefined>((a, b) => (!a || Date.parse(b.fetchedAt) < Date.parse(a.fetchedAt) ? b : a), undefined);
+    const asOfs = src.map((i) => i.asOf).filter((x): x is string => !!x).sort();
+    return this.add({
+      key,
+      label,
+      value: typeof value === "number" ? Number(value.toPrecision(12)) : value,
+      unit,
+      source: "ultrastock",
+      fetchedAt: oldest?.fetchedAt ?? new Date().toISOString(),
+      asOf: asOfs[asOfs.length - 1],
+      official: src.length > 0 && src.every((i) => i.official),
+      derivedFrom: src.map((i) => i.id),
+      formula,
+    });
+  }
+
   save(): string {
     mkdirSync(this.dir, { recursive: true });
     const path = join(this.dir, EVIDENCE_FILE);

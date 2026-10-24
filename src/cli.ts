@@ -8,6 +8,7 @@ import { EvidenceStore, formatEvidence } from "./core/evidence.js";
 import { ExprError } from "./core/expr.js";
 import { clockNow, FixtureMiss, setNetMode } from "./core/net.js";
 import { runDirFor } from "./core/paths.js";
+import { valuationCommand } from "./commands/analytics.js";
 import { calendarCommand } from "./commands/calendar.js";
 import {
   analystCommand,
@@ -72,6 +73,7 @@ USAGE
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
   ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
   ultrastock fundamentals <symbol> [--asof <date>] [--years <n>] [--quarters <n>] [--source sec|esef|crible] [--out <dir>] [--json]
+  ultrastock valuation <symbol> [--erp <pct>] [--terminal <pct>] [--out <dir>] [--json]
   ultrastock filings <US symbol> [--forms 8-K,10-Q] [--days <n>] [--limit <n>] | filings --search <text> [--out <dir>] [--json]
   ultrastock insiders <symbol> [--limit <n>] [--out <dir>] [--json]
   ultrastock holdings <manager|CIK> [--limit <n>] [--out <dir>] [--json]
@@ -140,6 +142,13 @@ COMMANDS
             TTM; --asof keeps only what was filed by then — point in time), ESEF
             IFRS reports for European issuers, crible as fallback (with its
             Piotroski, Altman, Beneish and rank fields).
+  valuation What the business earns and what the price assumes: Piotroski,
+            Altman Z″ and Beneish scores with their components, quality (margins,
+            ROIC, FCF after SBC, leverage, accruals), multiples, a bear/base/bull
+            DCF on free cash flow at a CAPM cost of equity (10-year government
+            rate, 2-year beta, --erp 5 by default), the growth the price implies,
+            and the margin of safety — every input and output an [E#]. Writes
+            VALUATION.md.
   filings   Recent SEC filings, 8-K items named and the important ones flagged;
             --search runs EDGAR full-text search.
   insiders  Insider trades: SEC Form 4 (open-market buys and sells, 90-day net,
@@ -211,6 +220,8 @@ export const VALUE_FLAGS = [
   "search",
   "member",
   "doc",
+  "erp",
+  "terminal",
 ];
 export const BOOL_FLAGS = ["json", "refresh", "offline", "probe"];
 export const COMMANDS = [
@@ -225,6 +236,7 @@ export const COMMANDS = [
   "calendar",
   "resolve",
   "fundamentals",
+  "valuation",
   "filings",
   "insiders",
   "holdings",
@@ -270,6 +282,7 @@ const SPEC: CliSpec = {
     universe: ["out", ...NET],
     resolve: ["out", ...NET],
     fundamentals: ["asof", "years", "quarters", "source", "out", ...NET],
+    valuation: ["erp", "terminal", "out", ...NET],
     filings: ["forms", "days", "limit", "search", "out", ...NET],
     insiders: ["limit", "out", ...NET],
     holdings: ["limit", "out", ...NET],
@@ -456,6 +469,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "calendar") return calendarCommand(args, asJson);
   if (cmd === "resolve") return resolveCommand(args, asJson);
   if (cmd === "fundamentals") return fundamentalsCommand(args, asJson);
+  if (cmd === "valuation") return valuationCommand(args, asJson);
   if (cmd === "filings") return filingsCommand(args, asJson);
   if (cmd === "insiders") return insidersCommand(args, asJson);
   if (cmd === "holdings") return holdingsCommand(args, asJson);

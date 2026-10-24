@@ -213,6 +213,34 @@ export const SEC_METRICS: MetricDef[] = [
     unit: "USD",
     concepts: ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"],
   },
+  { id: "costOfRevenue", label: "cost of revenue", kind: "flow", unit: "USD", concepts: ["CostOfRevenue", "CostOfGoodsAndServicesSold", "CostOfGoodsSold"] },
+  { id: "sga", label: "SG&A expense", kind: "flow", unit: "USD", concepts: ["SellingGeneralAndAdministrativeExpense"] },
+  {
+    id: "pretaxIncome",
+    label: "pre-tax income",
+    kind: "flow",
+    unit: "USD",
+    concepts: [
+      "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+      "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+    ],
+  },
+  { id: "incomeTax", label: "income tax expense", kind: "flow", unit: "USD", concepts: ["IncomeTaxExpenseBenefit"] },
+  { id: "interestExpense", label: "interest expense", kind: "flow", unit: "USD", concepts: ["InterestExpense", "InterestExpenseNonoperating", "InterestExpenseDebt"] },
+  {
+    id: "depreciation",
+    label: "depreciation and amortisation",
+    kind: "flow",
+    unit: "USD",
+    concepts: ["DepreciationDepletionAndAmortization", "DepreciationAndAmortization", "DepreciationAmortizationAndAccretionNet", "Depreciation"],
+  },
+  { id: "currentAssets", label: "current assets", kind: "instant", unit: "USD", concepts: ["AssetsCurrent"] },
+  { id: "currentLiabilities", label: "current liabilities", kind: "instant", unit: "USD", concepts: ["LiabilitiesCurrent"] },
+  { id: "receivables", label: "accounts receivable", kind: "instant", unit: "USD", concepts: ["AccountsReceivableNetCurrent", "ReceivablesNetCurrent"] },
+  { id: "inventory", label: "inventory", kind: "instant", unit: "USD", concepts: ["InventoryNet"] },
+  { id: "ppe", label: "net property, plant and equipment", kind: "instant", unit: "USD", concepts: ["PropertyPlantAndEquipmentNet"] },
+  { id: "retainedEarnings", label: "retained earnings", kind: "instant", unit: "USD", concepts: ["RetainedEarningsAccumulatedDeficit"] },
+  { id: "longTermDebtNoncurrent", label: "long-term debt (non-current)", kind: "instant", unit: "USD", concepts: ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations"] },
 ];
 
 const DEBT_TOTAL = ["LongTermDebt", "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"];
