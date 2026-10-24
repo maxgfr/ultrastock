@@ -94,6 +94,7 @@ ultrastock history <symbol> [--from <date>] [--to <date>] [--interval 1d|1w|4h|1
 ultrastock calc <run> "<formula>" --label <text> [--unit <unit>] [--json]
 ultrastock evidence <run> [--json]
 ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
+ultrastock report <run> [--answer <answer.md>] [--json]
 ultrastock profile init|show|suitability|set|envelope [--json]
 ultrastock jurisdiction show|verify [--venues binance,kraken,coinbase] [--out <dir>] [--json]
 ultrastock calendar sessions|holidays|verify|econ|earnings|dividends [--market XPAR|XNYS|XMIL|XOSL|CRYPTO] [--json]
@@ -131,8 +132,11 @@ Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
 2. Give the as-of date, the delay and any unofficial source in one line.
 3. Say what would change the view: a level (cite it), an event, a figure.
 4. Write it to `<dir>/answer.md`; run `ultrastock check <dir> <dir>/answer.md`;
-   fix and repeat until it passes. Then give the user the answer and the path
-   to `BRIEF.md`.
+   fix and repeat until it passes.
+5. `ultrastock report <dir>` writes `<dir>/report.html`: the answer, the
+   recorded decision, the debate's notes, a price chart and every cited `[E#]`
+   linked to its source. It refuses an answer that fails `check`. Give the
+   user the answer and the report's path.
 
 ## Will not
 
