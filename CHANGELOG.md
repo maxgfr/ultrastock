@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [0.5.0](https://github.com/maxgfr/ultrastock/compare/v0.4.0...v0.5.0) (2026-10-24)
+
+
+### Features
+
+* **analyze:** multi-perspective analyze — slices, portfolio context, profile and jurisdiction, past decisions, delta and the debate runbook; ESEF issuer-extension capex and weighted share counts; skill docs for portfolio, plan, tickets and paper ([322f29c](https://github.com/maxgfr/ultrastock/commit/322f29c29dd6bc2c257212d3ddcb1af6afd39e58))
+* **portfolio:** import broker statements into the ledger — IBKR Flex (XML, CSV, header/trailer, Activity Statement), Binance, Kraken, Coinbase and a column-mapped generic CSV with FR/EN formats; dry run, dedupe by content id, replay check ([2b9ba79](https://github.com/maxgfr/ultrastock/commit/2b9ba79932a188fedaef1fa02e652df9295e8040))
+* **portfolio:** risk, stress, optimize, rebalance, location, look-through, income and goals analytics on the ledger's books ([0697809](https://github.com/maxgfr/ultrastock/commit/0697809800ae74cc8386352c2739f8bf501c77f5))
+* **portfolio:** wire portfolio import into the CLI ([edb83a0](https://github.com/maxgfr/ultrastock/commit/edb83a0e842cc18765c9efdc86bf096ff9b8eb87))
+* **portfolio:** wire risk, stress, optimize, rebalance, location, lookthrough, income and goals ([3a29b15](https://github.com/maxgfr/ultrastock/commit/3a29b1533bcc80f30b1a4afb13d0f09a3aa0eb29))
+* **trading:** append-only ledger (PMP and FIFO cost bases, splits, dividends, cash, valuation, XIRR), deterministic risk gate with codes and fingerprints, circuit breaker with graduated drawdown sizing and cooling-off ([273c6f1](https://github.com/maxgfr/ultrastock/commit/273c6f1da7e4cab474d757f9422084ece4de507e)), closes [#5](https://github.com/maxgfr/ultrastock/issues/5)
+* **trading:** tickets with fingerprints and an fsync'd audit trail, paper engine (order-book walk for crypto, slippage and fees, working limits swept against later bars), gate context from ledger, quotes and ECB rates, plan → trade context, readiness; portfolio, plan, ticket and paper commands ([1d0bbd8](https://github.com/maxgfr/ultrastock/commit/1d0bbd89bac1a64ab26e0c2c1b3bedd5b6b1a1db)), closes [#5](https://github.com/maxgfr/ultrastock/issues/5)
+
 # [0.4.0](https://github.com/maxgfr/ultrastock/compare/v0.3.0...v0.4.0) (2026-10-24)
 
 
