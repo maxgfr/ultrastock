@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=BAMLH0A0HYM2&cosd=2026-10-10"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "observation_date,BAMLH0A0HYM2\n2026-10-12,3.11\n2026-10-13,3.16\n2026-10-14,3.25\n2026-10-15,3.23\n2026-10-16,3.31\n2026-10-19,3.29\n2026-10-20,3.33\n2026-10-21,3.27\n2026-10-22,3.40\n",
+  "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=BAMLH0A0HYM2&cosd=2026-10-10",
+  "fetchedAt": "2026-10-24T15:24:26.430Z"
+ }
+}

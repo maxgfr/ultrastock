@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10&cosd=2026-10-10"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "observation_date,DGS10\n2026-10-13,5.21\n2026-10-14,5.19\n2026-10-15,5.10\n2026-10-16,5.09\n2026-10-19,5.15\n2026-10-20,5.12\n2026-10-21,5.13\n2026-10-22,4.96\n",
+  "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10&cosd=2026-10-10",
+  "fetchedAt": "2026-10-24T15:24:26.350Z"
+ }
+}

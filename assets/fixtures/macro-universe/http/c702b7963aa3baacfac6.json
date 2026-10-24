@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://en.wikipedia.org/w/api.php?action=parse&page=Historical_components_of_the_Dow_Jones_Industrial_Average&prop=wikitext&format=json&formatversion=2&redirects=1&section=2"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"parse\":{\"title\":\"Historical components of the Dow Jones Industrial Average\",\"pageid\":17350757,\"redirects\":[],\"wikitext\":\"== June 29, 2026 ==\\n{| class=\\\"wikitable\\\"\\n| [[3M|3M Company]]\\n| [[The Coca-Cola Company]]\\n| [[Nike, Inc.]]\\n|-\\n| [[Alphabet Inc.]] ↑\\n| [[Goldman Sachs|The Goldman Sachs Group, Inc.]]\\n| [[Nvidia|Nvidia Corporation]]\\n|-\\n| [[Amazon (company)|Amazon.com, Inc.]]\\n| [[Home Depot|The Home Depot, Inc.]]\\n| [[Procter & Gamble|The Procter & Gamble Company]]\\n|-\\n| [[American Express|American Express Company]]\\n| [[Honeywell|Honeywell Technologies Inc.]] †<br />{{small|(formerly Honeywell International Inc.)}}\\n| [[Salesforce|Salesforce, Inc.]]\\n|-\\n| [[Amgen|Amgen Inc.]]\\n| [[IBM|International Business Machines Corporation]]\\n| [[Sherwin-Williams|The Sherwin-Williams Company]]\\n|-\\n| [[Apple Inc.]]\\n| [[Johnson & Johnson]]\\n| [[The Travelers Companies|The Travelers Companies, Inc.]]\\n|-\\n| [[Boeing|The Boeing Company]]\\n| [[JPMorgan Chase|JPMorgan Chase & Co.]]\\n| [[UnitedHealth Group|UnitedHealth Group Incorporated]]\\n|-\\n| [[Caterpillar Inc.]]\\n| [[McDonald's|McDonald's Corporation]]\\n| [[Visa Inc.]]\\n|-\\n| [[Chevron Corporation]]\\n| [[Merck & Co.|Merck & Co., Inc.]]\\n| [[Walmart|Walmart Inc.]]\\n|-\\n| [[Cisco|Cisco Systems, Inc.]]\\n| [[Microsoft|Microsoft Corporation]]\\n| [[The Walt Disney Company]]\\n|-\\n|colspan=\\\"3\\\" align=\\\"center\\\" | '''''Dropped from Average'''''\\n|-\\n| [[Verizon|Verizon Communications Inc.]] ↓\\n| \\n| \\n|}\\nHoneywell International Inc. spun off Honeywell Aerospace Inc. Post spin-off, the Honeywell parent will remain in the DJIA under the new name Honeywell Technologies Inc. Honeywell Aerospace will not be included in the DJIA. Verizon represents only one-half of one percentage point of the DJIA due to its lower share price.\"}}",
+  "url": "https://en.wikipedia.org/w/api.php?action=parse&page=Historical_components_of_the_Dow_Jones_Industrial_Average&prop=wikitext&format=json&formatversion=2&redirects=1&section=2",
+  "fetchedAt": "2026-10-24T15:26:47.776Z"
+ }
+}
