@@ -26,6 +26,7 @@ import {
 import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentimentCommand, universeCommand } from "./commands/macro.js";
 import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
 import { backtestCommand, strategyCommand } from "./commands/backtest.js";
+import { brokerCommand } from "./commands/broker.js";
 import { decideCommand, journalCommand, knowledgeCommand, watchCommand } from "./commands/journal.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
 import { taxCommand } from "./commands/tax.js";
@@ -119,6 +120,8 @@ USAGE
   ultrastock backtest run <buy-and-hold|60-40|equal-weight|dual-momentum|risk-parity> <sym1,sym2,…> [--rebalance monthly|quarterly] [--lookback 12] [--cash-rate 0] [--out <dir>] [--json]
   ultrastock backtest walkforward|sweep|montecarlo|review <strategy> <symbol> [--grid alias.param=a,b;…] [--objective sharpe|sortino|cagr|calmar|profit-factor] [--train N] [--test N] [--anchored] [--trials N] [--groups 6] [--test-groups 2] [--purge 5] [--embargo N] [--paths 5000] [--seed 42] [--out <dir>] [--json]
   ultrastock backtest compare <s1,s2,…> <symbol> · backtest decisions [--rating buy|…] [--horizon 5|20|60] [--json]
+  ultrastock broker status|setup <venue>|balances|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr] [--env test|live] [--max-order <n>] [--max-daily <n>] [--venues a,b] [--attest a,b] [--code <code>] [--json]
+  ultrastock broker preview|code|submit|reconcile|cancel <ticket-id> [--venue <v>] [--env test|live] [--code <code>] [--conid <id>] [--json]
   ultrastock strategy list | show <name|file.json> | validate <name|file.json> | new <name> [--like <strategy>] [--json]
   ultrastock watch list|add <symbol> <condition>|add 8k <symbol>|add stops|rm <id>|run [--notify] [--message <text>] [--json]
   ultrastock options <symbol> [--expiries <n>] [--out <dir>] [--json]
@@ -128,6 +131,7 @@ USAGE
   ultrastock predict-analysis kalshi <SERIES|market:TICKER> | manifold <terms> [--my-probability <p>] [--kalshi-fee <coef>] [--contracts <n>] [--limit <n>] [--out <dir>] [--json]
   ultrastock crypto global|top|coin|derivatives|defi|yields|stables|fees|onchain|dex|holders [<target>] [--limit <n>] [--out <dir>] [--json]
   ultrastock predict kalshi|manifold|polymarket [<query>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock predict order kalshi <TICKER> yes|no [buy|sell] --contracts <n> --price <0-1> [--account <id>] [--json]
   ultrastock snapshot <symbol> [--market <tv-market>] [--out <dir>] [--json]
   ultrastock doctor [--probe] [--json]
   ultrastock version
@@ -329,6 +333,21 @@ COMMANDS
             resamples the trades; review runs it all and answers PASS, REVISE or
             REJECT with reasons; decisions gives the journal's hit rates with
             Wilson intervals. Writes BACKTEST.md, equity.json, trades.json.
+  broker    Live venues behind every guard. --env test (default): Binance
+            testnet, Kraken validate-only, Coinbase preview-only, IBKR paper
+            account; --env live: real money, only with ULTRASTOCK_LIVE=1 set by
+            the user, Node ≥ 22 and a ready paper record. A ticket goes only when
+            it is checked (≤ 15 min, unchanged), a limit order within 1 % of the
+            venue's book, inside the per-order and per-day limits of the
+            experience tier, on a venue switched on and authorised for the
+            jurisdiction (MiCA register for crypto platforms), with a key that
+            cannot withdraw, no kill switch, no tripped breaker — and a 6-digit
+            code sent out of band (desktop notification, private ntfy, the
+            user's terminal), never printed. One request per approval; a lost
+            answer is "unknown" until reconcile asks the venue. setup shows how
+            to store a key in the keychain; limits tighten at once and loosen
+            only with a code, 24 hours later; panic sets the kill switch and
+            cancels ultrastock's working orders.
   strategy  The strategies: 26 ported from ai-strategy-backtester plus sma-cross,
             and the user's own in <home>/strategies/ — list, show, validate (each
             error with its path), new (from a template or --like another).
@@ -368,6 +387,10 @@ COMMANDS
             metrics (CoinMetrics, mempool.space), DEX pairs, holder concentration.
   predict   Prediction markets: Kalshi (regulated), Manifold (play money),
             Polymarket — refused where the profile's jurisdiction blocks it.
+            order: a paper ticket for a Kalshi contract (KALSHI:<TICKER>:YES|NO),
+            checked by the risk gate — a venue blocked for the jurisdiction is
+            refused even on paper, an unverified one is paper only — then filled
+            by \`paper submit\` against Kalshi's live book with its taker fee.
             Questions and rules are external text, fenced as untrusted.
   snapshot  A cross-venue snapshot from TradingView's scanner (unofficial):
             price, valuation ratios, performance, technical rating.
@@ -504,6 +527,12 @@ export const VALUE_FLAGS = [
   "rating",
   "horizon",
   "like",
+  "env",
+  "code",
+  "conid",
+  "max-order",
+  "max-daily",
+  "attest",
 ];
 export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "dry-run", "list", "bootstrap", "notify", "perp", "anchored"];
 export const COMMANDS = [
@@ -558,6 +587,7 @@ export const COMMANDS = [
   "watch",
   "backtest",
   "strategy",
+  "broker",
   "doctor",
 ];
 
@@ -688,6 +718,7 @@ const SPEC: CliSpec = {
       ...NET,
     ],
     strategy: ["like", "json"],
+    broker: ["venue", "env", "code", "conid", "max-order", "max-daily", "venues", "attest", "json"],
     journal: ["book", "symbol", "thesis", "invalidation", "catalysts", "review-by", "note", "outcome", "ticket-id", "tags", "tag", "out", ...NET],
     knowledge: ["title", "json"],
     watch: ["notify", "message", ...NET],
@@ -697,7 +728,7 @@ const SPEC: CliSpec = {
     "crypto-analysis": ["days", "limit", "out", ...NET],
     "predict-analysis": ["my-probability", "kalshi-fee", "contracts", "limit", "out", ...NET],
     crypto: ["limit", "out", ...NET],
-    predict: ["limit", "out", ...NET],
+    predict: ["limit", "contracts", "price", "account", "out", ...NET],
     snapshot: ["market", "out", ...NET],
     doctor: ["probe", "json"],
   },
@@ -732,7 +763,14 @@ function arity(args: CommandArgs): number {
   if (args.command === "congress") return 0;
   if (args.command === "portfolio") return 3;
   if (args.command === "ticket" || args.command === "paper" || args.command === "decide" || args.command === "knowledge") return 2;
-  if (args.command === "journal" || args.command === "watch" || args.command === "tax" || args.command === "backtest" || args.command === "strategy")
+  if (
+    args.command === "journal" ||
+    args.command === "watch" ||
+    args.command === "tax" ||
+    args.command === "backtest" ||
+    args.command === "strategy" ||
+    args.command === "broker"
+  )
     return Number.POSITIVE_INFINITY;
   if (args.command === "predict") return Number.POSITIVE_INFINITY;
   return 1;
@@ -912,6 +950,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "watch") return watchCommand(args, asJson);
   if (cmd === "backtest") return backtestCommand(args, asJson);
   if (cmd === "strategy") return strategyCommand(args, asJson);
+  if (cmd === "broker") return brokerCommand(args, asJson);
   if (cmd === "plan") return planCommand(args, asJson);
   if (cmd === "ticket") return ticketCommand(args, asJson);
   if (cmd === "paper") return paperCommand(args, asJson);

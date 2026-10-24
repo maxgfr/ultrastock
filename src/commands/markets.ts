@@ -2,7 +2,7 @@
 // prediction markets, and a cross-venue snapshot.
 import { ruleStatus } from "../core/jurisdiction.js";
 import { loadProfile } from "../core/profile.js";
-import { argInt, argValue, type CommandArgs, UsageError } from "../engine.js";
+import { argInt, argValue, type CommandArgs, jsonLine, UsageError } from "../engine.js";
 import { binanceFuturesPositioning } from "../providers/crypto/binance-futures.js";
 import { coingeckoCoin, coingeckoGlobal, coingeckoMarkets, coingeckoSearch } from "../providers/crypto/coingecko.js";
 import { coinmetricsAssetMetrics } from "../providers/crypto/coinmetrics.js";
@@ -18,6 +18,9 @@ import { manifoldMarket, manifoldSearch } from "../providers/prediction/manifold
 import { polymarketBook, polymarketMarkets } from "../providers/prediction/polymarket.js";
 import type { Dataset } from "../core/datasets.js";
 import { ProviderError } from "../providers/types.js";
+import { gateContextFor } from "../trading/context.js";
+import { type Order, riskGate } from "../trading/riskgate.js";
+import { createTicket, recordCheck } from "../trading/tickets.js";
 import { emitDatasets } from "./emit.js";
 
 const DERIBIT = new Set(["BTC", "ETH", "BTCUSDT", "ETHUSDT", "BTC-USD", "ETH-USD"]);
@@ -107,6 +110,7 @@ export async function predictCommand(args: CommandArgs, asJson: boolean): Promis
       : [(await polymarketMarkets({ limit, ...(query ? { slug: query } : {}), active: true, closed: false })).dataset];
     return emitDatasets(args, ds, asJson);
   }
+  if (venue === "order") return predictOrder(args, asJson);
   if (venue === "kalshi") {
     const ds = query.startsWith("book:")
       ? [(await kalshiOrderbook(query.slice(5))).dataset]
@@ -130,4 +134,46 @@ export async function snapshotCommand(args: CommandArgs, asJson: boolean): Promi
   const sym = args.positional[0];
   if (!sym) throw new UsageError("usage: ultrastock snapshot <symbol> — a TradingView snapshot (unofficial): ratios, performance, ratings");
   emitDatasets(args, [await tradingviewSnapshot(sym, { market: argValue(args, "market") })], asJson);
+}
+
+/**
+ * `predict order kalshi <TICKER> yes|no [buy|sell] --contracts N --price P [--account id]`:
+ * a paper ticket for a contract, checked by the risk gate (jurisdiction included)
+ * and then filled with `paper submit` against Kalshi's live book.
+ */
+async function predictOrder(args: CommandArgs, asJson: boolean): Promise<void> {
+  const [, venue, ticker, outcome, side = "buy"] = args.positional;
+  const usage =
+    "usage: ultrastock predict order kalshi <TICKER> yes|no [buy|sell] --contracts <n> --price <0-1> [--account <id>] — a paper ticket, checked by the risk gate";
+  if (venue !== "kalshi" || !ticker || !/^(yes|no)$/i.test(outcome ?? "") || !/^(buy|sell)$/.test(side)) throw new UsageError(usage);
+  const contracts = argInt(args, "contracts", { min: 1, max: 100_000 });
+  const price = Number(argValue(args, "price"));
+  if (!contracts || !(price > 0 && price < 1)) throw new UsageError(usage);
+  const order: Order = {
+    account: argValue(args, "account") ?? "kalshi",
+    symbol: `KALSHI:${ticker.toUpperCase()}:${outcome!.toUpperCase()}`,
+    side: side as "buy" | "sell",
+    quantity: contracts,
+    price,
+    orderType: "limit",
+    currency: "USD",
+    assetKind: "prediction",
+    venue: "paper",
+  };
+  const t = createTicket(order, { note: "prediction-market contract (paper)" });
+  const built = await gateContextFor(order, { book: "paper" });
+  const gate = riskGate(order, built.ctx);
+  const after = await recordCheck(t.id, gate);
+  process.stdout.write(
+    asJson
+      ? jsonLine({ ticket: after, checks: gate.checks, notes: built.notes })
+      : `${[
+          `${t.id}: ${after.status} — ${side} ${contracts} ${order.symbol} at ${price} (max ${side === "buy" ? (contracts * price).toFixed(2) : (contracts * (1 - price)).toFixed(2)} USD at risk)`,
+          ...gate.checks.filter((c) => c.status !== "pass").map((c) => `  ${c.status.toUpperCase()} ${c.code}: ${c.reason}`),
+          ...built.notes.map((n) => `  note: ${n}`),
+          after.status === "checked" ? `next: \`ultrastock paper submit ${t.id}\` (paper only)` : "",
+        ]
+          .filter(Boolean)
+          .join("\n")}\n`,
+  );
 }

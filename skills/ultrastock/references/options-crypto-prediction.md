@@ -81,5 +81,12 @@ With `--my-probability` it adds a half-Kelly stake. The edge behind it is
 discounted by half the spread and the fee, and `--contracts` prices a size.
 
 - For French residents this is paper only, and Polymarket is never used here.
+- To practise a view: `predict order kalshi <TICKER> yes|no [buy|sell]
+  --contracts N --price P` creates a paper ticket.
+  - The risk gate counts the whole stake as the risk.
+  - A venue blocked for the jurisdiction is refused even on paper; an
+    unverified one is paper only.
+  - `paper submit <ticket>` fills it against Kalshi's live book, with the
+    taker fee.
 - An edge is only as good as your probability. Write down where it comes from
   before you size anything.

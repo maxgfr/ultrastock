@@ -139,8 +139,14 @@ export function riskGate(o: Order, c: GateContext): GateResult {
   const j = c.profile.jurisdiction;
   if (o.assetKind === "etf" && o.domicile === "US" && ruleStatus(j, "us-domiciled-etf") === "restricted")
     add("PRIIPS", "block", `a US-domiciled ETF has no PRIIPs KID: not sold to retail investors in ${j} — use its UCITS equivalent`);
-  if (o.assetKind === "prediction" && ruleStatus(j, o.venue) !== "allowed")
-    add("JURISDICTION", "block", `${o.venue} is ${ruleStatus(j, o.venue)} for residents of ${j}`);
+  if (o.assetKind === "prediction") {
+    // The contract's own venue decides: blocked → never, not even on paper; otherwise paper only until "allowed".
+    const venue = /^([A-Z]+):/i.exec(o.symbol)?.[1]?.toLowerCase() ?? o.venue;
+    const status = ruleStatus(j, venue);
+    if (status === "blocked") add("JURISDICTION", "block", `${venue} is blocked for residents of ${j}: not traded, not even on paper`);
+    else if (o.venue !== "paper" && status !== "allowed") add("JURISDICTION", "block", `${venue} is ${status} for residents of ${j}: paper only`);
+    else if (status !== "allowed") add("JURISDICTION", "warn", `${venue} is ${status} for residents of ${j}: paper only`);
+  }
   if (o.assetKind === "crypto" && !K.allowCrypto) add("NO_CRYPTO", "block", "the profile excludes crypto-assets");
   if (o.assetKind === "option" && !K.allowOptions) add("NO_OPTIONS", "block", "the profile does not allow options");
   if (o.assetKind === "prediction" && !K.allowPredictionMarkets) add("NO_PREDICTION", "block", "the profile does not allow prediction markets");
@@ -152,7 +158,17 @@ export function riskGate(o: Order, c: GateContext): GateResult {
 
   if (!riskReducing && o.side === "buy") {
     // 4. Risk per trade: a buy needs a stop, and the loss to the stop is capped.
-    if (o.stop === undefined) add("NO_STOP", "block", "no protective stop: a position without a stop has no defined risk");
+    // A binary contract's loss is bounded by its price: the whole stake is the risk.
+    if (o.assetKind === "prediction") {
+      const risk = o.quantity * o.price * c.fxToBase;
+      const riskPct = (risk / c.equityBase) * 100;
+      const allowed = L.riskPerTradePct * c.breaker.sizeMultiplier;
+      add(
+        "RISK_PER_TRADE",
+        riskPct > allowed + 1e-9 ? "block" : "pass",
+        `the whole stake ${risk.toFixed(2)} can be lost = ${pct(riskPct)} of the portfolio (limit ${pct(allowed)})`,
+      );
+    } else if (o.stop === undefined) add("NO_STOP", "block", "no protective stop: a position without a stop has no defined risk");
     else if (o.stop >= o.price) add("STOP_SIDE", "block", `the stop ${o.stop} is not below the entry ${o.price}`);
     else {
       const risk = o.quantity * (o.price - o.stop) * c.fxToBase;

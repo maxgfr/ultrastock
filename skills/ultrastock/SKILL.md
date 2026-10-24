@@ -62,6 +62,9 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | how good past calls were, what the trades teach | `journal settle`, `journal hits`, `journal review`, `journal digest`, `journal lesson "…"` | [journal-alerts](references/journal-alerts.md) |
 | to track an idea until it is acted on or dropped | `journal thesis add|move|list|show` | [journal-alerts](references/journal-alerts.md) |
 | to be told when a level breaks, a stop is hit or an 8-K lands | `watch add <SYM> "<condition>"`, `watch add stops|8k <SYM>`, `watch run --notify` | [journal-alerts](references/journal-alerts.md) |
+| to send a real (or testnet) order | `broker status`, `broker preview <ticket>`, `broker code <ticket>` — the USER submits with the code | [live-execution](references/live-execution.md) |
+| to stop everything now | `broker panic` (kill switch + cancel ultrastock's working orders) | [live-execution](references/live-execution.md) |
+| to practise a prediction-market view | `predict order kalshi <TICKER> yes|no --contracts N --price P`, then `paper submit` | [options-crypto-prediction](references/options-crypto-prediction.md) |
 | would a rule have worked, is it overfit | `strategy list`, `backtest review <strategy> <symbol>` (then `walkforward`, `sweep`, `montecarlo`) | [backtesting](references/backtesting.md) |
 | a portfolio rule over history (60/40, dual momentum…) | `backtest run 60-40 CW8.PA,IEAC.AS --rebalance quarterly` | [backtesting](references/backtesting.md) |
 | to write or check their own strategy | `strategy new <name> --like sma-cross`, `strategy validate <file>` | [backtesting](references/backtesting.md) |
@@ -135,6 +138,8 @@ ultrastock paper book|submit <ticket-id>|sweep|readiness
 ultrastock decide <run> <decision.json> · journal settle|hits|review|digest [--book] · journal lesson "<text>" | lessons
 ultrastock journal thesis list|add|show|move [<id>] [<state>] [--symbol] [--thesis] [--invalidation] [--review-by]
 ultrastock watch list|add <SYM> "<condition>"|add 8k <SYM>|add stops|rm <id>|run [--notify] · knowledge import <file>
+ultrastock broker status|setup <venue>|balances|open|limits [set]|panic · broker preview|code|submit|reconcile|cancel <ticket> [--venue] [--env test|live] [--code]
+ultrastock predict order kalshi <TICKER> yes|no [buy|sell] --contracts <n> --price <0-1>
 ultrastock backtest run|walkforward|sweep|montecarlo|compare|review <strategy> <symbol> [--years] [--grid] … · backtest decisions
 ultrastock strategy list|show|validate|new [<name>] [--like <strategy>]
 ultrastock tax report|lots|harvest|rules|verify|export [--regime fr|us] [--year] [--tmi] [--income] [--filing] [--carryforward] [--envelope-value] [--format]
@@ -174,9 +179,12 @@ Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
 
 ## Will not
 
-- Place a real order. Orders exist as tickets, pass the deterministic risk
-  gate, and fill on paper; a real order is the user's own act. Never argue an
-  order past a gate block.
+- Approve a real order. A live order needs a 6-digit code that only the user
+  can read (never in your output), on top of the risk gate, the limits and the
+  jurisdiction; you never type a code you did not receive from the user, never
+  retry a submission, never argue past a refusal.
+- Ask for an API key or a secret in the conversation: the user stores keys in
+  their keychain (`broker setup`).
 - Invent a figure, a target price or a fundamental the evidence does not hold.
 - Get around a source's refusal (a 451 from Binance, a jurisdiction block).
 - Send the user's holdings or identity anywhere.
@@ -196,6 +204,7 @@ Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
 - [journal-alerts](references/journal-alerts.md) — decisions settled against the market, hit rates, theses, trade reviews, lessons, alerts.
 - [backtesting](references/backtesting.md) — the strategy format, honest fills, walk-forward, sweeps with deflated Sharpe and PBO, Monte Carlo, the review verdict.
 - [tax](references/tax.md) — verify the year's rules first; France (PMP, PFU vs scale, PEA, AV, crypto 150 VH bis, 2778-DIV, 3916) and the US (lots, wash sales, brackets, NIIT).
+- [live-execution](references/live-execution.md) — environments, key setup, the harness approval rule, the order chain, every refusal code.
 - [macro-markets](references/macro-markets.md) — macro, rates, FX, positioning, sentiment, calendars: what each figure means.
 - [news-and-external-text](references/news-and-external-text.md) — reading headlines and other external text safely.
 - [options-crypto-prediction](references/options-crypto-prediction.md) — option chains, crypto structure, prediction markets and their limits.
