@@ -1,0 +1,86 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/finland/scan",
+  "json": {
+   "columns": [
+    "description",
+    "close",
+    "country",
+    "market_cap_basic",
+    "isin",
+    "sector",
+    "currency",
+    "fundamental_currency_code"
+   ],
+   "range": [
+    0,
+    3
+   ],
+   "filter": [
+    {
+     "left": "type",
+     "operation": "equal",
+     "right": "stock"
+    },
+    {
+     "left": "is_primary",
+     "operation": "equal",
+     "right": true
+    },
+    {
+     "left": "country",
+     "operation": "in_range",
+     "right": [
+      "Austria",
+      "Belgium",
+      "Bulgaria",
+      "Croatia",
+      "Cyprus",
+      "Czech Republic",
+      "Denmark",
+      "Estonia",
+      "Finland",
+      "France",
+      "Germany",
+      "Greece",
+      "Hungary",
+      "Ireland",
+      "Italy",
+      "Latvia",
+      "Lithuania",
+      "Luxembourg",
+      "Malta",
+      "Netherlands",
+      "Poland",
+      "Portugal",
+      "Romania",
+      "Slovakia",
+      "Slovenia",
+      "Spain",
+      "Sweden",
+      "Iceland",
+      "Liechtenstein",
+      "Norway"
+     ]
+    },
+    {
+     "left": "market_cap_basic",
+     "operation": "greater",
+     "right": 0
+    }
+   ],
+   "sort": {
+    "sortBy": "market_cap_basic",
+    "sortOrder": "desc"
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":177,\"data\":[{\"s\":\"OMXHEX:NDA_FI\",\"d\":[\"Nordea Bank Abp\",15.27,\"Finland\",51803476553,\"FI4000297767\",\"Finance\",\"EUR\",\"EUR\"]},{\"s\":\"OMXHEX:NOKIA\",\"d\":[\"Nokia Oyj\",7.37,\"Finland\",41706354333,\"FI0009000681\",\"Electronic Technology\",\"EUR\",\"EUR\"]},{\"s\":\"OMXHEX:KNEBV\",\"d\":[\"KONE Oyj Class B\",56.32,\"Finland\",29183384970,\"FI0009013403\",\"Producer Manufacturing\",\"EUR\",\"EUR\"]}]}",
+  "url": "https://scanner.tradingview.com/finland/scan",
+  "fetchedAt": "2026-10-24T16:06:17.604Z"
+ }
+}

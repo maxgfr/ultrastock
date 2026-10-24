@@ -1,0 +1,46 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/france/scan",
+  "json": {
+   "columns": [
+    "description",
+    "close",
+    "isin",
+    "aum",
+    "expense_ratio",
+    "currency",
+    "fundamental_currency_code"
+   ],
+   "range": [
+    0,
+    3
+   ],
+   "filter": [
+    {
+     "left": "typespecs",
+     "operation": "has",
+     "right": [
+      "etf"
+     ]
+    },
+    {
+     "left": "description",
+     "operation": "match",
+     "right": "PEA"
+    }
+   ],
+   "sort": {
+    "sortBy": "aum",
+    "sortOrder": "desc"
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":53,\"data\":[{\"s\":\"EURONEXT:WPEA\",\"d\":[\"iShares MSCI World Swap PEA UCITS ETF Accum- EUR\",7.118,\"IE0002XZSHO1\",2338612099.9234,0.2,\"EUR\",\"EUR\"]},{\"s\":\"EURONEXT:DCAM\",\"d\":[\"Amundi PEA Monde (MSCI World) UCITS ETF\",6.301,\"FR001400U5Q4\",1728955430.5638,0.2,\"EUR\",\"EUR\"]},{\"s\":\"EURONEXT:PUST\",\"d\":[\"Amundi PEA Nasdaq-100 UCITS ETF FCP Parts -Acc-\",104.34,\"FR0011871110\",1295306925.289,0.3,\"EUR\",\"EUR\"]}]}",
+  "url": "https://scanner.tradingview.com/france/scan",
+  "fetchedAt": "2026-10-24T16:06:22.604Z"
+ }
+}
