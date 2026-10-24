@@ -37,6 +37,8 @@ export interface DoctorReport {
   profile: { exists: boolean; jurisdiction?: string; riskScore?: number; envelopes?: number };
   tools: Record<string, ToolReport>;
   crible: { dataDir: string; bootstrapped: boolean; tag: string };
+  /** SEC EDGAR asks automated clients for a contact in the User-Agent. */
+  secContact: boolean;
   probes?: ProbeReport[];
   blocks?: Array<{ host: string; blocked: boolean; detail: string }>;
 }
@@ -79,6 +81,7 @@ export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) 
     profile,
     tools,
     crible: { dataDir: cribleDataDir(), bootstrapped: cribleBootstrapped(), tag: CRIBLE_TAG },
+    secContact: !!process.env.ULTRASTOCK_SEC_CONTACT?.trim(),
   };
   if (opts.probe) {
     report.probes = await Promise.all(
@@ -103,6 +106,7 @@ export function formatDoctor(r: DoctorReport): string {
     `  state       ${r.home}`,
     `  cache       ${r.cache}`,
     `  profile     ${r.profile.exists ? `${r.profile.jurisdiction ?? "?"}, risk score ${r.profile.riskScore ?? "not assessed — run profile suitability"}, ${r.profile.envelopes ?? 0} envelope(s)` : "none — run `ultrastock profile init`"}`,
+    `  sec         ${r.secContact ? "contact set (ULTRASTOCK_SEC_CONTACT)" : "no contact — set ULTRASTOCK_SEC_CONTACT to your e-mail: SEC EDGAR's fair-access policy asks for one and may block anonymous tools"}`,
     `  crible      ${r.crible.bootstrapped ? "dataset ready" : "no dataset yet (first `screen --engine crible` bootstraps it, ~1 min)"} in ${r.crible.dataDir} (pinned ${r.crible.tag})`,
     ...Object.entries(r.tools).map(
       ([name, t]) => `  ${name.padEnd(19)} ${t.installed ? `installed${t.version ? ` (${t.version})` : ""}` : "not installed"} — ${t.purpose}`,

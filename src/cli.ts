@@ -9,6 +9,17 @@ import { ExprError } from "./core/expr.js";
 import { clockNow, FixtureMiss, setNetMode } from "./core/net.js";
 import { runDirFor } from "./core/paths.js";
 import { calendarCommand } from "./commands/calendar.js";
+import {
+  analystCommand,
+  congressCommand,
+  dividendsCommand,
+  filingsCommand,
+  fundamentalsCommand,
+  holdingsCommand,
+  insidersCommand,
+  resolveCommand,
+  shortCommand,
+} from "./commands/fundamentals.js";
 import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentimentCommand, universeCommand } from "./commands/macro.js";
 import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
@@ -59,6 +70,15 @@ USAGE
   ultrastock sentiment [all|cnn|crypto|vix|putcall] [--out <dir>] [--json]
   ultrastock news <query> [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>] [--out <dir>] [--json]
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
+  ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
+  ultrastock fundamentals <symbol> [--asof <date>] [--years <n>] [--quarters <n>] [--source sec|esef|crible] [--out <dir>] [--json]
+  ultrastock filings <US symbol> [--forms 8-K,10-Q] [--days <n>] [--limit <n>] | filings --search <text> [--out <dir>] [--json]
+  ultrastock insiders <symbol> [--limit <n>] [--out <dir>] [--json]
+  ultrastock holdings <manager|CIK> [--limit <n>] [--out <dir>] [--json]
+  ultrastock analyst <US symbol> [--out <dir>] [--json]
+  ultrastock short <US symbol> [--out <dir>] [--json]
+  ultrastock dividends <US symbol> [--limit <n>] [--out <dir>] [--json]
+  ultrastock congress [--member <name>] [--doc <DocID>] [--year <yyyy>] [--limit <n>] [--out <dir>] [--json]
   ultrastock options <symbol> [--expiries <n>] [--out <dir>] [--json]
   ultrastock crypto global|top|coin|derivatives|defi|yields|stables|fees|onchain|dex|holders [<target>] [--limit <n>] [--out <dir>] [--json]
   ultrastock predict kalshi|manifold|polymarket [<query>] [--limit <n>] [--out <dir>] [--json]
@@ -114,6 +134,22 @@ COMMANDS
             are external text, fenced as untrusted.
   universe  An index's current members (Wikipedia) — current only: a backtest
             over them has survivorship bias.
+  resolve   A name, ticker or ISIN → the Euronext listings, the SEC registrant,
+            the LEI (GLEIF) and FIGI identifiers that match.
+  fundamentals  Key statement figures: SEC XBRL for US filers (annual, quarters,
+            TTM; --asof keeps only what was filed by then — point in time), ESEF
+            IFRS reports for European issuers, crible as fallback (with its
+            Piotroski, Altman, Beneish and rank fields).
+  filings   Recent SEC filings, 8-K items named and the important ones flagged;
+            --search runs EDGAR full-text search.
+  insiders  Insider trades: SEC Form 4 (open-market buys and sells, 90-day net,
+            cluster buys) for US listings; AMF declarations for French issuers.
+  holdings  An institution's latest 13F: top positions, weights, and what it
+            bought, added, trimmed and sold since the previous quarter (45-day lag).
+  analyst   Price targets, ratings, EPS estimates and surprises (Nasdaq, unofficial).
+  short     Short interest and days to cover (Nasdaq) and daily short volume (FINRA).
+  dividends Dividend history, yield and ex-dates (Nasdaq).
+  congress  US House periodic transaction reports, and one report's trades.
   options   An option chain summary per expiry — ATM IV, put/call open interest
             and volume, totals: US listings from CBOE (15 min delayed), BTC and
             ETH from Deribit with the DVOL volatility index.
@@ -136,6 +172,9 @@ ENVIRONMENT
   ULTRASTOCK_HOME        state directory (profile, runs, journal) — default ~/.ultrastock
   ULTRASTOCK_CACHE_DIR   dataset cache — default ULTRASTOCK_HOME/cache
   ULTRASTOCK_TIMEOUT_MS  network budget per attempt (default 20000)
+  ULTRASTOCK_SEC_CONTACT an e-mail for SEC EDGAR's fair-access User-Agent (required by the SEC)
+  ULTRASTOCK_FRED_API_KEY, ULTRASTOCK_COINGECKO_API_KEY, ULTRASTOCK_SOLANA_RPC   optional keys
+  ULTRASTOCK_CRIBLE_CMD, ULTRASTOCK_CRIBLE_DATA_DIR   how to run crible, and where its dataset lives
 
 Nothing here needs an API key. Exit codes: 0 done, 1 failed or refused, 2 bad invocation.`;
 
@@ -164,6 +203,14 @@ export const VALUE_FLAGS = [
   "report",
   "symbol",
   "lang",
+  "asof",
+  "years",
+  "quarters",
+  "source",
+  "forms",
+  "search",
+  "member",
+  "doc",
 ];
 export const BOOL_FLAGS = ["json", "refresh", "offline", "probe"];
 export const COMMANDS = [
@@ -176,6 +223,15 @@ export const COMMANDS = [
   "profile",
   "jurisdiction",
   "calendar",
+  "resolve",
+  "fundamentals",
+  "filings",
+  "insiders",
+  "holdings",
+  "analyst",
+  "short",
+  "dividends",
+  "congress",
   "options",
   "crypto",
   "predict",
@@ -212,6 +268,15 @@ const SPEC: CliSpec = {
     sentiment: ["out", ...NET],
     news: ["symbol", "lang", "days", "limit", "out", ...NET],
     universe: ["out", ...NET],
+    resolve: ["out", ...NET],
+    fundamentals: ["asof", "years", "quarters", "source", "out", ...NET],
+    filings: ["forms", "days", "limit", "search", "out", ...NET],
+    insiders: ["limit", "out", ...NET],
+    holdings: ["limit", "out", ...NET],
+    analyst: ["out", ...NET],
+    short: ["out", ...NET],
+    dividends: ["limit", "out", ...NET],
+    congress: ["member", "doc", "year", "limit", "out", ...NET],
     options: ["expiries", "out", ...NET],
     crypto: ["limit", "out", ...NET],
     predict: ["limit", "out", ...NET],
@@ -236,7 +301,8 @@ function arity(args: CommandArgs): number {
   if (args.command === "check" || args.command === "calc") return 2;
   if (args.command === "profile") return 3;
   if (args.command === "crypto" || args.command === "calendar" || args.command === "macro") return 2;
-  if (args.command === "news" || args.command === "cot") return Number.POSITIVE_INFINITY;
+  if (args.command === "news" || args.command === "cot" || args.command === "resolve") return Number.POSITIVE_INFINITY;
+  if (args.command === "congress") return 0;
   if (args.command === "predict") return Number.POSITIVE_INFINITY;
   return 1;
 }
@@ -388,6 +454,15 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "profile") return profileCommand(args, asJson);
   if (cmd === "jurisdiction") return jurisdictionCommand(args, asJson);
   if (cmd === "calendar") return calendarCommand(args, asJson);
+  if (cmd === "resolve") return resolveCommand(args, asJson);
+  if (cmd === "fundamentals") return fundamentalsCommand(args, asJson);
+  if (cmd === "filings") return filingsCommand(args, asJson);
+  if (cmd === "insiders") return insidersCommand(args, asJson);
+  if (cmd === "holdings") return holdingsCommand(args, asJson);
+  if (cmd === "analyst") return analystCommand(args, asJson);
+  if (cmd === "short") return shortCommand(args, asJson);
+  if (cmd === "dividends") return dividendsCommand(args, asJson);
+  if (cmd === "congress") return congressCommand(args, asJson);
   if (cmd === "options") return optionsCommand(args, asJson);
   if (cmd === "crypto") return cryptoCommand(args, asJson);
   if (cmd === "predict") return predictCommand(args, asJson);

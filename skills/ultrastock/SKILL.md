@@ -57,6 +57,10 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | to set up who they are (first use) | `profile init`, then `profile suitability` (ask the questions), `profile envelope` | [onboarding-profile](references/onboarding-profile.md) |
 | what their country allows (PEA, MiCA, Polymarket…) | `jurisdiction show`, `jurisdiction verify --out <dir>` | [onboarding-profile](references/onboarding-profile.md) |
 | market hours, holidays, the next sessions | `calendar sessions --market XPAR` | [data-sources](references/data-sources.md) |
+| a company's numbers: statements, filings | `fundamentals <sym> [--asof]`, `filings <US sym>` | [fundamentals-filings](references/fundamentals-filings.md) |
+| who is buying: insiders, institutions, Congress, short sellers | `insiders`, `holdings <manager>`, `congress`, `short` | [fundamentals-filings](references/fundamentals-filings.md) |
+| what analysts expect, the dividend record | `analyst <US sym>`, `dividends <US sym>` | [fundamentals-filings](references/fundamentals-filings.md) |
+| to find a listing from a name or an ISIN | `resolve "<name>"` | [data-sources](references/data-sources.md) |
 | the macro picture: inflation, jobs, growth | `macro us|ea|fr|<country>`, `macro fred <ID>` | [macro-markets](references/macro-markets.md) |
 | rates, curves, credit spreads, FX | `rates [us|ea]`, `fx USD,GBP` | [macro-markets](references/macro-markets.md) |
 | the week's events: data releases, earnings, dividends | `calendar econ|earnings|dividends [date]` | [macro-markets](references/macro-markets.md) |
@@ -85,7 +89,9 @@ ultrastock profile init|show|suitability|set|envelope [--json]
 ultrastock jurisdiction show|verify [--venues binance,kraken,coinbase] [--out <dir>] [--json]
 ultrastock calendar sessions|holidays|verify|econ|earnings|dividends [--market XPAR|XNYS|XMIL|XOSL|CRYPTO] [--json]
 ultrastock macro us|ea|fr|<country>|fred <ID> · rates [us|ea] · fx [USD,GBP] · cot <market> · sentiment [cnn|crypto|vix|putcall]
-ultrastock news "<query>" [--symbol <SYM>] [--lang fr] · universe <index> · snapshot <symbol>
+ultrastock news "<query>" [--symbol <SYM>] [--lang fr] · universe <index> · snapshot <symbol> · resolve "<name|ISIN>"
+ultrastock fundamentals <sym> [--asof <date>] [--source sec|esef|crible] · filings <sym> [--forms 8-K] | --search "<text>"
+ultrastock insiders <sym> · holdings <manager> · analyst|short|dividends <US sym> · congress [--member] [--doc]
 ultrastock options <symbol> · crypto <view> [<target>] · predict kalshi|manifold|polymarket [<query>]
 ultrastock doctor [--probe] [--json]
 ```
@@ -128,6 +134,7 @@ Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
 - [citation-format](references/citation-format.md) — `[E#]`, grouping, `calc`, and what `check` refuses.
 - [data-sources](references/data-sources.md) — which source answers for which symbol, its delay and its limits.
 - [onboarding-profile](references/onboarding-profile.md) — the profile, the suitability questionnaire, envelopes, jurisdiction rules.
+- [fundamentals-filings](references/fundamentals-filings.md) — statements point in time, filings, insiders, 13F, short interest, analysts.
 - [macro-markets](references/macro-markets.md) — macro, rates, FX, positioning, sentiment, calendars: what each figure means.
 - [news-and-external-text](references/news-and-external-text.md) — reading headlines and other external text safely.
 - [options-crypto-prediction](references/options-crypto-prediction.md) — option chains, crypto structure, prediction markets and their limits.
