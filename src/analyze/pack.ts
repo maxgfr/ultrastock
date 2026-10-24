@@ -136,6 +136,8 @@ export async function analyzeSymbol(raw: string, dir: string, opts: { now?: Date
   const notes = [...series.notes, ...quote.notes.filter((n) => !series.notes.includes(n))];
   writeArtifact(join(dir, "BRIEF.md"), briefMarkdown(store, instrument.symbol, instrument.name, series, quote, notes));
   writeArtifact(join(dir, "RUNBOOK.md"), runbookMarkdown(dir, instrument.symbol));
+  // The last year of bars, for the report's chart (not evidence: the figures stay in evidence.json).
+  writeArtifact(join(dir, "bars.json"), `${JSON.stringify(bars.slice(-perYear))}\n`);
   writeArtifact(
     join(dir, "manifest.json"),
     `${JSON.stringify(

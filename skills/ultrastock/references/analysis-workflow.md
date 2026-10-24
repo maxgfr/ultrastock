@@ -12,8 +12,12 @@
 4. **Form a view, with its horizon.** Technical evidence speaks to weeks and
    months, not to value. Say what the evidence supports and what it does not;
    name the level or the event that would change the view.
-5. **Write and check.** `<dir>/answer.md`, then `ultrastock check <dir>
-   <dir>/answer.md` until it passes.
+5. **Write and check.** Write `<dir>/answer.md`, then run `ultrastock check
+   <dir> <dir>/answer.md` until it passes.
+6. **Report.** `ultrastock report <dir>` writes `<dir>/report.html`, a
+   self-contained page. It holds the answer, the decision (`decision.json`),
+   each role's note from `<dir>/notes/<role>.md` folded, a one-year price
+   chart, and the cited evidence linked to its sources.
 
 ## Pitfalls
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { readFileSync as readFileSync16, realpathSync as realpathSync2 } from "fs";
-import { resolve as resolve7 } from "path";
+import { readFileSync as readFileSync18, realpathSync as realpathSync2 } from "fs";
+import { resolve as resolve8 } from "path";
 import { pathToFileURL } from "url";
 
 // src/analyze/pack.ts
@@ -115,8 +115,8 @@ var init_brand = __esm({
   }
 });
 function decodePdfString(tok) {
-  return tok.slice(1, -1).replace(/\\(?:([nrtbf()\\])|([0-7]{1,3})|(\r\n|\r|\n)|([\s\S]))/g, (_m, esc2, oct, _eol, other) => {
-    if (esc2) return ESCAPES[esc2];
+  return tok.slice(1, -1).replace(/\\(?:([nrtbf()\\])|([0-7]{1,3})|(\r\n|\r|\n)|([\s\S]))/g, (_m, esc3, oct, _eol, other) => {
+    if (esc3) return ESCAPES[esc3];
     if (oct) return String.fromCharCode(parseInt(oct, 8) & 255);
     return other ?? "";
   });
@@ -4572,8 +4572,8 @@ function isHeaderRow(cells) {
 }
 function tableToMarkdown(table) {
   const width = table.rows.reduce((w, r) => Math.max(w, r.length), Math.max(table.headers.length, 1));
-  const esc2 = (s) => s.replace(/\|/g, "\\|");
-  const line = (cells) => `| ${Array.from({ length: width }, (_, i) => esc2(cells[i] ?? "")).join(" | ")} |`;
+  const esc3 = (s) => s.replace(/\|/g, "\\|");
+  const line = (cells) => `| ${Array.from({ length: width }, (_, i) => esc3(cells[i] ?? "")).join(" | ")} |`;
   const out2 = [];
   if (table.caption) out2.push(`**${table.caption}**`, "");
   out2.push(line(table.headers.length ? table.headers : Array.from({ length: width }, () => "")));
@@ -9194,6 +9194,8 @@ async function analyzeSymbol(raw, dir, opts = {}) {
   const notes = [...series.notes, ...quote2.notes.filter((n) => !series.notes.includes(n))];
   writeArtifact(join6(dir, "BRIEF.md"), briefMarkdown(store, instrument.symbol, instrument.name, series, quote2, notes));
   writeArtifact(join6(dir, "RUNBOOK.md"), runbookMarkdown(dir, instrument.symbol));
+  writeArtifact(join6(dir, "bars.json"), `${JSON.stringify(bars.slice(-perYear))}
+`);
   writeArtifact(
     join6(dir, "manifest.json"),
     `${JSON.stringify(
@@ -9740,14 +9742,193 @@ function checkAnswer(dir, rawAnswer, opts = {}) {
   return { claims, figures, citations: cited.size, evidence: store.items.length, problems };
 }
 
+// src/commands/report.ts
+import { existsSync as existsSync10, readFileSync as readFileSync11, writeFileSync as writeFileSync2 } from "fs";
+import { join as join12, resolve as resolve2 } from "path";
+
+// src/report/html.ts
+import { existsSync as existsSync9, readdirSync as readdirSync2, readFileSync as readFileSync10 } from "fs";
+import { join as join7 } from "path";
+var esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function inline(text) {
+  let s = esc(text);
+  s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_m, t, u) => `<a href="${u}" rel="noreferrer">${t}</a>`);
+  s = s.replace(/\[(E\d+)\]/g, '<a class="cite" href="#$1">[$1]</a>');
+  return s;
+}
+function markdownToHtml(md) {
+  const lines = md.replace(/\r\n/g, "\n").split("\n");
+  const out2 = [];
+  let i = 0;
+  const para = [];
+  const flush = () => {
+    if (para.length) out2.push(`<p>${inline(para.join(" "))}</p>`);
+    para.length = 0;
+  };
+  while (i < lines.length) {
+    const l = lines[i];
+    if (/^```/.test(l)) {
+      flush();
+      const code = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
+      i++;
+      out2.push(`<pre><code>${esc(code.join("\n"))}</code></pre>`);
+      continue;
+    }
+    const h = /^(#{1,6})\s+(.*)$/.exec(l);
+    if (h) {
+      flush();
+      out2.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`);
+      i++;
+      continue;
+    }
+    if (/^\s*([-*_])\s*\1\s*\1[\s1]*$/.test(l)) {
+      flush();
+      out2.push("<hr>");
+      i++;
+      continue;
+    }
+    if (/^\s*\|/.test(l) && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}/.test(lines[i + 1])) {
+      flush();
+      const cells = (row) => row.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+      const head = cells(l);
+      i += 2;
+      const body = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) body.push(cells(lines[i++]));
+      out2.push(
+        `<table><thead><tr>${head.map((c) => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>${body.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+      );
+      continue;
+    }
+    if (/^\s*([-*+]|\d+\.)\s+/.test(l)) {
+      flush();
+      const ordered = /^\s*\d+\./.test(l);
+      const items = [];
+      while (i < lines.length && /^\s*([-*+]|\d+\.)\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*([-*+]|\d+\.)\s+/, ""));
+      out2.push(`<${ordered ? "ol" : "ul"}>${items.map((t) => `<li>${inline(t)}</li>`).join("")}</${ordered ? "ol" : "ul"}>`);
+      continue;
+    }
+    if (/^>\s?/.test(l)) {
+      flush();
+      const q = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) q.push(lines[i++].replace(/^>\s?/, ""));
+      out2.push(`<blockquote>${inline(q.join(" "))}</blockquote>`);
+      continue;
+    }
+    if (!l.trim()) {
+      flush();
+      i++;
+      continue;
+    }
+    para.push(l.trim());
+    i++;
+  }
+  flush();
+  return out2.join("\n");
+}
+function priceSvg(bars, width = 720, height = 220) {
+  if (bars.length < 2) return "";
+  const closes = bars.map((b) => b.close);
+  const lo = Math.min(...closes);
+  const hi = Math.max(...closes);
+  const pad2 = 28;
+  const x = (i) => pad2 + i / (bars.length - 1) * (width - 2 * pad2);
+  const y = (v) => height - pad2 - (v - lo) / (hi - lo || 1) * (height - 2 * pad2);
+  const d = closes.map((c, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(c).toFixed(1)}`).join(" ");
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Closing price from ${esc(bars[0].date)} to ${esc(bars[bars.length - 1].date)}">
+<path d="${d}" fill="none" stroke="var(--line)" stroke-width="1.6"/>
+<text x="${pad2}" y="${height - 6}" class="axis">${esc(bars[0].date.slice(0, 10))}</text>
+<text x="${width - pad2}" y="${height - 6}" class="axis" text-anchor="end">${esc(bars[bars.length - 1].date.slice(0, 10))}</text>
+<text x="${pad2}" y="${pad2 - 10}" class="axis">high ${formatNumber(hi)} \xB7 low ${formatNumber(lo)}</text>
+</svg>`;
+}
+var CSS = `:root{--bg:#fbfaf7;--fg:#1d1d1b;--muted:#6b6a65;--line:#2f5d8a;--rule:#e2dfd7;--card:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#141413;--fg:#ecebe6;--muted:#a3a29c;--line:#7fb0e0;--rule:#33322f;--card:#1c1c1a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:32px 16px}h1{font-size:1.7rem;line-height:1.2}h2{margin-top:2rem;border-bottom:1px solid var(--rule);padding-bottom:.3rem}
+table{border-collapse:collapse;width:100%;font-size:.92rem;margin:1rem 0;display:block;overflow-x:auto}th,td{border-bottom:1px solid var(--rule);padding:.4rem .5rem;text-align:left;vertical-align:top}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}pre{background:var(--card);padding:12px;overflow-x:auto;border:1px solid var(--rule)}
+a{color:var(--line)}a.cite{text-decoration:none;font-size:.85em}blockquote{margin:1rem 0;padding-left:1rem;border-left:3px solid var(--rule);color:var(--muted)}
+svg{width:100%;height:auto;background:var(--card);border:1px solid var(--rule);margin:1rem 0}.axis{fill:var(--muted);font-size:11px}
+.meta{color:var(--muted);font-size:.9rem}details{border:1px solid var(--rule);border-radius:6px;padding:.4rem .8rem;margin:.5rem 0}summary{cursor:pointer;font-weight:600}tr:target{background:color-mix(in srgb,var(--line) 15%,transparent)}footer{color:var(--muted);font-size:.85rem;margin-top:3rem}`;
+function decisionHtml(runDir) {
+  const f = join7(runDir, "decision.json");
+  if (!existsSync9(f)) return "";
+  const d = JSON.parse(readFileSync10(f, "utf8"));
+  const row = (k, v) => v === void 0 || v === "" ? "" : `<tr><th>${esc(k)}</th><td>${esc(Array.isArray(v) ? v.join("; ") : String(v))}</td></tr>`;
+  return `<h2>Decision</h2><table><tbody>${row("rating", d.rating)}${row("horizon", d.horizon)}${row("conviction", d.conviction)}${row("thesis", d.thesis)}${row("falsifiers", d.falsifiers)}${row("risks", d.risks)}${row("portfolio context", d.portfolioContext)}${d.plan ? row(
+    "plan",
+    `${d.plan.side} at ${d.plan.entry}, stop ${d.plan.stop}, targets ${d.plan.targets?.join(" / ")}, size ${d.plan.sizePct} %`
+  ) : ""}${row("decided at", d.decidedAt)}</tbody></table>`;
+}
+function notesHtml(runDir) {
+  const dir = join7(runDir, "notes");
+  if (!existsSync9(dir)) return "";
+  const order = ["market", "fundamentals", "news", "bull", "bear", "judge", "trader", "risk"];
+  const files = readdirSync2(dir).filter((f) => f.endsWith(".md")).sort((a, b) => (order.indexOf(a.replace(/\.md$/, "")) + 1 || 99) - (order.indexOf(b.replace(/\.md$/, "")) + 1 || 99) || a.localeCompare(b));
+  if (!files.length) return "";
+  return `<h2>The debate</h2>${files.map((f) => `<details><summary>${esc(f.replace(/\.md$/, ""))}</summary>${markdownToHtml(readFileSync10(join7(dir, f), "utf8"))}</details>`).join("\n")}`;
+}
+function renderReport(runDir, answerMd, opts = {}) {
+  const store = EvidenceStore.load(runDir);
+  if (!store) throw new Error(`${runDir} holds no evidence.json`);
+  const cited = new Set([...answerMd.matchAll(/\[(E\d+)\]/g)].map((m) => m[1]));
+  const rows = store.items.filter((i) => cited.has(i.id));
+  const barsFile = join7(runDir, "bars.json");
+  const bars = existsSync9(barsFile) ? JSON.parse(readFileSync10(barsFile, "utf8")) : [];
+  const title = opts.title ?? /^#\s+(.+)$/m.exec(answerMd)?.[1] ?? store.subject ?? "ultrastock report";
+  const evidenceTable = rows.length ? `<h2>Evidence cited</h2><table><thead><tr><th>Id</th><th>What</th><th>Value</th><th>Source</th><th>As of</th></tr></thead><tbody>${rows.map(
+    (i) => `<tr id="${i.id}"><td>${i.id}</td><td>${esc(i.label)}${i.formula ? `<br><span class="meta">${esc(i.formula)}</span>` : ""}</td><td>${esc(typeof i.value === "number" ? formatNumber(i.value) : String(i.value))}${i.unit ? ` ${esc(i.unit)}` : ""}</td><td>${i.url ? `<a href="${esc(i.url)}" rel="noreferrer">${esc(i.source)}</a>` : esc(i.source)}${i.official ? "" : " (unofficial)"}${i.delay ? `, ${esc(i.delay)}` : ""}</td><td>${esc(i.asOf ?? i.fetchedAt.slice(0, 10))}</td></tr>`
+  ).join("")}</tbody></table>` : "";
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${CSS}</style></head>
+<body><main>
+${bars.length ? priceSvg(bars) : ""}
+${markdownToHtml(answerMd)}
+${decisionHtml(runDir)}
+${notesHtml(runDir)}
+${evidenceTable}
+<footer>Generated by ultrastock from the run in ${esc(runDir)}${opts.generatedAt ? ` on ${esc(opts.generatedAt)}` : ""}. Every figure links to its evidence. Decision support, not personalised advice from a licensed adviser.</footer>
+</main></body></html>
+`;
+}
+
+// src/commands/report.ts
+async function reportCommand(args, asJson) {
+  const run3 = args.positional[0];
+  if (!run3) throw new UsageError("usage: ultrastock report <run> [--answer <answer.md>] [--json]");
+  const dir = resolve2(run3);
+  const answerFile = resolve2(argValue(args, "answer") ?? join12(dir, "answer.md"));
+  if (!existsSync10(answerFile)) throw new UsageError(`no answer at ${answerFile}: write it first (see RUNBOOK.md), or pass --answer`);
+  const answer = readFileSync11(answerFile, "utf8");
+  const check = checkAnswer(dir, answer);
+  if ("error" in check) throw new UsageError(check.error);
+  const failing = check.problems.filter((p) => !NOTE_KINDS.has(p.kind));
+  if (failing.length) {
+    process.stdout.write(
+      asJson ? jsonLine({ ok: false, problems: failing }) : `report refused: the answer does not pass check (${failing.length} problem(s)) \u2014 run \`ultrastock check ${run3} ${answerFile}\`
+`
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const file = join12(dir, "report.html");
+  writeFileSync2(file, renderReport(dir, answer, { generatedAt: clockNow().toISOString().slice(0, 16).replace("T", " ") }), { mode: 384 });
+  process.stdout.write(asJson ? jsonLine({ ok: true, file }) : `report written: ${file}
+`);
+}
+
 // src/commands/analytics.ts
-import { resolve as resolve2 } from "path";
-import { readFileSync as readFileSync10 } from "fs";
-import { join as join14 } from "path";
+import { resolve as resolve4 } from "path";
+import { readFileSync as readFileSync12 } from "fs";
+import { join as join16 } from "path";
 
 // src/analyze/technicals.ts
 import { mkdirSync as mkdirSync7 } from "fs";
-import { join as join7 } from "path";
+import { join as join13 } from "path";
 
 // src/analytics/indicators/shared.ts
 var closesOf = (bars) => bars.map((b) => b.close);
@@ -12249,7 +12430,7 @@ async function technicalsRun(raw, dir, opts = {}) {
   const store = EvidenceStore.open(dir, { subject: sym2, createdAt: now.toISOString() });
   const reg = registerDatasets(store, [ds]);
   writeArtifact(
-    join7(dir, "TECHNICALS.md"),
+    join13(dir, "TECHNICALS.md"),
     `# ${sym2} \u2014 technicals
 
 Each figure is an [E#] of this run; formulas and reasons follow each reading.
@@ -12270,7 +12451,7 @@ ${formatDatasets(reg)}`
 
 // src/analyze/valuation.ts
 import { mkdirSync as mkdirSync8 } from "fs";
-import { join as join13 } from "path";
+import { join as join15 } from "path";
 
 // src/analytics/stats.ts
 function mean(xs) {
@@ -13264,8 +13445,8 @@ function growthOf(periods, field2, years = 3) {
 
 // src/providers/external/crible.ts
 import { spawn as spawn4 } from "child_process";
-import { existsSync as existsSync9 } from "fs";
-import { join as join12 } from "path";
+import { existsSync as existsSync11 } from "fs";
+import { join as join14 } from "path";
 var SOURCE8 = "crible";
 var CRIBLE_TAG = "v0.15.0";
 var REPO = "https://github.com/maxgfr/crible";
@@ -13278,13 +13459,13 @@ function cribleInvocation() {
   return { cmd: "uvx", args: ["--from", `git+${REPO}@${CRIBLE_TAG}`, "--with", "mcp<2", "crible"] };
 }
 function cribleDataDir() {
-  return env("CRIBLE_DATA_DIR") ?? join12(homeDir(), "crible");
+  return env("CRIBLE_DATA_DIR") ?? join14(homeDir(), "crible");
 }
 function cribleAvailable() {
   return have(cribleInvocation().cmd);
 }
 function cribleBootstrapped(dir = cribleDataDir()) {
-  return existsSync9(join12(dir, "universe.parquet")) || existsSync9(join12(dir, "crible.duckdb")) || existsSync9(join12(dir, "snapshot"));
+  return existsSync11(join14(dir, "universe.parquet")) || existsSync11(join14(dir, "crible.duckdb")) || existsSync11(join14(dir, "snapshot"));
 }
 async function run(sub, timeoutMs = 12e4) {
   if (!cribleAvailable()) throw new ProviderError(SOURCE8, "uvx is not installed \u2014 install uv (https://docs.astral.sh/uv/) to use crible", 0);
@@ -13319,7 +13500,7 @@ async function cribleMcpCall(tool, toolArgs, timeoutMs = 12e4) {
   const child = spawn4(cmd, [...args, "--data-dir", cribleDataDir(), "mcp"], { stdio: ["pipe", "pipe", "pipe"] });
   const send = (msg) => child.stdin.write(`${JSON.stringify(msg)}
 `);
-  return new Promise((resolve8, reject) => {
+  return new Promise((resolve9, reject) => {
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       reject(new ProviderError(SOURCE8, `crible mcp did not answer ${tool} within ${timeoutMs} ms`, 0));
@@ -13342,9 +13523,9 @@ async function cribleMcpCall(tool, toolArgs, timeoutMs = 12e4) {
           if (msg.error) return reject(new ProviderError(SOURCE8, `crible ${tool}: ${msg.error.message}`, 400));
           const r = msg.result ?? {};
           if (r.isError) return reject(new ProviderError(SOURCE8, `crible ${tool}: ${r.content?.[0]?.text ?? "error"}`, 400));
-          if (r.structuredContent !== void 0) return resolve8(r.structuredContent.result ?? r.structuredContent);
+          if (r.structuredContent !== void 0) return resolve9(r.structuredContent.result ?? r.structuredContent);
           const text = r.content?.[0]?.text;
-          resolve8(text === void 0 ? null : JSON.parse(text));
+          resolve9(text === void 0 ? null : JSON.parse(text));
         }
       }
     });
@@ -14638,7 +14819,7 @@ async function valuationRun(raw, dir, opts = {}) {
   section("Discount rate", /\.(coe|beta\.|vol2y)|\.(ust|aaa)\.10Y$/);
   section("DCF", /\.dcf\./);
   if (notes.length) lines.push("## Notes", "", ...notes.map((n) => `- ${n}`), "");
-  writeArtifact(join13(dir, "VALUATION.md"), `${lines.join("\n")}
+  writeArtifact(join15(dir, "VALUATION.md"), `${lines.join("\n")}
 `);
   return { dir, symbol: sym2, currency: ccy, evidence: store.items.length, ...out2, notes };
 }
@@ -14821,10 +15002,10 @@ var pct2 = (v, flag) => {
 async function valuationCommand(args, asJson) {
   const sym2 = args.positional[0];
   if (!sym2) throw new UsageError("usage: ultrastock valuation <symbol> [--erp <pct>] [--terminal <pct>] [--out <dir>] [--json]");
-  const dir = argValue(args, "out") ? resolve2(argValue(args, "out")) : runDirFor(void 0, `${sym2.toUpperCase().replace(/[^A-Z0-9.-]/g, "_")}-valuation-${runId()}`);
+  const dir = argValue(args, "out") ? resolve4(argValue(args, "out")) : runDirFor(void 0, `${sym2.toUpperCase().replace(/[^A-Z0-9.-]/g, "_")}-valuation-${runId()}`);
   const r = await valuationRun(sym2, dir, { erp: pct2(argValue(args, "erp"), "erp"), terminalGrowth: pct2(argValue(args, "terminal"), "terminal") });
   if (asJson) process.stdout.write(jsonLine(r));
-  else process.stdout.write(`${readFileSync10(join14(dir, "VALUATION.md"), "utf8")}
+  else process.stdout.write(`${readFileSync12(join16(dir, "VALUATION.md"), "utf8")}
 run: ${dir}
 `);
 }
@@ -14837,10 +15018,10 @@ async function technicalsCommand(args, asJson) {
     );
   const interval = argValue(args, "interval") ?? "1d";
   if (!INTERVALS.includes(interval)) throw new UsageError(`--interval must be one of ${INTERVALS.join(", ")}`);
-  const dir = argValue(args, "out") ? resolve2(argValue(args, "out")) : runDirFor(void 0, `${sym2.toUpperCase().replace(/[^A-Z0-9.-]/g, "_")}-technicals-${runId()}`);
+  const dir = argValue(args, "out") ? resolve4(argValue(args, "out")) : runDirFor(void 0, `${sym2.toUpperCase().replace(/[^A-Z0-9.-]/g, "_")}-technicals-${runId()}`);
   const r = await technicalsRun(sym2, dir, { interval, extra: argList(args, "indicators"), benchmark: argValue(args, "benchmark") });
   if (asJson) process.stdout.write(jsonLine(r));
-  else process.stdout.write(`${readFileSync10(join14(dir, "TECHNICALS.md"), "utf8")}
+  else process.stdout.write(`${readFileSync12(join16(dir, "TECHNICALS.md"), "utf8")}
 run: ${dir}
 `);
 }
@@ -16345,12 +16526,12 @@ async function worldBankIndicators(iso, which = ["gdpGrowth", "inflation", "debt
 }
 
 // src/commands/emit.ts
-import { resolve as resolve4 } from "path";
+import { resolve as resolve5 } from "path";
 function emitDatasets(args, datasets, asJson) {
   const out2 = argValue(args, "out");
-  const registered = registerDatasets(out2 ? resolve4(out2) : void 0, datasets);
+  const registered = registerDatasets(out2 ? resolve5(out2) : void 0, datasets);
   if (asJson) {
-    process.stdout.write(jsonLine({ dir: out2 ? resolve4(out2) : void 0, datasets: registered.map((r) => ({ ...r.dataset, ids: r.ids, points: r.items })) }));
+    process.stdout.write(jsonLine({ dir: out2 ? resolve5(out2) : void 0, datasets: registered.map((r) => ({ ...r.dataset, ids: r.ids, points: r.items })) }));
     return;
   }
   process.stdout.write(formatDatasets(registered));
@@ -16528,15 +16709,15 @@ ${list.map((h) => `  ${h.date}  ${h.kind === "closed" ? "closed     " : `closes 
 }
 
 // src/providers/fundamentals/binary.ts
-import { existsSync as existsSync10, mkdirSync as mkdirSync9, readFileSync as readFileSync11 } from "fs";
-import { join as join15 } from "path";
+import { existsSync as existsSync12, mkdirSync as mkdirSync9, readFileSync as readFileSync13 } from "fs";
+import { join as join17 } from "path";
 var keyOf = (url) => contentHash(`GET-BYTES ${url}`).slice(0, 20);
 async function fetchBinary(url, opts = {}) {
   const mode3 = netMode();
-  const path = mode3.kind === "live" ? "" : join15(mode3.dir, "http", `${keyOf(url)}.json`);
+  const path = mode3.kind === "live" ? "" : join17(mode3.dir, "http", `${keyOf(url)}.json`);
   if (mode3.kind === "fixture") {
-    if (!existsSync10(path)) throw new FixtureMiss(`fixture ${mode3.dir} has no recorded answer for GET ${url} (binary) \u2014 re-record it with --record`);
-    const rec = JSON.parse(readFileSync11(path, "utf8")).response;
+    if (!existsSync12(path)) throw new FixtureMiss(`fixture ${mode3.dir} has no recorded answer for GET ${url} (binary) \u2014 re-record it with --record`);
+    const rec = JSON.parse(readFileSync13(path, "utf8")).response;
     return {
       ok: rec.ok,
       status: rec.status,
@@ -16570,7 +16751,7 @@ async function fetchBinary(url, opts = {}) {
     error: r.truncated ? "response over the size cap" : r.error
   };
   if (mode3.kind === "record" && ok) {
-    mkdirSync9(join15(mode3.dir, "http"), { recursive: true });
+    mkdirSync9(join17(mode3.dir, "http"), { recursive: true });
     const response = { ok, status: r.status, url: res.url, contentType: r.contentType, fetchedAt, bodyBase64: bytes.toString("base64") };
     writeFileAtomic(path, `${JSON.stringify({ request: { method: "GET", url, binary: true }, response }, null, 1)}
 `);
@@ -16891,9 +17072,9 @@ async function finraShortVolume(symbol, opts = {}) {
 }
 
 // src/providers/fundamentals/xml.ts
-var esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var esc2 = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function xmlBlocks(xml, tag) {
-  const re = new RegExp(`<(?:[A-Za-z_][\\w.-]*:)?${esc(tag)}(?:\\s[^>]*?)?(?:/>|>([\\s\\S]*?)</(?:[A-Za-z_][\\w.-]*:)?${esc(tag)}\\s*>)`, "g");
+  const re = new RegExp(`<(?:[A-Za-z_][\\w.-]*:)?${esc2(tag)}(?:\\s[^>]*?)?(?:/>|>([\\s\\S]*?)</(?:[A-Za-z_][\\w.-]*:)?${esc2(tag)}\\s*>)`, "g");
   const out2 = [];
   for (const m of xml.matchAll(re)) out2.push(m[1] ?? "");
   return out2;
@@ -18119,8 +18300,8 @@ function verifyChecklist(code) {
 }
 
 // src/core/profile.ts
-import { existsSync as existsSync11, mkdirSync as mkdirSync10, readFileSync as readFileSync12 } from "fs";
-import { dirname, join as join16 } from "path";
+import { existsSync as existsSync13, mkdirSync as mkdirSync10, readFileSync as readFileSync14 } from "fs";
+import { dirname, join as join18 } from "path";
 var PROFILE_SCHEMA = 1;
 function defaultProfile(jurisdiction = "FR", currency = "EUR", now = /* @__PURE__ */ new Date()) {
   return {
@@ -18149,12 +18330,12 @@ function defaultProfile(jurisdiction = "FR", currency = "EUR", now = /* @__PURE_
   };
 }
 function profilePath() {
-  return join16(homeDir(), "profile.json");
+  return join18(homeDir(), "profile.json");
 }
 function loadProfile() {
   const path = profilePath();
-  if (!existsSync11(path)) return void 0;
-  const p = JSON.parse(readFileSync12(path, "utf8"));
+  if (!existsSync13(path)) return void 0;
+  const p = JSON.parse(readFileSync14(path, "utf8"));
   if (p.schema !== PROFILE_SCHEMA) throw new Error(`${path} has profile schema ${p.schema}; this ultrastock reads schema ${PROFILE_SCHEMA}`);
   return p;
 }
@@ -20269,8 +20450,8 @@ async function snapshotCommand(args, asJson) {
 }
 
 // src/commands/profile.ts
-import { readFileSync as readFileSync13 } from "fs";
-import { resolve as resolve5 } from "path";
+import { readFileSync as readFileSync15 } from "fs";
+import { resolve as resolve6 } from "path";
 
 // src/core/suitability.ts
 var QUESTIONS = [
@@ -20600,7 +20781,7 @@ async function profileCommand(args, asJson) {
       ].join("\n");
       return out(asJson, { questions: QUESTIONS }, text);
     }
-    const answers = JSON.parse(readFileSync13(resolve5(answersFile), "utf8"));
+    const answers = JSON.parse(readFileSync15(resolve6(answersFile), "utf8"));
     const r = scoreSuitability(answers);
     const p = requireProfile();
     applySuitability(p, r, clockNow());
@@ -20633,7 +20814,7 @@ async function jurisdictionCommand(args, asJson) {
   }
   if (sub !== "verify") throw new UsageError(`unknown jurisdiction action "${sub}" \u2014 show or verify`);
   const venues = (argValue(args, "venues") ?? "binance,kraken,coinbase").split(",").map((v) => v.trim()).filter(Boolean);
-  const dir = argValue(args, "out") ? resolve5(argValue(args, "out")) : void 0;
+  const dir = argValue(args, "out") ? resolve6(argValue(args, "out")) : void 0;
   const now = clockNow().toISOString();
   const datasets = [];
   for (const v of venues) {
@@ -20851,7 +21032,7 @@ function unusualActivity(chain2, threshold = 3.5, multiplier = 100) {
 }
 
 // src/analyze/regime/common.ts
-import { resolve as resolve6 } from "path";
+import { resolve as resolve7 } from "path";
 var FETCH_CONCURRENCY = 4;
 var DAY2 = 864e5;
 var isoDay8 = (d) => d.toISOString().slice(0, 10);
@@ -20938,7 +21119,7 @@ var pointNumber = (ds, key) => {
 };
 function emitReport(args, report, asJson) {
   const out2 = argValue(args, "out");
-  const dir = out2 ? resolve6(out2) : void 0;
+  const dir = out2 ? resolve7(out2) : void 0;
   const datasets = report.datasets.filter((d) => d.points.length);
   const registered = registerDatasets(dir, datasets);
   const ids = /* @__PURE__ */ new Map();
@@ -24126,8 +24307,8 @@ function yieldSustainability(p) {
 }
 
 // src/analyze/quant/options.ts
-import { existsSync as existsSync12, mkdirSync as mkdirSync11, readFileSync as readFileSync14 } from "fs";
-import { join as join17 } from "path";
+import { existsSync as existsSync14, mkdirSync as mkdirSync11, readFileSync as readFileSync16 } from "fs";
+import { join as join19 } from "path";
 var DAY3 = 864e5;
 var YEAR = 365 * DAY3;
 var SETTLE_HOUR = { cboe: "20", deribit: "08" };
@@ -24351,20 +24532,20 @@ function unusualPoints(q, expiries, out2, limit = 5) {
   return hits.length;
 }
 function ivHistoryPath(symbol) {
-  return join17(homeDir(), "state", "iv-history", `${symbol.replace(/[^A-Z0-9._-]/gi, "_")}.json`);
+  return join19(homeDir(), "state", "iv-history", `${symbol.replace(/[^A-Z0-9._-]/gi, "_")}.json`);
 }
 function recordIv(symbol, date, iv) {
   const path = ivHistoryPath(symbol);
   let h = { symbol, series: {} };
-  if (existsSync12(path)) {
+  if (existsSync14(path)) {
     try {
-      const raw = JSON.parse(readFileSync14(path, "utf8"));
+      const raw = JSON.parse(readFileSync16(path, "utf8"));
       if (raw && typeof raw.series === "object") h = { symbol, series: raw.series };
     } catch {
     }
   }
   h.series[date] = Number(iv.toFixed(4));
-  mkdirSync11(join17(homeDir(), "state", "iv-history"), { recursive: true });
+  mkdirSync11(join19(homeDir(), "state", "iv-history"), { recursive: true });
   writeFileAtomic(path, `${JSON.stringify(h, null, 2)}
 `);
   return h;
@@ -25302,9 +25483,9 @@ async function predictAnalysisCommand(args, asJson) {
 }
 
 // src/providers/external/binance-historical.ts
-import { mkdtempSync as mkdtempSync2, readdirSync as readdirSync2, readFileSync as readFileSync15, rmSync as rmSync2 } from "fs";
+import { mkdtempSync as mkdtempSync2, readdirSync as readdirSync4, readFileSync as readFileSync17, rmSync as rmSync2 } from "fs";
 import { tmpdir } from "os";
-import { join as join18 } from "path";
+import { join as join20 } from "path";
 function binanceHistoricalInfo() {
   if (!have("binance-historical")) return { installed: false, compatible: false };
   const r = sh("binance-historical", ["describe", "--json"], { timeoutMs: 15e3 });
@@ -25412,6 +25593,7 @@ USAGE
   ultrastock calc <run> <formula> --label <text> [--unit <unit>] [--key <key>] [--json]
   ultrastock evidence <run> [--json]
   ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
+  ultrastock report <run> [--answer <answer.md>] [--json]
   ultrastock profile init [--jurisdiction FR] [--currency EUR] [--json]
   ultrastock profile show|suitability [--answers <file>]|set <field> <value>|envelope <id> --type PEA [--broker <name>] [--json]
   ultrastock jurisdiction show|verify [--jurisdiction FR] [--venues binance,kraken,coinbase] [--out <dir>] [--json]
@@ -25472,6 +25654,10 @@ COMMANDS
   calc      Compute a derived figure from evidence ids \u2014 "(E3 / E7 - 1) * 100" \u2014
             and register it as a new [E#] (abs, min, max, round, pct, share, cagr\u2026).
   evidence  List a run's evidence, one [E#] per line.
+  report    The run as a self-contained HTML page (report.html): the answer, the
+            recorded decision, the debate's notes (notes/*.md), a price chart
+            and every cited [E#] linked to its source. Refused while the answer
+            fails check.
   check     Check an answer against its run: every figure sits in a claim citing
             an [E#] of the run, and is one of the values those [E#] hold (rounding
             allowed). --max-age also fails figures read longer ago than that.
@@ -25621,6 +25807,7 @@ var VALUE_FLAGS = [
   "jurisdiction",
   "currency",
   "answers",
+  "answer",
   "type",
   "broker",
   "venues",
@@ -25657,6 +25844,7 @@ var VALUE_FLAGS = [
 var BOOL_FLAGS = ["json", "refresh", "offline", "probe", "list", "bootstrap"];
 var COMMANDS = [
   "analyze",
+  "report",
   "quote",
   "history",
   "calc",
@@ -25709,6 +25897,7 @@ var SPEC = {
     calc: ["label", "unit", "key", "json"],
     evidence: ["json"],
     check: ["max-age", "json"],
+    report: ["answer", "json"],
     profile: ["jurisdiction", "currency", "answers", "type", "broker", "json"],
     jurisdiction: ["jurisdiction", "venues", "out", ...NET],
     calendar: ["market", "days", "year", "limit", "out", ...NET],
@@ -25783,8 +25972,8 @@ function configureNetwork(args) {
   const record = argValue(args, "record");
   const fixture = argValue(args, "fixture");
   if (record && fixture) usage("--record and --fixture are opposites: record a fixture, or replay one");
-  if (fixture) setNetMode({ kind: "fixture", dir: resolve7(fixture) });
-  else if (record) setNetMode({ kind: "record", dir: resolve7(record) });
+  if (fixture) setNetMode({ kind: "fixture", dir: resolve8(fixture) });
+  else if (record) setNetMode({ kind: "record", dir: resolve8(record) });
   setCacheMode({ refresh: argBool(args, "refresh"), offline: argBool(args, "offline") });
 }
 async function run2(args) {
@@ -25810,7 +25999,7 @@ run: ${dir}
     const out2 = argValue(args, "out");
     let id;
     if (out2) {
-      const store = EvidenceStore.open(resolve7(out2), { subject: q.instrument.symbol });
+      const store = EvidenceStore.open(resolve8(out2), { subject: q.instrument.symbol });
       id = store.add({
         key: `${q.instrument.symbol}.quote.price`,
         label: `${q.instrument.symbol} latest price`,
@@ -25864,7 +26053,7 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
     if (!dir || !formula || !label2) usage('usage: ultrastock calc <run> "<formula over E ids>" --label <text> [--unit <unit>]');
     let r;
     try {
-      r = calcEvidence(resolve7(dir), formula, { label: label2, unit: argValue(args, "unit"), key: argValue(args, "key") });
+      r = calcEvidence(resolve8(dir), formula, { label: label2, unit: argValue(args, "unit"), key: argValue(args, "key") });
     } catch (e) {
       if (e instanceof ExprError) usage(`formula: ${e.message}`);
       return fail(e.message);
@@ -25877,24 +26066,25 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
   if (cmd === "evidence") {
     const dir = args.positional[0];
     if (!dir) usage("usage: ultrastock evidence <run> [--json]");
-    const store = EvidenceStore.load(resolve7(dir));
+    const store = EvidenceStore.load(resolve8(dir));
     if (!store) fail(`${dir} holds no evidence.json`);
-    if (asJson) process.stdout.write(jsonLine({ dir: resolve7(dir), subject: store.subject, items: store.items }));
+    if (asJson) process.stdout.write(jsonLine({ dir: resolve8(dir), subject: store.subject, items: store.items }));
     else process.stdout.write(`${store.items.map(formatEvidence).join("\n")}
 `);
     return;
   }
+  if (cmd === "report") return reportCommand(args, asJson);
   if (cmd === "check") {
     const [dir, file] = args.positional;
     if (!dir || !file) usage("usage: ultrastock check <run> <answer.md> [--max-age <duration>] [--json]");
     const maxAge = argValue(args, "max-age");
     let answer;
     try {
-      answer = readFileSync16(file, "utf8");
+      answer = readFileSync18(file, "utf8");
     } catch {
       return fail(`cannot read ${file}`);
     }
-    const r = checkAnswer(resolve7(dir), answer, { maxAgeMs: maxAge ? parseDuration(maxAge) : void 0 });
+    const r = checkAnswer(resolve8(dir), answer, { maxAgeMs: maxAge ? parseDuration(maxAge) : void 0 });
     if ("error" in r) fail(r.error);
     const failing = r.problems.filter((p) => !NOTE_KINDS.has(p.kind));
     if (asJson) process.stdout.write(jsonLine({ ok: failing.length === 0, ...r }));
