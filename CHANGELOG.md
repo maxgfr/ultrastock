@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [0.10.0](https://github.com/maxgfr/ultrastock/compare/v0.9.0...v0.10.0) (2026-10-24)
+
+
+### Features
+
+* **mcp:** the commands as MCP tools (read-only plus ticket creation; HTTP on 127.0.0.1 with a mandatory bearer); command maturity in doctor; guard evals; README and DOCUMENTATION for v1 ([e3a4a10](https://github.com/maxgfr/ultrastock/commit/e3a4a10fb2e6b6f0341188ef9530a8ebd4c76de8))
+
 # [0.9.0](https://github.com/maxgfr/ultrastock/compare/v0.8.0...v0.9.0) (2026-10-24)
 
 
