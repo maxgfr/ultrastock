@@ -7145,7 +7145,7 @@ var init_read = __esm({
     WHOLE_DOCUMENT = "({ html: document.documentElement ? document.documentElement.outerHTML : '', url: location.href })";
   }
 });
-var ENGINE_VERSION = "1.34.1";
+var ENGINE_VERSION = "1.34.2";
 init_brand();
 init_pdf();
 init_doc();
