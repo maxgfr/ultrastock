@@ -105,3 +105,20 @@ describe("1.1 tools", () => {
     expect(tool("analyze").params.depth!.enum).toContain("full");
   });
 });
+
+describe("research hits inline", () => {
+  it("hands the agent's hits to the command as a temporary --web-results file", async () => {
+    const { readFileSync } = await import("node:fs");
+    let seen: unknown;
+    const adapter = mcpAdapter(async (argv) => {
+      const flag = argv.find((a) => a.startsWith("--web-results="))!;
+      seen = { argv, hits: JSON.parse(readFileSync(flag.slice("--web-results=".length), "utf8")) };
+      return "{}";
+    });
+    await adapter.callTool("research", { out: "/tmp/r", hits: [{ url: "https://a.test", angle: "risks" }] }, {} as never);
+    const s = seen as { argv: string[]; hits: unknown };
+    expect(s.argv[0]).toBe("research");
+    expect(s.argv.at(-1)).toBe("--json");
+    expect(s.hits).toEqual([{ url: "https://a.test", angle: "risks" }]);
+  });
+});

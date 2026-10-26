@@ -100,7 +100,7 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | the week's events: data releases, earnings, dividends | `calendar econ|earnings|dividends [date]` | [macro-markets](references/macro-markets.md) |
 | sentiment and positioning | `sentiment`, `cot <market>` | [macro-markets](references/macro-markets.md) |
 | news on a company or a theme | `news "<query>" [--symbol] [--lang fr]` | [news-and-external-text](references/news-and-external-text.md) |
-| web sources compiled and checked: business model, controversies, short-sellers, the latest report ("analyse le dernier rapport de X"), one precise question | `research <subject> [--focus results] [--ask "…"] --out <run>`, your web search, then `research --out <run> --web-results <file>` | [research](references/research.md) |
+| web sources compiled and checked: business model, controversies, short-sellers, the latest report ("analyse le dernier rapport de X"), one precise question | `research <subject> [--focus results] [--ask "…"] --out <run>`, your web search, then `research --out <run> --web-results <file>` — no search of your own: `--search-with claude|codex` | [research](references/research.md) |
 | an option chain, implied volatility | `options <symbol>` (US: CBOE; BTC/ETH: Deribit) | [options-crypto-prediction](references/options-crypto-prediction.md) |
 | crypto market structure, DeFi, on-chain | `crypto global|top|coin|derivatives|defi|yields|stables|fees|onchain|dex|holders` | [options-crypto-prediction](references/options-crypto-prediction.md) |
 | what prediction markets price (Fed, recession, elections) | `predict kalshi|manifold …` (Polymarket only where lawful) | [options-crypto-prediction](references/options-crypto-prediction.md) |
@@ -119,7 +119,9 @@ ultrastock quote <symbol> [--out <dir>] [--json]
 ultrastock history <symbol> [--from <date>] [--to <date>] [--interval 1d|1w|4h|1h|15m] [--limit <n>] [--json]
 ultrastock calc <run> "<formula>" --label <text> [--unit <unit>] [--json]
 ultrastock calc <run> --from <E#> "<figure as the document writes it>" --label <text> [--json]
-ultrastock research <subject> [--kind equity|etf|crypto|company] [--focus results] [--ask "<question>"] --out <run> · research --out <run> --web-results <file> [--engine-search]
+ultrastock research <subject> [--kind equity|etf|crypto|company] [--focus results] [--ask "<question>"] [--search-with claude|codex] --out <run>
+ultrastock research --out <run> --web-results <file|-> | --urls <a,b> | --search-with claude|codex | --engine-search [--browser] [--no-wayback]
+ultrastock searxng|firecrawl|stack up|down|status   (optional local search stack, Docker)
 ultrastock evidence <run> [--json]
 ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
 ultrastock report <run> [--answer <answer.md>] [--json]

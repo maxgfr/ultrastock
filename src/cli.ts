@@ -7,6 +7,7 @@ import { calcEvidence, calcFromDocument } from "./calc.js";
 import { checkAnswer, NOTE_KINDS } from "./check.js";
 import { reportCommand } from "./commands/report.js";
 import { researchCommand } from "./commands/research.js";
+import { stackCommand } from "./commands/stack.js";
 import { EvidenceStore, formatEvidence } from "./core/evidence.js";
 import { ExprError } from "./core/expr.js";
 import { clockNow, FixtureMiss, setNetMode } from "./core/net.js";
@@ -86,7 +87,8 @@ USAGE
   ultrastock cot <market> [--report legacy|tff] [--out <dir>] [--json]
   ultrastock sentiment [all|cnn|crypto|vix|putcall] [--out <dir>] [--json]
   ultrastock research <symbol|name> [--kind equity|etf|crypto|company] [--focus results] [--ask "<question>"] [--name <search name>] --out <run> [--json]
-  ultrastock research --out <run> --web-results <websearch.json> [--engine-search] [--limit <n>] [--json]
+  ultrastock research --out <run> --web-results <websearch.json|-> | --urls <a,b> | --search-with claude|codex | --engine-search [--browser] [--no-wayback] [--limit <n>] [--json]
+  ultrastock research <symbol|name> --search-with claude|codex [--search-model <m>] --out <run> [--json]   (worklist, search and ingestion in one call)
   ultrastock news <query> [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>] [--out <dir>] [--json]
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
   ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
@@ -143,6 +145,7 @@ USAGE
   ultrastock predict kalshi|manifold|polymarket [<query>] [--limit <n>] [--out <dir>] [--json]
   ultrastock predict order kalshi <TICKER> yes|no [buy|sell] --contracts <n> --price <0-1> [--account <id>] [--json]
   ultrastock snapshot <symbol> [--market <tv-market>] [--out <dir>] [--json]
+  ultrastock searxng up|down|status [--json] · ultrastock firecrawl up|down|status · ultrastock stack up|down|status
   ultrastock doctor [--probe] [--json]
   ultrastock version
 
@@ -217,7 +220,14 @@ COMMANDS
             and PDFs, drops walls and duplicates, registers each as a document
             [E#] (sources/E#.md, DOSSIER.md, under-covered terms for a second
             round) and cross-checks a listed company against crible. \`check\`
-            refuses a figure the cited document does not state.
+            refuses a figure the cited document does not state. Hits come
+            from your search (--web-results, - for stdin; --urls), or
+            --search-with claude|codex (your agent CLI's own web search,
+            headless, batched — billed to your plan), or --engine-search (a
+            local SearXNG from \`webindex stack up\`, then keyless engines).
+            A refused or walled page falls back to its Wayback copy
+            (--no-wayback to skip) and, with --browser, a render in a separate
+            browser; an official page's linked PDF reports are read too.
   universe  An index's current members (Wikipedia) — current only: a backtest
             over them has survivorship bias.
   resolve   A name, ticker or ISIN → the Euronext listings, the SEC registrant,
@@ -448,6 +458,10 @@ COMMANDS
             Questions and rules are external text, fenced as untrusted.
   snapshot  A cross-venue snapshot from TradingView's scanner (unofficial):
             price, valuation ratios, performance, technical rating.
+  searxng   The optional local search stack (Docker), shared with the other
+  firecrawl skills on the engine: SearXNG (:8888) makes research --engine-search
+  stack     reliable and keyless; Firecrawl (:3002) reads pages through a real
+            browser. up | down | status; stack = both.
   doctor    Version, state directory, Node, external tools; --probe also times a
             live call to each data source.
 
@@ -471,6 +485,9 @@ export const VALUE_FLAGS = [
   "ask",
   "name",
   "web-results",
+  "urls",
+  "search-with",
+  "search-model",
   "from",
   "to",
   "interval",
@@ -615,6 +632,8 @@ export const BOOL_FLAGS = [
   "anchored",
   "all-listings",
   "engine-search",
+  "browser",
+  "no-wayback",
   "pea",
   "acc",
   "dist",
@@ -664,6 +683,9 @@ export const COMMANDS = [
   "sentiment",
   "news",
   "research",
+  "searxng",
+  "firecrawl",
+  "stack",
   "universe",
   "portfolio",
   "plan",
@@ -703,7 +725,25 @@ const SPEC: CliSpec = {
     cot: ["report", "out", ...NET],
     sentiment: ["out", ...NET],
     news: ["symbol", "lang", "days", "limit", "out", ...NET],
-    research: ["kind", "focus", "ask", "name", "web-results", "engine-search", "limit", "out", ...NET],
+    searxng: ["json"],
+    firecrawl: ["json"],
+    stack: ["json"],
+    research: [
+      "kind",
+      "focus",
+      "ask",
+      "name",
+      "web-results",
+      "urls",
+      "search-with",
+      "search-model",
+      "engine-search",
+      "browser",
+      "no-wayback",
+      "limit",
+      "out",
+      ...NET,
+    ],
     universe: ["out", ...NET],
     resolve: ["out", ...NET],
     fundamentals: ["asof", "years", "quarters", "source", "out", ...NET],
@@ -1073,6 +1113,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "sentiment") return sentimentCommand(args, asJson);
   if (cmd === "news") return newsCommand(args, asJson);
   if (cmd === "research") return researchCommand(args, asJson);
+  if (cmd === "searxng" || cmd === "firecrawl" || cmd === "stack") return stackCommand(args, asJson);
   if (cmd === "universe") return universeCommand(args, asJson);
 
   if (cmd === "doctor") {

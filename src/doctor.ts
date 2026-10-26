@@ -8,6 +8,7 @@ import { dataCacheDir, homeDir } from "./core/paths.js";
 import { loadProfile } from "./core/profile.js";
 import { ENGINE_VERSION, have } from "./engine.js";
 import { binanceHistoricalInfo } from "./providers/external/binance-historical.js";
+import { localServices } from "./commands/stack.js";
 import { CRIBLE_TAG, cribleBootstrapped, cribleDataDir } from "./providers/external/crible.js";
 import { VERSION } from "./version.js";
 
@@ -38,6 +39,8 @@ export interface DoctorReport {
   profile: { exists: boolean; jurisdiction?: string; riskScore?: number; envelopes?: number };
   tools: Record<string, ToolReport>;
   crible: { dataDir: string; bootstrapped: boolean; tag: string };
+  /** The optional local search containers, probed only with --probe. */
+  services?: Array<{ name: string; url: string | null; up: boolean }>;
   /** SEC EDGAR asks automated clients for a contact in the User-Agent. */
   secContact: boolean;
   probes?: ProbeReport[];
@@ -62,6 +65,15 @@ export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) 
     },
     uvx: { installed: has("uvx"), purpose: "runs maxgfr/crible, the global fundamental screener" },
     pdftotext: { installed: has("pdftotext"), purpose: "optional: faster reading of Congress trade PDFs" },
+    claude: {
+      installed: has(process.env.ULTRASTOCK_CLAUDE_CMD ?? "claude"),
+      purpose: "optional: research --search-with claude (Claude Code's web search, billed to your plan)",
+    },
+    codex: {
+      installed: has(process.env.ULTRASTOCK_CODEX_CMD ?? "codex"),
+      purpose: "optional: research --search-with codex (Codex's web search, billed to your plan)",
+    },
+    docker: { installed: has("docker"), purpose: "optional: `ultrastock searxng up` — a local SearXNG for research --engine-search" },
   };
   if (tools["binance-historical"]!.installed && !opts.has) {
     const info = binanceHistoricalInfo();
@@ -88,6 +100,7 @@ export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) 
     maturity: byMaturity(),
   };
   if (opts.probe) {
+    report.services = await localServices();
     report.probes = await Promise.all(
       PROBES.map(async ({ source, url }) => {
         const t0 = Date.now();
@@ -111,6 +124,7 @@ export function formatDoctor(r: DoctorReport): string {
     `  cache       ${r.cache}`,
     `  profile     ${r.profile.exists ? `${r.profile.jurisdiction ?? "?"}, risk score ${r.profile.riskScore ?? "not assessed — run profile suitability"}, ${r.profile.envelopes ?? 0} envelope(s)` : "none — run `ultrastock profile init`"}`,
     `  sec         ${r.secContact ? "contact set (ULTRASTOCK_SEC_CONTACT)" : "no contact — set ULTRASTOCK_SEC_CONTACT to your e-mail: SEC EDGAR's fair-access policy asks for one and may block anonymous tools"}`,
+    ...(r.services ?? []).map((s) => `  ${s.name.padEnd(11)} ${s.up ? `up at ${s.url}` : `not running — \`ultrastock ${s.name} up\` (optional, Docker)`}`),
     `  crible      ${r.crible.bootstrapped ? "dataset ready" : "no dataset yet (first `screen --engine crible` bootstraps it, ~1 min)"} in ${r.crible.dataDir} (pinned ${r.crible.tag})`,
     ...Object.entries(r.tools).map(
       ([name, t]) => `  ${name.padEnd(19)} ${t.installed ? `installed${t.version ? ` (${t.version})` : ""}` : "not installed"} — ${t.purpose}`,

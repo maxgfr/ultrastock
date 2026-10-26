@@ -86,6 +86,12 @@ const COMPANY: Template[] = [
 
 // The latest publication, whatever the kind: the release, the deck, the filing, the call.
 const RESULTS: Template[] = [
+  [
+    "results-latest",
+    "The latest publication",
+    "{n} dernière publication chiffre d'affaires trimestriel {y}",
+    "{n} latest quarterly results trading update {y}",
+  ],
   ["results-release", "Results release", "{n} communiqué résultats {y}", "{n} {y} results press release"],
   ["results-presentation", "Results presentation", "{n} présentation investisseurs résultats {y} pdf", "{n} {y} investor presentation earnings slides pdf"],
   ["results-filing", "The filing itself", "{n} rapport financier {y} document d'enregistrement universel pdf", "{n} {y} annual report 10-K 10-Q filing pdf"],

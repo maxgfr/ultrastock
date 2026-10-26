@@ -200,3 +200,26 @@ export async function fetchBytes(url: string, opts: FetchOptions = {}): Promise<
   }
   return res;
 }
+
+/**
+ * A call that is no plain HTTP read — a subprocess (crible, an agent CLI's web
+ * search), the engine's search cascade, a browser render — recorded and
+ * replayed like one: `<fixture>/<kind>/<hash of the call>.json`. A replay
+ * never runs `live`, and a call the fixture never saw throws FixtureMiss.
+ * `keep` decides whether a live answer is worth recording (default: always).
+ */
+export async function recordedCall<T>(kind: string, call: unknown, live: () => Promise<T>, keep: (value: T) => boolean = () => true): Promise<T> {
+  const key = contentHash(JSON.stringify(call)).slice(0, 20);
+  if (mode.kind === "fixture") {
+    const path = join(mode.dir, kind, `${key}.json`);
+    if (!existsSync(path))
+      throw new FixtureMiss(`fixture ${mode.dir} has no recorded ${kind} call ${JSON.stringify(call).slice(0, 160)} — re-record it with --record`);
+    return (JSON.parse(readFileSync(path, "utf8")) as { value: T }).value;
+  }
+  const value = await live();
+  if (mode.kind === "record" && keep(value)) {
+    mkdirSync(join(mode.dir, kind), { recursive: true });
+    writeFileAtomic(join(mode.dir, kind, `${key}.json`), `${JSON.stringify({ call, value }, null, 1)}\n`);
+  }
+  return value;
+}
