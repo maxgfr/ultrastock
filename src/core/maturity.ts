@@ -20,6 +20,7 @@ export const MATURITY: Record<string, Maturity> = {
   resolve: "beta",
   fundamentals: "stable",
   screen: "beta",
+  etf: "beta",
   regime: "beta",
   sectors: "beta",
   catalysts: "beta",

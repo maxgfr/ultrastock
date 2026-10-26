@@ -129,3 +129,38 @@ export async function amundiHoldings(isin: string): Promise<FundComposition> {
     ],
   };
 }
+
+export interface AmundiFacts {
+  isin: string;
+  name?: string;
+  /** The issuer's PEA flag (FUND_PEA); undefined when it is not stated. */
+  pea?: boolean;
+  /** REPLICATION_METHODOLOGY as the issuer writes it ("Indirect (Unfunded swap)", "Direct (Physical)"). */
+  replication?: string;
+  synthetic: boolean;
+}
+
+/**
+ * The PEA flag and replication of several funds in one call (no composition).
+ * Only Amundi products come back: a fund absent from the map is not Amundi's,
+ * which says nothing about its PEA eligibility.
+ */
+export async function amundiFacts(isins: readonly string[]): Promise<{ facts: Map<string, AmundiFacts>; url: string; fetchedAt: string }> {
+  const ids = [...new Set(isins.map((i) => i.toUpperCase()).filter((i) => /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(i)))];
+  if (!ids.length) throw new ProviderError(AMUNDI_SOURCE, "no ISIN to ask Amundi about", 400);
+  const res = await fetchJson<{ products?: AmundiProduct[] }>(AMUNDI_URL, {
+    method: "POST",
+    json: { ...amundiRequest(ids[0]!, false), productIds: ids },
+    userAgent: "browser",
+    hostIntervalMs: 500,
+  });
+  if (!res.ok || !res.data) throw new ProviderError(AMUNDI_SOURCE, `product data unavailable (HTTP ${res.status})`, res.status);
+  const facts = new Map<string, AmundiFacts>();
+  for (const p of res.data.products ?? []) {
+    const isin = p.productId?.toUpperCase();
+    if (!isin || !ids.includes(isin)) continue;
+    const parsed = parseAmundiProduct(p);
+    facts.set(isin, { isin, name: parsed.name, pea: parsed.pea, replication: parsed.replication, synthetic: parsed.synthetic });
+  }
+  return { facts, url: res.url, fetchedAt: res.fetchedAt };
+}

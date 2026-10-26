@@ -1,0 +1,61 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/global/scan",
+  "json": {
+   "columns": [
+    "description",
+    "close",
+    "currency",
+    "fundamental_currency_code",
+    "isin",
+    "brand",
+    "expense_ratio",
+    "aum",
+    "nav",
+    "nav_discount_premium",
+    "fund_flows.1M",
+    "fund_flows.1Y",
+    "nav_perf.1Y",
+    "nav_total_return.1Y",
+    "nav_total_return.3Y",
+    "Perf.Y",
+    "dividend_treatment",
+    "country_code_fund",
+    "etf_holdings_count",
+    "weight_top_10",
+    "ucits_compliant_flag",
+    "index_tracked",
+    "index_provider",
+    "leveraged_flag",
+    "currency_hedged_flag",
+    "actively_managed",
+    "etf_fund_currency",
+    "launch_date",
+    "transparent_holding_flag",
+    "category.tr",
+    "focus.tr",
+    "asset_class.tr"
+   ],
+   "range": [
+    0,
+    4
+   ],
+   "symbols": {
+    "tickers": [
+     "AMEX:URTH",
+     "NASDAQ:URTH",
+     "NYSE:URTH",
+     "CBOE:URTH"
+    ]
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":1,\"data\":[{\"s\":\"AMEX:URTH\",\"d\":[\"iShares MSCI World ETF\",206.295,\"USD\",\"USD\",\"US4642863926\",\"iShares\",0.24,8780797711.2,205.116587,0.01628976012553185,604965255.7999998,1237561629.6999998,11.295852652083452,13.624756742850646,83.94713387546435,12.019439617723714,\"Distributes\",\"US\",1251,27.072633621790978,\"0\",\"MSCI World Index\",\"MSCI, Inc.\",\"Non-leveraged\",\"0\",\"0\",\"USD\",1326153600,\"1\",\"Size and style\",\"Total market\",\"Equity\"]}]}",
+  "url": "https://scanner.tradingview.com/global/scan",
+  "fetchedAt": "2026-10-26T19:48:19.408Z"
+ }
+}
