@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/VGEA.DE?range=5d&interval=1d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"EUR\",\"symbol\":\"VGEA.DE\",\"exchangeName\":\"GER\",\"fullExchangeName\":\"XETRA\",\"instrumentType\":\"ETF\",\"firstTradeDate\":1550563200,\"regularMarketTime\":1793032558,\"hasPrePostMarketData\":false,\"gmtoffset\":3600,\"timezone\":\"CET\",\"exchangeTimezoneName\":\"Europe/Berlin\",\"regularMarketPrice\":23.381,\"regularMarketChangePercent\":0.343,\"fulldayPrice\":23.381,\"fulldayChange\":0.08,\"fulldayChangePercent\":0.343,\"fiftyTwoWeekHigh\":24.471,\"fiftyTwoWeekLow\":23.05,\"regularMarketDayHigh\":23.385,\"regularMarketDayLow\":23.178,\"regularMarketVolume\":41708,\"longName\":\"Vanguard EUR Eurozone Government Bond UCITS ETF EUR Accumulation\",\"shortName\":\"Vanguard EUR Euroz.Gov.B.U.ETFR\",\"chartPreviousClose\":23.271,\"priceHint\":2,\"currentTradingPeriod\":{\"pre\":{\"timezone\":\"CET\",\"end\":1793001600,\"start\":1792994400,\"gmtoffset\":3600},\"regular\":{\"timezone\":\"CET\",\"end\":1793032200,\"start\":1793001600,\"gmtoffset\":3600},\"post\":{\"timezone\":\"CET\",\"end\":1793043000,\"start\":1793032200,\"gmtoffset\":3600}},\"dataGranularity\":\"1d\",\"range\":\"5d\",\"validRanges\":[\"1d\",\"5d\",\"1mo\",\"3mo\",\"6mo\",\"1y\",\"2y\",\"5y\",\"10y\",\"ytd\",\"max\"]},\"timestamp\":[1792479600,1792566000,1792652400,1792738800,1793001600],\"indicators\":{\"quote\":[{\"low\":[23.25,23.2450008392334,23.180999755859375,23.270999908447266,23.17799949645996],\"open\":[23.299999237060547,23.298999786376953,23.2450008392334,23.298999786376953,23.31999969482422],\"high\":[23.354000091552734,23.312000274658203,23.288999557495117,23.320999145507812,23.385000228881836],\"close\":[23.320999145507812,23.263999938964844,23.288999557495117,23.301000595092773,23.381000518798828],\"volume\":[55495,19436,47961,35064,41708]}],\"adjclose\":[{\"adjclose\":[23.320999145507812,23.263999938964844,23.288999557495117,23.301000595092773,23.381000518798828]}]}}],\"error\":null}}",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/VGEA.DE?range=5d&interval=1d",
+  "fetchedAt": "2026-10-26T20:55:50.694Z"
+ }
+}

@@ -56,6 +56,7 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | a complete analysis ("analyse complète", everything on it) | `analyze <symbol> --depth full --out <dir>`, then step 0 of `RUNBOOK.md`: your web search on `RESEARCH.todo.json`, `research --out <dir> --web-results <file>`, then the debate | [analysis-workflow](references/analysis-workflow.md), [research](references/research.md) |
 | undervalued stocks ("cherche des values", deep value, dividend, GARP, magic formula) | `value [--style …] [--region world|europe|pea|us|FR,DE] --out <dir>` → `VALUE.md`, then its runbook (`research --ask` on the first names) | [value-search](references/value-search.md) |
 | an ETF: what it holds, costs, whether it is PEA-eligible; which of several to pick | `analyze <ETF> --out <dir>` → `ETF.md`; `etf compare A,B,C`, `etf overlap A,B`, `etf find "MSCI World" --pea` | [etf](references/etf.md) |
+| ETFs to buy for a goal ("propose-moi des ETF pour mon PEA", "quels ETF pour débuter"), or the catalogue ("des ETF obligataires en EUR") | `etf propose [--goal core|growth|income|defensive] [--envelope pea|cto|av] [--risk 1-7] [--amount <EUR>] --out <dir>` → `PROPOSAL.md` + `TARGETS.json`, then its runbook; `etf find --asset bond --currency EUR` | [etf](references/etf.md) |
 | what changed since the last analysis | `analyze <symbol> --since <old run> --out <dir>` → `DELTA.md` | [analysis-workflow](references/analysis-workflow.md) |
 | to record or import what they hold | `portfolio add|deposit|withdraw`, `portfolio import <file> --format … --account … --dry-run` | [portfolio-risk](references/portfolio-risk.md) |
 | their portfolio: value, performance, risk, stress, income | `portfolio show|perf|risk|stress|income|lookthrough --out <dir>` | [portfolio-risk](references/portfolio-risk.md) |
@@ -136,6 +137,8 @@ ultrastock options <symbol> · crypto <view> [<target>] · predict kalshi|manifo
 ultrastock technicals <symbol> [--interval] [--indicators <name:k=v;…>] [--benchmark] · valuation <symbol> [--erp] [--terminal]
 ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market] [--universe] [--sort] [--limit] · screen --list
 ultrastock etf compare <A,B,C> · etf overlap <A,B> · etf find "<index|theme>" [--pea] [--acc|--dist] [--ucits] [--currency EUR]
+ultrastock etf find [--asset equity|bond|commodity|money-market|multi-asset|real-estate] [--focus] [--exposure] [--sort aum|ter|perf] [--leveraged]
+ultrastock etf propose [--goal core|growth|income|defensive] [--envelope pea|cto|av] [--risk 1-7] [--amount] [--max-funds 4] [--acc|--dist] [--hedged]
 ultrastock value [--style quality-value|deep-value|dividend|garp|magic-formula|all] [--region world|europe|pea|us|<ISO,…>] [--top] [--watch]
 ultrastock regime [--market us|eu|crypto] · sectors [--market us|eu] · catalysts <symbol> [--days]
 ultrastock stats <sym> [<sym> …] [--benchmark] · options-analysis <sym> [--expiry] [--strategy] [--spot-moves=…]
@@ -220,6 +223,6 @@ Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
 - [news-and-external-text](references/news-and-external-text.md) — reading headlines and other external text safely.
 - [research](references/research.md) — web sources compiled into document evidence: the worklist, your search, ingestion, `check` against the page.
 - [value-search](references/value-search.md) — the `value` styles, the anti value-trap gates, the sector percentiles, reading VALUE.md.
-- [etf](references/etf.md) — an ETF as a fund: costs, replication, PEA, domicile and PRIIPs, tracking, overlap, comparing funds on one index.
+- [etf](references/etf.md) — an ETF as a fund: costs, replication, PEA, domicile and PRIIPs, tracking, overlap, comparing funds on one index; browsing the catalogue; `etf propose` and its allocation convention.
 - [options-crypto-prediction](references/options-crypto-prediction.md) — option chains, crypto structure, prediction markets and their limits.
 - [engine-evidence](references/engine-evidence.md) — failure notes, fixtures, caching and variables.

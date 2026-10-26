@@ -96,6 +96,8 @@ USAGE
   ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market <m>] [--universe <idx|list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--all-listings] [--out <dir>] [--json]
   ultrastock screen --list [--engine tradingview|crible|builtin] [--json]
   ultrastock etf compare <A,B,C> | etf overlap <A,B> | etf find "<index|theme>" [--pea] [--acc|--dist] [--ucits] [--currency EUR] [--limit <n>] [--out <dir>] [--json]
+  ultrastock etf find [--asset equity|bond|commodity|money-market|multi-asset|real-estate] [--focus "<focus>"] [--exposure <region>] [--sort aum|ter|perf] [--leveraged] [--pea] [--acc|--dist] [--currency EUR] [--limit <n>] [--out <dir>] [--json]
+  ultrastock etf propose [--goal core|growth|income|defensive] [--envelope pea|cto|av] [--risk 1-7] [--amount <EUR>] [--max-funds 4] [--acc|--dist] [--currency EUR] [--hedged] [--out <run>] [--json]
   ultrastock value [--style quality-value|deep-value|dividend|garp|magic-formula|all] [--region world|europe|pea|us|<ISO,…>] [--shortlist 30] [--top 10] [--min-cap-eur <n>] [--watch] [--out <run>] [--json]
   ultrastock regime [--market us|eu|crypto] [--out <dir>] [--json]
   ultrastock sectors [--market us|eu] [--out <dir>] [--json]
@@ -256,6 +258,18 @@ COMMANDS
             those lines. find: funds on an index or a theme (TradingView), one
             listing per fund; --pea keeps the issuer-flagged (Amundi FUND_PEA)
             and name hints, --acc/--dist, --ucits, --currency (the listing's).
+            find with no query browses the catalogue: --asset (equity, bond,
+            commodity, money-market, multi-asset, real-estate), --focus
+            (TradingView's: "Large cap", "Gold"…), --exposure (global, europe,
+            emerging, north-america…), --sort aum|ter|perf; leveraged and
+            inverse funds left out unless --leveraged. propose: a few ETFs for
+            a goal (core, growth, income, defensive), an envelope (pea, cto,
+            av) and a risk score (--risk, else the profile's) — the equity
+            share and the buckets from a stated convention, each bucket's best
+            scored fund (TER, AUM, tracking, age) and two alternatives, the
+            correlation and overlap of the picks, what the envelope cannot
+            hold (no bond fund in a PEA); writes PROPOSAL.md and TARGETS.json
+            for portfolio rebalance --targets.
             PEA is never deduced from the domicile; a swap ETF's substitute
             basket is never read as its exposure. analyze on an ETF writes ETF.md.
   value     A value search on crible's audited fundamentals: candidates by a
@@ -615,6 +629,11 @@ export const VALUE_FLAGS = [
   "style",
   "region",
   "shortlist",
+  "asset",
+  "exposure",
+  "goal",
+  "envelope",
+  "max-funds",
   "top",
   "min-cap-eur",
 ];
@@ -639,6 +658,8 @@ export const BOOL_FLAGS = [
   "dist",
   "ucits",
   "watch",
+  "leveraged",
+  "hedged",
 ];
 export const COMMANDS = [
   "analyze",
@@ -752,7 +773,27 @@ const SPEC: CliSpec = {
     sectors: ["market", "out", ...NET],
     catalysts: ["days", "out", ...NET],
     screen: ["engine", "market", "universe", "limit", "sort", "list", "bootstrap", "all-listings", "out", ...NET],
-    etf: ["pea", "acc", "dist", "ucits", "currency", "limit", "out", ...NET],
+    etf: [
+      "pea",
+      "acc",
+      "dist",
+      "ucits",
+      "currency",
+      "limit",
+      "asset",
+      "focus",
+      "exposure",
+      "sort",
+      "leveraged",
+      "goal",
+      "envelope",
+      "risk",
+      "amount",
+      "max-funds",
+      "hedged",
+      "out",
+      ...NET,
+    ],
     technicals: ["interval", "indicators", "benchmark", "out", ...NET],
     valuation: ["erp", "terminal", "out", ...NET],
     filings: ["forms", "days", "limit", "search", "out", ...NET],

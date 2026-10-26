@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://live.euronext.com/en/instrumentSearch/searchJSON?q=IE00B4WXJJ64"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "[{\"value\":\"IE00B4WXJJ64\",\"isin\":\"IE00B4WXJJ64\",\"mic\":\"XAMS\",\"label\":\"\\u003Cspan class=\\u0027name\\u0027\\u003E\\u003Ca href=\\u0027\\/en\\/product\\/etfs\\/IE00B4WXJJ64-XAMS\\u0027 style=\\u0027color: #007aff !important;\\u0027\\u003EiShares Core EUR Govt Bond UCITS ETF EUR (Dist)\\u003C\\/a\\u003E\\u003C\\/span\\u003E\\u003Cspan class=\\u0027symbol\\u0027\\u003EIEGA\\u003C\\/span\\u003E\\u003Cspan class=\\u0027mic\\u0027\\u003EXAMS\\u003C\\/span\\u003E\",\"link\":\"\\/en\\/product\\/etfs\\/IE00B4WXJJ64-XAMS\",\"name\":\"ISHARES IEGA\"},{\"value\":\"IE00B4WXJJ64\",\"isin\":\"IE00B4WXJJ64\",\"mic\":\"ETFP\",\"label\":\"\\u003Cspan class=\\u0027name\\u0027\\u003E\\u003Ca href=\\u0027\\/en\\/product\\/etfs\\/IE00B4WXJJ64-ETFP\\u0027 style=\\u0027color: #007aff !important;\\u0027\\u003EISHARES CORE EU GOVT BOND UCITS ETF DIST\\u003C\\/a\\u003E\\u003C\\/span\\u003E\\u003Cspan class=\\u0027symbol\\u0027\\u003ESEGA\\u003C\\/span\\u003E\\u003Cspan class=\\u0027mic\\u0027\\u003EETFP\\u003C\\/span\\u003E\",\"link\":\"\\/en\\/product\\/etfs\\/IE00B4WXJJ64-ETFP\",\"name\":\"ISHETFVGEAIMETFP\"},{\"value\":\"\",\"isin\":\"\",\"mic\":\"\",\"label\":\"See all results\",\"link\":\"\\/en\\/search_instruments\\/ie00b4wxjj64?restMic\",\"name\":\"\"}]",
+  "url": "https://live.euronext.com/en/instrumentSearch/searchJSON?q=IE00B4WXJJ64",
+  "fetchedAt": "2026-10-26T20:55:50.637Z"
+ }
+}
