@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.nasdaq.com/api/quote/RDDT/info?assetclass=stocks"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"data\":{\"symbol\":\"RDDT\",\"companyName\":\"Reddit, Inc. Class A Common Stock\",\"stockType\":\"Class A Common Stock\",\"exchange\":\"NYSE\",\"isNasdaqListed\":false,\"isNasdaq100\":false,\"isHeld\":false,\"primaryData\":{\"lastSalePrice\":\"$138.47\",\"netChange\":\"-5.78\",\"percentageChange\":\"-4.01%\",\"deltaIndicator\":\"down\",\"lastTradeTimestamp\":\"Oct 26, 2026 3:52 PM ET\",\"isRealTime\":true,\"bidPrice\":\"$138.38\",\"askPrice\":\"$138.49\",\"bidSize\":\"83\",\"askSize\":\"23\",\"volume\":\"6,670,128.978724\",\"currency\":null},\"secondaryData\":null,\"marketStatus\":\"Open\",\"assetClass\":\"STOCKS\",\"keyStats\":{\"fiftyTwoWeekHighLow\":{\"label\":\"52 Week Range:\",\"value\":\"119.27 - 263.50\"},\"dayrange\":{\"label\":\"High/Low:\",\"value\":\"133.33 - 144.54\"}},\"notifications\":[{\"headline\":\"UPCOMING EVENTS\",\"eventTypes\":[{\"message\":\"Earnings Date : Oct 29, 2026\",\"eventName\":\"Earnings Date\",\"url\":{\"label\":\"RDDT Earnings Date : Oct 29, 2026\",\"value\":\"/market-activity/stocks/RDDT/earnings\"},\"id\":\"upcoming_events\"}]}]},\"message\":null,\"status\":{\"rCode\":200,\"bCodeMessage\":null,\"developerMessage\":null}}",
+  "url": "https://api.nasdaq.com/api/quote/RDDT/info?assetclass=stocks",
+  "fetchedAt": "2026-10-26T19:52:40.271Z"
+ }
+}

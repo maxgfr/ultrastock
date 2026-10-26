@@ -36,6 +36,7 @@ import { paperCommand, planCommand, portfolioCommand, ticketCommand } from "./co
 import { catalystsCommand, regimeCommand, sectorsCommand } from "./commands/regime.js";
 import { screenCommand } from "./commands/screen.js";
 import { etfCommand } from "./commands/etf.js";
+import { valueCommand } from "./commands/value.js";
 import { cryptoAnalysisCommand, optionsAnalysisCommand, predictAnalysisCommand, statsCommand } from "./commands/quant.js";
 import { doctorReport, formatDoctor } from "./doctor.js";
 import {
@@ -93,6 +94,7 @@ USAGE
   ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market <m>] [--universe <idx|list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--all-listings] [--out <dir>] [--json]
   ultrastock screen --list [--engine tradingview|crible|builtin] [--json]
   ultrastock etf compare <A,B,C> | etf overlap <A,B> | etf find "<index|theme>" [--pea] [--acc|--dist] [--ucits] [--currency EUR] [--limit <n>] [--out <dir>] [--json]
+  ultrastock value [--style quality-value|deep-value|dividend|garp|magic-formula|all] [--region world|europe|pea|us|<ISO,…>] [--shortlist 30] [--top 10] [--min-cap-eur <n>] [--watch] [--out <run>] [--json]
   ultrastock regime [--market us|eu|crypto] [--out <dir>] [--json]
   ultrastock sectors [--market us|eu] [--out <dir>] [--json]
   ultrastock catalysts <symbol> [--days <1-90>] [--out <dir>] [--json]
@@ -242,6 +244,20 @@ COMMANDS
             and name hints, --acc/--dist, --ucits, --currency (the listing's).
             PEA is never deduced from the domicile; a swap ETF's substitute
             basket is never read as its exposure. analyze on an ETF writes ETF.md.
+  value     A value search on crible's audited fundamentals: candidates by a
+            minimal DSL per style (quality-value by default, deep-value,
+            dividend, garp, magic-formula, all) over --region world (default),
+            europe, pea (EU / EEA country AND ISIN — to confirm security by
+            security), us or ISO codes, at least --min-cap-eur (500 M); hygiene
+            (home exchanges, no ADRs, one line per issuer, sane multiples, a
+            period under 18 months) and anti value-trap gates (Beneish, interest
+            coverage, dilution, cash generation, Montier, Ohlson, Altman Z″,
+            falling knife — null is "unknown", never a pass); a composite of
+            sector-relative percentiles recomputed on the filtered universe;
+            the --shortlist registered as evidence, the --top valued one after
+            the other on the same run. Writes VALUE.md (why cheap, why not a
+            trap, what would invalidate it, then the research runbook);
+            --watch adds an alert on each top name.
   regime    Market regime and an exposure ceiling. us: SPY trend, RSP/SPY
             breadth, HYG/LQD credit, SPY/QQQ distribution days and follow-through,
             VIX/VIX3M, CNN Fear & Greed read contrarian, % of US large caps above
@@ -575,6 +591,11 @@ export const VALUE_FLAGS = [
   "transport",
   "port",
   "token",
+  "style",
+  "region",
+  "shortlist",
+  "top",
+  "min-cap-eur",
 ];
 export const BOOL_FLAGS = [
   "json",
@@ -594,6 +615,7 @@ export const BOOL_FLAGS = [
   "acc",
   "dist",
   "ucits",
+  "watch",
 ];
 export const COMMANDS = [
   "analyze",
@@ -610,6 +632,7 @@ export const COMMANDS = [
   "fundamentals",
   "screen",
   "etf",
+  "value",
   "regime",
   "sectors",
   "catalysts",
@@ -680,6 +703,7 @@ const SPEC: CliSpec = {
     universe: ["out", ...NET],
     resolve: ["out", ...NET],
     fundamentals: ["asof", "years", "quarters", "source", "out", ...NET],
+    value: ["style", "region", "shortlist", "top", "min-cap-eur", "watch", "out", ...NET],
     regime: ["market", "out", ...NET],
     sectors: ["market", "out", ...NET],
     catalysts: ["days", "out", ...NET],
@@ -812,7 +836,7 @@ function usage(msg: string): never {
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 function arity(args: CommandArgs): number {
-  if (args.command === "doctor" || args.command === "version") return 0;
+  if (args.command === "doctor" || args.command === "version" || args.command === "value") return 0;
   if (args.command === "check" || args.command === "calc") return 2;
   if (args.command === "profile") return 3;
   if (args.command === "crypto" || args.command === "calendar" || args.command === "macro" || args.command === "crypto-analysis") return 2;
@@ -1003,6 +1027,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "technicals") return technicalsCommand(args, asJson);
   if (cmd === "screen") return screenCommand(args, asJson);
   if (cmd === "etf") return etfCommand(args, asJson);
+  if (cmd === "value") return valueCommand(args, asJson);
   if (cmd === "regime") return regimeCommand(args, asJson);
   if (cmd === "sectors") return sectorsCommand(args, asJson);
   if (cmd === "catalysts") return catalystsCommand(args, asJson);

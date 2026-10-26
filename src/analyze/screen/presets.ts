@@ -125,6 +125,44 @@ export const EU_EEA_COUNTRIES = [
   "Norway",
 ];
 
+/**
+ * The same EU and EEA member states as ISO 3166-1 alpha-2 codes — crible's
+ * `country`, and the first two letters of an ISIN issued there.
+ */
+export const EU_EEA_ISO = [
+  "AT",
+  "BE",
+  "BG",
+  "HR",
+  "CY",
+  "CZ",
+  "DK",
+  "EE",
+  "FI",
+  "FR",
+  "DE",
+  "GR",
+  "HU",
+  "IE",
+  "IT",
+  "LV",
+  "LT",
+  "LU",
+  "MT",
+  "NL",
+  "PL",
+  "PT",
+  "RO",
+  "SK",
+  "SI",
+  "ES",
+  "SE",
+  // EEA, outside the EU
+  "IS",
+  "LI",
+  "NO",
+] as const;
+
 /** `--market europe`: the scanner markets run one by one and merged. */
 export const EUROPE_MARKETS = [
   "france",

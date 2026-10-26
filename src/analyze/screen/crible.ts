@@ -12,7 +12,7 @@ import type { Dataset, Point } from "../../core/datasets.js";
 import { clockNow } from "../../core/net.js";
 import { type CribleScreen, cribleMcpCall, SOURCE } from "../../providers/external/crible.js";
 
-const REPO_URL = "https://github.com/maxgfr/crible";
+export const CRIBLE_REPO_URL = "https://github.com/maxgfr/crible";
 
 export interface CriblePreset {
   id: string;
@@ -54,9 +54,12 @@ export function primaryListingsOnly(dsl: string): string {
   return dsl.trim() ? `(${dsl}) AND primary_listing = 1` : "primary_listing = 1";
 }
 
-const OTC = new Set(["PNK", "OQB", "OQX", "OTC", "OBB", "OEM"]);
+/** crible's codes for the US over-the-counter markets. */
+export const OTC_VENUES: ReadonlySet<string> = new Set(["PNK", "OQB", "OQX", "OTC", "OBB", "OEM"]);
+/** US exchanges in crible's codes, OTC included: a US issuer's line anywhere else trades away from home. */
+export const US_VENUES: ReadonlySet<string> = new Set(["NYQ", "NMS", "NGM", "NCM", "ASE", "PCX", "BTS", "NAS", "NYS", ...OTC_VENUES]);
 const LEGAL =
-  /\b(sponsored|unsponsored|adrs?|ads|american depositary shares?|reg|shs|sa|se|nv|ag|plc|ltd|limited|inc|corp|corporation|co|company|group|holdings?|spa|oyj|asa|ab)\b/g;
+  /\b(sponsored|unsponsored|adrs?|ads|[bcg]drs?|american depositary shares?|reg|shs|sa|se|nv|ag|plc|ltd|limited|inc|corp|corporation|co|company|group|holdings?|spa|oyj|asa|ab)\b/g;
 
 /** An issuer name stripped of punctuation, legal forms and depositary wording. */
 export function issuerKey(name: string): string {
@@ -65,20 +68,41 @@ export function issuerKey(name: string): string {
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
     .replace(/\./g, "")
+    .replace(/\([^)]*\)/g, " ")
     .replace(/[^a-z0-9 ]+/g, " ")
     .replace(LEGAL, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-/** A line traded away from the issuer's home market: an OTC line, or a US-ISIN depositary receipt of a non-US issuer. */
-function isForeignLine(row: Record<string, unknown>): boolean {
-  if (row.country === "US") return false;
-  return OTC.has(String(row.exchange ?? "")) || String(row.isin ?? "").startsWith("US");
+/**
+ * A line traded away from the issuer's home market: for a non-US issuer an OTC
+ * line or a US-ISIN depositary receipt; for a US issuer any line off the US
+ * exchanges (a BDR in São Paulo, a CDR in Toronto, a Frankfurt or Mexico line).
+ */
+export function isForeignLine(row: Record<string, unknown>): boolean {
+  const exchange = typeof row.exchange === "string" ? row.exchange : "";
+  if (row.country === "US") return exchange !== "" && !US_VENUES.has(exchange);
+  return OTC_VENUES.has(exchange) || String(row.isin ?? "").startsWith("US");
+}
+
+const RECEIPT_WORDING = /\b(?:ADRs?|ADS|GDRs?|CDRs?|BDRs?)\b(?!-)/;
+
+/**
+ * A depositary receipt: crible's `depositary_receipt` flag when the dataset has
+ * it (crible ≥ 0.16), else a US ISIN on a non-US issuer or receipt wording in
+ * the name ("Sponsored ADR", "… ADS", "CDR (CAD Hedged)").
+ */
+export function isDepositaryReceipt(row: Record<string, unknown>): boolean {
+  const flag = row.depositary_receipt;
+  if (typeof flag === "boolean") return flag;
+  if (typeof flag === "number") return flag === 1;
+  if (typeof row.country === "string" && row.country !== "US" && String(row.isin ?? "").startsWith("US")) return true;
+  return RECEIPT_WORDING.test(String(row.name ?? ""));
 }
 
 /**
- * Drop the foreign lines (ADRs, OTC) of issuers whose home listing is in the same rows.
+ * Drop the foreign lines (ADRs, OTC; a US issuer's lines off the US exchanges) of issuers whose home listing is in the same rows.
  * Share classes on their own market (A/B, preferred) are distinct instruments and stay.
  */
 export function collapseForeignLines(rows: CribleScreen["rows"]): { rows: CribleScreen["rows"]; dropped: number } {
@@ -92,7 +116,8 @@ const CODE_FIELDS = new Set(["country", "currency", "exchange", "region", "symbo
 const MONEY =
   /^(market_cap|enterprise_value|revenue|net_income|ebitda|ebit|free_cash_flow|operating_cashflow|total_assets|total_debt|total_equity|cash_and_equivalents|ncav|graham_number|dividends_paid|gross_profit|operating_income|close|price)$/;
 
-function unitOf(field: string, currency: unknown): string | undefined {
+/** The unit of a crible field: the row's currency for money, "rank", "score", "years", "shares", else "ratio". */
+export function cribleUnitOf(field: string, currency: unknown): string | undefined {
   if (MONEY.test(field)) return typeof currency === "string" ? currency : undefined;
   if (/_rank$/.test(field)) return "rank";
   if (/^(piotroski_f|altman_z|altman_z_double_prime|beneish_m|montier_c|mohanram_g|zmijewski_score|ohlson_o|dechow_f)$/.test(field)) return "score";
@@ -143,7 +168,7 @@ export function cribleRowsToDataset(
       const lbl = `${sym} ${f.replace(/_/g, " ")}${period && !IDENTITY.includes(f) ? ` (period ${period})` : ""}`;
       if (typeof v === "number") {
         if (!Number.isFinite(v)) continue;
-        const unit = unitOf(f, row.currency);
+        const unit = cribleUnitOf(f, row.currency);
         points.push({ key, label: lbl, value: v, ...(unit ? { unit } : {}), ...at });
       } else if (typeof v === "string") points.push({ key, label: lbl, value: v, ...(CODE_FIELDS.has(f) ? {} : { untrusted: true }), ...at });
       else if (typeof v === "boolean") points.push({ key, label: lbl, value: v, ...at });
@@ -162,7 +187,7 @@ export function cribleRowsToDataset(
     title: `Screen — crible ${pid ? `preset ${pid}` : "DSL query"}`,
     subject: pid ?? "crible",
     points,
-    provenance: { source: SOURCE, url: REPO_URL, fetchedAt, official: false, delay: "filing", ...(latest ? { asOf: latest } : {}) },
+    provenance: { source: SOURCE, url: CRIBLE_REPO_URL, fetchedAt, official: false, delay: "filing", ...(latest ? { asOf: latest } : {}) },
     notes,
   };
 }
