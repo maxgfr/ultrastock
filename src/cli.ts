@@ -67,7 +67,7 @@ figure registered as an evidence [E#] that the answer must cite, and a check
 that refuses a figure the evidence does not hold.
 
 USAGE
-  ultrastock analyze <symbol> [--depth quick|standard|deep] [--since <run>] [--out <dir>] [--json]
+  ultrastock analyze <symbol> [--depth quick|standard|deep|full] [--since <run>] [--out <dir>] [--json]
   ultrastock quote <symbol> [--out <dir>] [--json]
   ultrastock history <symbol> [--from <date>] [--to <date>] [--interval 1d|1w|4h|1h|15m] [--limit <n>] [--json]
   ultrastock calc <run> <formula> --label <text> [--unit <unit>] [--key <key>] [--json]
@@ -165,7 +165,11 @@ COMMANDS
             news, insiders (US, Paris) and analysts (US), the user's portfolio
             context (holding / flat / not provided), the profile's limits, the
             jurisdiction's rules and past decisions. deep: three debate rounds
-            and more headlines. --since <run> writes DELTA.md against an earlier
+            and more headlines. full: deep plus the statements over time, the
+            peers (crible) and statistics against the benchmark and the peers,
+            short interest and dividends (US), the option or crypto-derivatives
+            reading, residual income / DDM / WACC, and the web-research
+            worklist (RESEARCH.todo.json) the RUNBOOK starts with. --since <run> writes DELTA.md against an earlier
             run. BRIEF.md indexes the slices (a failed one is named, never
             filled in); RUNBOOK.md is the debate: analysts → bull / bear → judge
             → trader → risk trio → portfolio manager → decide → check → report.
@@ -898,7 +902,7 @@ async function run(args: CommandArgs): Promise<void> {
 
   if (cmd === "analyze") {
     const symbol = args.positional[0];
-    if (!symbol) usage("usage: ultrastock analyze <symbol> [--depth quick|standard|deep] [--since <run>] [--out <dir>] [--json]");
+    if (!symbol) usage("usage: ultrastock analyze <symbol> [--depth quick|standard|deep|full] [--since <run>] [--out <dir>] [--json]");
     const depth = (argValue(args, "depth") ?? "standard") as Depth;
     if (!(DEPTHS as readonly string[]).includes(depth)) usage(`--depth is one of ${DEPTHS.join(", ")}`);
     const dir = runDirFor(argValue(args, "out"), `${symbol.toUpperCase().replace(/[^A-Z0-9.-]/g, "_")}-${runId()}`);

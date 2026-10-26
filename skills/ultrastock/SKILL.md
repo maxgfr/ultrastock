@@ -111,7 +111,7 @@ Symbols: `MC.PA`, `ASML.AS`, `CW8.PA` or an EU ISIN (Euronext); `SAP.DE`,
 ## Commands
 
 ```bash
-ultrastock analyze <symbol> [--depth quick|standard|deep] [--since <run>] [--out <dir>] [--json]
+ultrastock analyze <symbol> [--depth quick|standard|deep|full] [--since <run>] [--out <dir>] [--json]
 ultrastock quote <symbol> [--out <dir>] [--json]
 ultrastock history <symbol> [--from <date>] [--to <date>] [--interval 1d|1w|4h|1h|15m] [--limit <n>] [--json]
 ultrastock calc <run> "<formula>" --label <text> [--unit <unit>] [--json]

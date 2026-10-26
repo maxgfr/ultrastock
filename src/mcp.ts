@@ -43,7 +43,12 @@ export const TOOLS: Tool[] = [
     command: ["analyze"],
     params: {
       symbol: sym(),
-      depth: { kind: "string", description: "quick, standard (default) or deep", enum: ["quick", "standard", "deep"] },
+      depth: {
+        kind: "string",
+        description:
+          "quick, standard (default), deep, or full (deep + statements over time, peers, statistics, short interest, dividends, options, residual income / DDM / WACC, and the web-research worklist)",
+        enum: ["quick", "standard", "deep", "full"],
+      },
       since: { kind: "string", description: "an earlier run: writes DELTA.md" },
       out: OUT,
     },
