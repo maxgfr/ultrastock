@@ -64,10 +64,14 @@ describe("check against a cited document", () => {
 
   it("notes a figure the document holds only far from the claim's words", () => {
     const dir = withDoc(RELEASE);
-    const r = checkAnswer(dir, "La marge des vins atteint 215 000 [E1].");
+    const r = checkAnswer(dir, "The wines margin reached 215 000 [E1].");
     if ("error" in r) throw new Error(r.error);
     expect(r.problems.map((p) => p.kind)).toContain("distant");
     expect(failing(r)).toEqual([]);
+    // A claim sharing no word with the page (another language): nearness is not judged.
+    const fr = checkAnswer(dir, "La marge des vins atteint 215 000 [E1].");
+    if ("error" in fr) throw new Error(fr.error);
+    expect(fr.problems.map((p) => p.kind)).not.toContain("distant");
   });
 
   it("still reads numeric evidence cited next to a document", () => {

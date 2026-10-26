@@ -7,6 +7,9 @@
 //   mc-pa     a Euronext equity, answered in French (decimal commas, €, −)
 //   nvda      a US equity from an unofficial source, answered with a table
 //   btcusdt   a crypto pair, 24/7, closed daily bars only
+//   cw8-full  a PEA world ETF at --depth full: ETF.md and the full-depth extras
+//   research-mc-pa  LVMH's own H1 2026 releases, ingested as document evidence
+//   value-pt  a recorded crible screen through the value pipeline to VALUE.md
 //
 // offline  replays the fixture: `analyze` must produce the expected evidence,
 //          the case's `calc`s must register the expected ids, the good answer
@@ -16,7 +19,7 @@
 //          that every source still answers in the shape the parsers expect.
 //          Report-only: upstreams change and throttle; never gates a PR.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,7 +68,20 @@ for (const name of readdirSync(join(here, "cases")).sort()) {
   console.log(`${name} — ${spec.kind}`);
   const run = mkdtempSync(join(scratch, `${name}-`));
   const source = suite === "offline" ? ["--fixture", join(root, spec.fixture)] : [];
-  if (spec.research) {
+  if (spec.value) {
+    // A value case: a recorded crible screen through hygiene, gates and ranking to VALUE.md.
+    if (suite !== "offline") continue;
+    const v = cli(["value", ...spec.value.args, "--out", run, ...source]);
+    ok(v.status === 0, `value ${spec.value.args.join(" ")} (${v.status === 0 ? `${v.json.evidence} evidence` : v.stderr.trim()})`);
+    if (v.status !== 0) continue;
+    const ev = cli(["evidence", run]);
+    const keys = new Set((ev.json?.items ?? []).map((i) => i.key));
+    ok((ev.json?.items ?? []).length >= spec.expect.evidenceMin, `at least ${spec.expect.evidenceMin} evidence items (got ${(ev.json?.items ?? []).length})`);
+    const missing = spec.expect.keys.filter((k) => !keys.has(k));
+    ok(missing.length === 0, `evidence keys present (${missing.length ? `missing ${missing.join(", ")}` : spec.expect.keys.join(", ")})`);
+    const absent = (spec.expect.files ?? []).filter((f) => !existsSync(join(run, f)));
+    ok(absent.length === 0, `files written (${absent.length ? `missing ${absent.join(", ")}` : spec.expect.files.join(", ")})`);
+  } else if (spec.research) {
     // A research case: the worklist, then the recorded pages compiled into document evidence.
     if (suite !== "offline") continue;
     const plan = cli(["research", spec.research.subject, ...(spec.research.focus ? ["--focus", spec.research.focus] : []), "--out", run, ...source]);

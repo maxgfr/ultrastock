@@ -60,9 +60,11 @@ answer prove it:
 
 | Area | Commands | Sources (keyless) |
 |---|---|---|
-| Prices | `quote`, `history`, `analyze`, `technicals` (107 indicators, patterns, Minervini, VCP) | Euronext (official, end of day), Nasdaq, Yahoo for other EU venues, Binance → Kraken → Coinbase |
+| Prices | `quote`, `history`, `analyze` (`--depth full`: peers, statistics, extra valuations, the web-research worklist), `technicals` (107 indicators, patterns, Minervini, VCP) | Euronext (official, end of day), Nasdaq, Yahoo for other EU venues, Binance → Kraken → Coinbase |
 | Companies | `fundamentals` (point in time), `valuation` (Piotroski, Altman, Beneish, DCF, reverse DCF), `filings`, `insiders`, `holdings`, `analyst`, `short`, `dividends`, `congress` | SEC EDGAR, ESEF filings (filings.xbrl.org), crible, AMF, FINRA, House Clerk |
-| Ideas | `screen` (TradingView presets per market, builtin technical screens per index, crible DSL), `universe` | TradingView scanner, crible, Wikipedia |
+| Ideas | `screen` (TradingView presets per market, builtin technical screens per index, crible DSL), `value` (quality-value, deep value, dividend, GARP, magic formula; anti value-trap gates, sector percentiles), `universe` | TradingView scanner, crible, Wikipedia |
+| ETFs | `etf compare/overlap/find`, `analyze <ETF>` → ETF.md (TER, replication, PEA, domicile and PRIIPs twins, holdings, tracking) | TradingView, Amundi, iShares, SEC N-PORT, crible |
+| Web research | `research` — the host agent searches, ultrastock reads the pages and PDFs, keeps the documents as evidence, `check` refuses a figure the cited page does not state; `calc --from` | Any page the agent finds, plus crible for a listed company's statements |
 | Market | `regime` (exposure coach), `sectors`, `catalysts`, `macro`, `rates`, `fx`, `calendar`, `sentiment`, `cot`, `news` | Treasury, ECB, Eurostat, INSEE, BLS, World Bank, CBOE, CNN, CFTC, Nasdaq, Google News, GDELT |
 | Derivatives, crypto, prediction | `options`, `options-analysis` (GEX, skew, P&L matrix), `crypto`, `crypto-analysis`, `predict`, `predict-analysis` | CBOE, Deribit, Binance futures, CoinGecko, DefiLlama, CoinMetrics, Kalshi, Manifold; Polymarket only where lawful |
 | Portfolio | `portfolio show/perf/import/risk/stress/optimize/rebalance/location/lookthrough/income/goals` | The user's ledger, with statements imported from IBKR, Binance, Kraken, Coinbase or any CSV |

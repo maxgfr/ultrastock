@@ -17,7 +17,7 @@
 // reader as the answer: a figure the claim states must be in the document as
 // written ("4,2 Md€" against "4.2 billion"), and a figure the document holds
 // only far from the claim's words is noted as distant.
-import { citationTokensIn, collectCitations, EVIDENCE_TOKEN, excerptWindows, extractClaimUnits, unitTexts } from "./engine.js";
+import { bm25Tokenize, citationTokensIn, collectCitations, EVIDENCE_TOKEN, extractClaimUnits, unitTexts } from "./engine.js";
 import { type EvidenceItem, EvidenceStore, readDocText } from "./core/evidence.js";
 
 export interface CheckProblem {
@@ -153,17 +153,24 @@ export function documentFigures(doc: EvidenceItem, text: string): EvidenceItem[]
   return extractFigures(text).map((f) => ({ ...doc, value: f.value, unit: f.percent ? "%" : undefined, doc: undefined }));
 }
 
+/** Lines either side of a line sharing a word with the claim that still count as near it. */
+const NEAR_LINES = 3;
+
 /**
- * The lines of a document around the WORDS of a claim — where its figure
- * should sit. The claim's own figures and citations are taken out first:
- * left in, their digits would anchor the window on the figure itself.
+ * The lines of a document near the WORDS of a claim — where its figure should
+ * sit: every line within NEAR_LINES of a line that shares a word with the
+ * claim. The claim's own figures and citations are taken out first (their
+ * digits would make every line holding the figure "near"). When no line shares
+ * a word — an English page under a French claim — the whole text is returned:
+ * nearness cannot be judged, so no note is raised.
  */
 function nearClaim(text: string, claim: string): string {
-  const lines = text.split("\n");
   const words = claim.replace(/\[[^\]]*\]/g, " ").replace(/[+\-−–]?[$€£]?\d[\d\s.,'  ]*%?/g, " ");
-  return excerptWindows(text, words, { perDoc: 4 })
-    .map((w) => lines.slice(w.start, w.end).join("\n"))
-    .join("\n");
+  const terms = new Set(bm25Tokenize(words).filter((t) => t.length > 2 && !/^\d+$/.test(t)));
+  const lines = text.split("\n");
+  const hits = lines.map((l) => bm25Tokenize(l).some((t) => terms.has(t)));
+  if (!hits.some(Boolean)) return text;
+  return lines.filter((_, i) => hits.slice(Math.max(0, i - NEAR_LINES), i + NEAR_LINES + 1).some(Boolean)).join("\n");
 }
 
 const SOURCES_HEADING = /^#{1,6}\s+(?:sources?|references?|citations?|évidences?|evidence|preuves|références?|annexe|appendix)\b/i;
