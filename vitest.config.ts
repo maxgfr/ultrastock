@@ -6,6 +6,9 @@ export default defineConfig({
     // Pins ULTRASTOCK_HOME and the cache to throwaway directories: the suite
     // must never read or write a user's profile, ledger or runs.
     setupFiles: ["tests/setup.ts"],
+    // Several tests run a whole analyze or scrypt (N=2^16) and sit near the
+    // 5 s default on a loaded runner: a slow machine is not a failure.
+    testTimeout: 20_000,
     coverage: {
       provider: "v8",
       include: ["src/**"],
