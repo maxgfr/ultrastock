@@ -1,0 +1,65 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/france/scan",
+  "json": {
+   "columns": [
+    "description",
+    "currency",
+    "fundamental_currency_code",
+    "isin",
+    "index_tracked",
+    "expense_ratio",
+    "aum",
+    "nav_total_return.1Y",
+    "dividend_treatment",
+    "ucits_compliant_flag",
+    "country_code_fund",
+    "etf_fund_currency",
+    "leveraged_flag",
+    "currency_hedged_flag",
+    "launch_date",
+    "brand"
+   ],
+   "range": [
+    0,
+    300
+   ],
+   "filter": [
+    {
+     "left": "typespecs",
+     "operation": "has",
+     "right": [
+      "etf"
+     ]
+    },
+    {
+     "left": "asset_class.tr",
+     "operation": "equal",
+     "right": "Equity"
+    },
+    {
+     "left": "index_tracked",
+     "operation": "match",
+     "right": "World Small Cap|World Index Small Cap"
+    },
+    {
+     "left": "currency",
+     "operation": "equal",
+     "right": "EUR"
+    }
+   ],
+   "sort": {
+    "sortBy": "aum",
+    "sortOrder": "desc"
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":4,\"data\":[{\"s\":\"EURONEXT:WSC\",\"d\":[\"UBS (Irl) ETF plc - UBS MSCI World Small Cap Socially Responsible UCITS ETF Accum USD\",\"EUR\",\"EUR\",\"IE00BKSCBX74\",\"MSCI World Small Cap SRI Low Carbon Select 5% Issuer Capped Index\",0.24,655378675.3499687,18.248394414978016,\"Capitalizes\",\"1\",\"IE\",\"USD\",\"Non-leveraged\",\"0\",1629331200,\"UBS\"]},{\"s\":\"EURONEXT:XSWC\",\"d\":[\"Xtrackers MSCI World Small Cap UCITS ETF Accum-1C- USD\",\"EUR\",\"EUR\",\"IE000F354Q61\",\"MSCI World Index Small Cap\",0.25,139288374.21480224,16.82973140344907,\"Capitalizes\",\"1\",\"IE\",\"USD\",\"Non-leveraged\",\"0\",1754352000,\"Xtrackers\"]},{\"s\":\"EURONEXT:HWSS\",\"d\":[\"HSBC ETFs PLC - HSBC MSCI World Small Cap Screened UCITS ETF Accum USD\",\"EUR\",\"EUR\",\"IE000C692SN6\",\"MSCI World Small Cap Selection Screens Index - Benchmark TR Net\",0.27,65762653.9594679,19.08670758923866,\"Capitalizes\",\"1\",\"IE\",\"USD\",\"Non-leveraged\",\"0\",1666310400,\"HSBC\"]},{\"s\":\"EURONEXT:WRDSC\",\"d\":[\"UBS (Irl) ETF PLC - UBS MSCI World Small Cap UCITS ETF\",\"EUR\",\"EUR\",\"IE000AZ2HZ31\",\"MSCI World Index Small Cap\",0.23,40801067.558789395,null,\"Capitalizes\",\"1\",\"IE\",\"EUR\",\"Non-leveraged\",\"0\",1780444800,\"UBS\"]}]}",
+  "url": "https://scanner.tradingview.com/france/scan",
+  "fetchedAt": "2026-10-26T21:01:44.788Z"
+ }
+}

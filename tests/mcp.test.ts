@@ -102,6 +102,17 @@ describe("1.1 tools", () => {
     ]);
     expect(() => argvFor(tool("value"), { watch: true })).toThrow(/unknown argument/);
     expect(argvFor(tool("etf"), { action: "find", target: "MSCI World", pea: true })).toEqual(["etf", "find", "MSCI World", "--pea", "--json"]);
+    expect(argvFor(tool("etf"), { action: "find", asset: "bond", currency: "EUR" })).toEqual(["etf", "find", "--asset=bond", "--currency=EUR", "--json"]);
+    expect(argvFor(tool("etf"), { action: "propose", envelope: "pea", risk: 5, amount: 10000, out: "/tmp/run" })).toEqual([
+      "etf",
+      "propose",
+      "--envelope=pea",
+      "--risk=5",
+      "--amount=10000",
+      "--out=/tmp/run",
+      "--json",
+    ]);
+    expect(TOOLS.find((t) => t.name === "etf")!.writes).toBeUndefined();
     expect(tool("analyze").params.depth!.enum).toContain("full");
   });
 });

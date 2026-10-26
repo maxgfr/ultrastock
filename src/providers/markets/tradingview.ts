@@ -173,6 +173,7 @@ const COLUMN_INFO: Record<string, ColumnInfo> = {
   "category.tr": { label: "ETF category" },
   "focus.tr": { label: "ETF focus" },
   "asset_class.tr": { label: "ETF asset class" },
+  "holdings_region.tr": { label: "ETF geographic exposure (region of the holdings)" },
   brand: { label: "ETF brand (fund family)" },
   total_revenue_ttm: { label: "revenue (trailing 12 months)", unit: "fundamental" },
   net_margin_ttm: { label: "net margin (trailing 12 months)", unit: "%" },

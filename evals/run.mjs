@@ -10,6 +10,7 @@
 //   cw8-full  a PEA world ETF at --depth full: ETF.md and the full-depth extras
 //   research-mc-pa  LVMH's own H1 2026 releases, ingested as document evidence
 //   value-pt  a recorded crible screen through the value pipeline to VALUE.md
+//   etf-propose-pea  `etf propose` for a PEA at risk 4: the convention, the picks, PROPOSAL.md
 //
 // offline  replays the fixture: `analyze` must produce the expected evidence,
 //          the case's `calc`s must register the expected ids, the good answer
@@ -81,6 +82,23 @@ for (const name of readdirSync(join(here, "cases")).sort()) {
     ok(missing.length === 0, `evidence keys present (${missing.length ? `missing ${missing.join(", ")}` : spec.expect.keys.join(", ")})`);
     const absent = (spec.expect.files ?? []).filter((f) => !existsSync(join(run, f)));
     ok(absent.length === 0, `files written (${absent.length ? `missing ${absent.join(", ")}` : spec.expect.files.join(", ")})`);
+  } else if (spec.etf) {
+    // An etf case: an `etf` subcommand that writes into the run (propose → PROPOSAL.md, TARGETS.json).
+    if (suite !== "offline") continue;
+    const e = cli(["etf", ...spec.etf.args, "--out", run, ...source]);
+    ok(e.status === 0, `etf ${spec.etf.args.join(" ")} (${e.status === 0 ? `${e.json.evidence} evidence` : e.stderr.trim()})`);
+    if (e.status !== 0) continue;
+    const ev = cli(["evidence", run]);
+    const keys = new Set((ev.json?.items ?? []).map((i) => i.key));
+    ok((ev.json?.items ?? []).length >= spec.expect.evidenceMin, `at least ${spec.expect.evidenceMin} evidence items (got ${(ev.json?.items ?? []).length})`);
+    const missing = spec.expect.keys.filter((k) => !keys.has(k));
+    ok(missing.length === 0, `evidence keys present (${missing.length ? `missing ${missing.join(", ")}` : spec.expect.keys.join(", ")})`);
+    const absent = (spec.expect.files ?? []).filter((f) => !existsSync(join(run, f)));
+    ok(absent.length === 0, `files written (${absent.length ? `missing ${absent.join(", ")}` : spec.expect.files.join(", ")})`);
+    if (e.json.targets) {
+      const sum = Object.values(e.json.targets).reduce((a, b) => a + b, 0);
+      ok(sum === 100, `the targets sum to 100 % (got ${sum})`);
+    }
   } else if (spec.research) {
     // A research case: the worklist, then the recorded pages compiled into document evidence.
     if (suite !== "offline") continue;

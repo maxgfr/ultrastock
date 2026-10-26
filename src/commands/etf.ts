@@ -1,16 +1,39 @@
-// `etf compare|overlap|find`: ETFs side by side, the overlap of two funds'
-// holdings, and a search by index or theme — every figure an [E#] with --out.
-import { resolve } from "node:path";
-import { etfCompare, etfFind, etfOverlapReport } from "../analyze/etf.js";
+// `etf compare|overlap|find|propose`: ETFs side by side, the overlap of two
+// funds' holdings, a search by index or theme (or a browse of the catalogue),
+// and a proposal for a goal and an envelope — every figure an [E#] with --out.
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { ETF_ASSETS, ETF_SORTS, etfCompare, etfFind, etfOverlapReport } from "../analyze/etf.js";
+import { ETF_ENVELOPES, ETF_GOALS, EtfProposeError, etfPropose } from "../analyze/etf-propose.js";
 import { formatDatasets, registerDatasets } from "../core/datasets.js";
 import { formatNumber } from "../core/evidence.js";
-import { argBool, argInt, argValue, type CommandArgs, jsonLine, UsageError } from "../engine.js";
+import { clockNow } from "../core/net.js";
+import { runDirFor } from "../core/paths.js";
+import { argBool, argInt, argOneOf, argValue, type CommandArgs, jsonLine, runId, UsageError } from "../engine.js";
 import { emitDatasets } from "./emit.js";
 
-const USAGE = `usage:
+export const ETF_USAGE = `usage:
   ultrastock etf compare <A,B,C> [--out <dir>] [--json]       fund facts side by side, correlation, overlap (2 to 6 ETFs)
   ultrastock etf overlap <A,B> [--out <dir>] [--json]         Σ of the smaller weights, and the common lines
-  ultrastock etf find "<index|theme>" [--pea] [--acc|--dist] [--ucits] [--currency EUR] [--limit 10] [--out <dir>] [--json]`;
+  ultrastock etf find "<index|theme>" [--pea] [--acc|--dist] [--ucits] [--currency EUR] [--limit 10] [--out <dir>] [--json]
+  ultrastock etf find [--asset equity|bond|commodity|money-market|multi-asset|real-estate] [--focus "<focus>"] [--exposure <region>]
+                      [--sort aum|ter|perf] [--leveraged] [--pea] [--acc|--dist] [--ucits] [--currency EUR] [--limit 10]
+                                                              no query: browse the catalogue (leveraged/inverse left out)
+  ultrastock etf propose [--goal core|growth|income|defensive] [--envelope pea|cto|av] [--risk 1-7] [--amount <EUR>]
+                         [--max-funds 4] [--acc|--dist] [--currency EUR] [--hedged] [--out <run>] [--json]
+                                                              PROPOSAL.md + TARGETS.json: a stated allocation convention, scored funds`;
+const USAGE = ETF_USAGE;
+
+function distributionOf(args: CommandArgs): "acc" | "dist" | undefined {
+  if (argBool(args, "acc") && argBool(args, "dist")) throw new UsageError("--acc and --dist are opposites: pick one");
+  return argBool(args, "acc") ? "acc" : argBool(args, "dist") ? "dist" : undefined;
+}
+
+function currencyOf(args: CommandArgs): string | undefined {
+  const currency = argValue(args, "currency");
+  if (currency && !/^[A-Za-z]{3}$/.test(currency)) throw new UsageError(`--currency takes a currency code like EUR, not "${currency}"`);
+  return currency?.toUpperCase();
+}
 
 /** "A,B" or "A B" → symbols, deduplicated, in order. */
 function symbolsOf(args: CommandArgs): string[] {
@@ -76,18 +99,63 @@ export async function etfCommand(args: CommandArgs, asJson: boolean): Promise<vo
   }
   if (sub === "find") {
     const query = args.positional.slice(1).join(" ").trim();
-    if (!query) throw new UsageError(USAGE);
-    if (argBool(args, "acc") && argBool(args, "dist")) throw new UsageError("--acc and --dist are opposites: pick one");
-    const currency = argValue(args, "currency");
-    if (currency && !/^[A-Za-z]{3}$/.test(currency)) throw new UsageError(`--currency takes a currency code like EUR, not "${currency}"`);
-    const r = await etfFind(query, {
-      pea: argBool(args, "pea"),
-      distribution: argBool(args, "acc") ? "acc" : argBool(args, "dist") ? "dist" : undefined,
-      ucits: argBool(args, "ucits"),
-      currency,
-      limit: argInt(args, "limit", { min: 1, max: 50 }) ?? 10,
-    });
+    const browse = {
+      asset: argOneOf(args, "asset", ETF_ASSETS),
+      focus: argValue(args, "focus"),
+      exposure: argValue(args, "exposure"),
+      sort: argOneOf(args, "sort", ETF_SORTS),
+      leveraged: argBool(args, "leveraged"),
+    };
+    if (query && (browse.asset || browse.focus || browse.exposure || browse.sort || browse.leveraged))
+      throw new UsageError(`--asset, --focus, --exposure, --sort and --leveraged browse the catalogue: drop the query "${query}", or drop them\n${USAGE}`);
+    let r: Awaited<ReturnType<typeof etfFind>>;
+    try {
+      r = await etfFind(query, {
+        pea: argBool(args, "pea"),
+        distribution: distributionOf(args),
+        ucits: argBool(args, "ucits"),
+        currency: currencyOf(args),
+        limit: argInt(args, "limit", { min: 1, max: 50 }) ?? 10,
+        ...(query ? {} : browse),
+      });
+    } catch (e) {
+      if (/^--exposure takes/.test((e as Error).message)) throw new UsageError((e as Error).message);
+      throw e;
+    }
     emitDatasets(args, r.datasets, asJson);
+    return;
+  }
+  if (sub === "propose") {
+    if (args.positional.length > 1) throw new UsageError(`etf propose takes flags only\n${USAGE}`);
+    const riskRaw = argValue(args, "risk");
+    const risk = riskRaw === undefined ? undefined : Number(riskRaw);
+    if (risk !== undefined && !(Number.isInteger(risk) && risk >= 1 && risk <= 7))
+      throw new UsageError(`--risk takes a whole score from 1 to 7, not "${riskRaw}"`);
+    const amountRaw = argValue(args, "amount");
+    const amount = amountRaw === undefined ? undefined : Number(amountRaw.replace(/[_\s]/g, ""));
+    if (amount !== undefined && !(Number.isFinite(amount) && amount > 0)) throw new UsageError(`--amount takes a positive amount (10000), not "${amountRaw}"`);
+    const goal = argOneOf(args, "goal", ETF_GOALS) ?? "core";
+    const envelope = argOneOf(args, "envelope", ETF_ENVELOPES) ?? "cto";
+    const dir = runDirFor(argValue(args, "out"), `etf-propose-${goal}-${envelope}-${runId()}`);
+    let r: Awaited<ReturnType<typeof etfPropose>>;
+    try {
+      r = await etfPropose(dir, {
+        goal,
+        envelope,
+        risk,
+        amount,
+        maxFunds: argInt(args, "max-funds", { min: 1, max: 8 }) ?? 4,
+        distribution: distributionOf(args),
+        currency: currencyOf(args),
+        hedged: argBool(args, "hedged"),
+        now: clockNow(),
+      });
+    } catch (e) {
+      if (e instanceof EtfProposeError) throw new UsageError(e.message);
+      throw e;
+    }
+    if (asJson) process.stdout.write(jsonLine(r));
+    else process.stdout.write(`${readFileSync(join(dir, "PROPOSAL.md"), "utf8")}\nrun: ${dir}\n`);
     return;
   }
   throw new UsageError(USAGE);

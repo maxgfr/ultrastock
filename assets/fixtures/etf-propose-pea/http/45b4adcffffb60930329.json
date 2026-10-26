@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://live.euronext.com/en/instrumentSearch/searchJSON?q=LU0290355717"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "[{\"value\":\"LU0290355717\",\"isin\":\"LU0290355717\",\"mic\":\"ETFP\",\"label\":\"\\u003Cspan class=\\u0027name\\u0027\\u003E\\u003Ca href=\\u0027\\/en\\/product\\/etfs\\/LU0290355717-ETFP\\u0027 style=\\u0027color: #007aff !important;\\u0027\\u003EXTRACKERS II EUROZ GOVT UCITS ETF 1C\\u003C\\/a\\u003E\\u003C\\/span\\u003E\\u003Cspan class=\\u0027symbol\\u0027\\u003EXGLE\\u003C\\/span\\u003E\\u003Cspan class=\\u0027mic\\u0027\\u003EETFP\\u003C\\/span\\u003E\",\"link\":\"\\/en\\/product\\/etfs\\/LU0290355717-ETFP\",\"name\":\"XTRETFXGLEIMETFP\"},{\"value\":\"\",\"isin\":\"\",\"mic\":\"\",\"label\":\"See all results\",\"link\":\"\\/en\\/search_instruments\\/lu0290355717?restMic\",\"name\":\"\"}]",
+  "url": "https://live.euronext.com/en/instrumentSearch/searchJSON?q=LU0290355717",
+  "fetchedAt": "2026-10-26T21:01:45.242Z"
+ }
+}

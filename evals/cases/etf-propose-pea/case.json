@@ -1,0 +1,12 @@
+{
+  "kind": "etf propose --envelope pea --risk 4 — the allocation convention, PEA-eligible picks (issuer flag), the bonds placed outside the PEA, PROPOSAL.md and TARGETS.json",
+  "etf": { "args": ["propose", "--envelope", "pea", "--risk", "4"] },
+  "fixture": "assets/fixtures/etf-propose-pea",
+  "calcs": [],
+  "expect": {
+    "evidenceMin": 100,
+    "keys": ["ETF.propose.riskScore", "ETF.propose.equityShare", "ETF.propose.weight.world", "ETF.propose.weight.euro-gov", "EURONEXT:CW8.etf.pea", "EURONEXT:CW8.etf.propose.score"],
+    "files": ["PROPOSAL.md", "TARGETS.json"]
+  },
+  "answers": { "good": 0, "bad": 3 }
+}

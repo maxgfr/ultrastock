@@ -919,12 +919,124 @@ export async function etfRun(raw: string, dir: string, opts: { now?: Date; instr
 
 // ─── find ───────────────────────────────────────────────────────────────────
 
+/**
+ * Browsing the catalogue: TradingView's own fund taxonomy, verified live on
+ * 2026-10-26 over the 8 000 largest ETFs (`asset_class.tr`, `focus.tr`,
+ * `holdings_region.tr` answer as text and filter with `equal`; the plain
+ * columns answer opaque hashes). There is no "money market" or "real estate"
+ * asset class: an overnight-rate or T-bill fund is "Fixed income" (category
+ * "Broad market: broad-based"), a REIT fund is "Equity" with focus "Real
+ * estate" — so those two are a filter on the index name and on the focus.
+ */
+export const ETF_ASSETS = ["equity", "bond", "commodity", "money-market", "multi-asset", "real-estate"] as const;
+export type EtfAsset = (typeof ETF_ASSETS)[number];
+
+const ETF_ASSET_CLASS: Record<EtfAsset, string> = {
+  equity: "Equity",
+  bond: "Fixed income",
+  commodity: "Commodities",
+  "money-market": "Fixed income",
+  "multi-asset": "Asset allocation",
+  "real-estate": "Equity",
+};
+
+/** Money-market funds by the index they track: overnight rates (€STR, SOFR, SONIA), T-bills, money-market indexes ("|" is the screener's OR). */
+export const ETF_MONEY_MARKET_INDEX = "overnight|ESTR|Solactive STR|money market|treasury bill|T-Bill|government bill|SOFR|SONIA";
+
+/** `focus.tr` values seen on 2026-10-26 (the 40 most common); another value is passed through as typed. */
+export const ETF_FOCUS = [
+  "Total market",
+  "Investment grade",
+  "Large cap",
+  "Theme",
+  "Information technology",
+  "Broad credit",
+  "High dividend yield",
+  "Small cap",
+  "Gold",
+  "Financials",
+  "High yield",
+  "Health care",
+  "Materials",
+  "Energy",
+  "Industrials",
+  "Mid cap",
+  "Broad market",
+  "Real estate",
+  "Silver",
+  "Utilities",
+  "Consumer discretionary",
+  "Extended market",
+  "Consumer staples",
+  "Communication services",
+  "Crude oil",
+  "Income",
+  "Copper",
+  "Micro cap",
+];
+
+/** `holdings_region.tr` — the geographic exposure of the holdings (every value seen on 2026-10-26), with the words accepted for each. */
+export const ETF_EXPOSURE: Record<string, string> = {
+  global: "Global",
+  world: "Global",
+  developed: "Developed markets",
+  "developed-markets": "Developed markets",
+  emerging: "Emerging markets",
+  "emerging-markets": "Emerging markets",
+  em: "Emerging markets",
+  europe: "Europe",
+  "north-america": "North America",
+  us: "North America",
+  usa: "North America",
+  "asia-pacific": "Asia-Pacific",
+  asia: "Asia-Pacific",
+  "latin-america": "Latin America",
+  "global-ex-us": "Global ex-US",
+  "middle-east-africa": "Middle East and Africa",
+};
+
+/** The `holdings_region.tr` value for an `--exposure` word, or undefined when it is none. */
+export function etfExposureOf(raw: string): string | undefined {
+  const k = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
+  if (ETF_EXPOSURE[k]) return ETF_EXPOSURE[k];
+  return Object.values(ETF_EXPOSURE).find((v) => v.toLowerCase() === raw.trim().toLowerCase());
+}
+
+/** The `focus.tr` value for a `--focus` word: a known value matched case-insensitively, else the text as typed. */
+export function etfFocusOf(raw: string): { value: string; known: boolean } {
+  const hit = ETF_FOCUS.find((f) => f.toLowerCase() === raw.trim().toLowerCase().replace(/-/g, " "));
+  return hit ? { value: hit, known: true } : { value: raw.trim(), known: false };
+}
+
+export const ETF_SORTS = ["aum", "ter", "perf"] as const;
+export type EtfSort = (typeof ETF_SORTS)[number];
+
+/** --sort: AUM descending, TER ascending, or the 1-year NAV total return (distributions included) descending. */
+const ETF_SORT_COLUMN: Record<EtfSort, { sortBy: string; sortOrder: "asc" | "desc" }> = {
+  aum: { sortBy: "aum", sortOrder: "desc" },
+  ter: { sortBy: "expense_ratio", sortOrder: "asc" },
+  perf: { sortBy: "nav_total_return.1Y", sortOrder: "desc" },
+};
+
 export interface EtfFindOptions {
   pea?: boolean;
   distribution?: "acc" | "dist";
   ucits?: boolean;
   currency?: string;
   limit?: number;
+  /** Browsing (no query): the asset class. */
+  asset?: EtfAsset;
+  /** Browsing: TradingView's focus ("Large cap", "Gold"…). */
+  focus?: string;
+  /** Browsing: the holdings' region (an ETF_EXPOSURE word). */
+  exposure?: string;
+  /** Browsing: the order (AUM by default). */
+  sort?: EtfSort;
+  /** Browsing: keep leveraged and inverse funds (left out by default). */
+  leveraged?: boolean;
 }
 
 const FIND_COLUMNS = [
@@ -946,39 +1058,88 @@ const FIND_COLUMNS = [
   "brand",
 ] as const;
 
-/** `etf find`: ETFs on an index or a theme, filtered, one listing per fund, largest first. */
+/** Browsing adds the taxonomy and the age. */
+const BROWSE_COLUMNS = [...FIND_COLUMNS, "asset_class.tr", "focus.tr", "holdings_region.tr", "launch_date"] as const;
+
+/**
+ * `etf find`: ETFs on an index or a theme, filtered, one listing per fund,
+ * largest first. With no query, it browses the catalogue by asset class,
+ * focus and exposure (leveraged and inverse funds left out unless asked).
+ */
 export async function etfFind(query: string, opts: EtfFindOptions = {}): Promise<{ datasets: Dataset[]; shown: number; total: number }> {
   const q = query.trim();
-  if (!q) throw new Error("etf find needs an index or a theme");
+  const browse = !q;
+  if (!browse && (opts.asset || opts.focus || opts.exposure || opts.sort || opts.leveraged))
+    throw new Error("--asset, --focus, --exposure, --sort and --leveraged browse the catalogue: pass them without a query");
   const limit = opts.limit ?? 10;
   const base: TvFilter[] = [{ left: "typespecs", operation: "has", right: ["etf"] }];
   if (opts.distribution) base.push({ left: "dividend_treatment", operation: "equal", right: opts.distribution === "acc" ? "Capitalizes" : "Distributes" });
   if (opts.ucits) base.push({ left: "ucits_compliant_flag", operation: "equal", right: "1" });
   if (opts.currency) base.push({ left: "currency", operation: "equal", right: opts.currency.toUpperCase() });
   const notes: string[] = [];
+  const browseNotes: string[] = [];
+  if (browse) {
+    if (opts.asset) {
+      base.push({ left: "asset_class.tr", operation: "equal", right: ETF_ASSET_CLASS[opts.asset] });
+      if (opts.asset === "money-market") {
+        base.push({ left: "index_tracked", operation: "match", right: ETF_MONEY_MARKET_INDEX });
+        browseNotes.push(
+          `--asset money-market: TradingView has no money-market class — fixed-income funds whose index names an overnight rate, a T-bill or a money-market index (${ETF_MONEY_MARKET_INDEX.split("|").join(", ")})`,
+        );
+      }
+      if (opts.asset === "real-estate") {
+        base.push({ left: "focus.tr", operation: "equal", right: "Real estate" });
+        browseNotes.push("--asset real-estate: equity funds whose focus is real estate (TradingView has no real-estate class)");
+      }
+    }
+    if (opts.focus) {
+      const f = etfFocusOf(opts.focus);
+      base.push({ left: "focus.tr", operation: "equal", right: f.value });
+      if (!f.known)
+        browseNotes.push(`--focus "${f.value}" is not one of the focus values seen on 2026-10-26 (${ETF_FOCUS.slice(0, 8).join(", ")}…): passed as typed`);
+    }
+    if (opts.exposure) {
+      const region = etfExposureOf(opts.exposure);
+      if (!region) throw new Error(`--exposure takes ${[...new Set(Object.keys(ETF_EXPOSURE))].join(", ")} — not "${opts.exposure}"`);
+      base.push({ left: "holdings_region.tr", operation: "equal", right: region });
+    }
+    if (!opts.leveraged) {
+      base.push({ left: "leveraged_flag", operation: "equal", right: "Non-leveraged" });
+      browseNotes.push("leveraged and inverse funds left out (leveraged_flag = Non-leveraged) — --leveraged keeps them");
+    }
+  }
   // A PEA holds funds listed in Paris: --pea screens Euronext Paris ("france"), else every market.
   const market = opts.pea ? "france" : "global";
   const RANGE = 500;
-  const run = (field: string) =>
+  const columns = browse ? BROWSE_COLUMNS : FIND_COLUMNS;
+  const sort = browse ? ETF_SORT_COLUMN[opts.sort ?? "aum"] : ETF_SORT_COLUMN.aum;
+  const run = (field?: string) =>
     tradingviewScan(market, {
-      filter: [...base, { left: field, operation: "match", right: q }],
-      columns: FIND_COLUMNS,
-      sort: { sortBy: "aum", sortOrder: "desc" },
+      filter: field ? [...base, { left: field, operation: "match", right: q }] : base,
+      columns,
+      sort,
       range: [0, RANGE],
     });
-  let scan = await run("index_tracked");
-  let field = "index tracked";
-  if (!scanMatches(scan, market).length) {
-    scan = await run("description");
-    field = "name";
+  let scan: Dataset;
+  let field: string;
+  if (browse) {
+    scan = await run();
+    field = "catalogue";
+  } else {
+    scan = await run("index_tracked");
+    field = "index tracked";
+    if (!scanMatches(scan, market).length) {
+      scan = await run("description");
+      field = "name";
+    }
   }
   const listings = Number(scan.points.find((x) => x.key.endsWith(".scan.matches"))?.value ?? 0);
-  if (listings > RANGE) notes.push(`${listings} listings match; the ${RANGE} largest by AUM were read`);
+  if (listings > RANGE) notes.push(`${listings} listings match; the ${RANGE} ${browse ? `first by ${opts.sort ?? "aum"}` : "largest by AUM"} were read`);
   // Funds whose index is the query itself (normalised) first, then the rest; each by AUM.
   const target = normalizeIndexName(q);
-  const exact = (m: TvMatch) => normalizeIndexName(tvStr(m, "index_tracked") ?? "") === target;
+  const exact = (m: TvMatch) => !browse && normalizeIndexName(tvStr(m, "index_tracked") ?? "") === target;
   const deduped = dedupeListings(scanMatches(scan, market));
-  let rows = [...deduped.filter(exact), ...deduped.filter((m) => !exact(m))];
+  let rows = browse ? deduped : [...deduped.filter(exact), ...deduped.filter((m) => !exact(m))];
   const total = rows.length;
   const exactCount = deduped.filter(exact).length;
   // The issuer's PEA flag and replication, one Amundi call for every non-US fund found.
@@ -1011,21 +1172,30 @@ export async function etfFind(query: string, opts: EtfFindOptions = {}): Promise
     notes.push(
       `--pea: ${kept.length} of ${before} funds kept — the issuer's flag (Amundi FUND_PEA) or "PEA" in the name (a hint); funds of other issuers carry no flag here and are left out: check their KID or the broker`,
     );
+    if (browse && opts.asset && opts.asset !== "equity" && opts.asset !== "real-estate")
+      notes.push(
+        `--pea with --asset ${opts.asset}: a PEA holds funds at least 75 % invested in EU-company shares (or swap funds built to qualify) — a ${opts.asset} fund is not eligible; look for it in a CTO or an assurance-vie`,
+      );
     rows = kept;
   }
   const picked = rows.slice(0, limit);
   const day = scan.provenance.asOf;
-  const points: Point[] = [
-    { key: `ETF.find.matches`, label: `ETFs found (one listing per fund) whose ${field} matches the query`, value: total, unit: "count", asOf: day },
-    {
-      key: `ETF.find.sameIndex`,
-      label: "of which tracking the queried index itself (normalised name)",
-      value: exactCount,
-      unit: "count",
-      formula: "index_tracked equal to the query after normalising both",
-      asOf: day,
-    },
-  ];
+  const rankFormula = browse
+    ? `the catalogue filtered as asked, by ${sort.sortBy} ${sort.sortOrder === "asc" ? "ascending" : "descending"}`
+    : "funds on the queried index itself first, then the other matches; each by AUM descending";
+  const points: Point[] = browse
+    ? [{ key: `ETF.find.matches`, label: "ETFs found (one listing per fund) in the catalogue as filtered", value: total, unit: "count", asOf: day }]
+    : [
+        { key: `ETF.find.matches`, label: `ETFs found (one listing per fund) whose ${field} matches the query`, value: total, unit: "count", asOf: day },
+        {
+          key: `ETF.find.sameIndex`,
+          label: "of which tracking the queried index itself (normalised name)",
+          value: exactCount,
+          unit: "count",
+          formula: "index_tracked equal to the query after normalising both",
+          asOf: day,
+        },
+      ];
   const amundiPoints: Point[] = [];
   const decided: Point[] = [];
   picked.forEach((m, i) => {
@@ -1035,7 +1205,7 @@ export async function etfFind(query: string, opts: EtfFindOptions = {}): Promise
       label: `${m.ticker} position`,
       value: i + 1,
       unit: "rank",
-      formula: "funds on the queried index itself first, then the other matches; each by AUM descending",
+      formula: rankFormula,
       asOf: day,
     });
     points.push(...m.points.values());
@@ -1046,12 +1216,20 @@ export async function etfFind(query: string, opts: EtfFindOptions = {}): Promise
     if (s.af?.pea !== undefined)
       amundiPoints.push({ key: `${s.af.isin}.amundi.pea`, label: `${m.ticker} PEA-eligible per the issuer (Amundi FUND_PEA)`, value: s.af.pea });
   });
+  notes.push(...browseNotes);
   if (opts.currency) notes.push(`--currency ${opts.currency.toUpperCase()}: the listing's trading currency (the fund's base currency is etf_fund_currency)`);
   if (opts.pea) notes.push("--pea: Euronext Paris listings only (TradingView market france)");
-  notes.push(`matched on the ${field}; ${picked.length} of ${rows.length} shown; AUM is in the reporting currency it states`);
+  notes.push(
+    browse
+      ? `browsed the catalogue; ${picked.length} of ${rows.length} shown; AUM is in the reporting currency it states`
+      : `matched on the ${field}; ${picked.length} of ${rows.length} shown; AUM is in the reporting currency it states`,
+  );
   notes.push("unofficial endpoint (TradingView's screener backend); delayed snapshot");
+  const title = browse
+    ? `ETFs — the catalogue${opts.asset ? `, ${opts.asset}` : ""}${opts.focus ? `, focus ${etfFocusOf(opts.focus).value}` : ""}${opts.exposure ? `, ${etfExposureOf(opts.exposure)}` : ""}`
+    : `ETFs — ${field} matching the query`;
   const datasets: Dataset[] = [
-    { kind: "etf-find", title: `ETFs — ${field} matching the query`, subject: "ETF.find", points, provenance: scan.provenance, notes },
+    { kind: "etf-find", title, subject: "ETF.find", points, provenance: scan.provenance, notes },
     {
       kind: "etf-find",
       title: "Replication and PEA — decided here, with the basis of each",
@@ -1110,7 +1288,7 @@ async function compositions(profiles: EtfProfile[], markets: Record<string, stri
 }
 
 /** The overlap points of two compositions under `ETF.overlap.<A>.<B>`. */
-function overlapPoints(a: string, b: string, ca: FundComposition, cb: FundComposition, top = 10): Point[] {
+export function overlapPoints(a: string, b: string, ca: FundComposition, cb: FundComposition, top = 10): Point[] {
   const o = etfOverlap(ca.lines, cb.lines);
   const k = `ETF.overlap.${a}.${b}`;
   const asOf = [ca.asOf, cb.asOf].filter(Boolean).sort()[0];
@@ -1145,7 +1323,7 @@ const overlapNote = (ca: FundComposition, cb: FundComposition): string[] =>
       ]
     : [];
 
-const overlapProvenance = (ca: FundComposition, cb: FundComposition): Dataset["provenance"] => ({
+export const overlapProvenance = (ca: FundComposition, cb: FundComposition): Dataset["provenance"] => ({
   source: [...new Set([ca.source, cb.source])].join("+"),
   fetchedAt: [ca.fetchedAt, cb.fetchedAt].sort()[0]!,
   official: ca.official && cb.official,
