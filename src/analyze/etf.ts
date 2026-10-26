@@ -20,7 +20,7 @@ import { correlation } from "../analytics/stats.js";
 import { type Dataset, formatDatasets, type Point, type Registered, registerDatasets } from "../core/datasets.js";
 import { EvidenceStore, formatEvidence, formatNumber } from "../core/evidence.js";
 import { ruleStatus } from "../core/jurisdiction.js";
-import { clockNow, netMode } from "../core/net.js";
+import { clockNow } from "../core/net.js";
 import { loadProfile } from "../core/profile.js";
 import { mapLimit, writeArtifact } from "../engine.js";
 import { cribleAvailable, cribleBootstrapped, cribleScreen } from "../providers/external/crible.js";
@@ -511,8 +511,6 @@ export async function topHoldingMultiples(
   now: Date,
 ): Promise<{ datasets: Dataset[]; notes: string[]; coveragePct?: number; pe?: number }> {
   const notes: string[] = [];
-  if (netMode().kind === "fixture")
-    return { datasets: [], notes: ["multiples of the top holdings: crible not consulted while replaying a fixture (it reads a local dataset)"] };
   if (!cribleAvailable() || !cribleBootstrapped())
     return {
       datasets: [],

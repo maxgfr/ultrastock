@@ -16136,8 +16136,6 @@ function profileDatasets(p, amundi, now) {
 var SAFE_TICKER = /^[A-Z][A-Z0-9.-]{0,9}$/;
 async function topHoldingMultiples(S, lines, now) {
   const notes = [];
-  if (netMode().kind === "fixture")
-    return { datasets: [], notes: ["multiples of the top holdings: crible not consulted while replaying a fixture (it reads a local dataset)"] };
   if (!cribleAvailable() || !cribleBootstrapped())
     return {
       datasets: [],
