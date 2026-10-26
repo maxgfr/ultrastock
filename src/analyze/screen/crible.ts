@@ -44,6 +44,49 @@ export function dslFields(dsl: string): string[] {
   return out;
 }
 
+// crible holds one row per listing: an issuer also comes back on German regional
+// exchanges, Vienna, the LSE order book and as an OTC ADR. A screen counts issuers,
+// so the query keeps primary listings unless it already names which listings it wants.
+
+/** The query restricted to primary listings, unless it already filters on listings or one symbol. */
+export function primaryListingsOnly(dsl: string): string {
+  if (/\bprimary_listing\b|\bsymbol\b/i.test(dsl)) return dsl;
+  return dsl.trim() ? `(${dsl}) AND primary_listing = 1` : "primary_listing = 1";
+}
+
+const OTC = new Set(["PNK", "OQB", "OQX", "OTC", "OBB", "OEM"]);
+const LEGAL =
+  /\b(sponsored|unsponsored|adrs?|ads|american depositary shares?|reg|shs|sa|se|nv|ag|plc|ltd|limited|inc|corp|corporation|co|company|group|holdings?|spa|oyj|asa|ab)\b/g;
+
+/** An issuer name stripped of punctuation, legal forms and depositary wording. */
+export function issuerKey(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/\./g, "")
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(LEGAL, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** A line traded away from the issuer's home market: an OTC line, or a US-ISIN depositary receipt of a non-US issuer. */
+function isForeignLine(row: Record<string, unknown>): boolean {
+  if (row.country === "US") return false;
+  return OTC.has(String(row.exchange ?? "")) || String(row.isin ?? "").startsWith("US");
+}
+
+/**
+ * Drop the foreign lines (ADRs, OTC) of issuers whose home listing is in the same rows.
+ * Share classes on their own market (A/B, preferred) are distinct instruments and stay.
+ */
+export function collapseForeignLines(rows: CribleScreen["rows"]): { rows: CribleScreen["rows"]; dropped: number } {
+  const home = new Set(rows.filter((r) => typeof r.name === "string" && !isForeignLine(r)).map((r) => issuerKey(r.name as string)));
+  const kept = rows.filter((r) => !(typeof r.name === "string" && isForeignLine(r) && home.has(issuerKey(r.name))));
+  return { rows: kept, dropped: rows.length - kept.length };
+}
+
 const IDENTITY = ["name", "country", "sector", "industry", "currency"];
 const CODE_FIELDS = new Set(["country", "currency", "exchange", "region", "symbol", "period", "price_asof"]);
 const MONEY =
@@ -60,7 +103,10 @@ function unitOf(field: string, currency: unknown): string | undefined {
 }
 
 /** A crible screen result as one dataset: a match count, then one block of points per row. */
-export function cribleRowsToDataset(r: CribleScreen, opts: { query: string; preset?: CriblePreset; fetchedAt?: string; offset?: number }): Dataset {
+export function cribleRowsToDataset(
+  r: CribleScreen,
+  opts: { query: string; preset?: CriblePreset; fetchedAt?: string; offset?: number; dsl?: string; dropped?: number },
+): Dataset {
   const fields = [...new Set([...IDENTITY, ...dslFields(opts.query), ...(opts.preset?.columns ?? []), "market_cap"])];
   const fetchedAt = opts.fetchedAt ?? clockNow().toISOString();
   const pid = opts.preset?.id.replace(/[^a-z0-9-]/gi, "");
@@ -71,7 +117,7 @@ export function cribleRowsToDataset(r: CribleScreen, opts: { query: string; pres
     {
       key: "CRIBLE.screen.query",
       label: `crible DSL run for the ${label}`,
-      value: opts.preset?.dsl ?? (opts.query || "(no filter)"),
+      value: opts.dsl ?? opts.preset?.dsl ?? (opts.query || "(no filter)"),
       untrusted: true,
       asOf: day,
     },
@@ -105,6 +151,10 @@ export function cribleRowsToDataset(r: CribleScreen, opts: { query: string; pres
   });
   const notes = [
     `showing ${r.rows.length} of ${r.total} matches`,
+    ...(opts.dsl && opts.dsl !== (opts.preset?.dsl ?? opts.query)
+      ? ["primary listings only (one row per listing otherwise): --all-listings keeps the regional, order-book and OTC lines"]
+      : []),
+    ...(opts.dropped ? [`${opts.dropped} ADR / OTC line(s) dropped: the issuer's home listing is in the results`] : []),
     "crible aggregates audited filings (SEC, ESEF, registers) and market data; ratios are fractions (0.15 = 15 %); check a figure that matters against the filing",
   ];
   return {

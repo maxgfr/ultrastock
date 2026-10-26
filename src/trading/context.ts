@@ -44,8 +44,11 @@ export interface BuiltContext {
   equityBase: number;
 }
 
-/** The gate context for `order`, against the `book` ("paper" or "real"). Records an equity snapshot. */
-export async function gateContextFor(order: Order, opts: { book?: string; now?: Date; events?: string[] } = {}): Promise<BuiltContext> {
+/**
+ * The gate context for `order`, against the `book` ("paper" or "real"). Records an equity snapshot.
+ * `ticketId` names the ticket being re-checked, so its own order is not also counted as pending.
+ */
+export async function gateContextFor(order: Order, opts: { book?: string; now?: Date; events?: string[]; ticketId?: string } = {}): Promise<BuiltContext> {
   const now = opts.now ?? clockNow();
   const bookName = opts.book ?? (order.venue === "paper" ? "paper" : "real");
   const profile = loadProfile();
@@ -83,7 +86,9 @@ export async function gateContextFor(order: Order, opts: { book?: string; now?: 
   recordEquity(bookName, valued.totalBase, now);
   const rate = fx.rates[order.currency] ?? (order.currency === profile.baseCurrency ? 1 : Number.NaN);
   if (!Number.isFinite(rate)) throw new Error(`no ${order.currency}→${profile.baseCurrency} rate: cannot size the order`);
-  const pending = listTickets((t) => (t.status === "working" || t.status === "checked") && t.order.side === "buy" && t.order.venue === order.venue);
+  const pending = listTickets(
+    (t) => t.id !== opts.ticketId && (t.status === "working" || t.status === "checked") && t.order.side === "buy" && t.order.venue === order.venue,
+  );
   const pendingBuysBase: Record<string, number> = {};
   for (const t of pending)
     pendingBuysBase[t.order.symbol] = (pendingBuysBase[t.order.symbol] ?? 0) + t.order.quantity * t.order.price * (fx.rates[t.order.currency] ?? 1);

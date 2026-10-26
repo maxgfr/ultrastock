@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sma } from "../src/analytics/indicators.js";
 import { benchmarkFor, closedBars, constituentSymbol } from "../src/analyze/screen/builtin.js";
-import { cribleRowsToDataset, dslFields, looksLikePresetId } from "../src/analyze/screen/crible.js";
+import { collapseForeignLines, cribleRowsToDataset, dslFields, issuerKey, looksLikePresetId, primaryListingsOnly } from "../src/analyze/screen/crible.js";
 import { BUILTIN_PRESETS, describeFilter, TV_COLUMNS, TV_PRESETS, tvPresetRules } from "../src/analyze/screen/presets.js";
 import { applyUniverseRanks, percentileRanks, TECHNICAL_IDS, technicalVerdict } from "../src/analyze/screen/technical.js";
 import {
@@ -335,4 +335,34 @@ describe("screen command", () => {
     },
     180_000,
   );
+});
+
+describe("crible listings", () => {
+  it("keeps primary listings unless the query names its listings or one symbol", () => {
+    expect(primaryListingsOnly("piotroski_f >= 7 OR altman_z > 3")).toBe("(piotroski_f >= 7 OR altman_z > 3) AND primary_listing = 1");
+    expect(primaryListingsOnly("")).toBe("primary_listing = 1");
+    expect(primaryListingsOnly("primary_listing = 0 AND country = 'FR'")).toBe("primary_listing = 0 AND country = 'FR'");
+    expect(primaryListingsOnly("symbol = 'MC.PA'")).toBe("symbol = 'MC.PA'");
+  });
+
+  it("matches an issuer across legal forms and depositary wording", () => {
+    expect(issuerKey("Edenred SA")).toBe(issuerKey("Edenred SE"));
+    expect(issuerKey("Teva Pharmaceutical Industries Limited Sponsored ADR")).toBe(issuerKey("Teva Pharmaceutical Industries Ltd."));
+    expect(issuerKey("bioMérieux S.A.")).toBe("biomerieux");
+  });
+
+  it("drops the ADR and OTC lines of an issuer listed at home, never a share class or a US-only listing", () => {
+    const { rows, dropped } = collapseForeignLines([
+      { symbol: "EDEN.PA", name: "Edenred SE", exchange: "PAR", country: "FR", isin: "FR0010908533" },
+      { symbol: "EDNMY", name: "Edenred SA", exchange: "PNK", country: "FR", isin: "US2796551040" },
+      { symbol: "FQZ.MU", name: "Air France-KLM", exchange: "MUN", country: "FR", isin: "US0091191082" },
+      { symbol: "AF.PA", name: "Air France-KLM SA", exchange: "PAR", country: "FR", isin: "FR001400J770" },
+      { symbol: "CRTO", name: "Criteo S.A.", exchange: "NMS", country: "FR", isin: "US2267181046" },
+      { symbol: "000012.SZ", name: "CSG Holding Co., Ltd.", exchange: "SHZ", country: "CN", isin: "CNE0000002Y8" },
+      { symbol: "200012.SZ", name: "CSG Holding Co., Ltd.", exchange: "SHZ", country: "CN", isin: "CNE000000W05" },
+      { symbol: "SAFRY", name: "Safran SA", exchange: "PNK", country: "FR", isin: "US7865841024" },
+    ]);
+    expect(rows.map((r) => r.symbol)).toEqual(["EDEN.PA", "AF.PA", "CRTO", "000012.SZ", "200012.SZ", "SAFRY"]);
+    expect(dropped).toBe(2);
+  });
 });

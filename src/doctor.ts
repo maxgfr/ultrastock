@@ -121,7 +121,7 @@ export function formatDoctor(r: DoctorReport): string {
     for (const p of r.probes) lines.push(`    ${p.source.padEnd(10)} ${p.ok ? "ok" : "FAIL"} ${String(p.ms).padStart(5)} ms${p.note ? ` — ${p.note}` : ""}`);
   }
   for (const b of r.blocks ?? []) lines.push(`  block       ${b.host}: ${b.blocked ? `BLOCKED — ${b.detail}` : b.detail}`);
-  for (const [level, cmds] of Object.entries(r.maturity)) lines.push(`  ${level.padEnd(12)}${cmds.join(" ")}`);
+  for (const [level, cmds] of Object.entries(r.maturity)) lines.push(`  ${level.padEnd(13)}${cmds.join(" ")}`);
   return `${lines.join("\n")}\n`;
 }
 

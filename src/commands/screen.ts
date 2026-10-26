@@ -7,7 +7,7 @@
 import { untrustedBlock } from "../core/untrusted.js";
 import { argBool, argInt, argList, argValue, type CommandArgs, jsonLine, UsageError } from "../engine.js";
 import { builtinScreen, BUILTIN_MAX_SYMBOLS } from "../analyze/screen/builtin.js";
-import { criblePresets, cribleRowsToDataset, looksLikePresetId } from "../analyze/screen/crible.js";
+import { collapseForeignLines, criblePresets, cribleRowsToDataset, looksLikePresetId, primaryListingsOnly } from "../analyze/screen/crible.js";
 import { baseFilters, BUILTIN_PRESETS, describeFilter, type Engine, EUROPE_MARKETS, TV_PRESETS, tvPreset, tvPresetRules } from "../analyze/screen/presets.js";
 import { TECHNICAL_IDS, type TechnicalId } from "../analyze/screen/technical.js";
 import { tradingviewScreen } from "../analyze/screen/tradingview.js";
@@ -169,8 +169,12 @@ async function cribleRun(query: string, args: CommandArgs): Promise<ReturnType<t
       );
   }
   const dsl = preset?.dsl ?? query;
-  const r = await cribleScreen(dsl, { limit, ...(sort ? { sort } : {}) });
-  return cribleRowsToDataset(r, { query: dsl, preset });
+  if (argBool(args, "all-listings")) return cribleRowsToDataset(await cribleScreen(dsl, { limit, ...(sort ? { sort } : {}) }), { query: dsl, preset });
+  // Fetch past the limit so an ADR whose home listing ranks just below still collapses.
+  const run = primaryListingsOnly(dsl);
+  const r = await cribleScreen(run, { limit: Math.min(limit * 2, 400), ...(sort ? { sort } : {}) });
+  const { rows, dropped } = collapseForeignLines(r.rows);
+  return cribleRowsToDataset({ total: r.total, rows: rows.slice(0, limit) }, { query: dsl, preset, dsl: run, dropped });
 }
 
 export async function screenCommand(args: CommandArgs, asJson: boolean): Promise<void> {

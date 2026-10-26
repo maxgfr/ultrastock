@@ -85,7 +85,7 @@ USAGE
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
   ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
   ultrastock fundamentals <symbol> [--asof <date>] [--years <n>] [--quarters <n>] [--source sec|esef|crible] [--out <dir>] [--json]
-  ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market <m>] [--universe <idx|list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--out <dir>] [--json]
+  ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market <m>] [--universe <idx|list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--all-listings] [--out <dir>] [--json]
   ultrastock screen --list [--engine tradingview|crible|builtin] [--json]
   ultrastock regime [--market us|eu|crypto] [--out <dir>] [--json]
   ultrastock sectors [--market us|eu] [--out <dir>] [--json]
@@ -213,7 +213,9 @@ COMMANDS
             exhaustion-hammer, pullback-to-50, golden-cross, rs-leaders); crible
             (--engine crible: a crible preset or any DSL, e.g. "piotroski_f >= 7
             AND country IN ('FR','DE')"; --bootstrap downloads its dataset once,
-            about a minute). --list prints every preset's rules and source.
+            about a minute; primary listings only, ADRs of an issuer listed
+            at home dropped, --all-listings keeps every line). --list prints
+            every preset's rules and source.
   regime    Market regime and an exposure ceiling. us: SPY trend, RSP/SPY
             breadth, HYG/LQD credit, SPY/QQQ distribution days and follow-through,
             VIX/VIX3M, CNN Fear & Greed read contrarian, % of US large caps above
@@ -543,7 +545,7 @@ export const VALUE_FLAGS = [
   "port",
   "token",
 ];
-export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "dry-run", "list", "bootstrap", "notify", "perp", "anchored"];
+export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "dry-run", "list", "bootstrap", "notify", "perp", "anchored", "all-listings"];
 export const COMMANDS = [
   "analyze",
   "report",
@@ -629,7 +631,7 @@ const SPEC: CliSpec = {
     regime: ["market", "out", ...NET],
     sectors: ["market", "out", ...NET],
     catalysts: ["days", "out", ...NET],
-    screen: ["engine", "market", "universe", "limit", "sort", "list", "bootstrap", "out", ...NET],
+    screen: ["engine", "market", "universe", "limit", "sort", "list", "bootstrap", "all-listings", "out", ...NET],
     technicals: ["interval", "indicators", "benchmark", "out", ...NET],
     valuation: ["erp", "terminal", "out", ...NET],
     filings: ["forms", "days", "limit", "search", "out", ...NET],

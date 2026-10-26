@@ -143,15 +143,22 @@ export async function holdingsCommand(args: CommandArgs, asJson: boolean): Promi
   );
 }
 
+/** Refuse a non-US listing (MC.PA, SAP.DE) before asking a US-only source; BRK.B-style classes pass. */
+function usOnly(cmd: string, sym: string, instead: string): void {
+  if (/\.[A-Z]{2,}$/.test(sym)) throw new UsageError(`${cmd} reads US sources only and ${sym} is not a US listing — ${instead}`);
+}
+
 export async function analystCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const sym = args.positional[0];
   if (!sym) throw new UsageError("usage: ultrastock analyst <US symbol> — price targets, ratings, EPS estimates and surprises (Nasdaq, unofficial)");
+  usOnly("analyst", sym.toUpperCase(), "`ultrastock analyze` and `valuation` cover a European issuer");
   emitDatasets(args, await nasdaqAnalyst(sym.toUpperCase()), asJson);
 }
 
 export async function shortCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const sym = args.positional[0]?.toUpperCase();
   if (!sym) throw new UsageError("usage: ultrastock short <US symbol> — short interest (Nasdaq) and daily short volume (FINRA)");
+  usOnly("short", sym, "European short positions are published by each regulator (the AMF for France)");
   const got = await Promise.allSettled([nasdaqShortInterest(sym), finraShortVolume(sym)]);
   const ds = got.filter((g): g is PromiseFulfilledResult<Dataset> => g.status === "fulfilled").map((g) => g.value);
   if (!ds.length) throw new Error(`no short data for ${sym}: ${got.map((g) => (g.status === "rejected" ? (g.reason as Error).message : "")).join("; ")}`);
@@ -161,6 +168,7 @@ export async function shortCommand(args: CommandArgs, asJson: boolean): Promise<
 export async function dividendsCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const sym = args.positional[0]?.toUpperCase();
   if (!sym) throw new UsageError("usage: ultrastock dividends <US symbol> — dividend history, yield and ex-dates (Nasdaq)");
+  usOnly("dividends", sym, `\`ultrastock fundamentals ${sym}\` gives the dividends paid`);
   emitDatasets(args, [await nasdaqDividends(sym, { limit: argInt(args, "limit", { min: 1, max: 100 }) ?? 12 })], asJson);
 }
 
