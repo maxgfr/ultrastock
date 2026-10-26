@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.0.3](https://github.com/maxgfr/ultrastock/compare/v1.0.2...v1.0.3) (2026-10-26)
+
+
+### Bug Fixes
+
+* repin webindex 1.36.0 and crible 0.16.0 ([#33](https://github.com/maxgfr/ultrastock/issues/33)) ([fa4a8d2](https://github.com/maxgfr/ultrastock/commit/fa4a8d2a809c8d1150730b3e94ce39221a9f21c0)), closes [#27](https://github.com/maxgfr/ultrastock/issues/27)
+
 ## [1.0.2](https://github.com/maxgfr/ultrastock/compare/v1.0.1...v1.0.2) (2026-10-26)
 
 
