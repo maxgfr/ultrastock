@@ -4,13 +4,24 @@
    `<dir>/BRIEF.md` whole. It is the only source of figures for the answer.
    - The slice table says what is there and what is unavailable.
    - TECHNICALS.md and VALUATION.md sit beside it, in the same register.
+   - An ETF gets ETF.md instead of VALUATION.md: costs, replication, PEA,
+     domicile, holdings, tracking — see [etf](etf.md).
    - `--depth quick` keeps only the price and risk figures; `deep` runs three
      debate rounds.
+   - `--depth full` is the complete analysis: deep, plus the statements over
+     time, the peers (crible) with the premium or discount to their median,
+     statistics against the benchmark and the peers, short interest and
+     dividends (US), the option chain or crypto derivatives, residual income /
+     dividend discount / WACC next to the DCF, and `RESEARCH.todo.json` — the
+     web research the RUNBOOK starts with (step 0, see [research](research.md)).
+     A slice that fails or runs over its time budget is listed unavailable.
    - `--since <old run>` adds DELTA.md: what moved since then.
 2. **Debate.** Follow `<dir>/RUNBOOK.md` and write one note per role in
    `<dir>/notes/<role>.md`:
-   - analysts first (market, fundamentals, news and catalysts), independent of
-     each other;
+   - at full depth, the web research first (step 0): search the worklist,
+     ingest it, search the under-covered angles again;
+   - analysts (market, fundamentals or ETF, news and catalysts, and research at
+     full depth), independent of each other;
    - then the bull and bear rounds;
    - then the judge (a rating on buy / overweight / hold / underweight / sell,
      a conviction, falsifiers);
@@ -40,6 +51,11 @@
    chart, and the cited evidence linked to its sources.
 
 ## Pitfalls
+
+- At full depth, a figure from a web page cites that page's [E#] and is written
+  as the page writes it: `check` reads the page. Don't let the dossier replace
+  the filings — when crible's statement figures and the press disagree, say
+  which period each one covers.
 
 - A falling price is not cheap and a rising one is not expensive: price action
   says nothing about valuation.

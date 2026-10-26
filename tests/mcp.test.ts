@@ -77,3 +77,31 @@ describe("maturity", () => {
     expect(MATURITY.broker).toBe("experimental");
   });
 });
+
+describe("1.1 tools", () => {
+  it("map research, value and etf onto their commands, never value's --watch", () => {
+    expect(argvFor(tool("research"), { subject: "MC.PA", focus: "results", out: "/tmp/r" })).toEqual([
+      "research",
+      "MC.PA",
+      "--focus=results",
+      "--out=/tmp/r",
+      "--json",
+    ]);
+    expect(argvFor(tool("research"), { "web-results": "/tmp/ws.json", out: "/tmp/r" })).toEqual([
+      "research",
+      "--web-results=/tmp/ws.json",
+      "--out=/tmp/r",
+      "--json",
+    ]);
+    expect(argvFor(tool("value"), { style: "deep-value", region: "pea", "min-cap-eur": 1e9 })).toEqual([
+      "value",
+      "--style=deep-value",
+      "--region=pea",
+      "--min-cap-eur=1000000000",
+      "--json",
+    ]);
+    expect(() => argvFor(tool("value"), { watch: true })).toThrow(/unknown argument/);
+    expect(argvFor(tool("etf"), { action: "find", target: "MSCI World", pea: true })).toEqual(["etf", "find", "MSCI World", "--pea", "--json"]);
+    expect(tool("analyze").params.depth!.enum).toContain("full");
+  });
+});

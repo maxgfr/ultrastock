@@ -1,0 +1,8 @@
+{
+  "kind": "value — quality-value over Portugal on a recorded crible screen (11 rows): hygiene, gates, sector percentiles, VALUE.md",
+  "value": { "args": ["--region", "PT", "--min-cap-eur", "300000000", "--shortlist", "8", "--top", "0"] },
+  "fixture": "assets/fixtures/value-pt",
+  "calcs": [],
+  "expect": { "evidenceMin": 40, "keys": ["NVG.LS.value.quality-value.score"], "files": ["VALUE.md"] },
+  "answers": { "good": 0, "bad": 3 }
+}

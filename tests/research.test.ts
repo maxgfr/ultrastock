@@ -64,10 +64,14 @@ describe("check against a cited document", () => {
 
   it("notes a figure the document holds only far from the claim's words", () => {
     const dir = withDoc(RELEASE);
-    const r = checkAnswer(dir, "La marge des vins atteint 215 000 [E1].");
+    const r = checkAnswer(dir, "The wines margin reached 215 000 [E1].");
     if ("error" in r) throw new Error(r.error);
     expect(r.problems.map((p) => p.kind)).toContain("distant");
     expect(failing(r)).toEqual([]);
+    // A claim sharing no word with the page (another language): nearness is not judged.
+    const fr = checkAnswer(dir, "La marge des vins atteint 215 000 [E1].");
+    if ("error" in fr) throw new Error(fr.error);
+    expect(fr.problems.map((p) => p.kind)).not.toContain("distant");
   });
 
   it("still reads numeric evidence cited next to a document", () => {
@@ -267,5 +271,23 @@ describe("recorded plumbing", () => {
     const r = await fetchBytes(url);
     expect(r.bytes.equals(bytes)).toBe(true);
     expect(r.contentType).toBe("application/pdf");
+  });
+});
+
+describe("crible in a fixture replay", () => {
+  afterEach(() => setNetMode({ kind: "live" }));
+  it("is available and bootstrapped without uvx or a dataset: its calls are replayed", async () => {
+    const { cribleAvailable, cribleBootstrapped } = await import("../src/providers/external/crible.js");
+    const prev = process.env.ULTRASTOCK_CRIBLE_CMD;
+    process.env.ULTRASTOCK_CRIBLE_CMD = "definitely-not-installed-crible";
+    try {
+      expect(cribleAvailable()).toBe(false);
+      setNetMode({ kind: "fixture", dir: run() });
+      expect(cribleAvailable()).toBe(true);
+      expect(cribleBootstrapped("/nonexistent")).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.ULTRASTOCK_CRIBLE_CMD;
+      else process.env.ULTRASTOCK_CRIBLE_CMD = prev;
+    }
   });
 });

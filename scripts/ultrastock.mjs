@@ -1876,37 +1876,6 @@ function atxTitle(line) {
   if (close) title = title.slice(0, close.index).trimEnd();
   return title ? title.replace(MD_ESCAPE, "$1") : void 0;
 }
-function excerptWindows(text, question, opts = {}) {
-  const lines = text.split("\n");
-  const before = opts.before ?? 3;
-  const after = opts.after ?? 12;
-  const maxChars = opts.maxChars ?? 1500;
-  const perDoc = Math.max(1, opts.perDoc ?? 2);
-  const matchers2 = (Array.isArray(question) ? question : [question]).filter((q) => q.trim()).map((q) => buildMatcher(q));
-  const hits = [];
-  for (let i = 0; i < lines.length; i++) {
-    let score = 0;
-    for (const m of matchers2) {
-      const cov = m.matchLine(lines[i]).size;
-      if (cov > score) score = cov;
-    }
-    if (score > 0) hits.push({ anchor: i, score });
-  }
-  hits.sort((a, b) => b.score - a.score || a.anchor - b.anchor);
-  const take = hits.length ? hits : [{ anchor: 0, score: 0 }];
-  const out5 = [];
-  for (const h of take) {
-    if (out5.length >= perDoc) break;
-    const start = Math.max(0, h.anchor - before);
-    const end = Math.min(lines.length, h.anchor + after);
-    if (out5.some((w) => start < w.end && end > w.start)) continue;
-    const snippet = lines.slice(start, end).join("\n").slice(0, maxChars);
-    if (!snippet.trim()) continue;
-    const heading = nearestHeading(lines, h.anchor);
-    out5.push({ start, end, anchor: h.anchor, score: h.score, ...heading ? { heading } : {}, snippet });
-  }
-  return out5;
-}
 function trimDashes(s) {
   let start = 0;
   let end = s.length;
@@ -11138,6 +11107,7 @@ function cribleDataDir() {
   return env("CRIBLE_DATA_DIR") ?? join7(homeDir(), "crible");
 }
 function cribleAvailable() {
+  if (netMode().kind === "fixture") return true;
   return have(cribleInvocation().cmd);
 }
 function cribleBootstrapped(dir2 = cribleDataDir()) {
@@ -17599,10 +17569,14 @@ function figureMatches(f3, items) {
 function documentFigures(doc, text) {
   return extractFigures(text).map((f3) => ({ ...doc, value: f3.value, unit: f3.percent ? "%" : void 0, doc: void 0 }));
 }
+var NEAR_LINES = 3;
 function nearClaim(text, claim) {
-  const lines = text.split("\n");
   const words3 = claim.replace(/\[[^\]]*\]/g, " ").replace(/[+\-−–]?[$€£]?\d[\d\s.,'  ]*%?/g, " ");
-  return excerptWindows(text, words3, { perDoc: 4 }).map((w) => lines.slice(w.start, w.end).join("\n")).join("\n");
+  const terms = new Set(bm25Tokenize(words3).filter((t) => t.length > 2 && !/^\d+$/.test(t)));
+  const lines = text.split("\n");
+  const hits = lines.map((l) => bm25Tokenize(l).some((t) => terms.has(t)));
+  if (!hits.some(Boolean)) return text;
+  return lines.filter((_, i) => hits.slice(Math.max(0, i - NEAR_LINES), i + NEAR_LINES + 1).some(Boolean)).join("\n");
 }
 var SOURCES_HEADING = /^#{1,6}\s+(?:sources?|references?|citations?|évidences?|evidence|preuves|références?|annexe|appendix)\b/i;
 function closingSourcesMask(lines) {
@@ -37617,6 +37591,53 @@ var TOOLS = [
       query: { kind: "string", description: "what to search", positional: 0, required: true },
       symbol: { kind: "string", description: "a ticker" },
       lang: { kind: "string", description: "en or fr" },
+      out: OUT
+    }
+  },
+  {
+    name: "research",
+    description: "Web research compiled into evidence. Without web-results: write the worklist (RESEARCH.todo.json: angles and FR+EN queries for your own web search \u2014 business model, results, governance, controversies, short-sellers; ETF factsheet/KID/replication/PEA; focus=results for the latest report, ask for one precise question). With web-results (a JSON file of your search hits): fetch the pages and PDFs, drop walls and duplicates, register each page as a document [E#] (sources/E#.md, DOSSIER.md). check refuses a figure the cited page does not state.",
+    command: ["research"],
+    params: {
+      subject: { kind: "string", description: "a symbol, an ISIN or a company name (omit when ingesting)", positional: 0 },
+      kind: { kind: "string", description: "equity, etf, crypto or company (a name with no listing)", enum: ["equity", "etf", "crypto", "company"] },
+      focus: { kind: "string", description: "general (default) or results (the latest publication)", enum: ["general", "results"] },
+      ask: { kind: "string", description: "one precise question the research answers" },
+      "web-results": { kind: "string", description: "absolute path of a JSON file of search results to ingest into the run" },
+      limit: { kind: "number", description: "most sources kept (default 15)" },
+      out: { ...OUT, required: true }
+    }
+  },
+  {
+    name: "value",
+    description: "A value search on crible: candidates per style (quality-value default, deep-value, dividend, garp, magic-formula, all) over a region (world default, europe, pea, us, ISO codes), hygiene and anti value-trap gates (null = unknown, never a pass), sector-relative percentiles, the top names valued; writes VALUE.md and its research runbook.",
+    command: ["value"],
+    params: {
+      style: {
+        kind: "string",
+        description: "quality-value, deep-value, dividend, garp, magic-formula, all",
+        enum: ["quality-value", "deep-value", "dividend", "garp", "magic-formula", "all"]
+      },
+      region: { kind: "string", description: "world, europe, pea, us, or ISO codes (FR,DE,IT)" },
+      shortlist: { kind: "number", description: "names registered as evidence (default 30)" },
+      top: { kind: "number", description: "names valued (default 10)" },
+      "min-cap-eur": { kind: "number", description: "minimum market cap in EUR (default 500 M)" },
+      out: OUT
+    }
+  },
+  {
+    name: "etf",
+    description: "ETFs as funds: compare (2\u20136 funds: TER, AUM, NAV, flows, distribution, domicile, UCITS, replication, PEA, holdings, correlation, overlap), overlap (2 funds: \u03A3 min weights and common lines), find (funds on an index or a theme).",
+    command: ["etf"],
+    params: {
+      action: { kind: "string", description: "compare, overlap or find", positional: 0, required: true, enum: ["compare", "overlap", "find"] },
+      target: { kind: "string", description: 'compare/overlap: A,B,C; find: an index or a theme ("MSCI World")', positional: 1, required: true },
+      pea: { kind: "boolean", description: "find: PEA-eligible only (issuer flag, else name hint)" },
+      acc: { kind: "boolean", description: "find: accumulating only" },
+      dist: { kind: "boolean", description: "find: distributing only" },
+      ucits: { kind: "boolean", description: "find: UCITS only" },
+      currency: { kind: "string", description: "find: the listing's currency (EUR)" },
+      limit: { kind: "number", description: "find: how many" },
       out: OUT
     }
   },
