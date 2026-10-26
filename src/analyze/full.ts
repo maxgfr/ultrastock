@@ -30,6 +30,7 @@ import type { Instrument } from "../providers/types.js";
 import { pastDecisions } from "./decision.js";
 import { deltaMarkdown, deltaRuns } from "./delta.js";
 import { analyzeSymbol } from "./pack.js";
+import { etfRun } from "./etf.js";
 import { catalystsReport } from "./regime/catalysts.js";
 import type { Report } from "./regime/common.js";
 import { cryptoRegimeReport, euRegime, usRegime } from "./regime/market.js";
@@ -166,6 +167,7 @@ export async function analyzeFull(raw: string, dir: string, opts: { depth?: Dept
   };
 
   const company = inst.kind === "equity";
+  const etf = inst.kind === "etf";
   const us = inst.market === "us";
   const crypto = inst.market === "crypto";
 
@@ -176,6 +178,10 @@ export async function analyzeFull(raw: string, dir: string, opts: { depth?: Dept
   await run("valuation", company && depth !== "quick", depth === "quick" ? "quick depth" : `not a company (${inst.kind})`, async () => {
     const v = await valuationRun(raw, dir, { now });
     return `Piotroski ${v.piotroski ?? "n/a"}, margin of safety ${v.marginOfSafety !== undefined ? `${v.marginOfSafety.toFixed(1)} %` : "n/a"} — VALUATION.md`;
+  });
+  await run("etf", etf && depth !== "quick", depth === "quick" ? "quick depth" : `not an ETF (${inst.kind})`, async () => {
+    const e = await etfRun(raw, dir, { now, instrument: inst });
+    return `replication ${e.replication}, PEA ${e.peaShort}, domicile ${e.domicile ?? "unknown"} — ETF.md`;
   });
   await run("catalysts", depth !== "quick", "quick depth", async () => {
     const rep = await catalystsReport(raw, 30, now);
@@ -254,7 +260,7 @@ export async function analyzeFull(raw: string, dir: string, opts: { depth?: Dept
   const store = EvidenceStore.load(dir)!;
   const brief = readFileSync(join(dir, "BRIEF.md"), "utf8");
   writeArtifact(join(dir, "BRIEF.md"), fullBrief(brief, slices, sections, notes, depth));
-  writeArtifact(join(dir, "RUNBOOK.md"), debateRunbook(dir, sym, depth, pc.state, slices, crypto, us));
+  writeArtifact(join(dir, "RUNBOOK.md"), debateRunbook(dir, sym, depth, pc.state, slices, crypto, us, etf));
   return { dir, symbol: sym, name: inst.name, asOf: base.asOf, depth, evidence: store.items.length, portfolioContext: pc.state, slices, notes, delta };
 }
 
@@ -279,19 +285,29 @@ function fullBrief(priceBrief: string, slices: Slice[], sections: string[], note
   ].join("\n");
 }
 
-function debateRunbook(dir: string, sym: string, depth: Depth, ctx: FullAnalysis["portfolioContext"], slices: Slice[], crypto: boolean, us: boolean): string {
+export function debateRunbook(
+  dir: string,
+  sym: string,
+  depth: Depth,
+  ctx: FullAnalysis["portfolioContext"],
+  slices: Slice[],
+  crypto: boolean,
+  us: boolean,
+  etf = false,
+): string {
   const rounds = debateRounds[depth];
   const missing = slices.filter((s) => s.status === "unavailable").map((s) => s.name);
   const extra = [
     us && !crypto ? `\`ultrastock options-analysis ${sym} --out ${dir}\` (expected move, GEX, skew)` : "",
     crypto ? `\`ultrastock crypto-analysis ${sym.replace(/USDT$|USD$|EUR$/, "")} --out ${dir}\` (funding, basis, MVRV, leverage heat)` : "",
-    !crypto ? `\`ultrastock fundamentals ${sym} --out ${dir}\` (statements point in time)` : "",
+    !crypto && !etf ? `\`ultrastock fundamentals ${sym} --out ${dir}\` (statements point in time)` : "",
+    etf ? `\`ultrastock etf compare ${sym},<another ETF on the same index> --out ${dir}\` (costs, correlation, overlap side by side)` : "",
     `\`ultrastock stats ${sym} --out ${dir}\` (volatility estimators, VaR, regime of returns)`,
   ].filter(Boolean);
   return `# Runbook — ${sym} (${depth}: ${rounds} debate round${rounds > 1 ? "s" : ""})
 
 The figures live in this run: BRIEF.md (index and slices), TECHNICALS.md,
-VALUATION.md (companies), DELTA.md (with --since). Every figure you write
+${etf ? "ETF.md (the fund: costs, replication, PEA, domicile, holdings, tracking)" : "VALUATION.md (companies)"}, DELTA.md (with --since). Every figure you write
 cites its [E#]; anything derived goes through \`ultrastock calc ${dir} "…" --label "…"\`.
 ${missing.length ? `\nUnavailable in this run: ${missing.join(", ")}. Say so where it matters; do not fill the gap from memory.\n` : ""}
 Portfolio context: **${ctx}**.${ctx === "not-provided" ? " The user has no ledger: say the answer assumes no position, and that `portfolio add` / `portfolio import` would change it." : ctx === "holding" ? " The question is hold / add / trim / exit, against the average cost and the original thesis." : " The question is whether to open a position at all."}
@@ -316,7 +332,16 @@ Optional deeper evidence, run first if the question needs it: ${extra.join("; ")
 ${
   crypto
     ? ""
-    : `- **fundamentals** — VALUATION.md: scores and their failing components, quality,
+    : etf
+      ? `- **ETF** — ETF.md: what the fund holds and costs (TER, AUM, flows, premium to
+  NAV), its replication (a swap's basket is not its exposure), PEA eligibility
+  (the issuer's flag, else unknown — never from the domicile), the domicile and
+  what it means for withholding and PRIIPs (a UCITS twin when blocked), the
+  relative tracking against funds on the same index and currency, and the
+  multiples of the top holdings with their coverage. No VALUATION.md for an
+  ETF. → \`notes/etf.md\`
+`
+      : `- **fundamentals** — VALUATION.md: scores and their failing components, quality,
   multiples, the DCF range and the growth the price implies. → \`notes/fundamentals.md\`
 `
 }- **news and catalysts** — the News, Catalysts${us ? ", Insiders and Analysts" : ", Insiders"} sections.

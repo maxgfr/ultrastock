@@ -54,12 +54,75 @@ export const TV_SNAPSHOT_COLUMNS = [
   "update_mode",
 ] as const;
 
+/**
+ * The fund columns verified to answer for an ETF (2026-10-26, on CW8, EWLD,
+ * IWDA, URTH, QQQ). `issuer` is left out on purpose: it answers an address
+ * ("SAS Rue la Boétie"), not the issuer's name — `brand` is the family name.
+ * Null for a swap ETF: `etf_holdings_count`, `weight_top_10`. AUM, NAV and
+ * flows are in `fundamental_currency_code` (USD even for a EUR fund such as
+ * CW8), not in `etf_fund_currency` (the fund's base currency).
+ */
+export const TV_ETF_COLUMNS = [
+  "description",
+  "close",
+  "currency",
+  "fundamental_currency_code",
+  "isin",
+  "brand",
+  "expense_ratio",
+  "aum",
+  "nav",
+  "nav_discount_premium",
+  "fund_flows.1M",
+  "fund_flows.1Y",
+  "nav_perf.1Y",
+  "nav_total_return.1Y",
+  "nav_total_return.3Y",
+  "Perf.Y",
+  "dividend_treatment",
+  "country_code_fund",
+  "etf_holdings_count",
+  "weight_top_10",
+  "ucits_compliant_flag",
+  "index_tracked",
+  "index_provider",
+  "leveraged_flag",
+  "currency_hedged_flag",
+  "actively_managed",
+  "etf_fund_currency",
+  "launch_date",
+  "transparent_holding_flag",
+  "category.tr",
+  "focus.tr",
+  "asset_class.tr",
+] as const;
+
 /** Columns that are codes, not prose: safe as plain values. Every other string column is external text. */
-const CODE_COLUMNS = new Set(["currency", "fundamental_currency_code", "country", "isin", "exchange", "type", "subtype", "update_mode", "name"]);
+const CODE_COLUMNS = new Set([
+  "currency",
+  "fundamental_currency_code",
+  "country",
+  "isin",
+  "exchange",
+  "type",
+  "subtype",
+  "update_mode",
+  "name",
+  // ETF flags and codes: "Capitalizes"/"Distributes", "LU", "1"/"0", "Non-leveraged", "EUR".
+  "dividend_treatment",
+  "country_code_fund",
+  "ucits_compliant_flag",
+  "leveraged_flag",
+  "currency_hedged_flag",
+  "actively_managed",
+  "etf_fund_currency",
+  "transparent_holding_flag",
+]);
 
 interface ColumnInfo {
   label: string;
-  unit?: "price" | "fundamental" | string;
+  /** "price": the quote currency; "fundamental": the reporting currency (an ETF's AUM, NAV, flows); "date": unix seconds → ISO date. */
+  unit?: "price" | "fundamental" | "date" | string;
   formula?: string;
 }
 
@@ -87,6 +150,30 @@ const COLUMN_INFO: Record<string, ColumnInfo> = {
   "Perf.YTD": { label: "performance year to date", unit: "%" },
   expense_ratio: { label: "ETF expense ratio", unit: "%" },
   aum: { label: "ETF assets under management", unit: "fundamental" },
+  nav: { label: "ETF net asset value per share", unit: "fundamental" },
+  nav_discount_premium: { label: "ETF premium (+) or discount (−) of the price to the NAV", unit: "%" },
+  "fund_flows.1M": { label: "ETF net fund flows, 1 month", unit: "fundamental" },
+  "fund_flows.1Y": { label: "ETF net fund flows, 1 year", unit: "fundamental" },
+  "nav_perf.1Y": { label: "ETF NAV performance 1 year (price only)", unit: "%" },
+  "nav_total_return.1Y": { label: "ETF NAV total return 1 year (distributions included)", unit: "%" },
+  "nav_total_return.3Y": { label: "ETF NAV total return 3 years (distributions included)", unit: "%" },
+  dividend_treatment: { label: "ETF dividend treatment (Capitalizes = accumulating, Distributes = distributing)" },
+  country_code_fund: { label: "ETF fund domicile (country code)" },
+  etf_holdings_count: { label: "ETF number of holdings", unit: "count" },
+  weight_top_10: { label: "ETF weight of the top 10 holdings", unit: "%" },
+  ucits_compliant_flag: { label: "ETF UCITS-compliant flag (1 = yes, 0 = no)" },
+  index_tracked: { label: "ETF index tracked" },
+  index_provider: { label: "ETF index provider" },
+  leveraged_flag: { label: "ETF leverage flag" },
+  currency_hedged_flag: { label: "ETF currency-hedged flag (1 = hedged, 0 = not)" },
+  actively_managed: { label: "ETF actively managed flag (1 = active, 0 = passive)" },
+  etf_fund_currency: { label: "ETF fund (base) currency" },
+  launch_date: { label: "ETF launch date", unit: "date" },
+  transparent_holding_flag: { label: "ETF transparent holdings flag (1 = published)" },
+  "category.tr": { label: "ETF category" },
+  "focus.tr": { label: "ETF focus" },
+  "asset_class.tr": { label: "ETF asset class" },
+  brand: { label: "ETF brand (fund family)" },
   total_revenue_ttm: { label: "revenue (trailing 12 months)", unit: "fundamental" },
   net_margin_ttm: { label: "net margin (trailing 12 months)", unit: "%" },
   return_on_equity: { label: "return on equity", unit: "%" },
@@ -94,6 +181,9 @@ const COLUMN_INFO: Record<string, ColumnInfo> = {
   enterprise_value_fq: { label: "enterprise value", unit: "fundamental" },
   average_volume_30d_calc: { label: "average volume (30 days)", unit: "shares" },
   description: { label: "name" },
+  isin: { label: "ISIN" },
+  currency: { label: "quote currency" },
+  fundamental_currency_code: { label: "reporting currency (fundamentals; an ETF's AUM, NAV and flows)" },
   sector: { label: "sector" },
   industry: { label: "industry" },
 };
@@ -169,6 +259,10 @@ export function tvRowPoints(row: TvRow, columns: readonly string[], asOf?: strin
     const label = `${ticker} ${info?.label ?? col}`;
     if (typeof v === "number") {
       if (!Number.isFinite(v)) return;
+      if (info?.unit === "date") {
+        out.push({ key, label, value: new Date(v * 1000).toISOString().slice(0, 10), ...(asOf ? { asOf } : {}) });
+        return;
+      }
       const unit = info?.unit === "price" ? priceCurrency : info?.unit === "fundamental" ? fundCurrency : info?.unit;
       const value = info?.unit === "price" && sub ? v / sub.per : v;
       out.push({ key, label, value, ...(unit ? { unit } : {}), ...(asOf ? { asOf } : {}) });

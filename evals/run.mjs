@@ -120,6 +120,16 @@ if (suite === "offline") {
   cli(["profile", "init", "--jurisdiction", "FR"]);
   const poly = cli(["predict", "polymarket", "election"]);
   ok(poly.status !== 0 && /BLOCKED_JURISDICTION/.test(poly.stderr), "Polymarket is refused for a French resident (BLOCKED_JURISDICTION), before any request");
+  // PRIIPs: a US-domiciled ETF has no KID for an EU retail investor — the plan's risk gate blocks it.
+  cli(["portfolio", "deposit", "cto", "20000", "--book", "paper", "--date", "2026-01-02"]);
+  const usEtf = cli(["plan", "URTH", "--account", "cto", "--fixture", join(root, "assets", "fixtures", "etf-plan-urth")]);
+  ok(
+    usEtf.status === 0 &&
+      usEtf.json?.order?.domicile === "US" &&
+      usEtf.json?.verdict === "reject" &&
+      (usEtf.json?.gate?.checks ?? []).some((c) => c.code === "PRIIPS" && c.status === "block"),
+    `a US-domiciled ETF (URTH) is blocked for a French resident (PRIIPS, domicile ${usEtf.json?.order?.domicile ?? usEtf.stderr?.trim()})`,
+  );
   const noKey = cli(["broker", "submit", "t-20260101000000-deadbeef", "--venue", "kraken", "--env", "live"]);
   ok(noKey.status !== 0, "broker submit on an unknown ticket is refused");
   const loosen = cli(["broker", "limits", "set", "--max-order", "100000", "--max-daily", "100000"]);

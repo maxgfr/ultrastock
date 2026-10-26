@@ -1,0 +1,59 @@
+{
+ "request": {
+  "method": "POST",
+  "url": "https://scanner.tradingview.com/global/scan",
+  "json": {
+   "columns": [
+    "description",
+    "close",
+    "currency",
+    "fundamental_currency_code",
+    "isin",
+    "brand",
+    "expense_ratio",
+    "aum",
+    "nav",
+    "nav_discount_premium",
+    "fund_flows.1M",
+    "fund_flows.1Y",
+    "nav_perf.1Y",
+    "nav_total_return.1Y",
+    "nav_total_return.3Y",
+    "Perf.Y",
+    "dividend_treatment",
+    "country_code_fund",
+    "etf_holdings_count",
+    "weight_top_10",
+    "ucits_compliant_flag",
+    "index_tracked",
+    "index_provider",
+    "leveraged_flag",
+    "currency_hedged_flag",
+    "actively_managed",
+    "etf_fund_currency",
+    "launch_date",
+    "transparent_holding_flag",
+    "category.tr",
+    "focus.tr",
+    "asset_class.tr"
+   ],
+   "range": [
+    0,
+    2
+   ],
+   "symbols": {
+    "tickers": [
+     "EURONEXT:CW8",
+     "EURONEXT:IWDA"
+    ]
+   }
+  }
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"totalCount\":2,\"data\":[{\"s\":\"EURONEXT:CW8\",\"d\":[\"Amundi MSCI World Swap -UCITS ETF- Capitalisation\",709.5,\"EUR\",\"USD\",\"LU1681043599\",\"Amundi\",0.38,7635024232.217476,787.5098271,0.41802321529404995,88861436.80511485,576416805.4837598,16.72339548101952,17.34820506313375,71.54432863264158,18.03986935922902,\"Capitalizes\",\"LU\",null,null,\"1\",\"MSCI World Index - EUR - Benchmark TR Net\",\"MSCI, Inc.\",\"Non-leveraged\",\"0\",\"0\",\"EUR\",1245110400,\"1\",\"Size and style\",\"Total market\",\"Equity\"]},{\"s\":\"EURONEXT:IWDA\",\"d\":[\"iShares Core MSCI World UCITS ETF\",130.53,\"EUR\",\"USD\",\"IE00B4L5Y983\",\"iShares\",0.2,147572819322.937,144.9474,0.516679912851159,-35971840.03830525,7763179358.110227,17.030583121569503,17.677268704394475,72.64814073728881,18.442901864706684,\"Capitalizes\",\"IE\",1251,27.061428836368794,\"1\",\"MSCI World Index\",\"MSCI, Inc.\",\"Non-leveraged\",\"0\",\"0\",\"USD\",1253836800,\"1\",\"Size and style\",\"Total market\",\"Equity\"]}]}",
+  "url": "https://scanner.tradingview.com/global/scan",
+  "fetchedAt": "2026-10-26T19:48:12.723Z"
+ }
+}

@@ -35,6 +35,7 @@ import { taxCommand } from "./commands/tax.js";
 import { paperCommand, planCommand, portfolioCommand, ticketCommand } from "./commands/trading.js";
 import { catalystsCommand, regimeCommand, sectorsCommand } from "./commands/regime.js";
 import { screenCommand } from "./commands/screen.js";
+import { etfCommand } from "./commands/etf.js";
 import { cryptoAnalysisCommand, optionsAnalysisCommand, predictAnalysisCommand, statsCommand } from "./commands/quant.js";
 import { doctorReport, formatDoctor } from "./doctor.js";
 import {
@@ -91,6 +92,7 @@ USAGE
   ultrastock fundamentals <symbol> [--asof <date>] [--years <n>] [--quarters <n>] [--source sec|esef|crible] [--out <dir>] [--json]
   ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market <m>] [--universe <idx|list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--all-listings] [--out <dir>] [--json]
   ultrastock screen --list [--engine tradingview|crible|builtin] [--json]
+  ultrastock etf compare <A,B,C> | etf overlap <A,B> | etf find "<index|theme>" [--pea] [--acc|--dist] [--ucits] [--currency EUR] [--limit <n>] [--out <dir>] [--json]
   ultrastock regime [--market us|eu|crypto] [--out <dir>] [--json]
   ultrastock sectors [--market us|eu] [--out <dir>] [--json]
   ultrastock catalysts <symbol> [--days <1-90>] [--out <dir>] [--json]
@@ -231,6 +233,15 @@ COMMANDS
             about a minute; primary listings only, ADRs of an issuer listed
             at home dropped, --all-listings keeps every line). --list prints
             every preset's rules and source.
+  etf       ETFs as funds. compare (2–6): TER, AUM, NAV, flows, dividend
+            treatment, domicile, UCITS, hedging, index, replication, PEA,
+            holdings, the correlation of daily returns and the overlap of
+            holdings. overlap: Σ of the smaller weight over common lines, and
+            those lines. find: funds on an index or a theme (TradingView), one
+            listing per fund; --pea keeps the issuer-flagged (Amundi FUND_PEA)
+            and name hints, --acc/--dist, --ucits, --currency (the listing's).
+            PEA is never deduced from the domicile; a swap ETF's substitute
+            basket is never read as its exposure. analyze on an ETF writes ETF.md.
   regime    Market regime and an exposure ceiling. us: SPY trend, RSP/SPY
             breadth, HYG/LQD credit, SPY/QQQ distribution days and follow-through,
             VIX/VIX3M, CNN Fear & Greed read contrarian, % of US large caps above
@@ -579,6 +590,10 @@ export const BOOL_FLAGS = [
   "anchored",
   "all-listings",
   "engine-search",
+  "pea",
+  "acc",
+  "dist",
+  "ucits",
 ];
 export const COMMANDS = [
   "analyze",
@@ -594,6 +609,7 @@ export const COMMANDS = [
   "resolve",
   "fundamentals",
   "screen",
+  "etf",
   "regime",
   "sectors",
   "catalysts",
@@ -668,6 +684,7 @@ const SPEC: CliSpec = {
     sectors: ["market", "out", ...NET],
     catalysts: ["days", "out", ...NET],
     screen: ["engine", "market", "universe", "limit", "sort", "list", "bootstrap", "all-listings", "out", ...NET],
+    etf: ["pea", "acc", "dist", "ucits", "currency", "limit", "out", ...NET],
     technicals: ["interval", "indicators", "benchmark", "out", ...NET],
     valuation: ["erp", "terminal", "out", ...NET],
     filings: ["forms", "days", "limit", "search", "out", ...NET],
@@ -803,6 +820,7 @@ function arity(args: CommandArgs): number {
     args.command === "stats" ||
     args.command === "predict-analysis" ||
     args.command === "screen" ||
+    args.command === "etf" ||
     args.command === "regime" ||
     args.command === "sectors" ||
     args.command === "catalysts"
@@ -984,6 +1002,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "valuation") return valuationCommand(args, asJson);
   if (cmd === "technicals") return technicalsCommand(args, asJson);
   if (cmd === "screen") return screenCommand(args, asJson);
+  if (cmd === "etf") return etfCommand(args, asJson);
   if (cmd === "regime") return regimeCommand(args, asJson);
   if (cmd === "sectors") return sectorsCommand(args, asJson);
   if (cmd === "catalysts") return catalystsCommand(args, asJson);
