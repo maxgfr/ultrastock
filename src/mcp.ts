@@ -43,7 +43,12 @@ export const TOOLS: Tool[] = [
     command: ["analyze"],
     params: {
       symbol: sym(),
-      depth: { kind: "string", description: "quick, standard (default) or deep", enum: ["quick", "standard", "deep"] },
+      depth: {
+        kind: "string",
+        description:
+          "quick, standard (default), deep, or full (deep + statements over time, peers, statistics, short interest, dividends, options, residual income / DDM / WACC, and the web-research worklist)",
+        enum: ["quick", "standard", "deep", "full"],
+      },
       since: { kind: "string", description: "an earlier run: writes DELTA.md" },
       out: OUT,
     },
@@ -132,6 +137,56 @@ export const TOOLS: Tool[] = [
       query: { kind: "string", description: "what to search", positional: 0, required: true },
       symbol: { kind: "string", description: "a ticker" },
       lang: { kind: "string", description: "en or fr" },
+      out: OUT,
+    },
+  },
+  {
+    name: "research",
+    description:
+      "Web research compiled into evidence. Without web-results: write the worklist (RESEARCH.todo.json: angles and FR+EN queries for your own web search — business model, results, governance, controversies, short-sellers; ETF factsheet/KID/replication/PEA; focus=results for the latest report, ask for one precise question). With web-results (a JSON file of your search hits): fetch the pages and PDFs, drop walls and duplicates, register each page as a document [E#] (sources/E#.md, DOSSIER.md). check refuses a figure the cited page does not state.",
+    command: ["research"],
+    params: {
+      subject: { kind: "string", description: "a symbol, an ISIN or a company name (omit when ingesting)", positional: 0 },
+      kind: { kind: "string", description: "equity, etf, crypto or company (a name with no listing)", enum: ["equity", "etf", "crypto", "company"] },
+      focus: { kind: "string", description: "general (default) or results (the latest publication)", enum: ["general", "results"] },
+      ask: { kind: "string", description: "one precise question the research answers" },
+      "web-results": { kind: "string", description: "absolute path of a JSON file of search results to ingest into the run" },
+      limit: { kind: "number", description: "most sources kept (default 15)" },
+      out: { ...OUT, required: true },
+    },
+  },
+  {
+    name: "value",
+    description:
+      "A value search on crible: candidates per style (quality-value default, deep-value, dividend, garp, magic-formula, all) over a region (world default, europe, pea, us, ISO codes), hygiene and anti value-trap gates (null = unknown, never a pass), sector-relative percentiles, the top names valued; writes VALUE.md and its research runbook.",
+    command: ["value"],
+    params: {
+      style: {
+        kind: "string",
+        description: "quality-value, deep-value, dividend, garp, magic-formula, all",
+        enum: ["quality-value", "deep-value", "dividend", "garp", "magic-formula", "all"],
+      },
+      region: { kind: "string", description: "world, europe, pea, us, or ISO codes (FR,DE,IT)" },
+      shortlist: { kind: "number", description: "names registered as evidence (default 30)" },
+      top: { kind: "number", description: "names valued (default 10)" },
+      "min-cap-eur": { kind: "number", description: "minimum market cap in EUR (default 500 M)" },
+      out: OUT,
+    },
+  },
+  {
+    name: "etf",
+    description:
+      "ETFs as funds: compare (2–6 funds: TER, AUM, NAV, flows, distribution, domicile, UCITS, replication, PEA, holdings, correlation, overlap), overlap (2 funds: Σ min weights and common lines), find (funds on an index or a theme).",
+    command: ["etf"],
+    params: {
+      action: { kind: "string", description: "compare, overlap or find", positional: 0, required: true, enum: ["compare", "overlap", "find"] },
+      target: { kind: "string", description: 'compare/overlap: A,B,C; find: an index or a theme ("MSCI World")', positional: 1, required: true },
+      pea: { kind: "boolean", description: "find: PEA-eligible only (issuer flag, else name hint)" },
+      acc: { kind: "boolean", description: "find: accumulating only" },
+      dist: { kind: "boolean", description: "find: distributing only" },
+      ucits: { kind: "boolean", description: "find: UCITS only" },
+      currency: { kind: "string", description: "find: the listing's currency (EUR)" },
+      limit: { kind: "number", description: "find: how many" },
       out: OUT,
     },
   },

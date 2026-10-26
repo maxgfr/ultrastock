@@ -9,6 +9,7 @@
 import { atr } from "../analytics/indicators.js";
 import { supportResistance } from "../analytics/patterns.js";
 import { sizePosition } from "../analytics/sizing.js";
+import { etfFundDomicile } from "../analyze/etf.js";
 import { clockNow } from "../core/net.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
 import { gateContextFor } from "./context.js";
@@ -96,6 +97,9 @@ export async function planTrade(input: PlanInput): Promise<TradePlanResult> {
   if (wall && targets[0]! > wall.price)
     notes.push(`resistance at ${wall.price.toFixed(4)} (${wall.touches} touches) stands before the first target ${targets[0]}`);
 
+  // An ETF's domicile decides PRIIPs (a US-domiciled ETF has no KID for EU retail investors).
+  const domicile = inst.kind === "etf" ? await etfFundDomicile(inst) : undefined;
+  if (domicile) notes.push(`fund domicile ${domicile.code ?? "unknown"} (${domicile.basis})`);
   const draft: Order = {
     account: input.account,
     symbol: inst.symbol,
@@ -107,6 +111,7 @@ export async function planTrade(input: PlanInput): Promise<TradePlanResult> {
     stop,
     assetKind: inst.kind === "crypto" ? "crypto" : inst.kind === "etf" ? "etf" : inst.kind === "fund" ? "fund" : "equity",
     venue: input.venue ?? "paper",
+    ...(domicile?.code ? { domicile: domicile.code } : {}),
   };
   const built = await gateContextFor(draft, { now });
   notes.push(...built.notes);

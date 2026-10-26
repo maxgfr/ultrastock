@@ -3,9 +3,10 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readBrief, analyzeSymbol } from "./analyze/pack.js";
 import { analyzeFull, DEPTHS, type Depth } from "./analyze/full.js";
-import { calcEvidence } from "./calc.js";
+import { calcEvidence, calcFromDocument } from "./calc.js";
 import { checkAnswer, NOTE_KINDS } from "./check.js";
 import { reportCommand } from "./commands/report.js";
+import { researchCommand } from "./commands/research.js";
 import { EvidenceStore, formatEvidence } from "./core/evidence.js";
 import { ExprError } from "./core/expr.js";
 import { clockNow, FixtureMiss, setNetMode } from "./core/net.js";
@@ -34,6 +35,8 @@ import { taxCommand } from "./commands/tax.js";
 import { paperCommand, planCommand, portfolioCommand, ticketCommand } from "./commands/trading.js";
 import { catalystsCommand, regimeCommand, sectorsCommand } from "./commands/regime.js";
 import { screenCommand } from "./commands/screen.js";
+import { etfCommand } from "./commands/etf.js";
+import { valueCommand } from "./commands/value.js";
 import { cryptoAnalysisCommand, optionsAnalysisCommand, predictAnalysisCommand, statsCommand } from "./commands/quant.js";
 import { doctorReport, formatDoctor } from "./doctor.js";
 import {
@@ -64,10 +67,11 @@ figure registered as an evidence [E#] that the answer must cite, and a check
 that refuses a figure the evidence does not hold.
 
 USAGE
-  ultrastock analyze <symbol> [--depth quick|standard|deep] [--since <run>] [--out <dir>] [--json]
+  ultrastock analyze <symbol> [--depth quick|standard|deep|full] [--since <run>] [--out <dir>] [--json]
   ultrastock quote <symbol> [--out <dir>] [--json]
   ultrastock history <symbol> [--from <date>] [--to <date>] [--interval 1d|1w|4h|1h|15m] [--limit <n>] [--json]
   ultrastock calc <run> <formula> --label <text> [--unit <unit>] [--key <key>] [--json]
+  ultrastock calc <run> --from <E#> "<figure as the document writes it>" --label <text> [--unit <unit>] [--json]
   ultrastock evidence <run> [--json]
   ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
   ultrastock report <run> [--answer <answer.md>] [--json]
@@ -81,12 +85,16 @@ USAGE
   ultrastock fx [USD,GBP,…] [--out <dir>] [--json]
   ultrastock cot <market> [--report legacy|tff] [--out <dir>] [--json]
   ultrastock sentiment [all|cnn|crypto|vix|putcall] [--out <dir>] [--json]
+  ultrastock research <symbol|name> [--kind equity|etf|crypto|company] [--focus results] [--ask "<question>"] [--name <search name>] --out <run> [--json]
+  ultrastock research --out <run> --web-results <websearch.json> [--engine-search] [--limit <n>] [--json]
   ultrastock news <query> [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>] [--out <dir>] [--json]
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
   ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
   ultrastock fundamentals <symbol> [--asof <date>] [--years <n>] [--quarters <n>] [--source sec|esef|crible] [--out <dir>] [--json]
   ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market <m>] [--universe <idx|list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--all-listings] [--out <dir>] [--json]
   ultrastock screen --list [--engine tradingview|crible|builtin] [--json]
+  ultrastock etf compare <A,B,C> | etf overlap <A,B> | etf find "<index|theme>" [--pea] [--acc|--dist] [--ucits] [--currency EUR] [--limit <n>] [--out <dir>] [--json]
+  ultrastock value [--style quality-value|deep-value|dividend|garp|magic-formula|all] [--region world|europe|pea|us|<ISO,…>] [--shortlist 30] [--top 10] [--min-cap-eur <n>] [--watch] [--out <run>] [--json]
   ultrastock regime [--market us|eu|crypto] [--out <dir>] [--json]
   ultrastock sectors [--market us|eu] [--out <dir>] [--json]
   ultrastock catalysts <symbol> [--days <1-90>] [--out <dir>] [--json]
@@ -157,7 +165,11 @@ COMMANDS
             news, insiders (US, Paris) and analysts (US), the user's portfolio
             context (holding / flat / not provided), the profile's limits, the
             jurisdiction's rules and past decisions. deep: three debate rounds
-            and more headlines. --since <run> writes DELTA.md against an earlier
+            and more headlines. full: deep plus the statements over time, the
+            peers (crible) and statistics against the benchmark and the peers,
+            short interest and dividends (US), the option or crypto-derivatives
+            reading, residual income / DDM / WACC, and the web-research
+            worklist (RESEARCH.todo.json) the RUNBOOK starts with. --since <run> writes DELTA.md against an earlier
             run. BRIEF.md indexes the slices (a failed one is named, never
             filled in); RUNBOOK.md is the debate: analysts → bull / bear → judge
             → trader → risk trio → portfolio manager → decide → check → report.
@@ -165,6 +177,8 @@ COMMANDS
   history   Daily (or crypto intraday) bars, oldest first; --limit keeps the last n.
   calc      Compute a derived figure from evidence ids — "(E3 / E7 - 1) * 100" —
             and register it as a new [E#] (abs, min, max, round, pct, share, cagr…).
+            --from E12 "4,2 Md€" registers a figure a document [E#] states — refused
+            when the document does not state it.
   evidence  List a run's evidence, one [E#] per line.
   report    The run as a self-contained HTML page (report.html): the answer, the
             recorded decision, the debate's notes (notes/*.md), a price chart
@@ -195,6 +209,15 @@ COMMANDS
             Cboe put/call ratios.
   news      Recent articles (Google News, GDELT; Yahoo for a symbol) — titles
             are external text, fenced as untrusted.
+  research  Web sources compiled into evidence: writes the angles and queries
+            (FR + EN) for your own web search — business model, results,
+            governance, controversies, short-sellers…; an ETF's factsheet, KID,
+            replication, PEA; --focus results for the latest report, --ask for
+            one precise question — then, with --web-results, fetches the pages
+            and PDFs, drops walls and duplicates, registers each as a document
+            [E#] (sources/E#.md, DOSSIER.md, under-covered terms for a second
+            round) and cross-checks a listed company against crible. \`check\`
+            refuses a figure the cited document does not state.
   universe  An index's current members (Wikipedia) — current only: a backtest
             over them has survivorship bias.
   resolve   A name, ticker or ISIN → the Euronext listings, the SEC registrant,
@@ -216,6 +239,29 @@ COMMANDS
             about a minute; primary listings only, ADRs of an issuer listed
             at home dropped, --all-listings keeps every line). --list prints
             every preset's rules and source.
+  etf       ETFs as funds. compare (2–6): TER, AUM, NAV, flows, dividend
+            treatment, domicile, UCITS, hedging, index, replication, PEA,
+            holdings, the correlation of daily returns and the overlap of
+            holdings. overlap: Σ of the smaller weight over common lines, and
+            those lines. find: funds on an index or a theme (TradingView), one
+            listing per fund; --pea keeps the issuer-flagged (Amundi FUND_PEA)
+            and name hints, --acc/--dist, --ucits, --currency (the listing's).
+            PEA is never deduced from the domicile; a swap ETF's substitute
+            basket is never read as its exposure. analyze on an ETF writes ETF.md.
+  value     A value search on crible's audited fundamentals: candidates by a
+            minimal DSL per style (quality-value by default, deep-value,
+            dividend, garp, magic-formula, all) over --region world (default),
+            europe, pea (EU / EEA country AND ISIN — to confirm security by
+            security), us or ISO codes, at least --min-cap-eur (500 M); hygiene
+            (home exchanges, no ADRs, one line per issuer, sane multiples, a
+            period under 18 months) and anti value-trap gates (Beneish, interest
+            coverage, dilution, cash generation, Montier, Ohlson, Altman Z″,
+            falling knife — null is "unknown", never a pass); a composite of
+            sector-relative percentiles recomputed on the filtered universe;
+            the --shortlist registered as evidence, the --top valued one after
+            the other on the same run. Writes VALUE.md (why cheap, why not a
+            trap, what would invalidate it, then the research runbook);
+            --watch adds an alert on each top name.
   regime    Market regime and an exposure ceiling. us: SPY trend, RSP/SPY
             breadth, HYG/LQD credit, SPY/QQQ distribution days and follow-through,
             VIX/VIX3M, CNN Fear & Greed read contrarian, % of US large caps above
@@ -420,6 +466,11 @@ Nothing here needs an API key. Exit codes: 0 done, 1 failed or refused, 2 bad in
 
 export const VALUE_FLAGS = [
   "out",
+  "kind",
+  "focus",
+  "ask",
+  "name",
+  "web-results",
   "from",
   "to",
   "interval",
@@ -544,8 +595,32 @@ export const VALUE_FLAGS = [
   "transport",
   "port",
   "token",
+  "style",
+  "region",
+  "shortlist",
+  "top",
+  "min-cap-eur",
 ];
-export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "dry-run", "list", "bootstrap", "notify", "perp", "anchored", "all-listings"];
+export const BOOL_FLAGS = [
+  "json",
+  "refresh",
+  "offline",
+  "probe",
+  "ticket",
+  "dry-run",
+  "list",
+  "bootstrap",
+  "notify",
+  "perp",
+  "anchored",
+  "all-listings",
+  "engine-search",
+  "pea",
+  "acc",
+  "dist",
+  "ucits",
+  "watch",
+];
 export const COMMANDS = [
   "analyze",
   "report",
@@ -560,6 +635,8 @@ export const COMMANDS = [
   "resolve",
   "fundamentals",
   "screen",
+  "etf",
+  "value",
   "regime",
   "sectors",
   "catalysts",
@@ -586,6 +663,7 @@ export const COMMANDS = [
   "cot",
   "sentiment",
   "news",
+  "research",
   "universe",
   "portfolio",
   "plan",
@@ -612,7 +690,7 @@ const SPEC: CliSpec = {
     analyze: ["depth", "since", "out", ...NET],
     quote: ["out", ...NET],
     history: ["from", "to", "interval", "limit", ...NET],
-    calc: ["label", "unit", "key", "json"],
+    calc: ["label", "unit", "key", "from", "json"],
     evidence: ["json"],
     check: ["max-age", "json"],
     report: ["answer", "json"],
@@ -625,13 +703,16 @@ const SPEC: CliSpec = {
     cot: ["report", "out", ...NET],
     sentiment: ["out", ...NET],
     news: ["symbol", "lang", "days", "limit", "out", ...NET],
+    research: ["kind", "focus", "ask", "name", "web-results", "engine-search", "limit", "out", ...NET],
     universe: ["out", ...NET],
     resolve: ["out", ...NET],
     fundamentals: ["asof", "years", "quarters", "source", "out", ...NET],
+    value: ["style", "region", "shortlist", "top", "min-cap-eur", "watch", "out", ...NET],
     regime: ["market", "out", ...NET],
     sectors: ["market", "out", ...NET],
     catalysts: ["days", "out", ...NET],
     screen: ["engine", "market", "universe", "limit", "sort", "list", "bootstrap", "all-listings", "out", ...NET],
+    etf: ["pea", "acc", "dist", "ucits", "currency", "limit", "out", ...NET],
     technicals: ["interval", "indicators", "benchmark", "out", ...NET],
     valuation: ["erp", "terminal", "out", ...NET],
     filings: ["forms", "days", "limit", "search", "out", ...NET],
@@ -759,7 +840,7 @@ function usage(msg: string): never {
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 function arity(args: CommandArgs): number {
-  if (args.command === "doctor" || args.command === "version") return 0;
+  if (args.command === "doctor" || args.command === "version" || args.command === "value") return 0;
   if (args.command === "check" || args.command === "calc") return 2;
   if (args.command === "profile") return 3;
   if (args.command === "crypto" || args.command === "calendar" || args.command === "macro" || args.command === "crypto-analysis") return 2;
@@ -767,6 +848,7 @@ function arity(args: CommandArgs): number {
     args.command === "stats" ||
     args.command === "predict-analysis" ||
     args.command === "screen" ||
+    args.command === "etf" ||
     args.command === "regime" ||
     args.command === "sectors" ||
     args.command === "catalysts"
@@ -820,7 +902,7 @@ async function run(args: CommandArgs): Promise<void> {
 
   if (cmd === "analyze") {
     const symbol = args.positional[0];
-    if (!symbol) usage("usage: ultrastock analyze <symbol> [--depth quick|standard|deep] [--since <run>] [--out <dir>] [--json]");
+    if (!symbol) usage("usage: ultrastock analyze <symbol> [--depth quick|standard|deep|full] [--since <run>] [--out <dir>] [--json]");
     const depth = (argValue(args, "depth") ?? "standard") as Depth;
     if (!(DEPTHS as readonly string[]).includes(depth)) usage(`--depth is one of ${DEPTHS.join(", ")}`);
     const dir = runDirFor(argValue(args, "out"), `${symbol.toUpperCase().replace(/[^A-Z0-9.-]/g, "_")}-${runId()}`);
@@ -888,10 +970,13 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "calc") {
     const [dir, formula] = args.positional;
     const label = argValue(args, "label");
-    if (!dir || !formula || !label) usage('usage: ultrastock calc <run> "<formula over E ids>" --label <text> [--unit <unit>]');
+    const from = argValue(args, "from");
+    if (!dir || !formula || !label)
+      usage('usage: ultrastock calc <run> "<formula over E ids>" --label <text> [--unit <unit>] | calc <run> --from <E#> "<figure>" --label <text>');
     let r: ReturnType<typeof calcEvidence>;
     try {
-      r = calcEvidence(resolve(dir), formula, { label, unit: argValue(args, "unit"), key: argValue(args, "key") });
+      const opts = { label, unit: argValue(args, "unit"), key: argValue(args, "key") };
+      r = from ? calcFromDocument(resolve(dir), from, formula, opts) : calcEvidence(resolve(dir), formula, opts);
     } catch (e) {
       if (e instanceof ExprError) usage(`formula: ${e.message}`);
       return fail((e as Error).message);
@@ -945,6 +1030,8 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "valuation") return valuationCommand(args, asJson);
   if (cmd === "technicals") return technicalsCommand(args, asJson);
   if (cmd === "screen") return screenCommand(args, asJson);
+  if (cmd === "etf") return etfCommand(args, asJson);
+  if (cmd === "value") return valueCommand(args, asJson);
   if (cmd === "regime") return regimeCommand(args, asJson);
   if (cmd === "sectors") return sectorsCommand(args, asJson);
   if (cmd === "catalysts") return catalystsCommand(args, asJson);
@@ -985,6 +1072,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "cot") return cotCommand(args, asJson);
   if (cmd === "sentiment") return sentimentCommand(args, asJson);
   if (cmd === "news") return newsCommand(args, asJson);
+  if (cmd === "research") return researchCommand(args, asJson);
   if (cmd === "universe") return universeCommand(args, asJson);
 
   if (cmd === "doctor") {

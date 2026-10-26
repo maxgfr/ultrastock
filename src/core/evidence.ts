@@ -8,8 +8,9 @@
 // evidence they cite. Ids are assigned in insertion order, so the same inputs
 // (a replayed fixture) always produce the same ids.
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { writeFileAtomic } from "../engine.js";
+import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "./untrusted.js";
 
 export const EVIDENCE_FILE = "evidence.json";
 export const EVIDENCE_SCHEMA = 1;
@@ -32,6 +33,22 @@ export interface Provenance {
   fallbackFrom?: string;
 }
 
+/**
+ * A document an evidence item stands for — a web page, a filing, a PDF read in
+ * full. Its text lives in the run (`path`, relative to it), fenced as external
+ * text; the register keeps where, how long and which bytes, so `check` can find
+ * an answer's figures in the source itself.
+ */
+export interface EvidenceDoc {
+  /** Relative to the run directory: "sources/E12.md". */
+  path: string;
+  chars: number;
+  /** sha256 of the text. */
+  hash: string;
+  /** When the document says it was published (as the page wrote it). */
+  publishedAt?: string;
+}
+
 export interface EvidenceItem extends Provenance {
   id: string;
   /** What the figure is, in words: "LVMH close", "RSI(14)". */
@@ -46,6 +63,8 @@ export interface EvidenceItem extends Provenance {
   formula?: string;
   /** The value is external text (a headline, a market question): data, never instructions. */
   untrusted?: boolean;
+  /** The item is a document (key `doc.<hash>`): its text, for `check` to read. */
+  doc?: EvidenceDoc;
 }
 
 export interface EvidenceFile {
@@ -174,4 +193,24 @@ export function formatNumber(n: number): string {
   const abs = Math.abs(n);
   const decimals = abs >= 1000 ? 2 : abs >= 1 ? 4 : 6;
   return String(Number(n.toFixed(decimals)));
+}
+
+/**
+ * The text of a document item, read from the run — the part between the
+ * external-text fences. Undefined when the item is no document, its file is
+ * gone, or its path leaves the run directory (a register is data: it never
+ * gets to point `check` at an arbitrary file).
+ */
+export function readDocText(dir: string, item: EvidenceItem): string | undefined {
+  if (!item.doc) return undefined;
+  const root = resolve(dir);
+  const path = resolve(root, item.doc.path);
+  const rel = relative(root, path);
+  if (!rel || rel.startsWith("..") || isAbsolute(rel)) return undefined;
+  if (!existsSync(path)) return undefined;
+  const raw = readFileSync(path, "utf8");
+  const open = raw.indexOf(UNTRUSTED_OPEN);
+  const close = raw.lastIndexOf(UNTRUSTED_CLOSE);
+  if (open < 0 || close < open) return raw;
+  return raw.slice(raw.indexOf("\n", open) + 1, close);
 }

@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.nasdaq.com/api/calendar/economicevents?date=2026-10-26"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"data\":{\"asOf\":\"Mon, Oct 26, 2026\",\"headers\":{\"gmt\":\"Time\",\"country\":\"Country\",\"eventName\":\"Event\",\"actual\":\"Actual\",\"consensus\":\"Consensus\",\"previous\":\"Previous\",\"description\":\"Description\"},\"rows\":[{\"gmt\":\"17:10\",\"country\":\"Australia\",\"eventName\":\"RBA Assistant Governor Jones Speaks\",\"actual\":\"&nbsp;\",\"consensus\":\" \",\"previous\":\"&nbsp;\",\"description\":\"\"},{\"gmt\":\"All Day\",\"country\":\"Russia\",\"eventName\":\"Russia - Non Trading Day\",\"actual\":\" \",\"consensus\":\" \",\"previous\":\" \",\"description\":\"\"}]},\"message\":null,\"status\":{\"rCode\":200,\"bCodeMessage\":null,\"developerMessage\":null}}",
+  "url": "https://api.nasdaq.com/api/calendar/economicevents?date=2026-10-26",
+  "fetchedAt": "2026-10-26T20:01:05.992Z"
+ }
+}

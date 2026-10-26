@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.nasdaq.com/api/quote/URTH/info?assetclass=etf"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"data\":{\"symbol\":\"URTH\",\"companyName\":\"iShares MSCI World ETF\",\"stockType\":null,\"exchange\":\"PSE\",\"isNasdaqListed\":false,\"isNasdaq100\":false,\"isHeld\":false,\"primaryData\":{\"lastSalePrice\":\"$206.34\",\"netChange\":\"+1.19\",\"percentageChange\":\"+0.58%\",\"deltaIndicator\":\"up\",\"lastTradeTimestamp\":\"Oct 26, 2026 3:48 PM ET\",\"isRealTime\":true,\"bidPrice\":\"$206.21\",\"askPrice\":\"$206.49\",\"bidSize\":\"303\",\"askSize\":\"300\",\"volume\":\"360,319.078063\",\"currency\":null},\"secondaryData\":null,\"marketStatus\":\"Open\",\"assetClass\":\"ETF\",\"keyStats\":null,\"notifications\":[]},\"message\":null,\"status\":{\"rCode\":200,\"bCodeMessage\":null,\"developerMessage\":null}}",
+  "url": "https://api.nasdaq.com/api/quote/URTH/info?assetclass=etf",
+  "fetchedAt": "2026-10-26T19:48:24.021Z"
+ }
+}

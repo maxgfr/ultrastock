@@ -11,13 +11,19 @@
 // here, because the engine's numeral reader is built for prose (it drops signs,
 // single digits and anything past the eighth number of a paragraph) and a
 // financial table breaks all three.
-import { citationTokensIn, collectCitations, EVIDENCE_TOKEN, extractClaimUnits, unitTexts } from "./engine.js";
-import { type EvidenceItem, EvidenceStore } from "./core/evidence.js";
+//
+// A cited [E#] can be a document — a web page or a filing compiled by
+// `research`. Its text is read from the run and passed through the same figure
+// reader as the answer: a figure the claim states must be in the document as
+// written ("4,2 Md€" against "4.2 billion"), and a figure the document holds
+// only far from the claim's words is noted as distant.
+import { bm25Tokenize, citationTokensIn, collectCitations, EVIDENCE_TOKEN, extractClaimUnits, unitTexts } from "./engine.js";
+import { type EvidenceItem, EvidenceStore, readDocText } from "./core/evidence.js";
 
 export interface CheckProblem {
   line?: number;
-  /** `inert` and `unsourced` are notes: they do not fail the check. */
-  kind: "empty" | "uncited" | "dangling" | "unsupported" | "stale" | "inert" | "unsourced";
+  /** `inert`, `unsourced` and `distant` are notes: they do not fail the check. */
+  kind: "empty" | "uncited" | "dangling" | "unsupported" | "stale" | "inert" | "unsourced" | "distant";
   message: string;
 }
 
@@ -29,7 +35,7 @@ export interface CheckReport {
   problems: CheckProblem[];
 }
 
-export const NOTE_KINDS: ReadonlySet<CheckProblem["kind"]> = new Set(["inert", "unsourced"]);
+export const NOTE_KINDS: ReadonlySet<CheckProblem["kind"]> = new Set(["inert", "unsourced", "distant"]);
 
 export function isEvidenceCitation(token: string): boolean {
   return EVIDENCE_TOKEN.test(`[${token}]`) || /^E\d+$/.test(token);
@@ -142,6 +148,31 @@ export function figureMatches(f: Figure, items: readonly EvidenceItem[]): boolea
   return false;
 }
 
+/** A document's figures as evidence-shaped values, so `figureMatches` reads them like any other. */
+export function documentFigures(doc: EvidenceItem, text: string): EvidenceItem[] {
+  return extractFigures(text).map((f) => ({ ...doc, value: f.value, unit: f.percent ? "%" : undefined, doc: undefined }));
+}
+
+/** Lines either side of a line sharing a word with the claim that still count as near it. */
+const NEAR_LINES = 3;
+
+/**
+ * The lines of a document near the WORDS of a claim — where its figure should
+ * sit: every line within NEAR_LINES of a line that shares a word with the
+ * claim. The claim's own figures and citations are taken out first (their
+ * digits would make every line holding the figure "near"). When no line shares
+ * a word — an English page under a French claim — the whole text is returned:
+ * nearness cannot be judged, so no note is raised.
+ */
+function nearClaim(text: string, claim: string): string {
+  const words = claim.replace(/\[[^\]]*\]/g, " ").replace(/[+\-−–]?[$€£]?\d[\d\s.,'  ]*%?/g, " ");
+  const terms = new Set(bm25Tokenize(words).filter((t) => t.length > 2 && !/^\d+$/.test(t)));
+  const lines = text.split("\n");
+  const hits = lines.map((l) => bm25Tokenize(l).some((t) => terms.has(t)));
+  if (!hits.some(Boolean)) return text;
+  return lines.filter((_, i) => hits.slice(Math.max(0, i - NEAR_LINES), i + NEAR_LINES + 1).some(Boolean)).join("\n");
+}
+
 const SOURCES_HEADING = /^#{1,6}\s+(?:sources?|references?|citations?|évidences?|evidence|preuves|références?|annexe|appendix)\b/i;
 
 /** A closing sources/evidence list, from its heading to the end, when no heading follows it. */
@@ -203,6 +234,15 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
   let claims = 0;
   let figures = 0;
   const staleReported = new Set<string>();
+  // Each cited document is read once: its text and its figures.
+  const docs = new Map<string, { text: string; figures: EvidenceItem[] } | null>();
+  const docOf = (item: EvidenceItem) => {
+    if (!docs.has(item.id)) {
+      const text = readDocText(dir, item);
+      docs.set(item.id, text === undefined ? null : { text, figures: documentFigures(item, text) });
+    }
+    return docs.get(item.id) ?? undefined;
+  };
 
   for (const unit of extractClaimUnits(answer, unitOpts)) {
     for (const text of unitTexts(unit)) {
@@ -218,11 +258,19 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
       figures += figs.length;
       for (const t of tokens) cited.add(t);
       const known: EvidenceItem[] = [];
+      const citedDocs: EvidenceItem[] = [];
       for (const t of tokens) {
         const item = store.get(t);
         if (!item) problems.push({ line, kind: "dangling", message: `[${t}] is not in this run's evidence (it holds E1…E${store.items.length})` });
+        else if (item.doc && !docOf(item))
+          problems.push({
+            line,
+            kind: "dangling",
+            message: `[${t}] is a document whose text (${item.doc.path}) is missing from the run — re-run \`ultrastock research\``,
+          });
         else {
-          known.push(item);
+          if (item.doc) citedDocs.push(item);
+          else known.push(item);
           if (opts.maxAgeMs !== undefined && !staleReported.has(t) && now - Date.parse(item.fetchedAt) > opts.maxAgeMs) {
             staleReported.add(t);
             problems.push({
@@ -238,13 +286,32 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
         continue;
       }
       for (const f of figs) {
-        if (!figureMatches(f, known)) {
+        if (figureMatches(f, known)) continue;
+        const holder = citedDocs.find((d) => figureMatches(f, docOf(d)!.figures));
+        if (holder) {
+          const doc = docOf(holder)!;
+          if (!figureMatches(f, documentFigures(holder, nearClaim(doc.text, text))))
+            problems.push({
+              line,
+              kind: "distant",
+              message: `${f.raw} is in [${holder.id}] but far from the words of the claim — check it is the figure the claim means: "${quote(text)}"`,
+            });
+          continue;
+        }
+        if (citedDocs.length) {
+          const where = citedDocs.map((d) => `[${d.id}]${d.url ? ` (${d.url})` : ""}`).join(" ");
           problems.push({
             line,
             kind: "unsupported",
-            message: `${f.raw} is in none of ${tokens.map((t) => `[${t}]`).join(" ")} — cite the evidence that holds it, or compute it with \`ultrastock calc\``,
+            message: `${f.raw} is not in the document${citedDocs.length > 1 ? "s" : ""} ${where}${known.length ? ` nor in ${known.map((k) => `[${k.id}]`).join(" ")}` : ""} — state the figure as the source writes it, or cite the evidence that holds it`,
           });
+          continue;
         }
+        problems.push({
+          line,
+          kind: "unsupported",
+          message: `${f.raw} is in none of ${tokens.map((t) => `[${t}]`).join(" ")} — cite the evidence that holds it, or compute it with \`ultrastock calc\``,
+        });
       }
     }
   }

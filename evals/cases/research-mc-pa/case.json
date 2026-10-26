@@ -1,0 +1,8 @@
+{
+  "kind": "research — LVMH's latest results from its own releases (EN + FR), checked figure by figure",
+  "research": { "subject": "MC.PA", "focus": "results", "webResults": "websearch.json" },
+  "fixture": "assets/fixtures/research-mc-pa",
+  "calcs": [{ "from": "E2", "figure": "5,7 milliards d'euros", "label": "LVMH H1 2026 net profit, group share", "expectId": "E8" }],
+  "expect": { "evidenceMin": 7, "keys": ["MC.PA.crible.revenue.2025-12-31"], "documents": 2 },
+  "answers": { "good": 0, "bad": 3 }
+}
