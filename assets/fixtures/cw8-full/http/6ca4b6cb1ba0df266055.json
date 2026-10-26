@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=CW8.PA&region=US&lang=en-US"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<rss version=\"2.0\">\n    <channel>\n        <copyright>Copyright (c) 2026 Yahoo Inc. All rights reserved.</copyright>\n        <description>Latest Financial News for CW8.PA</description>\n        <image>\n            <height>45</height>\n            <link>http://finance.yahoo.com/q/h?s=CW8.PA</link>\n            <title>Yahoo! Finance: CW8.PA News</title>\n            <url>https://s.yimg.com/rz/stage/p/yahoo_finance_en-US_h_p_finance_2.png</url>\n            <width>144</width>\n        </image>\n        <language>en-US</language>\n        <lastBuildDate>Mon, 26 Oct 2026 20:01:40 +0000</lastBuildDate>\n        <link>http://finance.yahoo.com/q/h?s=CW8.PA</link>\n        <title>Yahoo! Finance: CW8.PA News</title>\n    </channel>\n</rss>\n",
+  "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=CW8.PA&region=US&lang=en-US",
+  "fetchedAt": "2026-10-26T20:01:40.349Z"
+ }
+}
