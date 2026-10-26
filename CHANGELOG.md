@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.3.0](https://github.com/maxgfr/ultrastock/compare/v1.2.0...v1.3.0) (2026-10-26)
+
+
+### Bug Fixes
+
+* etf propose keeps funds launched a year ago, and a stale fixture fails loudly ([a44408f](https://github.com/maxgfr/ultrastock/commit/a44408fa0674131f63837e56fdeb5ffeb06290f6))
+
+
+### Features
+
+* ETF catalogue browsing and etf propose ([dd8ff78](https://github.com/maxgfr/ultrastock/commit/dd8ff782bfe48d25e577ec18ef1d3806df284478)), closes [#41](https://github.com/maxgfr/ultrastock/issues/41)
+
 # [1.2.0](https://github.com/maxgfr/ultrastock/compare/v1.1.0...v1.2.0) (2026-10-26)
 
 
