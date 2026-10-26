@@ -16,7 +16,7 @@ import { homeDir } from "../../core/paths.js";
 import { ProviderError } from "../types.js";
 
 export const SOURCE = "crible";
-export const CRIBLE_TAG = "v0.15.0";
+export const CRIBLE_TAG = "v0.16.0";
 const REPO = "https://github.com/maxgfr/crible";
 
 /** The command that runs crible: ULTRASTOCK_CRIBLE_CMD (e.g. "crible" when installed), else uvx at the pinned tag. */
@@ -26,9 +26,7 @@ export function cribleInvocation(): { cmd: string; args: string[] } {
     const [cmd, ...args] = custom.split(/\s+/).filter(Boolean);
     return { cmd: cmd!, args };
   }
-  // crible declares `mcp>=1.2` and its server imports `mcp.server.fastmcp`, which mcp 2.x removed:
-  // cap it here until crible caps it itself.
-  return { cmd: "uvx", args: ["--from", `git+${REPO}@${CRIBLE_TAG}`, "--with", "mcp<2", "crible"] };
+  return { cmd: "uvx", args: ["--from", `git+${REPO}@${CRIBLE_TAG}`, "crible"] };
 }
 
 export function cribleDataDir(): string {

@@ -1924,10 +1924,13 @@ var foldCache;
 var NO_SUBTERMS;
 var subtermCache;
 var subtermExtras;
+var STEM_CACHE_MAX;
+var stemCache;
 var MASK32;
 var unsigned64;
 var PAIR_CACHE_MAX;
 var URL_IN_TEXT;
+var UNDER_COVERED_MIN;
 var init_rank = __esm({
   "src/rank.ts"() {
     "use strict";
@@ -1948,10 +1951,13 @@ var init_rank = __esm({
     NO_SUBTERMS = [];
     subtermCache = /* @__PURE__ */ new Map();
     subtermExtras = { list: void 0, length: 0 };
+    STEM_CACHE_MAX = 5e4;
+    stemCache = /* @__PURE__ */ new Map();
     MASK32 = 0xffffffffn;
     unsigned64 = (v) => v < 0n ? BigInt.asUintN(64, v) : v;
     PAIR_CACHE_MAX = 2048;
     URL_IN_TEXT = /https?:\/\/(?:[^\s/@?#]+@)?[\p{L}\p{N}.-]+/giu;
+    UNDER_COVERED_MIN = 2;
   }
 });
 var baseLang2;
@@ -5399,6 +5405,17 @@ var init_forge_host = __esm({
     WWW_ALIASED = /* @__PURE__ */ new Set(["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"]);
   }
 });
+function looksLikeJunkExtraction(text) {
+  const t = text.trim();
+  if (t.length >= 2e3) return void 0;
+  const head = t.slice(0, 800);
+  const hits = JUNK_PATTERNS.filter(([re]) => re.test(head));
+  const strong = hits.find(([, , kind]) => kind === "strong");
+  if (!strong) return void 0;
+  if (hits.length >= 2) return strong[1];
+  const prose = t.split("\n").filter((l) => l.trim().length >= 60 && !JUNK_PATTERNS.some(([re]) => re.test(l))).length;
+  return prose < 3 ? strong[1] : void 0;
+}
 var JUNK_PATTERNS;
 var init_junk = __esm({
   "src/junk.ts"() {
@@ -5429,13 +5446,29 @@ var init_junk = __esm({
     ];
   }
 });
+function canShowWindow(platform = process.platform, env2 = process.env) {
+  const ci = env2.CI?.trim().toLowerCase();
+  if (ci && ci !== "false" && ci !== "0") return false;
+  if (platform === "darwin" || platform === "win32") return true;
+  return !!(env2.DISPLAY || env2.WAYLAND_DISPLAY);
+}
+function humanWall(text) {
+  const junk = looksLikeJunkExtraction(text);
+  if (junk && !junk.startsWith("JavaScript")) return junk;
+  const t = text.trim();
+  return t && t.length < LOGIN_WALL_MAX && LOGIN_WALL.test(t.slice(0, 800)) ? "login wall" : void 0;
+}
 var RENDER_STATUS;
+var LOGIN_WALL;
+var LOGIN_WALL_MAX;
 var init_mode = __esm({
   "src/browser/mode.ts"() {
     "use strict";
     init_brand();
     init_junk();
     RENDER_STATUS = /* @__PURE__ */ new Set([0, 401, 403, 429, 503]);
+    LOGIN_WALL = /\b(?:sign|log) ?in (?:to (?:continue|read|view|see|access|keep reading)|or (?:sign up|register|create an account))\b|\byou (?:must|need to|have to) (?:be )?(?:signed|logged) ?in\b|\bplease (?:sign|log) ?in\b/i;
+    LOGIN_WALL_MAX = 1500;
   }
 });
 function browserUa() {
@@ -7052,31 +7085,86 @@ async function render(url, opts, deps, timeoutMs, run3) {
       await waitFor(session, { idle: true }, { timeoutMs: idleMs, deps }).catch(() => {
       });
     }
+    const statusNow = () => status ?? nav.status ?? 200;
+    const code = statusNow();
+    const take = async () => {
+      const got = await page.send(
+        "Runtime.evaluate",
+        { expression: opts.fullPage ? WHOLE_DOCUMENT : READ_DOCUMENT, returnByValue: true },
+        { timeoutMs }
+      );
+      const finalUrl = typeof got.result?.value?.url === "string" ? got.result.value.url : nav.url;
+      const html = typeof got.result?.value?.html === "string" ? got.result.value.html : "";
+      return { ...extractFromHtml(html, finalUrl, opts), finalUrl, status: statusNow(), extractor: "browser" };
+    };
     const challenge = await detectChallenge(session);
-    const got = await page.send(
-      "Runtime.evaluate",
-      { expression: opts.fullPage ? WHOLE_DOCUMENT : READ_DOCUMENT, returnByValue: true },
-      { timeoutMs }
-    );
-    const finalUrl = typeof got.result?.value?.url === "string" ? got.result.value.url : nav.url;
-    const code = status ?? nav.status ?? 200;
-    if (challenge?.blocking) {
+    const first = await take();
+    const blocked = (c) => ({
+      text: "",
+      finalUrl: first.finalUrl,
+      status: code >= 400 ? code : 403,
+      extractor: "browser",
+      note: `${c.kind} challenge \u2014 open it with \`${brand().cli} browser open ${url}\` and let the human solve it`
+    });
+    const asIs = challenge?.blocking ? blocked(challenge) : first;
+    if (!opts.human) return asIs;
+    const found = challenge?.blocking ? `${challenge.kind} challenge` : humanWall(first.text);
+    if (!found) return first;
+    const wall = `${/^[aeiou]/i.test(found) ? "an" : "a"} ${found}`;
+    const nobody = session.headless ? "the browser runs headless" : canShowWindow(deps.platform) ? void 0 : "no window can be shown here";
+    if (nobody) return { ...asIs, note: [asIs.note, `It needs a human, and ${nobody}.`].filter(Boolean).join(" "), handoff: "no-window" };
+    const human = opts.human === true ? {} : opts.human;
+    const cleared = await handOff(session, url, wall, !!challenge?.blocking, human, deps, take, opts.signal);
+    if (cleared)
       return {
-        text: "",
-        finalUrl,
-        status: code >= 400 ? code : 403,
-        extractor: "browser",
-        note: `${challenge.kind} challenge \u2014 open it with \`${brand().cli} browser open ${url}\` and let the human solve it`
+        ...cleared,
+        status: cleared.status >= 400 ? 200 : cleared.status,
+        note: [cleared.note, `Read after a human got past ${wall}.`].filter(Boolean).join(" "),
+        handoff: "cleared"
       };
-    }
-    const html = typeof got.result?.value?.html === "string" ? got.result.value.html : "";
-    return { ...extractFromHtml(html, finalUrl, opts), finalUrl, status: code, extractor: "browser" };
+    const secs = Math.round((human.timeoutMs ?? HUMAN_TIMEOUT_MS) / 1e3);
+    return { ...asIs, note: [asIs.note, `Nobody got past it within ${secs} s.`].filter(Boolean).join(" "), handoff: "timeout" };
   } finally {
     page.off("Network.responseReceived", onResponse);
     await deps.discovery.closeTarget(session.port, session.targetId, session.host).catch(() => {
     });
     await session.detach();
   }
+}
+async function handOff(session, url, wall, challenged, human, deps, take, signal) {
+  const tell = human.tell ?? ((m) => void process.stderr.write(`${m}
+`));
+  const timeoutMs = human.timeoutMs ?? HUMAN_TIMEOUT_MS;
+  const start = deps.now();
+  const left = () => timeoutMs - (deps.now() - start);
+  const { cli, name } = brand();
+  await deps.discovery.activateTarget(session.port, session.targetId, session.host).catch(() => {
+  });
+  tell(
+    `${cli}: ${url} is behind ${wall}. It is open in the ${name} browser window (its own profile, not your browser): get past it there and the read goes on by itself \u2014 waiting up to ${Math.round(timeoutMs / 1e3)} s.`
+  );
+  try {
+    if (challenged) await waitFor(session, { clear: true }, { timeoutMs, deps, ...signal ? { signal } : {} });
+    for (; ; ) {
+      await waitFor(session, { load: true }, { timeoutMs: Math.max(1, Math.min(AFTER_WALL_LOAD_MS, left())), deps }).catch(() => {
+      });
+      const challenge = await detectChallenge(session);
+      if (!challenge?.blocking) {
+        const r2 = await take();
+        if (!humanWall(r2.text)) {
+          tell(`${cli}: got past it \u2014 read ${url}.`);
+          return r2;
+        }
+      }
+      if (left() <= 0) break;
+      if (signal?.aborted) throw new Error(`reading ${url} in the browser was cancelled`);
+      await deps.sleep(Math.min(WALL_POLL_MS, left()));
+    }
+  } catch (e) {
+    if (!(e instanceof WaitTimeoutError)) throw e;
+  }
+  tell(`${cli}: ${url} is still behind ${wall} after ${Math.round(timeoutMs / 1e3)} s \u2014 read without it.`);
+  return void 0;
 }
 function readRenderedPage(url, opts = {}) {
   return track(read(url, opts));
@@ -7087,6 +7175,7 @@ async function read(url, opts) {
   if (signal?.aborted) throw cancelled();
   const deps = browserDeps(opts.deps);
   const timeoutMs = opts.timeoutMs ?? envInt("BROWSER_TIMEOUT_MS", 3e4, 5e3, 3e5);
+  const humanMs = opts.human ? (opts.human === true ? void 0 : opts.human.timeoutMs) ?? HUMAN_TIMEOUT_MS : 0;
   const release = await acquire(envInt("BROWSER_CONCURRENCY", 1, 1, 4), signal, cancelled);
   if (signal?.aborted) {
     release();
@@ -7099,7 +7188,8 @@ async function read(url, opts) {
   const cut = new Promise((_, reject) => {
     stop = reject;
   });
-  const timer = setTimeout(() => stop(new Error(`reading ${url} in the browser did not finish within ${timeoutMs} ms`)), timeoutMs);
+  const budgetMs = humanMs ? 2 * timeoutMs + humanMs : timeoutMs;
+  const timer = setTimeout(() => stop(new Error(`reading ${url} in the browser did not finish within ${budgetMs} ms`)), budgetMs);
   const onAbort = () => stop(cancelled());
   signal?.addEventListener("abort", onAbort, { once: true });
   try {
@@ -7117,6 +7207,9 @@ async function read(url, opts) {
 }
 var IDLE_CAP_MS;
 var WEB_PAGE;
+var HUMAN_TIMEOUT_MS;
+var WALL_POLL_MS;
+var AFTER_WALL_LOAD_MS;
 var active;
 var queue;
 var DRAIN_MS;
@@ -7132,12 +7225,16 @@ var init_read = __esm({
     init_deps();
     init_launch();
     init_discovery();
+    init_mode();
     init_overlay();
     init_session();
     init_state();
     init_wait();
     IDLE_CAP_MS = 3e3;
     WEB_PAGE = /^(?:text\/html|application\/xhtml\+xml)$/i;
+    HUMAN_TIMEOUT_MS = 3e5;
+    WALL_POLL_MS = 1e3;
+    AFTER_WALL_LOAD_MS = 1e4;
     active = 0;
     queue = [];
     DRAIN_MS = 5e3;
@@ -7145,7 +7242,7 @@ var init_read = __esm({
     WHOLE_DOCUMENT = "({ html: document.documentElement ? document.documentElement.outerHTML : '', url: location.href })";
   }
 });
-var ENGINE_VERSION = "1.34.2";
+var ENGINE_VERSION = "1.36.0";
 init_brand();
 init_pdf();
 init_doc();
@@ -7157,6 +7254,7 @@ init_cdp();
 init_overlay();
 init_state();
 init_challenge();
+init_mode();
 init_detect();
 init_profile();
 init_exec();
@@ -7166,6 +7264,7 @@ init_firecrawl();
 init_text();
 init_url();
 init_rank();
+init_junk();
 init_locale();
 init_exec2();
 init_brand();
@@ -19305,7 +19404,7 @@ import { spawn as spawn4 } from "child_process";
 import { existsSync as existsSync17 } from "fs";
 import { join as join20 } from "path";
 var SOURCE13 = "crible";
-var CRIBLE_TAG = "v0.15.0";
+var CRIBLE_TAG = "v0.16.0";
 var REPO = "https://github.com/maxgfr/crible";
 function cribleInvocation() {
   const custom = env("CRIBLE_CMD");
@@ -19313,7 +19412,7 @@ function cribleInvocation() {
     const [cmd, ...args] = custom.split(/\s+/).filter(Boolean);
     return { cmd, args };
   }
-  return { cmd: "uvx", args: ["--from", `git+${REPO}@${CRIBLE_TAG}`, "--with", "mcp<2", "crible"] };
+  return { cmd: "uvx", args: ["--from", `git+${REPO}@${CRIBLE_TAG}`, "crible"] };
 }
 function cribleDataDir() {
   return env("CRIBLE_DATA_DIR") ?? join20(homeDir(), "crible");
