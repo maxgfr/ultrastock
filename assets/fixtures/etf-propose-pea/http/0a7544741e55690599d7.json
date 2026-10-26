@@ -8,6 +8,6 @@
   "status": 200,
   "body": "[{\"value\":\"FR0013412020\",\"isin\":\"FR0013412020\",\"mic\":\"XPAR\",\"label\":\"\\u003Cspan class=\\u0027name\\u0027\\u003E\\u003Ca href=\\u0027\\/en\\/product\\/etfs\\/FR0013412020-XPAR\\u0027 style=\\u0027color: #007aff !important;\\u0027\\u003EAmundi PEA Emergent (MSCI Emerging) ESG Transition UCITS ETF\\u003C\\/a\\u003E\\u003C\\/span\\u003E\\u003Cspan class=\\u0027symbol\\u0027\\u003EPAEEM\\u003C\\/span\\u003E\\u003Cspan class=\\u0027mic\\u0027\\u003EXPAR\\u003C\\/span\\u003E\",\"link\":\"\\/en\\/product\\/etfs\\/FR0013412020-XPAR\",\"name\":\"AMUNDI PEA MSCI EM\"},{\"value\":\"\",\"isin\":\"\",\"mic\":\"\",\"label\":\"See all results\",\"link\":\"\\/en\\/search_instruments\\/fr0013412020?restMic\",\"name\":\"\"}]",
   "url": "https://live.euronext.com/en/instrumentSearch/searchJSON?q=FR0013412020",
-  "fetchedAt": "2026-10-26T20:55:50.581Z"
+  "fetchedAt": "2026-10-26T21:01:45.183Z"
  }
 }

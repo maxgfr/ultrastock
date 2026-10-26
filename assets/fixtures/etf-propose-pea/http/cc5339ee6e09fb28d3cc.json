@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://live.euronext.com/en/instrumentSearch/searchJSON?q=FR001400U5Q4"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "[{\"value\":\"FR001400U5Q4\",\"isin\":\"FR001400U5Q4\",\"mic\":\"XPAR\",\"label\":\"\\u003Cspan class=\\u0027name\\u0027\\u003E\\u003Ca href=\\u0027\\/en\\/product\\/etfs\\/FR001400U5Q4-XPAR\\u0027 style=\\u0027color: #007aff !important;\\u0027\\u003EAMUNDI PEA MONDE MSCI World UCITS ETF Acc\\u003C\\/a\\u003E\\u003C\\/span\\u003E\\u003Cspan class=\\u0027symbol\\u0027\\u003EDCAM\\u003C\\/span\\u003E\\u003Cspan class=\\u0027mic\\u0027\\u003EXPAR\\u003C\\/span\\u003E\",\"link\":\"\\/en\\/product\\/etfs\\/FR001400U5Q4-XPAR\",\"name\":\"AMUETFMSDEWIXPAR\"},{\"value\":\"\",\"isin\":\"\",\"mic\":\"\",\"label\":\"See all results\",\"link\":\"\\/en\\/search_instruments\\/fr001400u5q4?restMic\",\"name\":\"\"}]",
+  "url": "https://live.euronext.com/en/instrumentSearch/searchJSON?q=FR001400U5Q4",
+  "fetchedAt": "2026-10-26T21:01:45.155Z"
+ }
+}

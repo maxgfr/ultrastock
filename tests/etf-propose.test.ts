@@ -157,7 +157,7 @@ describe("the fund screen", () => {
       fund("XETR:LEV", { leveraged_flag: "Leveraged" }),
       fund("XETR:HDG", { currency_hedged_flag: "1", index_tracked: "MSCI World Index" }),
       fund("XETR:SML", { aum: 50e6 }),
-      fund("XETR:NEW", { launch_date: "2025-01-01" }),
+      fund("XETR:NEW", { launch_date: "2026-06-01" }),
       fund("XETR:DIS", { dividend_treatment: "Distributes" }),
     ];
     const r = etfScreenCandidates(rows, ETF_BUCKETS.world!, ctx({ distribution: "acc" }));

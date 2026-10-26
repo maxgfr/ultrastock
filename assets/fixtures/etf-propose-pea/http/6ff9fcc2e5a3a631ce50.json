@@ -8,6 +8,6 @@
   "status": 200,
   "body": "[{\"value\":\"IE00BH04GL39\",\"isin\":\"IE00BH04GL39\",\"mic\":\"ETFP\",\"label\":\"\\u003Cspan class=\\u0027name\\u0027\\u003E\\u003Ca href=\\u0027\\/en\\/product\\/etfs\\/IE00BH04GL39-ETFP\\u0027 style=\\u0027color: #007aff !important;\\u0027\\u003EVANGUARD EUROZONE GOVERNMENT UCITS ETF A\\u003C\\/a\\u003E\\u003C\\/span\\u003E\\u003Cspan class=\\u0027symbol\\u0027\\u003EVGEA\\u003C\\/span\\u003E\\u003Cspan class=\\u0027mic\\u0027\\u003EETFP\\u003C\\/span\\u003E\",\"link\":\"\\/en\\/product\\/etfs\\/IE00BH04GL39-ETFP\",\"name\":\"VANETFVGEAIMETFP\"},{\"value\":\"\",\"isin\":\"\",\"mic\":\"\",\"label\":\"See all results\",\"link\":\"\\/en\\/search_instruments\\/ie00bh04gl39?restMic\",\"name\":\"\"}]",
   "url": "https://live.euronext.com/en/instrumentSearch/searchJSON?q=IE00BH04GL39",
-  "fetchedAt": "2026-10-26T20:55:50.614Z"
+  "fetchedAt": "2026-10-26T21:01:45.268Z"
  }
 }

@@ -111,7 +111,7 @@ sleeve's first line; weights are whole percentages summing to 100.
   version only when no plain one qualifies, said so), UCITS and not
   US-domiciled for an EU resident (PRIIPs), not leveraged or inverse, not
   currency-hedged unless `--hedged`, AUM ≥ 100 M (reporting currency), launched
-  ≥ 3 years ago when known, the distribution asked (income: distributing).
+  ≥ 1 year ago when known (age then only weighs in the score), the distribution asked (income: distributing).
   Younger funds that pass everything else are named in the notes.
 - **Score** (out of 100): 40 × cost (1 − TER / 0.50 %) + 30 × size
   (log10(AUM / 100 M) / 2) + 20 × tracking (0.5 + the 1-year NAV total-return

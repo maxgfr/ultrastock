@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://live.euronext.com/en/instrumentSearch/searchJSON?q=WPEA"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "[{\"value\":\"IE0002XZSHO1\",\"isin\":\"IE0002XZSHO1\",\"mic\":\"XPAR\",\"label\":\"\\u003Cspan class=\\u0027name\\u0027\\u003E\\u003Ca href=\\u0027\\/en\\/product\\/etfs\\/IE0002XZSHO1-XPAR\\u0027 style=\\u0027color: #007aff !important;\\u0027\\u003EiShares MSCI World Swap PEA UCITS ETF EUR (Acc)\\u003C\\/a\\u003E\\u003C\\/span\\u003E\\u003Cspan class=\\u0027symbol\\u0027\\u003EWPEA\\u003C\\/span\\u003E\\u003Cspan class=\\u0027mic\\u0027\\u003EXPAR\\u003C\\/span\\u003E\",\"link\":\"\\/en\\/product\\/etfs\\/IE0002XZSHO1-XPAR\",\"name\":\"iSh Wld Swp PEA EU\"},{\"value\":\"\",\"isin\":\"\",\"mic\":\"\",\"label\":\"See all results\",\"link\":\"\\/en\\/search_instruments\\/wpea?restMic\",\"name\":\"\"}]",
+  "url": "https://live.euronext.com/en/instrumentSearch/searchJSON?q=WPEA",
+  "fetchedAt": "2026-10-26T21:01:45.292Z"
+ }
+}

@@ -47995,7 +47995,7 @@ function etfPlacement(bucket2, envelope) {
 }
 var ETF_VENUES = /* @__PURE__ */ new Set(["EURONEXT", "XETR", "MIL", "SIX", "LSE", "VIE", "BME"]);
 var ETF_MIN_AUM = 1e8;
-var ETF_MIN_YEARS = 3;
+var ETF_MIN_YEARS = 1;
 var ETF_DROP_REASONS = {
   index: "not on the bucket's index",
   ucits: "not UCITS",
@@ -48005,7 +48005,7 @@ var ETF_DROP_REASONS = {
   currency: "fund base currency is not the wanted one",
   distribution: "distribution policy",
   aum: `AUM under ${ETF_MIN_AUM / 1e6} M`,
-  age: `launched less than ${ETF_MIN_YEARS} years ago`,
+  age: `launched less than ${ETF_MIN_YEARS} year ago`,
   pea: "no PEA flag or name hint"
 };
 function etfScreenCandidates(rows, bucket2, ctx) {
@@ -48117,7 +48117,8 @@ async function etfTargetSymbol(m, listings = [m]) {
     try {
       const r2 = await resolveSymbol(isin);
       if (/\.(?:PA|AS|BR|LS|IR)$/.test(r2.instrument.symbol)) return r2.instrument.symbol;
-    } catch {
+    } catch (e) {
+      if (e instanceof FixtureMiss) throw e;
     }
   const same = listings.filter((x) => x === m || isin && tvStr(x, "isin") === isin);
   const order = ["XETR", "LSE", "SIX", "VIE", "BME", "MIL"];
@@ -48243,7 +48244,7 @@ async function etfPropose(dir2, o) {
   for (const w of work) {
     if (w.scored.length || !isPea(w)) continue;
     const head = work.find((x) => x !== w && x.inside && x.line.bucket.sleeve === "equity" && x.scored.length);
-    const why = `no PEA-eligible fund on its indexes passes the filters (issuer flag or name hint, UCITS, AUM \u2265 ${ETF_MIN_AUM / 1e6} M, ${ETF_MIN_YEARS} years)`;
+    const why = `no PEA-eligible fund on its indexes passes the filters (issuer flag or name hint, UCITS, AUM \u2265 ${ETF_MIN_AUM / 1e6} M, ${ETF_MIN_YEARS} year)`;
     if (w.line.bucket.sleeve === "equity" && head) {
       head.line.weightPct += w.line.weightPct;
       head.line.merged.push({ bucket: w.line.bucket.id, why });
@@ -48346,7 +48347,7 @@ async function etfPropose(dir2, o) {
     if (!w.scored.length) w.notes.push(`${b.label}: no fund passes the filters (${dropped || "none found"}) \u2014 its weight is left in cash`);
     if (sc.younger.length)
       w.notes.push(
-        `${b.label}: younger than ${ETF_MIN_YEARS} years, so left out although they pass the other filters: ${sc.younger.slice(0, 4).join(", ")} \u2014 a newer fund has a shorter record, not a worse one; \`ultrastock etf compare\` puts it side by side with the pick`
+        `${b.label}: younger than ${ETF_MIN_YEARS} year, so left out although they pass the other filters: ${sc.younger.slice(0, 4).join(", ")} \u2014 a newer fund has a shorter record, not a worse one; \`ultrastock etf compare\` puts it side by side with the pick`
       );
     if (sc.variants) w.notes.push(`${b.label}: no fund on the plain index qualified \u2014 ESG / screened versions of it were taken (a different index: say so)`);
   }
@@ -48600,7 +48601,7 @@ function etfProposalMarkdown(r2, store, c) {
     "- Equity share = min(100, 10 + 15 \xD7 (risk \u2212 1)) %: 10 / 25 / 40 / 55 / 70 / 85 / 100 % for risk 1 to 7; defensive \u221215 points, growth +10.",
     "- Each sleeve split by the goal: core \u2014 world 75 / emerging 15 / small caps 10, bonds euro government; growth \u2014 world 60 / Nasdaq-100 25 / emerging 15, bonds euro government; income \u2014 high dividend 70 / world 30, bonds euro government 60 / euro corporate 40, distributing; defensive \u2014 world 100, euro government 65 / money market 35.",
     `- A line under ${ETF_MIN_LINE_PCT} % of the plan, or beyond --max-funds, is folded into its sleeve's first line.`,
-    `- A fund qualifies with: the bucket's index (plain, no factor or sector slice), ${c.priips ? "UCITS, not US-domiciled, " : ""}not leveraged or inverse, ${c.hedged ? "" : "not currency-hedged, "}AUM \u2265 ${ETF_MIN_AUM / 1e6} M in its reporting currency, launched \u2265 ${ETF_MIN_YEARS} years ago when the launch date is known${r2.envelope === "pea" ? `, and for the PEA the issuer's flag (Amundi FUND_PEA) or "PEA" in its name \u2014 a name is a hint, the KID settles it` : ""}.`,
+    `- A fund qualifies with: the bucket's index (plain, no factor or sector slice), ${c.priips ? "UCITS, not US-domiciled, " : ""}not leveraged or inverse, ${c.hedged ? "" : "not currency-hedged, "}AUM \u2265 ${ETF_MIN_AUM / 1e6} M in its reporting currency, launched \u2265 ${ETF_MIN_YEARS} year ago when the launch date is known (age otherwise only weighs in the score)${r2.envelope === "pea" ? `, and for the PEA the issuer's flag (Amundi FUND_PEA) or "PEA" in its name \u2014 a name is a hint, the KID settles it` : ""}.`,
     "- Score (out of 100): 40 \xD7 cost (1 \u2212 TER/0.50 %) + 30 \xD7 size (log10(AUM/100 M)/2) + 20 \xD7 tracking (0.5 + the 1-year NAV total-return gap to the same-index, same-currency peers, in points; 0.5 without peers) + 10 \xD7 age (years/10); each part within 0\u20131.",
     "- Past tracking and costs say nothing certain about the future; the convention ignores the investor's other holdings, taxes and horizon beyond the risk score.",
     ""
