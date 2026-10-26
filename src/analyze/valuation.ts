@@ -6,7 +6,7 @@
 // margin of safety. Assumptions (equity risk premium, terminal growth,
 // scenario weights) are parameters, printed, never hidden.
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { annualizedVol } from "../analytics/indicators.js";
 import { relativeTo, simpleReturns } from "../analytics/performance.js";
 import { altmanZ, beneishM, capm, dcf, multiples, piotroski, qualityMetrics, reverseDcf, type Score, scenarioValue } from "../analytics/fundamentals.js";
@@ -29,6 +29,14 @@ export interface ValuationOptions {
   /** Explicit DCF years (default 5). */
   years?: number;
   now?: Date;
+  /**
+   * An already-open register to write into (the caller saves nothing itself):
+   * several valuations then run one after the other on one run without a
+   * last-writer-wins on evidence.json. Default: open the register at `dir`.
+   */
+  store?: EvidenceStore;
+  /** Where the write-up goes, relative to `dir` (default VALUATION.md). */
+  artifact?: string;
 }
 
 export interface ValuationResult {
@@ -54,7 +62,7 @@ export async function valuationRun(raw: string, dir: string, opts: ValuationOpti
   const inst = resolved.instrument;
   const sym = inst.symbol;
   const ccy = inst.currency;
-  const store = EvidenceStore.open(dir, { subject: sym, createdAt: now.toISOString() });
+  const store = opts.store ?? EvidenceStore.open(dir, { subject: sym, createdAt: now.toISOString() });
   const reg = (ds: Parameters<typeof registerDatasets>[1]) => registerDatasets(store, ds);
 
   // Price.
@@ -118,8 +126,8 @@ export async function valuationRun(raw: string, dir: string, opts: ValuationOpti
   let rfId: string | undefined;
   try {
     const curve = inst.currency === "USD" ? await treasuryCurve(now) : await ecbYieldCurve(["10Y"]);
-    reg([curve]);
-    const tenItem = store.items.find((i) => /\.(ust|aaa)\.10Y$/.test(i.key) && typeof i.value === "number");
+    // This curve's own 10-year point: a shared register may already hold the other currency's.
+    const tenItem = reg([curve])[0]?.items.find((i) => /\.(ust|aaa)\.10Y$/.test(i.key) && typeof i.value === "number");
     if (tenItem) {
       rf = (tenItem.value as number) / 100;
       rfId = tenItem.id;
@@ -176,8 +184,10 @@ export async function valuationRun(raw: string, dir: string, opts: ValuationOpti
     `Statements: latest fiscal year ending ${cur.period.end}${cur.filled.length ? ` (${cur.filled.length} field(s) from crible)` : ""}. Price ${q.price} ${ccy} as of ${q.at}. Assumptions: ERP ${(erp * 100).toFixed(1)} %, terminal growth ${(g * 100).toFixed(1)} %, scenario weights 25/50/25.`,
     "",
   ];
+  // A shared register holds other symbols too: list this one's figures (and the rate it used).
+  const own = (key: string) => key.startsWith(`${sym}.`);
   const section = (title: string, re: RegExp) => {
-    const items = store.items.filter((i) => re.test(i.key));
+    const items = store.items.filter((i) => re.test(i.key) && (own(i.key) || i.id === rfId));
     if (items.length)
       lines.push(`## ${title}`, "", ...items.map((i) => `- ${formatEvidence(i)}${i.formula && i.source === "ultrastock" ? ` — ${i.formula}` : ""}`), "");
   };
@@ -187,7 +197,9 @@ export async function valuationRun(raw: string, dir: string, opts: ValuationOpti
   section("Discount rate", /\.(coe|beta\.|vol2y)|\.(ust|aaa)\.10Y$/);
   section("DCF", /\.dcf\./);
   if (notes.length) lines.push("## Notes", "", ...notes.map((n) => `- ${n}`), "");
-  writeArtifact(join(dir, "VALUATION.md"), `${lines.join("\n")}\n`);
+  const artifact = join(dir, opts.artifact ?? "VALUATION.md");
+  mkdirSync(dirname(artifact), { recursive: true });
+  writeArtifact(artifact, `${lines.join("\n")}\n`);
   return { dir, symbol: sym, currency: ccy, evidence: store.items.length, ...out, notes };
 }
 

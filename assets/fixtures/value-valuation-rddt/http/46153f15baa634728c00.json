@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://www.sec.gov/files/company_tickers.json"
+  },
+  "response": {
+    "ok": true,
+    "status": 200,
+    "body": "{\"495\": {\"cik_str\": 1713445, \"ticker\": \"RDDT\", \"title\": \"Reddit, Inc.\"}, \"6883\": {\"cik_str\": 884394, \"ticker\": \"SPY\", \"title\": \"SPDR S&P 500 ETF TRUST\"}}",
+    "url": "https://www.sec.gov/files/company_tickers.json",
+    "fetchedAt": "2026-10-26T19:52:44.274Z"
+  }
+}
