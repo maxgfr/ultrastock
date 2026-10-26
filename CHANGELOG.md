@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.2.0](https://github.com/maxgfr/ultrastock/compare/v1.1.0...v1.2.0) (2026-10-26)
+
+
+### Features
+
+* research search lanes — delegated claude/codex web search, engine cascade, page rescue, linked reports ([ec32331](https://github.com/maxgfr/ultrastock/commit/ec32331345f947542aa29f8c429590fd677382a5)), closes [#40](https://github.com/maxgfr/ultrastock/issues/40)
+
 # [1.1.0](https://github.com/maxgfr/ultrastock/compare/v1.0.3...v1.1.0) (2026-10-26)
 
 
