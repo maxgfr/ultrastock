@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.0.2](https://github.com/maxgfr/ultrastock/compare/v1.0.1...v1.0.2) (2026-10-26)
+
+
+### Bug Fixes
+
+* issuers not listings in crible screens, ticket re-checks, tax FX range, US-only refusals ([e4ca76d](https://github.com/maxgfr/ultrastock/commit/e4ca76df8236242b4f023c01332f3d2116f47b28)), closes [#24](https://github.com/maxgfr/ultrastock/issues/24)
+
 ## [1.0.1](https://github.com/maxgfr/ultrastock/compare/v1.0.0...v1.0.1) (2026-10-25)
 
 
