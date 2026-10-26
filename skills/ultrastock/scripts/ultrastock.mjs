@@ -11107,6 +11107,7 @@ function cribleDataDir() {
   return env("CRIBLE_DATA_DIR") ?? join7(homeDir(), "crible");
 }
 function cribleAvailable() {
+  if (netMode().kind === "fixture") return true;
   return have(cribleInvocation().cmd);
 }
 function cribleBootstrapped(dir2 = cribleDataDir()) {

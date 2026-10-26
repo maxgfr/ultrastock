@@ -273,3 +273,21 @@ describe("recorded plumbing", () => {
     expect(r.contentType).toBe("application/pdf");
   });
 });
+
+describe("crible in a fixture replay", () => {
+  afterEach(() => setNetMode({ kind: "live" }));
+  it("is available and bootstrapped without uvx or a dataset: its calls are replayed", async () => {
+    const { cribleAvailable, cribleBootstrapped } = await import("../src/providers/external/crible.js");
+    const prev = process.env.ULTRASTOCK_CRIBLE_CMD;
+    process.env.ULTRASTOCK_CRIBLE_CMD = "definitely-not-installed-crible";
+    try {
+      expect(cribleAvailable()).toBe(false);
+      setNetMode({ kind: "fixture", dir: run() });
+      expect(cribleAvailable()).toBe(true);
+      expect(cribleBootstrapped("/nonexistent")).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.ULTRASTOCK_CRIBLE_CMD;
+      else process.env.ULTRASTOCK_CRIBLE_CMD = prev;
+    }
+  });
+});

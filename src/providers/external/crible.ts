@@ -39,7 +39,9 @@ export function cribleDataDir(): string {
   return env("CRIBLE_DATA_DIR") ?? join(homeDir(), "crible");
 }
 
+/** Can crible run here — or, replaying a fixture, are its calls replayed (no uvx needed)? */
 export function cribleAvailable(): boolean {
+  if (netMode().kind === "fixture") return true;
   return have(cribleInvocation().cmd);
 }
 
