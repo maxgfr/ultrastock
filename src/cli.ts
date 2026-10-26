@@ -3,9 +3,10 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readBrief, analyzeSymbol } from "./analyze/pack.js";
 import { analyzeFull, DEPTHS, type Depth } from "./analyze/full.js";
-import { calcEvidence } from "./calc.js";
+import { calcEvidence, calcFromDocument } from "./calc.js";
 import { checkAnswer, NOTE_KINDS } from "./check.js";
 import { reportCommand } from "./commands/report.js";
+import { researchCommand } from "./commands/research.js";
 import { EvidenceStore, formatEvidence } from "./core/evidence.js";
 import { ExprError } from "./core/expr.js";
 import { clockNow, FixtureMiss, setNetMode } from "./core/net.js";
@@ -68,6 +69,7 @@ USAGE
   ultrastock quote <symbol> [--out <dir>] [--json]
   ultrastock history <symbol> [--from <date>] [--to <date>] [--interval 1d|1w|4h|1h|15m] [--limit <n>] [--json]
   ultrastock calc <run> <formula> --label <text> [--unit <unit>] [--key <key>] [--json]
+  ultrastock calc <run> --from <E#> "<figure as the document writes it>" --label <text> [--unit <unit>] [--json]
   ultrastock evidence <run> [--json]
   ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
   ultrastock report <run> [--answer <answer.md>] [--json]
@@ -81,6 +83,8 @@ USAGE
   ultrastock fx [USD,GBP,…] [--out <dir>] [--json]
   ultrastock cot <market> [--report legacy|tff] [--out <dir>] [--json]
   ultrastock sentiment [all|cnn|crypto|vix|putcall] [--out <dir>] [--json]
+  ultrastock research <symbol|name> [--kind equity|etf|crypto|company] [--focus results] [--ask "<question>"] [--name <search name>] --out <run> [--json]
+  ultrastock research --out <run> --web-results <websearch.json> [--engine-search] [--limit <n>] [--json]
   ultrastock news <query> [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>] [--out <dir>] [--json]
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
   ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
@@ -165,6 +169,8 @@ COMMANDS
   history   Daily (or crypto intraday) bars, oldest first; --limit keeps the last n.
   calc      Compute a derived figure from evidence ids — "(E3 / E7 - 1) * 100" —
             and register it as a new [E#] (abs, min, max, round, pct, share, cagr…).
+            --from E12 "4,2 Md€" registers a figure a document [E#] states — refused
+            when the document does not state it.
   evidence  List a run's evidence, one [E#] per line.
   report    The run as a self-contained HTML page (report.html): the answer, the
             recorded decision, the debate's notes (notes/*.md), a price chart
@@ -195,6 +201,15 @@ COMMANDS
             Cboe put/call ratios.
   news      Recent articles (Google News, GDELT; Yahoo for a symbol) — titles
             are external text, fenced as untrusted.
+  research  Web sources compiled into evidence: writes the angles and queries
+            (FR + EN) for your own web search — business model, results,
+            governance, controversies, short-sellers…; an ETF's factsheet, KID,
+            replication, PEA; --focus results for the latest report, --ask for
+            one precise question — then, with --web-results, fetches the pages
+            and PDFs, drops walls and duplicates, registers each as a document
+            [E#] (sources/E#.md, DOSSIER.md, under-covered terms for a second
+            round) and cross-checks a listed company against crible. \`check\`
+            refuses a figure the cited document does not state.
   universe  An index's current members (Wikipedia) — current only: a backtest
             over them has survivorship bias.
   resolve   A name, ticker or ISIN → the Euronext listings, the SEC registrant,
@@ -420,6 +435,11 @@ Nothing here needs an API key. Exit codes: 0 done, 1 failed or refused, 2 bad in
 
 export const VALUE_FLAGS = [
   "out",
+  "kind",
+  "focus",
+  "ask",
+  "name",
+  "web-results",
   "from",
   "to",
   "interval",
@@ -545,7 +565,21 @@ export const VALUE_FLAGS = [
   "port",
   "token",
 ];
-export const BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "dry-run", "list", "bootstrap", "notify", "perp", "anchored", "all-listings"];
+export const BOOL_FLAGS = [
+  "json",
+  "refresh",
+  "offline",
+  "probe",
+  "ticket",
+  "dry-run",
+  "list",
+  "bootstrap",
+  "notify",
+  "perp",
+  "anchored",
+  "all-listings",
+  "engine-search",
+];
 export const COMMANDS = [
   "analyze",
   "report",
@@ -586,6 +620,7 @@ export const COMMANDS = [
   "cot",
   "sentiment",
   "news",
+  "research",
   "universe",
   "portfolio",
   "plan",
@@ -612,7 +647,7 @@ const SPEC: CliSpec = {
     analyze: ["depth", "since", "out", ...NET],
     quote: ["out", ...NET],
     history: ["from", "to", "interval", "limit", ...NET],
-    calc: ["label", "unit", "key", "json"],
+    calc: ["label", "unit", "key", "from", "json"],
     evidence: ["json"],
     check: ["max-age", "json"],
     report: ["answer", "json"],
@@ -625,6 +660,7 @@ const SPEC: CliSpec = {
     cot: ["report", "out", ...NET],
     sentiment: ["out", ...NET],
     news: ["symbol", "lang", "days", "limit", "out", ...NET],
+    research: ["kind", "focus", "ask", "name", "web-results", "engine-search", "limit", "out", ...NET],
     universe: ["out", ...NET],
     resolve: ["out", ...NET],
     fundamentals: ["asof", "years", "quarters", "source", "out", ...NET],
@@ -888,10 +924,13 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "calc") {
     const [dir, formula] = args.positional;
     const label = argValue(args, "label");
-    if (!dir || !formula || !label) usage('usage: ultrastock calc <run> "<formula over E ids>" --label <text> [--unit <unit>]');
+    const from = argValue(args, "from");
+    if (!dir || !formula || !label)
+      usage('usage: ultrastock calc <run> "<formula over E ids>" --label <text> [--unit <unit>] | calc <run> --from <E#> "<figure>" --label <text>');
     let r: ReturnType<typeof calcEvidence>;
     try {
-      r = calcEvidence(resolve(dir), formula, { label, unit: argValue(args, "unit"), key: argValue(args, "key") });
+      const opts = { label, unit: argValue(args, "unit"), key: argValue(args, "key") };
+      r = from ? calcFromDocument(resolve(dir), from, formula, opts) : calcEvidence(resolve(dir), formula, opts);
     } catch (e) {
       if (e instanceof ExprError) usage(`formula: ${e.message}`);
       return fail((e as Error).message);
@@ -985,6 +1024,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "cot") return cotCommand(args, asJson);
   if (cmd === "sentiment") return sentimentCommand(args, asJson);
   if (cmd === "news") return newsCommand(args, asJson);
+  if (cmd === "research") return researchCommand(args, asJson);
   if (cmd === "universe") return universeCommand(args, asJson);
 
   if (cmd === "doctor") {

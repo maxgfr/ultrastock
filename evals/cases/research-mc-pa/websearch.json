@@ -1,0 +1,17 @@
+[
+  {
+    "angle": "results-release",
+    "query": "LVMH 2026 results press release",
+    "results": [
+      { "url": "https://www.lvmh.com/en/publications/accelerating-growth-in-the-second-quarter---solid-first-half-results", "title": "Accelerating growth in the second quarter, solid first-half results" },
+      { "url": "https://www.youtube.com/watch?v=lvmh-h1-2026", "title": "LVMH H1 2026 webcast" }
+    ]
+  },
+  {
+    "angle": "results-release",
+    "query": "LVMH communiqué résultats 2026",
+    "results": [
+      { "url": "https://www.lvmh.com/fr/publications/acceleration-de-la-croissance-au-2eme-trimestre---resultats-semestriels-solides", "title": "Accélération de la croissance au 2ème trimestre" }
+    ]
+  }
+]

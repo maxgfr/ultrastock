@@ -29,3 +29,26 @@ export function untrustedBlock(source: string, lines: readonly string[]): string
     UNTRUSTED_CLOSE,
   ].join("\n");
 }
+
+/**
+ * A whole external document, safe to store in a run: control characters, our
+ * own delimiters and runaway blank runs removed, line breaks kept and no length
+ * cap — `check` reads it back to find an answer's figures in the source.
+ */
+export function sanitizeExternalDocument(raw: string): string {
+  return raw
+    .normalize("NFKC")
+    .split(/\r?\n/)
+    .map((line) =>
+      line
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control and bidi-override characters is the point
+        .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, " ")
+        .replace(/<<<|>>>/g, " ")
+        .replace(/UNTRUSTED_DATA/gi, "untrusted data")
+        .replace(/[ \t]+/g, " ")
+        .trimEnd(),
+    )
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}

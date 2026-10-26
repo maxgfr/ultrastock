@@ -65,19 +65,43 @@ for (const name of readdirSync(join(here, "cases")).sort()) {
   console.log(`${name} — ${spec.kind}`);
   const run = mkdtempSync(join(scratch, `${name}-`));
   const source = suite === "offline" ? ["--fixture", join(root, spec.fixture)] : [];
-  const a = cli(["analyze", spec.symbol, "--depth", spec.depth ?? "quick", "--out", run, ...source]);
-  ok(a.status === 0, `analyze ${spec.symbol} (${a.status === 0 ? `${a.json.evidence} evidence, as of ${a.json.asOf}` : a.stderr.trim()})`);
-  if (a.status !== 0) continue;
-  ok(a.json.evidence >= spec.expect.evidenceMin, `at least ${spec.expect.evidenceMin} evidence items (got ${a.json.evidence})`);
-  const ev = cli(["evidence", run]);
-  const keys = new Set((ev.json?.items ?? []).map((i) => i.key));
-  const missing = spec.expect.keys.filter((k) => !keys.has(k));
-  ok(missing.length === 0, `evidence keys present (${missing.length ? `missing ${missing.join(", ")}` : spec.expect.keys.join(", ")})`);
-  if (suite !== "offline") continue;
+  if (spec.research) {
+    // A research case: the worklist, then the recorded pages compiled into document evidence.
+    if (suite !== "offline") continue;
+    const plan = cli(["research", spec.research.subject, ...(spec.research.focus ? ["--focus", spec.research.focus] : []), "--out", run, ...source]);
+    ok(
+      plan.status === 0 && plan.json?.angles?.length > 0,
+      `research ${spec.research.subject} worklist (${plan.status === 0 ? `${plan.json.angles.length} angles` : plan.stderr.trim()})`,
+    );
+    const ingest = cli(["research", "--out", run, "--web-results", join(dir, spec.research.webResults), ...source]);
+    ok(
+      ingest.status === 0 && ingest.json?.total === spec.expect.documents,
+      `research ingests ${spec.expect.documents} documents (${ingest.status === 0 ? `${ingest.json.total} kept, ${ingest.json.dropped.length} dropped` : ingest.stderr.trim()})`,
+    );
+    const ev = cli(["evidence", run]);
+    const keys = new Set((ev.json?.items ?? []).map((i) => i.key));
+    ok((ev.json?.items ?? []).length >= spec.expect.evidenceMin, `at least ${spec.expect.evidenceMin} evidence items (got ${(ev.json?.items ?? []).length})`);
+    const missing = spec.expect.keys.filter((k) => !keys.has(k));
+    ok(missing.length === 0, `evidence keys present (${missing.length ? `missing ${missing.join(", ")}` : spec.expect.keys.join(", ")})`);
+    for (const c of spec.calcs) {
+      const r = cli(["calc", run, c.figure, "--from", c.from, "--label", c.label]);
+      ok(r.status === 0 && r.json?.id === c.expectId, `calc --from ${c.from} "${c.figure}" → ${c.expectId} (got ${r.json?.id ?? r.stderr.trim()})`);
+    }
+  } else {
+    const a = cli(["analyze", spec.symbol, "--depth", spec.depth ?? "quick", "--out", run, ...source]);
+    ok(a.status === 0, `analyze ${spec.symbol} (${a.status === 0 ? `${a.json.evidence} evidence, as of ${a.json.asOf}` : a.stderr.trim()})`);
+    if (a.status !== 0) continue;
+    ok(a.json.evidence >= spec.expect.evidenceMin, `at least ${spec.expect.evidenceMin} evidence items (got ${a.json.evidence})`);
+    const ev = cli(["evidence", run]);
+    const keys = new Set((ev.json?.items ?? []).map((i) => i.key));
+    const missing = spec.expect.keys.filter((k) => !keys.has(k));
+    ok(missing.length === 0, `evidence keys present (${missing.length ? `missing ${missing.join(", ")}` : spec.expect.keys.join(", ")})`);
+    if (suite !== "offline") continue;
 
-  for (const c of spec.calcs) {
-    const r = cli(["calc", run, c.formula, "--label", c.label, ...(c.unit ? ["--unit", c.unit] : [])]);
-    ok(r.status === 0 && r.json?.id === c.expectId, `calc ${c.formula} → ${c.expectId} (got ${r.json?.id ?? r.stderr.trim()})`);
+    for (const c of spec.calcs) {
+      const r = cli(["calc", run, c.formula, "--label", c.label, ...(c.unit ? ["--unit", c.unit] : [])]);
+      ok(r.status === 0 && r.json?.id === c.expectId, `calc ${c.formula} → ${c.expectId} (got ${r.json?.id ?? r.stderr.trim()})`);
+    }
   }
   const good = cli(["check", run, join(dir, "answer.good.md")]);
   const goodFails = (good.json?.problems ?? []).filter((p) => !NOTES.has(p.kind));
