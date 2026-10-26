@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.1.0](https://github.com/maxgfr/ultrastock/compare/v1.0.3...v1.1.0) (2026-10-26)
+
+
+### Bug Fixes
+
+* consult crible for an ETF's top holdings while replaying a fixture ([2a4f604](https://github.com/maxgfr/ultrastock/commit/2a4f604ee12b22bf85df955dd8d31e4a25a345dc))
+* crible counts as available while replaying a fixture ([b769238](https://github.com/maxgfr/ultrastock/commit/b76923839a2615bc798547a6411926acbb830f9d))
+
+
+### Features
+
+* analyze --depth full ([63a652d](https://github.com/maxgfr/ultrastock/commit/63a652d2fd0dcafd043e57e743486c775a00ffb5)), closes [#31](https://github.com/maxgfr/ultrastock/issues/31)
+* ETFs — ETF.md slice, etf compare/overlap/find, PRIIPs domicile ([9476b87](https://github.com/maxgfr/ultrastock/commit/9476b87a341d1aab45187f9bb8363e57effc4959)), closes [#29](https://github.com/maxgfr/ultrastock/issues/29)
+* research layer — web sources compiled into document evidence, checked figure by figure ([17789ab](https://github.com/maxgfr/ultrastock/commit/17789ab341645a2ab51c70f6ec1088927a299346)), closes [#28](https://github.com/maxgfr/ultrastock/issues/28)
+* skill routing, MCP tools and evals for research, value, ETF and full depth ([c1c11a1](https://github.com/maxgfr/ultrastock/commit/c1c11a1d7fe7c63636dc11e0b0cfbac05b615329)), closes [#32](https://github.com/maxgfr/ultrastock/issues/32)
+* value search — styles, anti-trap gates, sector percentiles, VALUE.md ([646a5d6](https://github.com/maxgfr/ultrastock/commit/646a5d600e88d57c3cfbc82e3c313143a01781e4))
+
 ## [1.0.3](https://github.com/maxgfr/ultrastock/compare/v1.0.2...v1.0.3) (2026-10-26)
 
 
