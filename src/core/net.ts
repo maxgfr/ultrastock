@@ -82,7 +82,8 @@ export interface NetResponse {
 
 export class FixtureMiss extends Error {}
 
-function requestKey(url: string, opts: FetchOptions): string {
+function requestKey(url: string, opts: FetchOptions, binary = false): string {
+  if (binary) return contentHash(`BYTES ${url}`).slice(0, 20);
   return contentHash(`${opts.method ?? "GET"} ${url} ${opts.json === undefined ? "" : JSON.stringify(opts.json)}`).slice(0, 20);
 }
 
@@ -143,4 +144,59 @@ export async function fetchJson<T = any>(url: string, opts: FetchOptions = {}): 
   } catch {
     return { ...res, ok: false, error: `not JSON: ${res.body.slice(0, 80)}` };
   }
+}
+
+/** A response read as raw bytes: a PDF, an office document, a page whose charset the caller decodes. */
+export interface BytesResponse extends NetResponse {
+  bytes: Buffer;
+  contentType: string;
+}
+
+/**
+ * Fetch a URL as bytes (a factsheet or a KID PDF, a page to sniff), live,
+ * recorded or replayed. The fixture keeps the body in base64 next to its
+ * content type, so a replayed PDF is the very file that was read.
+ */
+export async function fetchBytes(url: string, opts: FetchOptions = {}): Promise<BytesResponse> {
+  const key = requestKey(url, opts, true);
+  if (mode.kind === "fixture") {
+    const path = fixturePath(mode.dir, key);
+    if (!existsSync(path)) throw new FixtureMiss(`fixture ${mode.dir} has no recorded bytes for GET ${url} — re-record it with --record`);
+    const rec = JSON.parse(readFileSync(path, "utf8")) as { response: NetResponse & { bodyBase64?: string; contentType?: string } };
+    const { bodyBase64, contentType, ...response } = rec.response;
+    return { ...response, bytes: Buffer.from(bodyBase64 ?? "", "base64"), contentType: contentType ?? "", replayed: true };
+  }
+  if (opts.hostIntervalMs) await awaitHostSlot(url, opts.hostIntervalMs);
+  const userAgent = !opts.userAgent || opts.userAgent === "browser" ? BROWSER_UA : opts.userAgent;
+  const fetchedAt = new Date().toISOString();
+  const r = await httpGet(url, {
+    userAgent,
+    headers: opts.headers,
+    accept: opts.accept,
+    timeoutMs: opts.timeoutMs,
+    retries: opts.retries,
+    maxBytes: opts.maxBytes ?? 32 * 1024 * 1024,
+    binary: true,
+  });
+  const bytes = r.bytes ?? Buffer.from(r.body ?? "", "utf8");
+  const res: BytesResponse = {
+    ok: r.ok,
+    status: r.status,
+    body: "",
+    url: r.url || url,
+    fetchedAt,
+    rateLimited: r.rateLimited,
+    error: r.error,
+    bytes,
+    contentType: r.contentType ?? "",
+  };
+  if (mode.kind === "record" && res.ok) {
+    mkdirSync(join(mode.dir, "http"), { recursive: true });
+    const { bytes: _bytes, ...rest } = res;
+    writeFileAtomic(
+      fixturePath(mode.dir, key),
+      `${JSON.stringify({ request: { method: "GET", url, binary: true }, response: { ...rest, rateLimited: undefined, bodyBase64: bytes.toString("base64") } }, null, 1)}\n`,
+    );
+  }
+  return res;
 }
