@@ -3,7 +3,9 @@ import { clockNow } from "../src/core/net.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
 import { appendTransactions, buildBook, readLedger } from "../src/portfolio/ledger.js";
 import { feeFor, paperSubmit, readiness, walkBook } from "../src/trading/paper.js";
+import { gateContextFor } from "../src/trading/context.js";
 import { planTrade } from "../src/trading/plan.js";
+import { riskGate } from "../src/trading/riskgate.js";
 import { CHECK_TTL_MS, createTicket, executionRefusal, listTickets, loadTicket, readAudit, recordCheck, transition } from "../src/trading/tickets.js";
 import { withFixture } from "./helpers/fixtures.js";
 
@@ -87,6 +89,11 @@ describe("paper flow on a recorded fixture", () => {
       expect(String(p.stop)).not.toMatch(/0000000/);
       const t = createTicket(p.order, { now });
       await recordCheck(t.id, p.gate, now);
+      // Re-checking the ticket must not count its own order twice (once as pending).
+      const again = riskGate(t.order, (await gateContextFor(t.order, { now, ticketId: t.id })).ctx);
+      expect(again.verdict).toBe("pass");
+      const twice = riskGate(t.order, (await gateContextFor(t.order, { now })).ctx);
+      expect(twice.checks.find((c) => c.code === "POSITION_PCT")!.reason).not.toBe(again.checks.find((c) => c.code === "POSITION_PCT")!.reason);
       const r = await paperSubmit(t.id, now);
       expect(r.outcome.kind).toBe("fill");
       expect(r.ticket.status).toBe("filled");

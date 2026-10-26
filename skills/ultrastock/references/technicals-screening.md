@@ -51,6 +51,11 @@ Three engines:
   Read the rules before you present the results.
 - `--sort -market_cap` sorts, `--limit` caps.
 - `--bootstrap` (crible) downloads its dataset once, which takes about a minute.
+- crible holds one row per listing. A crible screen keeps **primary listings**
+  and drops the ADR / OTC line of an issuer whose home listing is in the
+  results, so a count is a count of issuers. Share classes (A/B, preferred)
+  stay. `--all-listings` keeps every line (German regional exchanges, the LSE
+  order book, OTC).
 - TradingView is unofficial and its fundamentals lag. A screen finds
   **candidates**: run `analyze`, `technicals` and `valuation` on each one
   before you call any of them a buy.

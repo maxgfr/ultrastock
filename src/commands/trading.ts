@@ -263,9 +263,10 @@ export async function ticketCommand(args: CommandArgs, asJson: boolean): Promise
   }
   if (sub === "check") {
     const t = loadTicket(id);
-    const built = await gateContextFor(t.order);
+    const built = await gateContextFor(t.order, { ticketId: id });
     const gate = riskGate(t.order, built.ctx);
     const after = await recordCheck(id, gate);
+    if (gate.verdict !== "pass") process.exitCode = 1;
     return out(
       asJson,
       { ticket: after, notes: built.notes },

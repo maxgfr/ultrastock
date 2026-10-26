@@ -112,7 +112,7 @@ describe("report", () => {
     writeFileSync(join(run, "answer.md"), "# LVMH\n\nThe close is 999 EUR.\n");
     expect(await cli(["report", run])).toMatch(/report refused/);
     process.exitCode = 0;
-  });
+  }, 30_000); // a full analyze plus two renders: close to the 5 s default on a cold run
 });
 
 describe("analyze at standard depth", () => {

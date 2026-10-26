@@ -129,7 +129,8 @@ export function riskGate(o: Order, c: GateContext): GateResult {
       "block",
       `the last price is ${Number.isFinite(age) ? `${Math.round(age / 60_000)} min` : "of unknown"} old (limit ${Math.round(c.maxQuoteAgeMs / 60_000)} min) — refresh before ordering`,
     );
-  else add("FRESH_QUOTE", "pass", `last price ${Math.round(age / 60_000)} min old`);
+  // An end-of-day close is stamped at the end of its day, so today's close is "ahead" of now.
+  else add("FRESH_QUOTE", "pass", age < 0 ? "last price is today's close" : `last price ${Math.round(age / 60_000)} min old`);
   const band = Math.abs(o.price / c.lastPrice - 1) * 100;
   if (o.orderType === "market") add("MARKET_ORDER", "warn", "a market order accepts any price: prefer a limit inside the spread");
   if (band > 10) add("PRICE_BAND", "block", `the order price is ${pct(band)} away from the last price ${c.lastPrice}: a typo?`);

@@ -10655,7 +10655,7 @@ function riskGate(o, c) {
       "block",
       `the last price is ${Number.isFinite(age) ? `${Math.round(age / 6e4)} min` : "of unknown"} old (limit ${Math.round(c.maxQuoteAgeMs / 6e4)} min) \u2014 refresh before ordering`
     );
-  else add2("FRESH_QUOTE", "pass", `last price ${Math.round(age / 6e4)} min old`);
+  else add2("FRESH_QUOTE", "pass", age < 0 ? "last price is today's close" : `last price ${Math.round(age / 6e4)} min old`);
   const band = Math.abs(o.price / c.lastPrice - 1) * 100;
   if (o.orderType === "market") add2("MARKET_ORDER", "warn", "a market order accepts any price: prefer a limit inside the spread");
   if (band > 10) add2("PRICE_BAND", "block", `the order price is ${pct(band)} away from the last price ${c.lastPrice}: a typo?`);
@@ -22792,14 +22792,19 @@ async function holdingsCommand(args, asJson) {
     asJson
   );
 }
+function usOnly(cmd, sym3, instead) {
+  if (/\.[A-Z]{2,}$/.test(sym3)) throw new UsageError(`${cmd} reads US sources only and ${sym3} is not a US listing \u2014 ${instead}`);
+}
 async function analystCommand(args, asJson) {
   const sym3 = args.positional[0];
   if (!sym3) throw new UsageError("usage: ultrastock analyst <US symbol> \u2014 price targets, ratings, EPS estimates and surprises (Nasdaq, unofficial)");
+  usOnly("analyst", sym3.toUpperCase(), "`ultrastock analyze` and `valuation` cover a European issuer");
   emitDatasets(args, await nasdaqAnalyst(sym3.toUpperCase()), asJson);
 }
 async function shortCommand(args, asJson) {
   const sym3 = args.positional[0]?.toUpperCase();
   if (!sym3) throw new UsageError("usage: ultrastock short <US symbol> \u2014 short interest (Nasdaq) and daily short volume (FINRA)");
+  usOnly("short", sym3, "European short positions are published by each regulator (the AMF for France)");
   const got = await Promise.allSettled([nasdaqShortInterest(sym3), finraShortVolume(sym3)]);
   const ds = got.filter((g) => g.status === "fulfilled").map((g) => g.value);
   if (!ds.length) throw new Error(`no short data for ${sym3}: ${got.map((g) => g.status === "rejected" ? g.reason.message : "").join("; ")}`);
@@ -22808,6 +22813,7 @@ async function shortCommand(args, asJson) {
 async function dividendsCommand(args, asJson) {
   const sym3 = args.positional[0]?.toUpperCase();
   if (!sym3) throw new UsageError("usage: ultrastock dividends <US symbol> \u2014 dividend history, yield and ex-dates (Nasdaq)");
+  usOnly("dividends", sym3, `\`ultrastock fundamentals ${sym3}\` gives the dividends paid`);
   emitDatasets(args, [await nasdaqDividends(sym3, { limit: argInt(args, "limit", { min: 1, max: 100 }) ?? 12 })], asJson);
 }
 async function congressCommand(args, asJson) {
@@ -24325,7 +24331,9 @@ async function gateContextFor(order, opts = {}) {
   recordEquity(bookName, valued2.totalBase, now);
   const rate2 = fx.rates[order.currency] ?? (order.currency === profile.baseCurrency ? 1 : Number.NaN);
   if (!Number.isFinite(rate2)) throw new Error(`no ${order.currency}\u2192${profile.baseCurrency} rate: cannot size the order`);
-  const pending = listTickets((t) => (t.status === "working" || t.status === "checked") && t.order.side === "buy" && t.order.venue === order.venue);
+  const pending = listTickets(
+    (t) => t.id !== opts.ticketId && (t.status === "working" || t.status === "checked") && t.order.side === "buy" && t.order.venue === order.venue
+  );
   const pendingBuysBase = {};
   for (const t of pending)
     pendingBuysBase[t.order.symbol] = (pendingBuysBase[t.order.symbol] ?? 0) + t.order.quantity * t.order.price * (fx.rates[t.order.currency] ?? 1);
@@ -33907,7 +33915,8 @@ async function buildInput(args, regime, year, opts = {}) {
   const notes = [];
   const today = day3(clockNow().toISOString());
   const end = opts.asOf ?? (`${year}-12-31` < today ? `${year}-12-31` : today);
-  const from = txs.map((t) => day3(t.date)).sort()[0] ?? end;
+  const first = txs.map((t) => day3(t.date)).sort()[0] ?? end;
+  const from = first < end ? first : end;
   const { fx, notes: fxNotes } = await historicalFx(
     regime.currency,
     [...new Set(txs.map((t) => t.currency)), "USD"].filter((c) => c !== regime.currency),
@@ -38447,9 +38456,10 @@ async function ticketCommand(args, asJson) {
   }
   if (sub === "check") {
     const t = loadTicket(id);
-    const built = await gateContextFor(t.order);
+    const built = await gateContextFor(t.order, { ticketId: id });
     const gate = riskGate(t.order, built.ctx);
     const after = await recordCheck(id, gate);
+    if (gate.verdict !== "pass") process.exitCode = 1;
     return out4(
       asJson,
       { ticket: after, notes: built.notes },
@@ -39206,6 +39216,24 @@ function dslFields(dsl) {
   for (const m of bare.matchAll(/[A-Za-z_][A-Za-z0-9_.]*/g)) if (!KEYWORDS.has(m[0].toUpperCase()) && !out5.includes(m[0])) out5.push(m[0]);
   return out5;
 }
+function primaryListingsOnly(dsl) {
+  if (/\bprimary_listing\b|\bsymbol\b/i.test(dsl)) return dsl;
+  return dsl.trim() ? `(${dsl}) AND primary_listing = 1` : "primary_listing = 1";
+}
+var OTC = /* @__PURE__ */ new Set(["PNK", "OQB", "OQX", "OTC", "OBB", "OEM"]);
+var LEGAL = /\b(sponsored|unsponsored|adrs?|ads|american depositary shares?|reg|shs|sa|se|nv|ag|plc|ltd|limited|inc|corp|corporation|co|company|group|holdings?|spa|oyj|asa|ab)\b/g;
+function issuerKey(name) {
+  return name.toLowerCase().normalize("NFD").replace(new RegExp("\\p{M}", "gu"), "").replace(/\./g, "").replace(/[^a-z0-9 ]+/g, " ").replace(LEGAL, " ").replace(/\s+/g, " ").trim();
+}
+function isForeignLine(row) {
+  if (row.country === "US") return false;
+  return OTC.has(String(row.exchange ?? "")) || String(row.isin ?? "").startsWith("US");
+}
+function collapseForeignLines(rows) {
+  const home = new Set(rows.filter((r2) => typeof r2.name === "string" && !isForeignLine(r2)).map((r2) => issuerKey(r2.name)));
+  const kept = rows.filter((r2) => !(typeof r2.name === "string" && isForeignLine(r2) && home.has(issuerKey(r2.name))));
+  return { rows: kept, dropped: rows.length - kept.length };
+}
 var IDENTITY = ["name", "country", "sector", "industry", "currency"];
 var CODE_FIELDS = /* @__PURE__ */ new Set(["country", "currency", "exchange", "region", "symbol", "period", "price_asof"]);
 var MONEY = /^(market_cap|enterprise_value|revenue|net_income|ebitda|ebit|free_cash_flow|operating_cashflow|total_assets|total_debt|total_equity|cash_and_equivalents|ncav|graham_number|dividends_paid|gross_profit|operating_income|close|price)$/;
@@ -39227,7 +39255,7 @@ function cribleRowsToDataset(r2, opts) {
     {
       key: "CRIBLE.screen.query",
       label: `crible DSL run for the ${label2}`,
-      value: opts.preset?.dsl ?? (opts.query || "(no filter)"),
+      value: opts.dsl ?? opts.preset?.dsl ?? (opts.query || "(no filter)"),
       untrusted: true,
       asOf: day4
     },
@@ -39260,6 +39288,8 @@ function cribleRowsToDataset(r2, opts) {
   });
   const notes = [
     `showing ${r2.rows.length} of ${r2.total} matches`,
+    ...opts.dsl && opts.dsl !== (opts.preset?.dsl ?? opts.query) ? ["primary listings only (one row per listing otherwise): --all-listings keeps the regional, order-book and OTC lines"] : [],
+    ...opts.dropped ? [`${opts.dropped} ADR / OTC line(s) dropped: the issuer's home listing is in the results`] : [],
     "crible aggregates audited filings (SEC, ESEF, registers) and market data; ratios are fractions (0.15 = 15 %); check a figure that matters against the filing"
   ];
   return {
@@ -40080,8 +40110,11 @@ async function cribleRun(query2, args) {
       );
   }
   const dsl = preset?.dsl ?? query2;
-  const r2 = await cribleScreen(dsl, { limit, ...sort ? { sort } : {} });
-  return cribleRowsToDataset(r2, { query: dsl, preset });
+  if (argBool(args, "all-listings")) return cribleRowsToDataset(await cribleScreen(dsl, { limit, ...sort ? { sort } : {} }), { query: dsl, preset });
+  const run3 = primaryListingsOnly(dsl);
+  const r2 = await cribleScreen(run3, { limit: Math.min(limit * 2, 400), ...sort ? { sort } : {} });
+  const { rows, dropped } = collapseForeignLines(r2.rows);
+  return cribleRowsToDataset({ total: r2.total, rows: rows.slice(0, limit) }, { query: dsl, preset, dsl: run3, dropped });
 }
 async function screenCommand(args, asJson) {
   const engineArg = argValue(args, "engine")?.toLowerCase();
@@ -41534,7 +41567,7 @@ function formatDoctor(r2) {
     for (const p of r2.probes) lines.push(`    ${p.source.padEnd(10)} ${p.ok ? "ok" : "FAIL"} ${String(p.ms).padStart(5)} ms${p.note ? ` \u2014 ${p.note}` : ""}`);
   }
   for (const b of r2.blocks ?? []) lines.push(`  block       ${b.host}: ${b.blocked ? `BLOCKED \u2014 ${b.detail}` : b.detail}`);
-  for (const [level, cmds] of Object.entries(r2.maturity)) lines.push(`  ${level.padEnd(12)}${cmds.join(" ")}`);
+  for (const [level, cmds] of Object.entries(r2.maturity)) lines.push(`  ${level.padEnd(13)}${cmds.join(" ")}`);
   return `${lines.join("\n")}
 `;
 }
@@ -41573,7 +41606,7 @@ USAGE
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
   ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
   ultrastock fundamentals <symbol> [--asof <date>] [--years <n>] [--quarters <n>] [--source sec|esef|crible] [--out <dir>] [--json]
-  ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market <m>] [--universe <idx|list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--out <dir>] [--json]
+  ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market <m>] [--universe <idx|list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--all-listings] [--out <dir>] [--json]
   ultrastock screen --list [--engine tradingview|crible|builtin] [--json]
   ultrastock regime [--market us|eu|crypto] [--out <dir>] [--json]
   ultrastock sectors [--market us|eu] [--out <dir>] [--json]
@@ -41701,7 +41734,9 @@ COMMANDS
             exhaustion-hammer, pullback-to-50, golden-cross, rs-leaders); crible
             (--engine crible: a crible preset or any DSL, e.g. "piotroski_f >= 7
             AND country IN ('FR','DE')"; --bootstrap downloads its dataset once,
-            about a minute). --list prints every preset's rules and source.
+            about a minute; primary listings only, ADRs of an issuer listed
+            at home dropped, --all-listings keeps every line). --list prints
+            every preset's rules and source.
   regime    Market regime and an exposure ceiling. us: SPY trend, RSP/SPY
             breadth, HYG/LQD credit, SPY/QQQ distribution days and follow-through,
             VIX/VIX3M, CNN Fear & Greed read contrarian, % of US large caps above
@@ -42030,7 +42065,7 @@ var VALUE_FLAGS = [
   "port",
   "token"
 ];
-var BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "dry-run", "list", "bootstrap", "notify", "perp", "anchored"];
+var BOOL_FLAGS = ["json", "refresh", "offline", "probe", "ticket", "dry-run", "list", "bootstrap", "notify", "perp", "anchored", "all-listings"];
 var COMMANDS = [
   "analyze",
   "report",
@@ -42115,7 +42150,7 @@ var SPEC = {
     regime: ["market", "out", ...NET],
     sectors: ["market", "out", ...NET],
     catalysts: ["days", "out", ...NET],
-    screen: ["engine", "market", "universe", "limit", "sort", "list", "bootstrap", "out", ...NET],
+    screen: ["engine", "market", "universe", "limit", "sort", "list", "bootstrap", "all-listings", "out", ...NET],
     technicals: ["interval", "indicators", "benchmark", "out", ...NET],
     valuation: ["erp", "terminal", "out", ...NET],
     filings: ["forms", "days", "limit", "search", "out", ...NET],
