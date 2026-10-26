@@ -1,0 +1,9 @@
+{
+  "kind": "analyze --depth full — a PEA world ETF: the ETF slice (costs, replication, domicile, tracking) and the full-depth extras",
+  "symbol": "CW8.PA",
+  "depth": "full",
+  "fixture": "assets/fixtures/cw8-full",
+  "calcs": [],
+  "expect": { "evidenceMin": 250, "keys": ["CW8.PA.close", "CW8.PA.etf.replication", "CW8.PA.etf.domicile", "EURONEXT:CW8.tv.expense_ratio"] },
+  "answers": { "good": 0, "bad": 3 }
+}

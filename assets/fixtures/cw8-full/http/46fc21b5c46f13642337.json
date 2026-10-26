@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://cdn.cboe.com/api/global/delayed_quotes/quotes/_VIX.json"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"timestamp\": \"2026-10-26 20:00:39\", \"data\": {\"symbol\": \"^VIX\", \"security_type\": \"index\", \"exchange_id\": 5, \"current_price\": 18.33, \"price_change\": -1.12, \"price_change_percent\": -5.7584, \"bid\": 0.0, \"ask\": 0.0, \"bid_size\": 0, \"ask_size\": 0, \"open\": 18.74, \"high\": 18.95, \"low\": 17.79, \"close\": 18.33, \"prev_day_close\": 19.45, \"volume\": 0, \"iv30\": 90.087, \"iv30_change\": -42.063, \"iv30_change_percent\": -31.8297, \"seqno\": 8328214692, \"last_trade_time\": \"2026-10-26T15:45:31\", \"tick\": \"up\"}, \"symbol\": \"_VIX\"}",
+  "url": "https://cdn-api.cboe.com/api/global/delayed_quotes/quotes/_VIX.json",
+  "fetchedAt": "2026-10-26T20:01:25.661Z"
+ }
+}
