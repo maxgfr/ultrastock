@@ -8,7 +8,7 @@
       "meta": "webindex.meta.json"
     }
   },
-  "usageFloor": 65,
+  "usageFloor": 73,
   "forks": {},
   "allowedForeignFlags": [],
   "repin": {

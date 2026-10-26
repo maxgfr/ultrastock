@@ -14,10 +14,10 @@
 // a replay never starts uvx, never needs a dataset, and a call it did not
 // record fails instead of going live.
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { contentHash, env, have, shAsync, writeFileAtomic } from "../../engine.js";
-import { FixtureMiss, netMode } from "../../core/net.js";
+import { env, have, shAsync } from "../../engine.js";
+import { netMode, recordedCall } from "../../core/net.js";
 import { homeDir } from "../../core/paths.js";
 import { ProviderError } from "../types.js";
 
@@ -50,35 +50,17 @@ export function cribleBootstrapped(dir = cribleDataDir()): boolean {
   return existsSync(join(dir, "universe.parquet")) || existsSync(join(dir, "crible.duckdb")) || existsSync(join(dir, "snapshot"));
 }
 
-function cribleCallPath(dir: string, call: unknown[]): string {
-  return join(dir, "crible", `${contentHash(JSON.stringify(call)).slice(0, 20)}.json`);
-}
-
-/** A recorded answer for this call, when replaying; throws on a call the fixture never saw. */
-function replayed<T>(call: unknown[]): { hit: true; value: T } | { hit: false } {
-  const mode = netMode();
-  if (mode.kind !== "fixture") return { hit: false };
-  const path = cribleCallPath(mode.dir, call);
-  if (!existsSync(path))
-    throw new FixtureMiss(`fixture ${mode.dir} has no recorded crible call ${JSON.stringify(call).slice(0, 160)} — re-record it with --record`);
-  return { hit: true, value: (JSON.parse(readFileSync(path, "utf8")) as { value: T }).value };
-}
-
-function recordCall(call: unknown[], value: unknown): void {
-  const mode = netMode();
-  if (mode.kind !== "record") return;
-  mkdirSync(join(mode.dir, "crible"), { recursive: true });
-  writeFileAtomic(cribleCallPath(mode.dir, call), `${JSON.stringify({ call, value }, null, 1)}\n`);
-}
-
 async function run(sub: string[], timeoutMs = 120_000): Promise<string> {
-  const replay = replayed<string>(["cli", ...sub]);
-  if (replay.hit) return replay.value;
+  // bootstrap writes a dataset: never recorded, never replayed.
+  if (sub[0] === "bootstrap") return runLive(sub, timeoutMs);
+  return recordedCall("crible", ["cli", ...sub], () => runLive(sub, timeoutMs));
+}
+
+async function runLive(sub: string[], timeoutMs: number): Promise<string> {
   if (!cribleAvailable()) throw new ProviderError(SOURCE, "uvx is not installed — install uv (https://docs.astral.sh/uv/) to use crible", 0);
   const { cmd, args } = cribleInvocation();
   const r = await shAsync(cmd, [...args, "--data-dir", cribleDataDir(), ...sub], { timeoutMs });
   if (!r.ok) throw new ProviderError(SOURCE, `crible ${sub[0]} failed: ${(r.stderr || r.stdout).trim().split("\n").slice(-3).join(" ").slice(0, 400)}`, 0);
-  if (sub[0] !== "bootstrap") recordCall(["cli", ...sub], r.stdout);
   return r.stdout;
 }
 
@@ -121,11 +103,7 @@ export async function cribleFields(): Promise<Array<{ name: string; type: string
 
 /** Call one tool of `crible mcp` over stdio JSON-RPC and return its JSON result. */
 export async function cribleMcpCall(tool: string, toolArgs: Record<string, unknown>, timeoutMs = 120_000): Promise<unknown> {
-  const replay = replayed<unknown>(["mcp", tool, toolArgs]);
-  if (replay.hit) return replay.value;
-  const value = await cribleMcpLive(tool, toolArgs, timeoutMs);
-  recordCall(["mcp", tool, toolArgs], value);
-  return value;
+  return recordedCall("crible", ["mcp", tool, toolArgs], () => cribleMcpLive(tool, toolArgs, timeoutMs));
 }
 
 async function cribleMcpLive(tool: string, toolArgs: Record<string, unknown>, timeoutMs: number): Promise<unknown> {

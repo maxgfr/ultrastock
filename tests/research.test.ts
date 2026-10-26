@@ -167,10 +167,10 @@ describe("reading a page", () => {
         "<html><body><h1>Cookies must be enabled.</h1><p>Enable cookies for pubmed.test and reload this page to continue.</p></body></html>",
       ),
     });
-    expect((await readCandidate(candidate(url))).dropped?.reason).toBe("cookie wall");
+    expect((await readCandidate(candidate(url))).dropped?.reason).toBe("cookie wall; then no Wayback copy recorded");
     const bot = "https://bot.test/1";
     setNetMode({ kind: "fixture", dir: fixtureWith(bot, "<html><head><title>Captcha</title></head><body>verify</body></html>") });
-    expect((await readCandidate(candidate(bot))).dropped?.reason).toMatch(/anti-bot|challenge/);
+    expect((await readCandidate(candidate(bot), { wayback: false })).dropped?.reason).toMatch(/^anti-bot|^challenge/);
   });
 
   it("drops a page the fixture never recorded instead of failing the run", async () => {
@@ -202,7 +202,7 @@ describe("angles", () => {
   it("narrow to the latest publication with --focus results, a private company included", () => {
     const res = researchAngles(subject({ focus: "results" }));
     expect(res.map((a) => a.id)).toEqual(expect.arrayContaining(["results-release", "results-filing", "results-call"]));
-    expect(res[0]!.queries[1]).toBe("LVMH 2026 results press release");
+    expect(res.find((a) => a.id === "results-release")!.queries[1]).toBe("LVMH 2026 results press release");
     const priv = researchAngles(subject({ kind: "company", name: "Anthropic", focus: "results" }));
     expect(priv.map((a) => a.id)).toContain("results-revenue");
   });
@@ -289,5 +289,132 @@ describe("crible in a fixture replay", () => {
       if (prev === undefined) delete process.env.ULTRASTOCK_CRIBLE_CMD;
       else process.env.ULTRASTOCK_CRIBLE_CMD = prev;
     }
+  });
+});
+
+describe("discovery and rescue", () => {
+  afterEach(() => setNetMode({ kind: "live" }));
+  const record = (dir: string, kind: string, call: unknown, value: unknown) => {
+    mkdirSync(join(dir, kind), { recursive: true });
+    writeFileSync(join(dir, kind, `${contentHash(JSON.stringify(call)).slice(0, 20)}.json`), JSON.stringify({ call, value }));
+  };
+
+  it("reads a refused page from its Wayback copy, and says so", async () => {
+    const dir = run();
+    const url = "https://walled.test/h1";
+    const text = "LVMH reported first-half revenue of €38.6 billion and recurring operating profit of €8.7 billion. ".repeat(6);
+    record(dir, "wayback", url, {
+      text,
+      title: "H1",
+      snapshotUrl: `https://web.archive.org/web/20260728000000/${url}`,
+      timestamp: "20260728000000",
+      fetchedAt: "2026-10-26T10:00:00.000Z",
+    });
+    setNetMode({ kind: "fixture", dir });
+    const r = await readCandidate({ url, score: 1, angles: ["results"] });
+    expect(r.page?.via).toBe("Wayback copy of 2026-07-28 (the live page refused)");
+    expect(r.page?.finalUrl).toMatch(/^https:\/\/web\.archive\.org\//);
+    expect(r.page?.fetchedAt).toBe("2026-10-26T10:00:00.000Z");
+  });
+
+  it("follows the PDF reports an official page links to, one hop", async () => {
+    const { linkedReports } = await import("../src/research/ingest.js");
+    const page = {
+      finalUrl: "https://www.lvmh.com/en/publications/h1",
+      text: [
+        "[Download](https://lvmh-com.cdn.prismic.io/lvmh-com/x_LVMH2026HalfYearResults_Pressrelease.pdf) pdf - 1.03 MB",
+        "[Our Maisons](https://www.lvmh.com/en/our-maisons)",
+        "[Brochure](https://cdn.test/brochure-holiday.pdf)",
+        "[Half-year financial report](https://cdn.test/rapport.pdf)",
+        "[Presentation](https://cdn.test/slides.pdf)",
+      ].join("\n"),
+    };
+    expect(linkedReports(page)).toEqual([
+      "https://lvmh-com.cdn.prismic.io/lvmh-com/x_LVMH2026HalfYearResults_Pressrelease.pdf",
+      "https://cdn.test/rapport.pdf",
+    ]);
+  });
+
+  it("takes bare URL strings as hits", () => {
+    expect(parseWebResults(["https://a.test/1", "not a url", { url: "https://b.test" }]).lists[0]!.map((h) => h.url)).toEqual([
+      "https://a.test/1",
+      "https://b.test",
+    ]);
+  });
+
+  it("asks the agent CLIs for hits only, and reads their structured answers", async () => {
+    const { delegateCommand, delegatePrompt, parseDelegateAnswer } = await import("../src/research/delegate.js");
+    expect(delegatePrompt(["q one", "q two"])).toMatch(/1\. q one\n2\. q two$/);
+    expect(delegatePrompt(["x"])).toMatch(/never write a URL from memory/);
+    const claude = delegateCommand("claude", "P", { schemaFile: "/s", outFile: "/o" });
+    expect(claude.args).toEqual(expect.arrayContaining(["-p", "P", "--allowedTools", "WebSearch", "--json-schema", "--model", "haiku"]));
+    const codex = delegateCommand("codex", "P", { schemaFile: "/s", outFile: "/o" });
+    expect(codex.args.slice(0, 2)).toEqual(["--search", "exec"]);
+    expect(codex.args).toEqual(expect.arrayContaining(["--sandbox", "read-only", "--output-schema", "/s", "--output-last-message", "/o"]));
+    const answer = {
+      queries: [
+        {
+          query: "q",
+          results: [
+            { url: "https://a.test", title: "A", snippet: "" },
+            { url: "javascript:x", title: "", snippet: "" },
+          ],
+        },
+      ],
+    };
+    expect(parseDelegateAnswer("claude", JSON.stringify({ is_error: false, structured_output: answer, total_cost_usd: 0.07 }))).toEqual({
+      queries: [{ query: "q", results: [{ url: "https://a.test", title: "A" }] }],
+      cost: 0.07,
+    });
+    expect(parseDelegateAnswer("codex", "", JSON.stringify(answer)).queries[0]!.results).toHaveLength(1);
+    expect(() => parseDelegateAnswer("claude", JSON.stringify({ is_error: true, result: "quota" }))).toThrow(/quota/);
+  });
+
+  it("replays a delegated search from the fixture, one list per query, without starting the CLI", async () => {
+    const { delegatedSearch } = await import("../src/research/delegate.js");
+    const dir = run();
+    record(dir, "search", ["codex", null, ["q1", "q2"]], {
+      queries: [
+        { query: "q1", results: [{ url: "https://a.test" }] },
+        { query: "q2", results: [] },
+      ],
+    });
+    setNetMode({ kind: "fixture", dir });
+    const prev = process.env.ULTRASTOCK_CODEX_CMD;
+    process.env.ULTRASTOCK_CODEX_CMD = "definitely-not-installed-codex";
+    try {
+      const r = await delegatedSearch("codex", [
+        { angle: "a1", query: "q1" },
+        { angle: "a2", query: "q2" },
+      ]);
+      expect(r.lists).toEqual([[{ url: "https://a.test", angle: "a1", query: "q1" }]]);
+      expect(r.notes.join(" ")).toMatch(/returned nothing for "q2"/);
+    } finally {
+      if (prev === undefined) delete process.env.ULTRASTOCK_CODEX_CMD;
+      else process.env.ULTRASTOCK_CODEX_CMD = prev;
+    }
+  });
+
+  it("searches the angles not searched yet, French first", async () => {
+    const { pendingQueries } = await import("../src/commands/research.js");
+    const todo = {
+      schema: 1 as const,
+      subject: "MC.PA",
+      name: "LVMH",
+      kind: "equity" as const,
+      focus: "general" as const,
+      year: 2026,
+      createdAt: "",
+      round: 2,
+      searched: ["risks"],
+      angles: [
+        { id: "risks", title: "R", queries: ["fr r", "en r"] },
+        { id: "sector", title: "S", queries: ["fr s", "en s"] },
+      ],
+    };
+    expect(pendingQueries(todo)).toEqual([
+      { angle: "sector", query: "fr s", lang: "fr-FR" },
+      { angle: "sector", query: "en s", lang: "en-US" },
+    ]);
   });
 });

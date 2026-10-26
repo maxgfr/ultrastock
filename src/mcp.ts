@@ -10,11 +10,14 @@
 // to 127.0.0.1 and requires a bearer token.
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type McpAdapter, runStdioServer, startHttpServer, type ToolDecl, ToolError } from "./engine.js";
 import { VERSION } from "./version.js";
 
-type Kind = "string" | "number" | "boolean" | "string[]";
+type Kind = "string" | "number" | "boolean" | "string[]" | "hits";
 interface Param {
   kind: Kind;
   description: string;
@@ -143,14 +146,26 @@ export const TOOLS: Tool[] = [
   {
     name: "research",
     description:
-      "Web research compiled into evidence. Without web-results: write the worklist (RESEARCH.todo.json: angles and FR+EN queries for your own web search — business model, results, governance, controversies, short-sellers; ETF factsheet/KID/replication/PEA; focus=results for the latest report, ask for one precise question). With web-results (a JSON file of your search hits): fetch the pages and PDFs, drop walls and duplicates, register each page as a document [E#] (sources/E#.md, DOSSIER.md). check refuses a figure the cited page does not state.",
+      "Web research compiled into evidence. With a subject: write the worklist (RESEARCH.todo.json: angles and FR+EN queries — business model, results, governance, controversies, short-sellers; ETF factsheet/KID/replication/PEA; focus=results for the latest report, ask for one precise question). Then run those queries with YOUR web search and call again with out + hits (inline) to ingest: pages and PDFs fetched, walls rescued (Wayback, optional browser) or dropped, linked reports followed, each page a document [E#] (sources/E#.md, DOSSIER.md). No web search of your own: search-with claude|codex. check refuses a figure the cited page does not state.",
     command: ["research"],
     params: {
       subject: { kind: "string", description: "a symbol, an ISIN or a company name (omit when ingesting)", positional: 0 },
       kind: { kind: "string", description: "equity, etf, crypto or company (a name with no listing)", enum: ["equity", "etf", "crypto", "company"] },
       focus: { kind: "string", description: "general (default) or results (the latest publication)", enum: ["general", "results"] },
       ask: { kind: "string", description: "one precise question the research answers" },
-      "web-results": { kind: "string", description: "absolute path of a JSON file of search results to ingest into the run" },
+      hits: {
+        kind: "hits",
+        description: "your web search's hits to ingest into the run, inline: [{url, title?, snippet?, angle?}] (the angle ids are in RESEARCH.todo.json)",
+      },
+      "web-results": { kind: "string", description: "absolute path of a JSON file of search results to ingest into the run (instead of hits)" },
+      urls: { kind: "string[]", description: "pages to add directly (a report PDF you already know)" },
+      "search-with": {
+        kind: "string",
+        description:
+          "claude or codex: run the worklist through that agent CLI's own web search (headless, billed to the user's plan) — when you have no web search yourself",
+        enum: ["claude", "codex"],
+      },
+      browser: { kind: "boolean", description: "render a refused or walled page in a separate browser (opens a window)" },
       limit: { kind: "number", description: "most sources kept (default 15)" },
       out: { ...OUT, required: true },
     },
@@ -316,6 +331,13 @@ export const TOOLS: Tool[] = [
   },
 ];
 
+// One search hit as the agent's web search returned it; `angle` ties it to a worklist angle.
+const HIT_SCHEMA = {
+  type: "object",
+  properties: { url: { type: "string" }, title: { type: "string" }, snippet: { type: "string" }, angle: { type: "string" }, query: { type: "string" } },
+  required: ["url"],
+};
+
 const schemaOf = (t: Tool) => ({
   type: "object",
   properties: Object.fromEntries(
@@ -323,7 +345,9 @@ const schemaOf = (t: Tool) => ({
       k,
       p.kind === "string[]"
         ? { type: "array", items: { type: "string" }, description: p.description }
-        : { type: p.kind, description: p.description, ...(p.enum ? { enum: p.enum } : {}) },
+        : p.kind === "hits"
+          ? { type: "array", items: HIT_SCHEMA, description: p.description }
+          : { type: p.kind, description: p.description, ...(p.enum ? { enum: p.enum } : {}) },
     ]),
   ),
   required: Object.entries(t.params)
@@ -377,7 +401,21 @@ export function mcpAdapter(run: (argv: string[], signal?: AbortSignal) => Promis
     async callTool(name, args, ctx) {
       const t = TOOLS.find((x) => x.name === name);
       if (!t) throw new ToolError(`unknown tool ${name}`);
-      return { text: await run(argvFor(t, args ?? {}), ctx?.signal) };
+      // Inline hits travel to the command as a temporary --web-results file.
+      const hitsKey = Object.keys(t.params).find((k) => t.params[k]!.kind === "hits");
+      const given = { ...(args ?? {}) } as Record<string, unknown>;
+      const hits = hitsKey ? given[hitsKey] : undefined;
+      if (hitsKey) delete given[hitsKey];
+      if (hits === undefined) return { text: await run(argvFor(t, given), ctx?.signal) };
+      if (!Array.isArray(hits)) throw new ToolError(`${t.name}: ${hitsKey} is an array of search hits`);
+      const dir = mkdtempSync(join(tmpdir(), "ultrastock-hits-"));
+      try {
+        const file = join(dir, "websearch.json");
+        writeFileSync(file, JSON.stringify(hits));
+        return { text: await run([...argvFor(t, given).filter((a) => a !== "--json"), `--web-results=${file}`, "--json"], ctx?.signal) };
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
     },
   };
 }
