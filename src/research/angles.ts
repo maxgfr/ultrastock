@@ -117,7 +117,18 @@ const angle = ([id, title, fr, en]: Template, s: ResearchSubject): ResearchAngle
 /** The angles a subject is searched along, in the order the dossier presents them. */
 export function researchAngles(s: ResearchSubject): ResearchAngle[] {
   if (s.ask) {
-    const terms = rankedKeywords(s.ask).slice(0, 6).join(" ");
+    // The question's own words, minus the name's: the name already leads every query.
+    const fold = (w: string) => w.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+    const named = new Set(
+      s.name
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter(Boolean)
+        .map(fold),
+    );
+    const terms = rankedKeywords(s.ask)
+      .filter((t) => !named.has(fold(t)))
+      .slice(0, 6)
+      .join(" ");
     const out: ResearchAngle[] = [{ id: "ask", title: "The question", queries: [s.ask] }];
     if (terms && terms.toLowerCase() !== s.ask.toLowerCase())
       out.push({ id: "ask-terms", title: "The question's key terms", queries: [`${s.name} ${terms}`.replace(/\s+/g, " ").trim()] });
