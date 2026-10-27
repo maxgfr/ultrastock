@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.4.0](https://github.com/maxgfr/ultrastock/compare/v1.3.0...v1.4.0) (2026-10-27)
+
+
+### Features
+
+* market-moving events ahead of time and their impact on the book ([9dcb546](https://github.com/maxgfr/ultrastock/commit/9dcb546909002e6cacaf13ed33fda7b0749a63fe)), closes [#46](https://github.com/maxgfr/ultrastock/issues/46)
+
 # [1.3.0](https://github.com/maxgfr/ultrastock/compare/v1.2.0...v1.3.0) (2026-10-26)
 
 
