@@ -24,6 +24,8 @@ export interface ResearchAngle {
   title: string;
   /** One query per language: French first, then English. */
   queries: string[];
+  /** Each query's language when the queries are not the French-then-English pair (a second round's rephrasings). */
+  langs?: Array<string | null>;
 }
 
 export interface ResearchSubject {
@@ -131,7 +133,82 @@ export function researchAngles(s: ResearchSubject): ResearchAngle[] {
   return table.map((t) => angle(t, s));
 }
 
-/** Second-round queries for the terms the first round's sources barely mention. */
-export function followUpAngles(s: ResearchSubject, underCoveredTerms: readonly string[]): ResearchAngle[] {
-  return underCoveredTerms.slice(0, 6).map((term) => ({ id: `gap-${term}`, title: `Under-covered: ${term}`, queries: [`${s.name} ${term}`] }));
+// ── The second round ───────────────────────────────────────────────────────
+// An angle whose search kept fewer than MIN_ANGLE_SOURCES sources is
+// under-covered. Its second round searches the angle's OWN queries again,
+// rephrased the way a researcher would: "pdf" for a document (results, filing,
+// factsheet), restricted to the issuer's official site when a page of it was
+// kept, and the English query alone with the exact name quoted. Generic words
+// of the templates ("call", "transcription", "universel") are never searched
+// on their own: they name no topic.
+
+/** Sources an angle needs before its search counts as covered. */
+export const MIN_ANGLE_SOURCES = 2;
+
+/** At most this many under-covered angles get a second round, and this many queries each. */
+const MAX_FOLLOW_UPS = 6;
+const MAX_REPHRASINGS = 3;
+
+/** The id of an angle's second round, and back. */
+export const followUpId = (angleId: string) => `more-${angleId}`;
+export const followedAngle = (id: string) => (id.startsWith("more-") ? id.slice(5) : undefined);
+
+/** Angles after a document — a release, a filing, a deck, a factsheet: their second round asks for the PDF. */
+const DOCUMENT_ANGLE = /^(?:results-(?:latest|release|presentation|filing|call|guidance|segments|revenue)|factsheet-kid|holdings|tracking|ask-primary)$/;
+
+export interface UnderCoveredAngle {
+  angle: ResearchAngle;
+  /** Sources the angle kept (its own and its second round's). */
+  sources: number;
+}
+
+/** The angle's English query: the second of a French-then-English pair, else its only one. */
+const englishQuery = (a: ResearchAngle) => (a.queries.length === 2 && !a.langs ? a.queries[1]! : a.queries[a.queries.length - 1]!);
+
+const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** A query without the subject's name (a `site:` query names the issuer by its domain already). */
+function withoutName(q: string, name: string): string {
+  return q
+    .replace(new RegExp(escapeRe(name), "gi"), " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Second-round angles for the under-covered ones: each angle's own queries,
+ * rephrased — with "pdf" for a document angle, `site:<issuer domain>` when one
+ * of the issuer's pages was kept, and the English query with the name quoted.
+ * A rephrasing already searched (any query of `todo`) is not asked again.
+ */
+export function followUpAngles(
+  s: ResearchSubject,
+  under: readonly UnderCoveredAngle[],
+  opts: { issuerDomain?: string; asked?: ReadonlySet<string> } = {},
+): ResearchAngle[] {
+  const asked = new Set([...(opts.asked ?? [])].map((q) => q.toLowerCase()));
+  const out: ResearchAngle[] = [];
+  for (const { angle: a } of under) {
+    if (out.length >= MAX_FOLLOW_UPS) break;
+    if (followedAngle(a.id) || a.id.startsWith("gap-")) continue;
+    const qs: Array<{ q: string; lang: string | null }> = [];
+    const add = (q: string, lang: string | null) => {
+      const t = q.replace(/\s+/g, " ").trim();
+      if (t && !asked.has(t.toLowerCase()) && !qs.some((x) => x.q.toLowerCase() === t.toLowerCase())) qs.push({ q: t, lang });
+    };
+    const en = englishQuery(a);
+    const pair = a.queries.length === 2 && !a.langs;
+    if (DOCUMENT_ANGLE.test(a.id))
+      a.queries.forEach((q, i) => {
+        if (!/\bpdf\b/i.test(q)) add(`${q} pdf`, pair ? (i === 0 ? "fr-FR" : "en-US") : null);
+      });
+    if (opts.issuerDomain) add(`${withoutName(en, s.name) || s.name} site:${opts.issuerDomain}`, pair ? "en-US" : null);
+    // The English query alone, the name quoted: an exact-name search, in the language most filings are in.
+    if (!en.includes('"') && en.toLowerCase().includes(s.name.toLowerCase()))
+      add(en.replace(new RegExp(escapeRe(s.name), "i"), `"${s.name}"`), pair ? "en-US" : null);
+    const picked = qs.slice(0, MAX_REPHRASINGS);
+    if (!picked.length) continue;
+    out.push({ id: followUpId(a.id), title: `More on: ${a.title}`, queries: picked.map((x) => x.q), langs: picked.map((x) => x.lang) });
+  }
+  return out;
 }

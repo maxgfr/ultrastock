@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { commandArgs, datasetsOf } from "../commands/emit.js";
 import { dividendsCommand, fundamentalsCommand, shortCommand } from "../commands/fundamentals.js";
 import { cryptoAnalysisCommand, optionsAnalysisCommand, statsCommand } from "../commands/quant.js";
-import { searchName } from "../commands/research.js";
+import { searchName } from "../research/run.js";
 import { type Dataset, formatDatasets, type Point, registerDatasets, type Registered } from "../core/datasets.js";
 import { EvidenceStore } from "../core/evidence.js";
 import { rulesFor as jurisdictionRules } from "../core/jurisdiction.js";
@@ -219,10 +219,15 @@ export async function analyzeFull(raw: string, dir: string, opts: { depth?: Dept
     const rep = await catalystsReport(raw, 30, now);
     return `${register("Catalysts — next 30 days", rep.datasets, rep.summary)} figures`;
   });
-  await run("market regime", depth !== "quick", "quick depth", async () => {
-    const rep = crypto ? await cryptoRegimeReport(now) : us ? await usRegime(now) : await euRegime(now);
-    return `${register(`Market regime — ${crypto ? "crypto" : us ? "US" : "Europe"}`, rep.datasets, rep.summary)} figures`;
-  });
+  await run(
+    "market regime",
+    depth !== "quick" && inst.market !== "world",
+    depth === "quick" ? "quick depth" : "no market regime for this venue (US, Europe and crypto only)",
+    async () => {
+      const rep = crypto ? await cryptoRegimeReport(now) : us ? await usRegime(now) : await euRegime(now);
+      return `${register(`Market regime — ${crypto ? "crypto" : us ? "US" : "Europe"}`, rep.datasets, rep.summary)} figures`;
+    },
+  );
   await run("news", depth !== "quick", "quick depth", async () => {
     const q = crypto ? (inst.name?.split("/")[0] ?? sym.replace(/USDT$|USD$|EUR$/, "")) : (inst.name ?? sym);
     const ds = await newsSearch(q, { lang: inst.mic === "XPAR" ? "fr" : "en", days: 7, limit: depth === "deep" || depth === "full" ? 25 : 12, symbol: sym });

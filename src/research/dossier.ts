@@ -5,39 +5,65 @@
 // `sources/E#.md` between external-text fences, so `check` can find an
 // answer's figures in the source itself. DOSSIER.md is the reading order: the
 // angles, each with its sources and their most relevant passage, the pages
-// dropped and why, the terms the sources barely cover (the second round), and
+// dropped and why, the angles too few sources cover (the second round), and
 // for a listed company the figures crible holds next to the ones the sources
 // state.
 //
 // A page's text is external: data, never instructions. It never fills a
 // ticket, an alert or a profile — it is only ever cited.
-import { mkdirSync, readFileSync, existsSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { documentFigures, figureMatches, type Figure } from "../check.js";
 import { EvidenceStore } from "../core/evidence.js";
 import { clockNow } from "../core/net.js";
 import { sanitizeExternalDocument, sanitizeExternalText, UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "../core/untrusted.js";
 import { bestExcerpt, bm25Tokenize, canonicalizeUrl, contentHash, domainOf, termCoverage, underCovered, writeArtifact, writeFileAtomic } from "../engine.js";
-import { cribleCompany } from "../providers/external/crible.js";
-import type { ResearchAngle, ResearchSubject } from "./angles.js";
+import { cribleCompany, cribleStaleWarning } from "../providers/external/crible.js";
+import { followedAngle, MIN_ANGLE_SOURCES, type ResearchAngle, type ResearchSubject, type UnderCoveredAngle } from "./angles.js";
 import type { Dropped, ReadPage } from "./ingest.js";
 
 export const TODO_FILE = "RESEARCH.todo.json";
 export const DOSSIER_FILE = "DOSSIER.md";
+
+/**
+ * A run's research files. A run researching several subjects side by side
+ * (`value --research-with` on its top names) tags each one: its worklist,
+ * dossier and source index carry the tag (`RESEARCH.7203.T.todo.json`,
+ * `DOSSIER.7203.T.md`), its documents share the run's one register.
+ */
+export function researchFiles(tag?: string): { todo: string; dossier: string; index: string } {
+  return tag
+    ? { todo: `RESEARCH.${tag}.todo.json`, dossier: `DOSSIER.${tag}.md`, index: `research.${tag}.json` }
+    : { todo: TODO_FILE, dossier: DOSSIER_FILE, index: "research.json" };
+}
+
+/** The tag a research subject's files carry: its symbol (or name), safe in a file name. */
+export const researchTag = (symbolOrName: string) => symbolOrName.replace(/[^A-Za-z0-9.-]+/g, "_");
 
 export interface ResearchTodo extends ResearchSubject {
   schema: 1;
   createdAt: string;
   round: number;
   angles: ResearchAngle[];
-  /** Terms the last round's sources barely covered — what the next round searches. */
+  /** The tag of this subject's files when the run researches several (see researchFiles). */
+  tag?: string;
+  /** Angle ids whose search kept fewer than MIN_ANGLE_SOURCES sources — what the next round searches again, rephrased. */
   underCovered?: string[];
   /** Angle ids already searched (by the agent, a delegated search or the engines). */
   searched?: string[];
 }
 
-export function readTodo(dir: string): ResearchTodo | undefined {
-  const path = join(dir, TODO_FILE);
+/** The tags of the tagged worklists in a run. */
+export function researchTags(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .map((f) => /^RESEARCH\.(.+)\.todo\.json$/.exec(f)?.[1])
+    .filter((t): t is string => !!t)
+    .sort();
+}
+
+export function readTodo(dir: string, tag?: string): ResearchTodo | undefined {
+  const path = join(dir, researchFiles(tag).todo);
   if (!existsSync(path)) return undefined;
   const t = JSON.parse(readFileSync(path, "utf8")) as ResearchTodo;
   if (t.schema !== 1 || !Array.isArray(t.angles)) throw new Error(`${path} is not an ultrastock research worklist`);
@@ -46,7 +72,7 @@ export function readTodo(dir: string): ResearchTodo | undefined {
 
 export function writeTodo(dir: string, todo: ResearchTodo): string {
   mkdirSync(dir, { recursive: true });
-  const path = join(dir, TODO_FILE);
+  const path = join(dir, researchFiles(todo.tag).todo);
   writeFileAtomic(path, `${JSON.stringify(todo, null, 2)}\n`);
   return path;
 }
@@ -57,7 +83,11 @@ const OFFICIAL_HOSTS =
 
 /** True when the host is a regulator's or exchange's, or the issuer's own (its name in the domain). */
 export function officialHost(host: string, name: string): boolean {
-  if (OFFICIAL_HOSTS.test(host)) return true;
+  return OFFICIAL_HOSTS.test(host) || issuerHost(host, name);
+}
+
+/** True when the host is the issuer's own: its name is the domain's registrable label (investor.apple.com for Apple). */
+export function issuerHost(host: string, name: string): boolean {
   const word = name
     .toLowerCase()
     .normalize("NFD")
@@ -196,7 +226,9 @@ export async function cribleCrossCheck(dir: string, symbol: string, docs: readon
     rows.push({ id, label, value: v, unit: ccy, period, foundIn: docFigures.filter((d) => figureMatches(f, d.figures)).map((d) => d.id) });
   }
   store.save();
-  return { rows, note: provider === "yfinance" ? "crible's figures here come from yfinance (unofficial)" : undefined };
+  const stale = await cribleStaleWarning();
+  const note = [provider === "yfinance" ? "crible's figures here come from yfinance (unofficial)" : undefined, stale].filter(Boolean).join("; ");
+  return { rows, note: note || undefined };
 }
 
 const fence = (host: string, lines: string[]) => [
@@ -226,7 +258,7 @@ const QUERY_FORM = new Set([
 ]);
 
 /**
- * The query terms whose coverage the dossier reports: the keywords of the
+ * The query terms whose coverage the dossier reports as a statistic: the keywords of the
  * angles that were searched (an angle nobody searched is not under-covered,
  * it is missing — the dossier lists it as such), minus the subject's name.
  */
@@ -240,12 +272,64 @@ export function coverageTerms(todo: ResearchTodo, searched: ReadonlySet<string>)
   return [...words].slice(0, 24);
 }
 
+/** The registrable domain of a host: investors.lvmh.com → lvmh.com, www.bhp.com.au → bhp.com.au. */
+export function registrableDomain(host: string): string {
+  const parts = host
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .split(".");
+  const n = parts.length >= 3 && /^(?:co|com|net|org|gov|ac|or|ne)$/.test(parts[parts.length - 2]!) && parts[parts.length - 1]!.length === 2 ? 3 : 2;
+  return parts.slice(-n).join(".");
+}
+
+/** The issuer's own domain, when a kept page is on it (the first such page, in the run's order). */
+export function issuerDomain(docs: readonly RegisteredDoc[], name: string): string | undefined {
+  const d = docs.find((x) => issuerHost(x.host, name));
+  return d ? registrableDomain(d.host) : undefined;
+}
+
+export interface AngleCoverage {
+  id: string;
+  title: string;
+  /** Sources kept for the angle, its second round's included. */
+  sources: number;
+}
+
+/**
+ * Sources kept per searched angle (an angle's second round counts toward it),
+ * and the under-covered ones: searched, with fewer than MIN_ANGLE_SOURCES. An
+ * angle nobody searched is not under-covered but missing; a second-round angle
+ * is never under-covered itself — its angle is.
+ */
+export function angleCoverage(
+  todo: ResearchTodo,
+  docs: readonly RegisteredDoc[],
+  searched: ReadonlySet<string>,
+): { coverage: AngleCoverage[]; under: UnderCoveredAngle[] } {
+  const coverage: AngleCoverage[] = [];
+  const under: UnderCoveredAngle[] = [];
+  for (const a of todo.angles) {
+    if (followedAngle(a.id) || a.id.startsWith("gap-") || !searched.has(a.id)) continue;
+    const sources = docs.filter((d) => d.page.angles.some((x) => x === a.id || followedAngle(x) === a.id)).length;
+    coverage.push({ id: a.id, title: a.title, sources });
+    if (sources < MIN_ANGLE_SOURCES) under.push({ angle: a, sources });
+  }
+  return { coverage, under };
+}
+
 export function writeDossier(
   dir: string,
   todo: ResearchTodo,
   docs: readonly RegisteredDoc[],
   dropped: readonly Dropped[],
-  extras: { notes: string[]; crible?: CribleCheck; under: string[]; coverage: { term: string; sources: number }[] },
+  extras: {
+    notes: string[];
+    crible?: CribleCheck;
+    angles: AngleCoverage[];
+    under: UnderCoveredAngle[];
+    /** Per-term mentions over the kept sources: a statistic, never a query. */
+    terms: { term: string; sources: number }[];
+  },
 ): string {
   const store = EvidenceStore.load(dir)!;
   const byAngle = new Map<string, RegisteredDoc[]>();
@@ -293,15 +377,24 @@ export function writeDossier(
     }
     if (extras.crible.note) lines.push(`Note: ${extras.crible.note}.`, "");
   }
+  const files = researchFiles(todo.tag);
   lines.push("## Coverage", "");
-  if (extras.coverage.length)
-    lines.push(`Sources mentioning each term (top ${docs.length}): ${extras.coverage.map((c) => `${c.term} ${c.sources}`).join(", ")}.`, "");
+  if (extras.angles.length)
+    lines.push(
+      `Sources kept per angle searched (an angle needs at least ${MIN_ANGLE_SOURCES}; its second round counts): ${extras.angles.map((c) => `${c.id} ${c.sources}`).join(", ")}.`,
+      "",
+    );
   lines.push(
     extras.under.length
-      ? `Under-covered: ${extras.under.join(", ")} — the next round's queries are in ${TODO_FILE}; search them and run \`ultrastock research --out <run> --web-results <file>\` again before concluding on them.`
-      : "No term under-covered.",
+      ? `Under-covered angles: ${extras.under.map((u) => `${u.angle.id} (${u.sources} source${u.sources === 1 ? "" : "s"})`).join(", ")} — the next round searches their own queries again, rephrased (the more-… angles in ${files.todo}); search them and run \`ultrastock research --out <run>${todo.tag ? ` --for ${todo.tag}` : ""} --web-results <file>\` again before concluding on them.`
+      : "No angle under-covered.",
     "",
   );
+  if (extras.terms.length)
+    lines.push(
+      `Term statistic, for information (not searched): sources mentioning each query term — ${extras.terms.map((c) => `${c.term} ${c.sources}`).join(", ")}.`,
+      "",
+    );
   if (dropped.length) {
     lines.push("## Dropped", "");
     for (const d of dropped.slice(0, 60)) lines.push(`- <${d.url}> — ${d.reason}`);
@@ -309,12 +402,12 @@ export function writeDossier(
     lines.push("");
   }
   if (extras.notes.length) lines.push("## Notes", "", ...[...new Set(extras.notes)].map((n) => `- ${n}`), "");
-  const path = join(dir, DOSSIER_FILE);
+  const path = join(dir, files.dossier);
   writeArtifact(path, lines.join("\n"));
   return path;
 }
 
-/** Per-term coverage over the kept documents, and the under-covered terms. */
+/** Per-term coverage over the kept documents — a statistic the dossier reports; the second round follows the angles. */
 export function documentCoverage(docs: readonly RegisteredDoc[], terms: readonly string[]): { coverage: { term: string; sources: number }[]; under: string[] } {
   const coverage = termCoverage(
     docs.map((d) => ({ text: d.page.text })),
