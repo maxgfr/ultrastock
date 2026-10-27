@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.6.0](https://github.com/maxgfr/ultrastock/compare/v1.5.0...v1.6.0) (2026-10-27)
+
+
+### Features
+
+* research --search-with ccs — the delegated search on the user's API key ([ec47bf6](https://github.com/maxgfr/ultrastock/commit/ec47bf6107cd4f138e102f155c5bd20a969fc582)), closes [#49](https://github.com/maxgfr/ultrastock/issues/49)
+
 # [1.5.0](https://github.com/maxgfr/ultrastock/compare/v1.4.0...v1.5.0) (2026-10-27)
 
 
