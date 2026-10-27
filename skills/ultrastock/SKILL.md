@@ -3,7 +3,7 @@ name: ultrastock
 description: Investing copilot for real money — US and European stocks and ETFs (PEA/CTO), crypto, prediction markets — that analyses, screens, values and reads the market regime from public, keyless data (exchanges, regulators, filings), registers every figure as an evidence [E#], and checks that the answer states no number the evidence does not hold. Use only when the user explicitly asks for ultrastock or for an investment analysis, e.g. "analyse LVMH", "should I buy NVDA", "find quality growth stocks in Europe", "is the market risk-on", "what is NVDA worth", "analyse cette action", "faut-il acheter", "trouve-moi des actions value éligibles PEA", "cherche des values", "compare ces ETF", "analyse le dernier rapport d'Anthropic", "le marché est-il haussier". Decision support, not a licensed adviser; places no order.
 license: MIT
 metadata:
-  version: 1.4.0
+  version: 1.5.0
 ---
 
 # ultrastock — every figure has a source, every answer is checked

@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.5.0](https://github.com/maxgfr/ultrastock/compare/v1.4.0...v1.5.0) (2026-10-27)
+
+
+### Features
+
+* **portfolio:** opt-in local SQLite store — ledger backend, daily snapshots, holdings news ([1a05ff3](https://github.com/maxgfr/ultrastock/commit/1a05ff3a6a83501d96e571a2db5ceece30ec5283)), closes [#45](https://github.com/maxgfr/ultrastock/issues/45)
+
 # [1.4.0](https://github.com/maxgfr/ultrastock/compare/v1.3.0...v1.4.0) (2026-10-27)
 
 
