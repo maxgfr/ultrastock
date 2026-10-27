@@ -4,7 +4,7 @@ import { basename, resolve } from "node:path";
 import { recordDecision, validateDecision } from "../analyze/decision.js";
 import { runAlerts, addRule, loadRules, notify, removeRule, type RuleKind } from "../alerts/alerts.js";
 import { clockNow } from "../core/net.js";
-import { argList, argValue, type CommandArgs, jsonLine, UsageError } from "../engine.js";
+import { argInt, argList, argValue, type CommandArgs, jsonLine, UsageError } from "../engine.js";
 import {
   addLesson,
   addThesis,
@@ -184,11 +184,19 @@ export async function watchCommand(args: CommandArgs, asJson: boolean): Promise<
   }
   if (sub === "add") {
     // watch add <SYM> "<condition>" | watch add 8k <SYM> | watch add stops
-    const kind: RuleKind = a === "8k" ? "8k" : a === "stops" ? "stops" : "expr";
+    const kind: RuleKind = a === "8k" ? "8k" : a === "stops" ? "stops" : a === "events" ? "events" : "expr";
     const rule =
       kind === "expr"
         ? addRule({ kind, symbol: a, expr: rest.join(" "), message: argValue(args, "message") }, clockNow())
-        : addRule({ kind, symbol: kind === "8k" ? rest[0] : undefined, message: argValue(args, "message") }, clockNow());
+        : addRule(
+            {
+              kind,
+              symbol: kind === "8k" ? rest[0] : undefined,
+              message: argValue(args, "message"),
+              ...(kind === "events" ? { days: argInt(args, "days", { min: 1, max: 365 }) ?? 14, minWeight: Number(argValue(args, "min-weight") ?? 2) } : {}),
+            },
+            clockNow(),
+          );
     return out(asJson, rule, `alert ${rule.id} added`);
   }
   if (sub === "rm") {
@@ -205,5 +213,7 @@ export async function watchCommand(args: CommandArgs, asJson: boolean): Promise<
       [...r.events.map((e) => `ALERT ${e.at} ${e.message}`), ...r.errors.map((e) => `error: ${e}`), ...sent.map((s) => `  ${s}`)].join("\n") || "nothing fired",
     );
   }
-  throw new UsageError('usage: ultrastock watch list|add <SYM> "<condition>"|add 8k <SYM>|add stops|rm <id>|run [--notify]');
+  throw new UsageError(
+    'usage: ultrastock watch list|add <SYM> "<condition>"|add 8k <SYM>|add stops|add events [--days 14] [--min-weight 2]|rm <id>|run [--notify]',
+  );
 }

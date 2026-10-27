@@ -1,0 +1,26 @@
+{
+  "kind": "events — a book exposed to Brazil (EWZ) and the US: the run-off just past (the Ibovespa, the real and the line since), the Fed ahead, the event study and the stress scenario",
+  "events": {
+    "setup": [
+      ["profile", "init", "--jurisdiction", "FR", "--currency", "EUR"],
+      ["portfolio", "deposit", "cto", "20000", "--currency", "USD", "--date", "2026-01-03"],
+      ["portfolio", "add", "buy", "--account", "cto", "--symbol", "EWZ", "--quantity", "400", "--price", "30", "--currency", "USD", "--date", "2026-02-03"],
+      ["portfolio", "add", "buy", "--account", "cto", "--symbol", "NVDA", "--quantity", "20", "--price", "180", "--currency", "USD", "--date", "2026-02-03"]
+    ],
+    "args": ["--days", "5", "--since", "7"]
+  },
+  "fixture": "assets/fixtures/events-br",
+  "calcs": [],
+  "expect": {
+    "evidenceMin": 120,
+    "keys": [
+      "EVENTS.exposure.country.BR",
+      "EVENTS.election:BR:2026-10-25:presidential:r2.study.worst1d",
+      "EVENTS.election:BR:2026-10-25:presidential:r2.study.stress1d",
+      "EVENTS.election:BR:2026-10-25:presidential:r2.realized.baseMove",
+      "EVENTS.election:BR:2026-10-25:presidential:r2.realized.EWZ.move",
+      "EVENTS.fed:2026-10-28.impact.stress"
+    ]
+  },
+  "answers": { "good": 0, "bad": 3 }
+}

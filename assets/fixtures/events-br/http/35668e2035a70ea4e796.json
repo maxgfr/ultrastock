@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://en.wikipedia.org/w/api.php?action=parse&page=2008_national_electoral_calendar&prop=wikitext&format=json&formatversion=2"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"error\":{\"code\":\"missingtitle\",\"info\":\"The page you specified doesn't exist.\",\"docref\":\"See https://en.wikipedia.org/w/api.php for API usage. Subscribe to the mediawiki-api-announce mailing list at &lt;https://lists.wikimedia.org/postorius/lists/mediawiki-api-announce.lists.wikimedia.org/&gt; for notice of API deprecations and breaking changes.\"},\"servedby\":\"mw-api-ext.eqiad.canary-bb75f9475-z94z5\"}",
+  "url": "https://en.wikipedia.org/w/api.php?action=parse&page=2008_national_electoral_calendar&prop=wikitext&format=json&formatversion=2",
+  "fetchedAt": "2026-10-27T06:36:52.534Z"
+ }
+}

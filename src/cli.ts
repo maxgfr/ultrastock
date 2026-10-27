@@ -6,6 +6,7 @@ import { analyzeFull, DEPTHS, type Depth } from "./analyze/full.js";
 import { calcEvidence, calcFromDocument } from "./calc.js";
 import { checkAnswer, NOTE_KINDS } from "./check.js";
 import { reportCommand } from "./commands/report.js";
+import { eventsCommand } from "./commands/events.js";
 import { researchCommand } from "./commands/research.js";
 import { stackCommand } from "./commands/stack.js";
 import { EvidenceStore, formatEvidence } from "./core/evidence.js";
@@ -89,6 +90,7 @@ USAGE
   ultrastock research <symbol|name> [--kind equity|etf|crypto|company] [--focus results] [--ask "<question>"] [--name <search name>] --out <run> [--json]
   ultrastock research --out <run> --web-results <websearch.json|-> | --urls <a,b> | --search-with claude|codex | --engine-search [--browser] [--no-wayback] [--limit <n>] [--json]
   ultrastock research <symbol|name> --search-with claude|codex [--search-model <m>] --out <run> [--json]   (worklist, search and ingestion in one call)
+  ultrastock events [--days 60] [--since 7] [--country BR,US] [--all] [--book real|paper] [--limit <n>] [--out <dir>] [--json]
   ultrastock news <query> [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>] [--out <dir>] [--json]
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
   ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
@@ -137,7 +139,7 @@ USAGE
   ultrastock broker preview|code|submit|reconcile|cancel <ticket-id> [--venue <v>] [--env test|live] [--code <code>] [--conid <id>] [--json]
   ultrastock mcp [--transport stdio|http] [--port 8765] [--token <24+ chars>]
   ultrastock strategy list | show <name|file.json> | validate <name|file.json> | new <name> [--like <strategy>] [--json]
-  ultrastock watch list|add <symbol> <condition>|add 8k <symbol>|add stops|rm <id>|run [--notify] [--message <text>] [--json]
+  ultrastock watch list|add <symbol> <condition>|add 8k <symbol>|add stops|add events [--days 14] [--min-weight 2]|rm <id>|run [--notify] [--message <text>] [--json]
   ultrastock options <symbol> [--expiries <n>] [--out <dir>] [--json]
   ultrastock options-analysis <symbol> [--expiry <date>] [--strategy <spec>] [--spot-moves=<list>] [--rate <pct>] [--out <dir>] [--json]
   ultrastock stats <symbol> [<symbol> …] [--days <n>] [--benchmark <symbol>] [--out <dir>] [--json]
@@ -212,6 +214,15 @@ COMMANDS
             156-week index (0–100) for a futures market.
   sentiment CNN Fear & Greed, crypto Fear & Greed, the VIX term structure,
             Cboe put/call ratios.
+  events    What is scheduled to move the markets the book holds: national
+            elections and referendums (Wikipedia's electoral calendar), Fed and
+            ECB decisions (their own calendars) — ahead and just past — with the
+            book's exposure by country and currency, what the same kind of event
+            did before (index and currency, first session and five, in the base
+            currency), the book impact on the median and the worst past
+            reaction, prediction markets and the implied move of the country ETF,
+            and for a past event what it did to the index, the currency and your
+            own lines (EVENTS.md). \`watch add events\` warns ahead of time.
   news      Recent articles (Google News, GDELT; Yahoo for a symbol) — titles
             are external text, fenced as untrusted.
   research  Web sources compiled into evidence: writes the angles and queries
@@ -494,6 +505,8 @@ Nothing here needs an API key. Exit codes: 0 done, 1 failed or refused, 2 bad in
 
 export const VALUE_FLAGS = [
   "out",
+  "min-weight",
+  "country",
   "kind",
   "focus",
   "ask",
@@ -639,6 +652,7 @@ export const VALUE_FLAGS = [
 ];
 export const BOOL_FLAGS = [
   "json",
+  "all",
   "refresh",
   "offline",
   "probe",
@@ -704,6 +718,7 @@ export const COMMANDS = [
   "sentiment",
   "news",
   "research",
+  "events",
   "searxng",
   "firecrawl",
   "stack",
@@ -749,6 +764,7 @@ const SPEC: CliSpec = {
     searxng: ["json"],
     firecrawl: ["json"],
     stack: ["json"],
+    events: ["days", "since", "country", "all", "book", "limit", "out", ...NET],
     research: [
       "kind",
       "focus",
@@ -896,7 +912,7 @@ const SPEC: CliSpec = {
     broker: ["venue", "env", "code", "conid", "max-order", "max-daily", "venues", "attest", "json"],
     journal: ["book", "symbol", "thesis", "invalidation", "catalysts", "review-by", "note", "outcome", "ticket-id", "tags", "tag", "out", ...NET],
     knowledge: ["title", "json"],
-    watch: ["notify", "message", ...NET],
+    watch: ["notify", "message", "days", "min-weight", ...NET],
     options: ["expiries", "out", ...NET],
     "options-analysis": ["expiry", "strategy", "spot-moves", "rate", "out", ...NET],
     stats: ["days", "benchmark", "out", ...NET],
@@ -921,7 +937,7 @@ function usage(msg: string): never {
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 function arity(args: CommandArgs): number {
-  if (args.command === "doctor" || args.command === "version" || args.command === "value") return 0;
+  if (args.command === "doctor" || args.command === "version" || args.command === "value" || args.command === "events") return 0;
   if (args.command === "check" || args.command === "calc") return 2;
   if (args.command === "profile") return 3;
   if (args.command === "crypto" || args.command === "calendar" || args.command === "macro" || args.command === "crypto-analysis") return 2;
@@ -1154,6 +1170,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "sentiment") return sentimentCommand(args, asJson);
   if (cmd === "news") return newsCommand(args, asJson);
   if (cmd === "research") return researchCommand(args, asJson);
+  if (cmd === "events") return eventsCommand(args, asJson);
   if (cmd === "searxng" || cmd === "firecrawl" || cmd === "stack") return stackCommand(args, asJson);
   if (cmd === "universe") return universeCommand(args, asJson);
 

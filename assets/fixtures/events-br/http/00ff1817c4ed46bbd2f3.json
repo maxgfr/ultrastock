@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=5d&interval=1d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"USD\",\"symbol\":\"^GSPC\",\"exchangeName\":\"SNP\",\"fullExchangeName\":\"SNP\",\"instrumentType\":\"INDEX\",\"firstTradeDate\":-1325583000,\"regularMarketTime\":1793047423,\"hasPrePostMarketData\":false,\"gmtoffset\":-14400,\"timezone\":\"EDT\",\"exchangeTimezoneName\":\"America/New_York\",\"regularMarketPrice\":7676.77,\"regularMarketChangePercent\":0.696,\"fulldayPrice\":7676.77,\"fulldayChange\":53.09,\"fulldayChangePercent\":0.696,\"fiftyTwoWeekHigh\":7844.52,\"fiftyTwoWeekLow\":6316.91,\"regularMarketDayHigh\":7702.13,\"regularMarketDayLow\":7639.7,\"regularMarketVolume\":2759066000,\"longName\":\"S&P 500\",\"shortName\":\"S&P 500\",\"chartPreviousClose\":7690.73,\"priceHint\":2,\"currentTradingPeriod\":{\"pre\":{\"timezone\":\"EDT\",\"start\":1793088000,\"end\":1793107800,\"gmtoffset\":-14400},\"regular\":{\"timezone\":\"EDT\",\"start\":1793107800,\"end\":1793131200,\"gmtoffset\":-14400},\"post\":{\"timezone\":\"EDT\",\"start\":1793131200,\"end\":1793145600,\"gmtoffset\":-14400}},\"dataGranularity\":\"1d\",\"range\":\"5d\",\"validRanges\":[\"1d\",\"5d\",\"1mo\",\"3mo\",\"6mo\",\"1y\",\"2y\",\"5y\",\"10y\",\"ytd\",\"max\"]},\"timestamp\":[1792503000,1792589400,1792675800,1792762200,1793021400],\"indicators\":{\"quote\":[{\"high\":[7748.419921875,7770.39990234375,7702.93994140625,7660.14990234375,7702.1298828125],\"open\":[7679.009765625,7736.43017578125,7694.6201171875,7637.18017578125,7639.7001953125],\"low\":[7668.02978515625,7709.33984375,7637.35986328125,7612.06982421875,7639.7001953125],\"close\":[7712.56982421875,7757.169921875,7663.43017578125,7623.68017578125,7676.77001953125],\"volume\":[5004770000,4921480000,5972620000,5062330000,5838070000]}],\"adjclose\":[{\"adjclose\":[7712.56982421875,7757.169921875,7663.43017578125,7623.68017578125,7676.77001953125]}]}}],\"error\":null}}",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=5d&interval=1d",
+  "fetchedAt": "2026-10-27T06:37:02.202Z"
+ }
+}

@@ -144,6 +144,20 @@ export const TOOLS: Tool[] = [
     },
   },
   {
+    name: "events",
+    description:
+      "Elections, referendums and Fed/ECB decisions ahead (and just past) that touch the user's book: exposure by country and currency, what the same kind of event did before (index and currency, in the base currency), the stress scenario (the index's worst session), the book impact, prediction markets and the options' implied move; for a past event, what it did to the index, the currency and the user's lines (EVENTS.md).",
+    command: ["events"],
+    params: {
+      days: { kind: "number", description: "days ahead (default 60)" },
+      since: { kind: "number", description: "days back (default 7)" },
+      country: { kind: "string[]", description: "ISO codes to include even without exposure: BR, US" },
+      all: { kind: "boolean", description: "every market ultrastock knows, exposed or not" },
+      book: { kind: "string", description: "real (default) or paper" },
+      out: OUT,
+    },
+  },
+  {
     name: "research",
     description:
       "Web research compiled into evidence. With a subject: write the worklist (RESEARCH.todo.json: angles and FR+EN queries — business model, results, governance, controversies, short-sellers; ETF factsheet/KID/replication/PEA; focus=results for the latest report, ask for one precise question). Then run those queries with YOUR web search and call again with out + hits (inline) to ingest: pages and PDFs fetched, walls rescued (Wayback, optional browser) or dropped, linked reports followed, each page a document [E#] (sources/E#.md, DOSSIER.md). No web search of your own: search-with claude|codex. check refuses a figure the cited page does not state.",
