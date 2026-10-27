@@ -6,7 +6,7 @@
 // discount to them — the "cheap or dear against whom" a judge needs.
 import type { Dataset, Point } from "../core/datasets.js";
 import { clockNow } from "../core/net.js";
-import { cribleScreen } from "../providers/external/crible.js";
+import { cribleScreen, cribleStaleWarning } from "../providers/external/crible.js";
 import { medianOf } from "./regime/sectors.js";
 import { collapseForeignLines, issuerKey } from "./screen/crible.js";
 
@@ -93,6 +93,7 @@ export async function peersDataset(symbol: string, opts: { max?: number } = {}):
     .rows.filter((r) => r.symbol !== symbol && !(typeof r.name === "string" && issuerKey(r.name) === self))
     .slice(0, opts.max ?? 6);
   const asOf = clockNow().toISOString().slice(0, 10);
+  const stale = await cribleStaleWarning();
   const k = `${symbol}.peers`;
   const points: Point[] = [
     { key: `${k}.industry`, label: `${symbol} industry (crible)`, value: industry, untrusted: true },
@@ -157,6 +158,7 @@ export async function peersDataset(symbol: string, opts: { max?: number } = {}):
     notes: [
       "peers are crible's primary listings of the same industry, ranked by EUR market cap; their multiples are on each one's latest period",
       ...(screen.total > rows.length ? [`${screen.total} listings match the industry in this region; the ${rows.length} largest issuers are shown`] : []),
+      ...(stale ? [stale] : []),
     ],
   };
 }

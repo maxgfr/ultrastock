@@ -14,10 +14,11 @@
 // a replay never starts uvx, never needs a dataset, and a call it did not
 // record fails instead of going live.
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { env, have, shAsync } from "../../engine.js";
-import { netMode, recordedCall } from "../../core/net.js";
+import { cachedJson, TTL } from "../../core/cache.js";
+import { clockNow, fetchJson, netMode, politeUa, recordedCall } from "../../core/net.js";
 import { homeDir } from "../../core/paths.js";
 import { ProviderError } from "../types.js";
 
@@ -64,9 +65,108 @@ async function runLive(sub: string[], timeoutMs: number): Promise<string> {
   return r.stdout;
 }
 
-/** Download the published dataset into the data directory (once; ~1 minute). */
-export async function cribleBootstrap(): Promise<string> {
-  return run(["bootstrap"], 15 * 60_000);
+/** Download the published dataset into the data directory (once; ~1 minute) — with `force`, over an existing one (a refresh). */
+export async function cribleBootstrap(force = false): Promise<string> {
+  return run(["bootstrap", ...(force ? ["--force"] : [])], 15 * 60_000);
+}
+
+// ── Freshness ──────────────────────────────────────────────────────────────
+// crible publishes its dataset daily as the `data-latest` release; a local
+// copy only moves when the user bootstraps again. Every crible-backed command
+// says when the local copy is old — it never downloads one by itself.
+
+/** The manifest of the latest published dataset (its `generated_at` is the build time, unix seconds). */
+export const CRIBLE_DATA_MANIFEST = `${REPO}/releases/download/data-latest/manifest.json`;
+/** A local dataset older than this many days is called stale (ULTRASTOCK_CRIBLE_MAX_AGE_DAYS overrides). */
+export const CRIBLE_MAX_AGE_DAYS = 7;
+/** The command that refreshes it. */
+export const CRIBLE_REFRESH = "ultrastock screen --engine crible --bootstrap";
+
+const DAY_MS = 86_400_000;
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+/**
+ * When the local dataset was built: the manifest of the release it was
+ * restored from (`.restored-manifest.json`, `generated_at`), else crible's own
+ * `status.json` timestamp; undefined when the directory holds neither.
+ */
+export function cribleLocalBuiltAt(dir = cribleDataDir()): Date | undefined {
+  for (const [file, field] of [
+    [".restored-manifest.json", "generated_at"],
+    ["status.json", "ts"],
+  ] as const) {
+    try {
+      const v = (JSON.parse(readFileSync(join(dir, file), "utf8")) as Record<string, unknown>)[field];
+      if (typeof v === "number" && Number.isFinite(v) && v > 0) return new Date(v * 1000);
+    } catch {
+      // absent or unreadable: try the next one
+    }
+  }
+  return undefined;
+}
+
+export interface CribleFreshness {
+  /** The local dataset's build day. */
+  local: string;
+  ageDays: number;
+  maxAgeDays: number;
+  /** The latest published dataset's build day, when the release answered. */
+  published?: string;
+  /** Older than the threshold, and no published dataset known to be as old or older. */
+  stale: boolean;
+  message: string;
+}
+
+/** The build time of the latest published dataset (cached six hours), or undefined when GitHub does not answer. */
+async function publishedBuiltAt(): Promise<Date | undefined> {
+  const t = await cachedJson<number>("crible:data-latest:generated_at", TTL.daily, async () => {
+    const r = await fetchJson<{ generated_at?: number }>(CRIBLE_DATA_MANIFEST, { userAgent: politeUa(), retries: 0, timeoutMs: 10_000 });
+    const v = r.ok ? r.data?.generated_at : undefined;
+    return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+  });
+  return t === undefined ? undefined : new Date(t * 1000);
+}
+
+/** Classify a local dataset's age against the threshold and the published one. Pure. */
+export function cribleFreshnessOf(local: Date, now: Date, maxAgeDays: number, published?: Date): CribleFreshness {
+  const ageDays = Math.floor((now.getTime() - local.getTime()) / DAY_MS);
+  // Refreshing only helps when the release is newer than the local copy (by more than a day's rebuild).
+  const newer = published === undefined || published.getTime() - local.getTime() > DAY_MS;
+  const stale = ageDays > maxAgeDays && newer;
+  const pub = published ? `; the published data-latest dataset was built ${iso(published)}` : "";
+  const message = stale
+    ? `crible's local dataset is ${ageDays} days old (built ${iso(local)}${pub}) — its fundamentals, caps and prices may be out of date; refresh it with \`${CRIBLE_REFRESH}\` (re-downloads the published dataset, about a minute, and replaces the local copy)`
+    : `crible's local dataset was built ${iso(local)} (${ageDays} day${ageDays === 1 ? "" : "s"} old${pub})`;
+  return { local: iso(local), ageDays, maxAgeDays, ...(published ? { published: iso(published) } : {}), stale, message };
+}
+
+let freshness: Promise<CribleFreshness | undefined> | undefined;
+
+/**
+ * How old the local dataset is, checked once per process. Undefined when
+ * there is no local dataset to date, and in a recorded or replayed run (a
+ * fixture's answers do not depend on the machine's dataset).
+ */
+export function cribleFreshness(now: Date = clockNow()): Promise<CribleFreshness | undefined> {
+  if (netMode().kind !== "live") return Promise.resolve(undefined);
+  freshness ??= (async () => {
+    const local = cribleLocalBuiltAt();
+    if (!local) return undefined;
+    const max = Number(env("CRIBLE_MAX_AGE_DAYS") ?? CRIBLE_MAX_AGE_DAYS);
+    const published = await publishedBuiltAt().catch(() => undefined);
+    return cribleFreshnessOf(local, now, Number.isFinite(max) && max >= 0 ? max : CRIBLE_MAX_AGE_DAYS, published);
+  })();
+  return freshness;
+}
+
+/** The warning a crible-backed command adds to its notes when the local dataset is stale, else undefined. Never throws. */
+export async function cribleStaleWarning(): Promise<string | undefined> {
+  try {
+    const f = await cribleFreshness();
+    return f?.stale ? f.message : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function cribleStatus(): Promise<Record<string, unknown>> {

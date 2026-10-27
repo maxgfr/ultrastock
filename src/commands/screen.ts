@@ -12,14 +12,23 @@ import { baseFilters, BUILTIN_PRESETS, describeFilter, type Engine, EUROPE_MARKE
 import { TECHNICAL_IDS, type TechnicalId } from "../analyze/screen/technical.js";
 import { tradingviewScreen } from "../analyze/screen/tradingview.js";
 import { indexId } from "../providers/macro/universe.js";
-import { cribleAvailable, cribleBootstrap, cribleBootstrapped, cribleDataDir, cribleScreen, SOURCE as CRIBLE } from "../providers/external/crible.js";
+import {
+  cribleAvailable,
+  cribleBootstrap,
+  cribleBootstrapped,
+  cribleDataDir,
+  cribleFreshness,
+  cribleScreen,
+  cribleStaleWarning,
+  SOURCE as CRIBLE,
+} from "../providers/external/crible.js";
 import { ProviderError } from "../providers/types.js";
 import { emitDatasets } from "./emit.js";
 
 const ENGINES: Engine[] = ["tradingview", "crible", "builtin"];
 const USAGE =
   "usage: ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market america|france|germany|europe|uk|crypto|…] " +
-  "[--universe SPX|NDX|CAC40|SBF120|DAX|SX5E|AEX|UKX|<comma list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--out <dir>] [--json] | screen --list [--engine …]";
+  "[--universe SPX|NDX|CAC40|SBF120|DAX|SX5E|AEX|UKX|<comma list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--out <dir>] [--json] | screen --list [--engine …] | screen --engine crible --bootstrap (download, or refresh, crible's dataset)";
 
 const isTechnical = (q: string): q is TechnicalId => (TECHNICAL_IDS as readonly string[]).includes(q);
 
@@ -169,12 +178,27 @@ async function cribleRun(query: string, args: CommandArgs): Promise<ReturnType<t
       );
   }
   const dsl = preset?.dsl ?? query;
-  if (argBool(args, "all-listings")) return cribleRowsToDataset(await cribleScreen(dsl, { limit, ...(sort ? { sort } : {}) }), { query: dsl, preset });
+  const stale = await cribleStaleWarning();
+  const warn = (ds: ReturnType<typeof cribleRowsToDataset>) => (stale ? { ...ds, notes: [...ds.notes, stale] } : ds);
+  if (argBool(args, "all-listings")) return warn(cribleRowsToDataset(await cribleScreen(dsl, { limit, ...(sort ? { sort } : {}) }), { query: dsl, preset }));
   // Fetch past the limit so an ADR whose home listing ranks just below still collapses.
   const run = primaryListingsOnly(dsl);
   const r = await cribleScreen(run, { limit: Math.min(limit * 2, 400), ...(sort ? { sort } : {}) });
   const { rows, dropped } = collapseForeignLines(r.rows);
-  return cribleRowsToDataset({ total: r.total, rows: rows.slice(0, limit) }, { query: dsl, preset, dsl: run, dropped });
+  return warn(cribleRowsToDataset({ total: r.total, rows: rows.slice(0, limit) }, { query: dsl, preset, dsl: run, dropped }));
+}
+
+/** `screen --engine crible --bootstrap` alone: download the published dataset, or replace the local copy with it. */
+async function cribleRefresh(asJson: boolean): Promise<void> {
+  if (!cribleAvailable()) throw new ProviderError(CRIBLE, "uvx is not installed — install uv (https://docs.astral.sh/uv/) to use crible", 0);
+  const existing = cribleBootstrapped();
+  process.stderr.write(
+    `${existing ? "replacing the local crible dataset with the published one" : "downloading crible's published dataset"} into ${cribleDataDir()} (about a minute)…\n`,
+  );
+  await cribleBootstrap(existing);
+  const f = await cribleFreshness();
+  if (asJson) process.stdout.write(jsonLine({ engine: "crible", dataDir: cribleDataDir(), refreshed: existing, freshness: f }));
+  else process.stdout.write(`crible dataset ${existing ? "refreshed" : "ready"} in ${cribleDataDir()}${f ? ` — ${f.message}` : ""}\n`);
 }
 
 export async function screenCommand(args: CommandArgs, asJson: boolean): Promise<void> {
@@ -183,6 +207,7 @@ export async function screenCommand(args: CommandArgs, asJson: boolean): Promise
   const engineFlag = engineArg as Engine | undefined;
   if (argBool(args, "list")) return listCommand(engineFlag, asJson);
   const query = args.positional.join(" ").trim();
+  if (!query && argBool(args, "bootstrap") && engineFlag === "crible") return cribleRefresh(asJson);
   if (!query) throw new UsageError(USAGE);
   const engine = engineFlag ?? pickEngine(query);
   if (argBool(args, "bootstrap") && engine !== "crible") throw new UsageError("--bootstrap downloads crible's dataset: it goes with --engine crible");
