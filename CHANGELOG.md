@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.7.0](https://github.com/maxgfr/ultrastock/compare/v1.6.0...v1.7.0) (2026-10-27)
+
+
+### Bug Fixes
+
+* **events:** a line with no close since the event has an unknown move, not zero ([2757aec](https://github.com/maxgfr/ultrastock/commit/2757aec41d3948895c3d186dd6dd1ed7dc0ecf3c))
+* **research:** the question's key terms leave out the subject's name, which leads every query already ([43791fc](https://github.com/maxgfr/ultrastock/commit/43791fc83a5a3b05fc400569d91c84fd8d1dcf7f))
+
+
+### Features
+
+* **crible:** warn when the local dataset is stale, never download unasked ([7cc9fef](https://github.com/maxgfr/ultrastock/commit/7cc9fef30e962aaea23b6022fcdb0353fd7f718c))
+* **prices:** price the rest of the world through Yahoo ([946abce](https://github.com/maxgfr/ultrastock/commit/946abcea649b7979b6c21fdf743eb1d25ef09c27))
+* **research:** an angle-driven second round, and tagged subjects in one run ([5386205](https://github.com/maxgfr/ultrastock/commit/5386205f74e88c26c457fac73da36d202bc82d2a))
+* **value:** --research-with claude|codex researches the top names in the run ([913c05c](https://github.com/maxgfr/ultrastock/commit/913c05c9ca8ca8f5793aea464a87a8a3501d1e88))
+
 # [1.6.0](https://github.com/maxgfr/ultrastock/compare/v1.5.0...v1.6.0) (2026-10-27)
 
 
