@@ -2,6 +2,7 @@
 import { parsePredictionSymbol, predictionQuote } from "../trading/prediction.js";
 import { importCommand } from "./import.js";
 import { PORTFOLIO_ANALYTICS_ACTIONS, portfolioAnalyticsCommand } from "./portfolio-analytics.js";
+import { PORTFOLIO_STORE_ACTIONS, portfolioStoreCommand } from "./portfolio-store.js";
 import { resolve } from "node:path";
 import { EvidenceStore } from "../core/evidence.js";
 import { clockNow } from "../core/net.js";
@@ -32,7 +33,7 @@ const bookOf = (args: CommandArgs) => {
 };
 
 /** Mark a book to market (quotes and ECB rates) and record an equity snapshot. */
-async function markBook(book: string) {
+export async function markBook(book: string) {
   const profile = loadProfile();
   if (!profile) throw new Error("no profile: run `ultrastock profile init` first");
   const now = clockNow();
@@ -40,10 +41,18 @@ async function markBook(book: string) {
   const b = buildBook(txs);
   const held = b.positions.filter((p) => p.quantity > 0);
   const prices: Record<string, number> = {};
+  const sources: Record<string, string> = {};
   const notes: string[] = [];
   await mapLimit([...new Set(held.map((p) => p.symbol))], 4, async (s) => {
     try {
-      prices[s] = parsePredictionSymbol(s) ? (await predictionQuote(s)).price : (await getQuote(await resolveSymbol(s), now)).price;
+      if (parsePredictionSymbol(s)) {
+        prices[s] = (await predictionQuote(s)).price;
+        sources[s] = "prediction-market";
+      } else {
+        const q = await getQuote(await resolveSymbol(s), now);
+        prices[s] = q.price;
+        sources[s] = q.provenance.source;
+      }
     } catch (e) {
       notes.push(`could not price ${s}: ${(e as Error).message}`);
     }
@@ -51,13 +60,14 @@ async function markBook(book: string) {
   const fx = await fxToBase([...held.map((p) => p.currency), ...b.cash.map((c) => c.currency)], profile.baseCurrency);
   const v = valueBook(b, prices, fx.rates, profile.baseCurrency);
   if (v.totalBase > 0) recordEquity(book, v.totalBase, now);
-  return { profile, txs, book: b, valued: v, notes: [...notes, ...fx.notes, ...v.missing.map((m) => `missing ${m}`)], now };
+  return { profile, txs, book: b, valued: v, fxRates: fx.rates, sources, notes: [...notes, ...fx.notes, ...v.missing.map((m) => `missing ${m}`)], now };
 }
 
 export async function portfolioCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const [sub = "show", ...rest] = args.positional;
   const book = bookOf(args);
   if (sub === "import") return importCommand(args, asJson);
+  if ((PORTFOLIO_STORE_ACTIONS as readonly string[]).includes(sub)) return portfolioStoreCommand(args, asJson, markBook);
   if ((PORTFOLIO_ANALYTICS_ACTIONS as readonly string[]).includes(sub)) return portfolioAnalyticsCommand(args, asJson);
   if (sub === "deposit" || sub === "withdraw") {
     const [account, amountRaw] = rest;
@@ -191,7 +201,7 @@ export async function portfolioCommand(args: CommandArgs, asJson: boolean): Prom
       ].join("\n"),
     );
   }
-  throw new UsageError("usage: ultrastock portfolio show|perf|deposit|withdraw|add [--book real|paper]");
+  throw new UsageError("usage: ultrastock portfolio show|perf|deposit|withdraw|add|import|db|track|history|news [--book real|paper]");
 }
 
 export async function planCommand(args: CommandArgs, asJson: boolean): Promise<void> {
