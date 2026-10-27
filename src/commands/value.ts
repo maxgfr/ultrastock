@@ -8,10 +8,11 @@ import { runDirFor } from "../core/paths.js";
 import { argBool, argInt, argValue, type CommandArgs, jsonLine, runId, UsageError } from "../engine.js";
 import { cribleAvailable, cribleBootstrapped, cribleDataDir, SOURCE as CRIBLE } from "../providers/external/crible.js";
 import { ProviderError } from "../providers/types.js";
+import { SEARCH_DELEGATES, type SearchDelegate } from "../research/delegate.js";
 
 export const VALUE_USAGE =
   "usage: ultrastock value [--style quality-value|deep-value|dividend|garp|magic-formula|all] [--region world|europe|pea|us|<ISO,…>] " +
-  "[--shortlist 30] [--top 10] [--min-cap-eur <n>] [--watch] [--out <run>] [--json]";
+  "[--shortlist 30] [--top 10] [--min-cap-eur <n>] [--watch] [--research-with claude|codex|ccs [--research-top 3] [--search-model <m>]] [--out <run>] [--json]";
 
 export async function valueCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   let styles: ReturnType<typeof valueStyles>;
@@ -29,6 +30,11 @@ export async function valueCommand(args: CommandArgs, asJson: boolean): Promise<
   const minCapEur = capArg === undefined ? undefined : Number(capArg.replace(/_/g, ""));
   if (minCapEur !== undefined && !(Number.isFinite(minCapEur) && minCapEur >= 0))
     throw new UsageError(`--min-cap-eur takes an amount in euros (500000000), not "${capArg}"`);
+  const researchWith = argValue(args, "research-with");
+  if (researchWith !== undefined && !(SEARCH_DELEGATES as readonly string[]).includes(researchWith))
+    throw new UsageError(`--research-with is one of ${SEARCH_DELEGATES.join(", ")}, not "${researchWith}"`);
+  const researchTop = argInt(args, "research-top", { min: 1, max: 30 });
+  if (researchTop !== undefined && !researchWith) throw new UsageError("--research-top goes with --research-with claude|codex|ccs");
   if (!cribleAvailable()) throw new ProviderError(CRIBLE, "uvx is not installed — install uv (https://docs.astral.sh/uv/) to use crible", 0);
   if (!cribleBootstrapped())
     throw new ProviderError(
@@ -45,6 +51,9 @@ export async function valueCommand(args: CommandArgs, asJson: boolean): Promise<
     top,
     minCapEur,
     watch: argBool(args, "watch"),
+    ...(researchWith
+      ? { research: { with: researchWith as SearchDelegate, top: Math.min(researchTop ?? 3, top || 1), model: argValue(args, "search-model") } }
+      : {}),
     progress: (m) => process.stderr.write(`${m}\n`),
   });
   if (asJson) process.stdout.write(jsonLine(r));

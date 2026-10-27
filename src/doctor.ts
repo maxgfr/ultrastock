@@ -9,7 +9,7 @@ import { loadProfile } from "./core/profile.js";
 import { ENGINE_VERSION, have } from "./engine.js";
 import { binanceHistoricalInfo } from "./providers/external/binance-historical.js";
 import { localServices } from "./commands/stack.js";
-import { CRIBLE_TAG, cribleBootstrapped, cribleDataDir } from "./providers/external/crible.js";
+import { CRIBLE_TAG, type CribleFreshness, cribleBootstrapped, cribleDataDir, cribleFreshness } from "./providers/external/crible.js";
 import { VERSION } from "./version.js";
 
 /** Live order submission refuses Node releases that no longer get security fixes. */
@@ -38,7 +38,7 @@ export interface DoctorReport {
   cache: string;
   profile: { exists: boolean; jurisdiction?: string; riskScore?: number; envelopes?: number };
   tools: Record<string, ToolReport>;
-  crible: { dataDir: string; bootstrapped: boolean; tag: string };
+  crible: { dataDir: string; bootstrapped: boolean; tag: string; freshness?: CribleFreshness };
   /** The optional local search containers, probed only with --probe. */
   services?: Array<{ name: string; url: string | null; up: boolean }>;
   /** SEC EDGAR asks automated clients for a contact in the User-Agent. */
@@ -100,6 +100,8 @@ export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) 
     secContact: !!process.env.ULTRASTOCK_SEC_CONTACT?.trim(),
     maturity: byMaturity(),
   };
+  const fresh = report.crible.bootstrapped ? await cribleFreshness().catch(() => undefined) : undefined;
+  if (fresh) report.crible.freshness = fresh;
   if (opts.probe) {
     report.services = await localServices();
     report.probes = await Promise.all(
@@ -127,6 +129,7 @@ export function formatDoctor(r: DoctorReport): string {
     `  sec         ${r.secContact ? "contact set (ULTRASTOCK_SEC_CONTACT)" : "no contact — set ULTRASTOCK_SEC_CONTACT to your e-mail: SEC EDGAR's fair-access policy asks for one and may block anonymous tools"}`,
     ...(r.services ?? []).map((s) => `  ${s.name.padEnd(11)} ${s.up ? `up at ${s.url}` : `not running — \`ultrastock ${s.name} up\` (optional, Docker)`}`),
     `  crible      ${r.crible.bootstrapped ? "dataset ready" : "no dataset yet (first `screen --engine crible` bootstraps it, ~1 min)"} in ${r.crible.dataDir} (pinned ${r.crible.tag})`,
+    ...(r.crible.freshness ? [`              ${r.crible.freshness.stale ? "STALE — " : ""}${r.crible.freshness.message}`] : []),
     ...Object.entries(r.tools).map(
       ([name, t]) => `  ${name.padEnd(19)} ${t.installed ? `installed${t.version ? ` (${t.version})` : ""}` : "not installed"} — ${t.purpose}`,
     ),

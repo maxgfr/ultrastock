@@ -3,6 +3,7 @@
 //
 //   MC.PA, ASML.AS, an EU ISIN      → Euronext (official, end of day)      → Yahoo
 //   SAP.DE, SHEL.L, NESN.SW, …      → Yahoo (unofficial; other European venues)
+//   PETR4.SA, 7203.T, 0700.HK, BHP.AX, NPN.JO, … → Yahoo (unofficial; the rest of the world)
 //   NVDA, QQQ, BRK.B, NVDA.US       → Nasdaq API (unofficial, US)          → Yahoo
 //   BTCUSDT, ETH-EUR, SOL/USDC      → Binance spot (official, real time)   → Kraken → Coinbase
 //
@@ -16,7 +17,7 @@ import { binanceHistory, binanceQuote, looksLikeCryptoPair, resolveBinance } fro
 import { euronextHistory, resolveEuronext, SUFFIX_MICS } from "./euronext.js";
 import { coinbaseHistory, coinbaseQuote, resolveCoinbase } from "./markets/coinbase.js";
 import { krakenHistory, krakenQuote, resolveKraken } from "./markets/kraken.js";
-import { resolveYahoo, yahooHistory, yahooQuote, yahooVenue } from "./markets/yahoo.js";
+import { resolveYahoo, yahooHistory, yahooQuote, yahooUnpriced, yahooVenue } from "./markets/yahoo.js";
 import { nasdaqHistory, nasdaqQuote, resolveNasdaq } from "./nasdaq.js";
 import { type Instrument, type Interval, type PriceSeries, ProviderError, type QuoteResult } from "./types.js";
 
@@ -27,16 +28,19 @@ export interface Resolved {
 
 const ISIN = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
 
-export function classifySymbol(raw: string): "euronext" | "europe" | "crypto" | "us" | { unsupported: string } {
+export function classifySymbol(raw: string): "euronext" | "europe" | "world" | "crypto" | "us" | { unsupported: string } {
   const s = raw.trim().toUpperCase();
   if (ISIN.test(s)) return s.startsWith("US") ? { unsupported: `${s} is a US ISIN — use the ticker (\`resolve\` finds it)` } : "euronext";
   const suffix = /\.([A-Z]{1,3})$/.exec(s)?.[1];
   if (suffix && suffix in SUFFIX_MICS) return "euronext";
-  if (suffix && yahooVenue(s)) return "europe";
+  const venue = suffix ? yahooVenue(s) : undefined;
+  if (venue) return venue.market;
+  const unpriced = suffix ? yahooUnpriced(s) : undefined;
+  if (unpriced) return { unsupported: unpriced };
   if (looksLikeCryptoPair(s)) return "crypto";
   if (!suffix || suffix === "US" || /^[A-Z]{1,5}\.[A-Z]$/.test(s)) return "us";
   return {
-    unsupported: `no provider covers the ".${suffix}" market — Euronext suffixes, the main European venues (.DE .L .SW .MC .ST .HE .CO .VI .WA), US tickers and crypto pairs are`,
+    unsupported: `no provider covers the ".${suffix}" market — Euronext suffixes, the venues Yahoo prices (Europe .DE .L .SW .MC .ST .HE .CO .VI .WA; Americas .SA .MX .TO .V .NE .BA .SN .CL; Asia .T .HK .KS .KQ .SS .SZ .TW .TWO .SI .KL .JK .BK .NS .BO; Oceania .AX .NZ; Middle East and Africa .JO .TA .IS .SR .QA), US tickers and crypto pairs are`,
   };
 }
 
@@ -45,7 +49,7 @@ export async function resolveSymbol(raw: string): Promise<Resolved> {
   const kind = classifySymbol(s);
   if (typeof kind === "object") throw new ProviderError("router", kind.unsupported);
   if (kind === "euronext") return { instrument: await resolveEuronext(s), notes: [] };
-  if (kind === "europe") return { instrument: await resolveYahoo(s), notes: [] };
+  if (kind === "europe" || kind === "world") return { instrument: await resolveYahoo(s), notes: [] };
   if (kind === "crypto") return resolveBinance(s);
   return { instrument: await resolveNasdaq(s), notes: [] };
 }
@@ -55,6 +59,9 @@ export interface HistoryRequest {
   to: Date;
   interval?: Interval;
 }
+
+/** Yahoo is the provider of record for the European venues outside Euronext and for the rest of the world. */
+const viaYahoo = (i: Instrument) => i.market === "europe" || i.market === "world";
 
 /** The Yahoo symbol for an instrument another provider resolved: MC.PA stays, NVDA stays. */
 const yahooSymbolOf = (i: Instrument) => i.symbol;
@@ -94,7 +101,7 @@ export async function getHistory(r: Resolved, req: HistoryRequest): Promise<Pric
         : undefined;
   const yahoo = {
     source: "yahoo",
-    run: async () => yahooHistory(instrument.market === "europe" ? instrument : await resolveYahoo(yahooSymbolOf(instrument)), "1d", req.from, req.to),
+    run: async () => yahooHistory(viaYahoo(instrument) ? instrument : await resolveYahoo(yahooSymbolOf(instrument)), "1d", req.from, req.to),
   };
   const res = await firstAnswer<PriceSeries>(primary ? [primary, yahoo] : [yahoo]);
   return stamp({ ...res.value, notes: [...r.notes, ...res.value.notes] }, res.failures);
@@ -114,7 +121,7 @@ export async function getQuote(r: Resolved, now = clockNow()): Promise<QuoteResu
     );
     return stamp(res.value, res.failures);
   }
-  if (instrument.market === "europe") return yahooQuote(instrument, now);
+  if (viaYahoo(instrument)) return yahooQuote(instrument, now);
   if (instrument.market === "us") {
     const res = await firstAnswer<QuoteResult>([
       { source: "nasdaq", run: () => nasdaqQuote(instrument) },

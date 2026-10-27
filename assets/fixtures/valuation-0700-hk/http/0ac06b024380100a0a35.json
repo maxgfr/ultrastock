@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/0700.HK?range=5d&interval=1d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"HKD\",\"symbol\":\"0700.HK\",\"exchangeName\":\"HKG\",\"fullExchangeName\":\"HKSE\",\"instrumentType\":\"EQUITY\",\"firstTradeDate\":1087349400,\"regularMarketTime\":1793083059,\"hasPrePostMarketData\":false,\"gmtoffset\":28800,\"timezone\":\"HKT\",\"exchangeTimezoneName\":\"Asia/Hong_Kong\",\"regularMarketPrice\":386.2,\"regularMarketChangePercent\":-0.052,\"fulldayPrice\":386.2,\"fulldayChange\":-0.2,\"fulldayChangePercent\":-0.052,\"fiftyTwoWeekHigh\":664.0,\"fiftyTwoWeekLow\":378.0,\"regularMarketDayHigh\":390.6,\"regularMarketDayLow\":385.2,\"regularMarketVolume\":10211121,\"longName\":\"Tencent Holdings Limited\",\"shortName\":\"TENCENT\",\"chartPreviousClose\":410.4,\"priceHint\":3,\"currentTradingPeriod\":{\"pre\":{\"timezone\":\"HKT\",\"start\":1793062800,\"end\":1793064600,\"gmtoffset\":28800},\"regular\":{\"timezone\":\"HKT\",\"start\":1793064600,\"end\":1793088600,\"gmtoffset\":28800},\"post\":{\"timezone\":\"HKT\",\"start\":1793088600,\"end\":1793088600,\"gmtoffset\":28800}},\"dataGranularity\":\"1d\",\"range\":\"5d\",\"validRanges\":[\"1d\",\"5d\",\"1mo\",\"3mo\",\"6mo\",\"1y\",\"2y\",\"5y\",\"10y\",\"ytd\",\"max\"]},\"timestamp\":[1792546200,1792632600,1792719000,1792978200,1793064600],\"indicators\":{\"quote\":[{\"low\":[393.79998779296875,378.3999938964844,378.0,384.3999938964844,385.20001220703125],\"volume\":[37783835,60791747,33161473,16952709,10211121],\"high\":[413.3999938964844,391.20001220703125,388.79998779296875,390.20001220703125,390.6000061035156],\"open\":[412.0,387.0,381.79998779296875,389.0,387.0],\"close\":[393.79998779296875,382.3999938964844,386.0,386.3999938964844,386.20001220703125]}],\"adjclose\":[{\"adjclose\":[393.79998779296875,382.3999938964844,386.0,386.3999938964844,386.20001220703125]}]}}],\"error\":null}}",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/0700.HK?range=5d&interval=1d",
+  "fetchedAt": "2026-10-27T06:52:40.745Z"
+ }
+}

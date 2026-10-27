@@ -13,7 +13,11 @@
 //   5. `valuationRun` on each of the top names, one after the other, on the
 //      one already-open register;
 //   6. VALUE.md: the ranking, then per security why it is cheap, why it is not
-//      a trap and what would invalidate the thesis, then the runbook.
+//      a trap and what would invalidate the thesis, then the runbook;
+//   7. with --research-with claude|codex|ccs, the research layer on the first top
+//      names — "pourquoi <name> est-il bon marché ?", searched by the agent CLI
+//      (billed to the user's plan), the pages read and registered in the same
+//      run — and VALUE.md rewritten to point at each name's dossier.
 import { join } from "node:path";
 import type { Dataset, Point } from "../../core/datasets.js";
 import { registerDatasets } from "../../core/datasets.js";
@@ -22,9 +26,12 @@ import { clockNow } from "../../core/net.js";
 import { sanitizeExternalText, UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "../../core/untrusted.js";
 import { writeArtifact } from "../../engine.js";
 import { addRule, type AlertRule, loadRules } from "../../alerts/alerts.js";
-import { type CribleScreen, cribleFields, cribleScreen } from "../../providers/external/crible.js";
+import { type CribleScreen, cribleFields, cribleScreen, cribleStaleWarning } from "../../providers/external/crible.js";
 import { toTradingViewTicker, tradingviewScan } from "../../providers/markets/tradingview.js";
 import { classifySymbol } from "../../providers/router.js";
+import type { SearchDelegate } from "../../research/delegate.js";
+import { researchFiles, researchTag } from "../../research/dossier.js";
+import { researchRound, searchName, startResearch } from "../../research/run.js";
 import { CRIBLE_REPO_URL, cribleUnitOf } from "../screen/crible.js";
 import { type ValuationOptions, type ValuationResult, valuationRun } from "../valuation.js";
 import { type CribleRow, type GateVerdict, MAX_PERIOD_AGE_MONTHS, MAX_UNKNOWN_GATES, runValueGates, VALUE_GATES, valueHygiene } from "./gates.js";
@@ -52,8 +59,32 @@ export interface ValueOptions {
   top?: number;
   minCapEur?: number;
   watch?: boolean;
+  /** Research the first `top` names of the ranking with an agent CLI's web search (opt-in: billed to the user's plan). */
+  research?: { with: SearchDelegate; top: number; model?: string };
   now?: Date;
   progress?: (msg: string) => void;
+}
+
+/** What one name's research produced, in the value run's directory. */
+export interface ValueResearch {
+  symbol: string;
+  /** The tag of its files: DOSSIER.<tag>.md, RESEARCH.<tag>.todo.json. */
+  tag: string;
+  ok: boolean;
+  dossier?: string;
+  kept?: number;
+  underCovered?: string[];
+  notes: string[];
+  error?: string;
+}
+
+export interface ValueResearchInput {
+  dir: string;
+  name: string;
+  ask: string;
+  tag: string;
+  with: SearchDelegate;
+  model?: string;
 }
 
 export interface ValueDeps {
@@ -63,8 +94,12 @@ export interface ValueDeps {
   dividendGrowth: (rows: readonly CribleRow[]) => Promise<Dataset | undefined>;
   loadAlerts: () => AlertRule[];
   addAlert: (input: { kind: "expr"; symbol: string; expr: string; message: string }) => AlertRule;
-  /** Whether ultrastock's price providers cover a symbol (valuation and alerts need it). */
-  covered: (symbol: string) => boolean;
+  /** One name's research round in the run (worklist, delegated search, ingestion). */
+  research: (symbol: string, input: ValueResearchInput) => Promise<Omit<ValueResearch, "symbol" | "tag">>;
+  /** The stale-dataset warning, when crible's local dataset is old. */
+  staleWarning?: () => Promise<string | undefined>;
+  /** True when ultrastock's price providers cover a symbol (valuation and alerts need it), else why not. */
+  covered: (symbol: string) => true | string;
 }
 
 export interface ValueShortlistEntry {
@@ -108,6 +143,7 @@ export interface ValueResult {
   styles: ValueStyleResult[];
   valuations: ValueValuation[];
   alerts: string[];
+  research: ValueResearch[];
   evidence: number;
   notes: string[];
 }
@@ -150,8 +186,17 @@ export function defaultValueDeps(): ValueDeps {
     valuation: valuationRun,
     dividendGrowth: (rows) => valueDividendGrowth(rows),
     loadAlerts: loadRules,
+    staleWarning: cribleStaleWarning,
     addAlert: (input) => addRule(input, clockNow()),
-    covered: (symbol) => typeof classifySymbol(symbol) !== "object",
+    research: async (symbol, input) => {
+      const start = await startResearch(symbol, { ask: input.ask, name: input.name, out: input.dir, tag: input.tag });
+      const r = await researchRound(start.dir, start.todo, start.notes, { searchWith: input.with, model: input.model });
+      return { ok: true, dossier: r.dossier.slice(input.dir.length + 1), kept: r.kept.length, underCovered: r.underCovered, notes: r.notes };
+    },
+    covered: (symbol) => {
+      const k = classifySymbol(symbol);
+      return typeof k === "object" ? k.unsupported : true;
+    },
   };
 }
 
@@ -430,6 +475,11 @@ export async function valueRun(dir: string, opts: ValueOptions, deps: ValueDeps 
   const notes: string[] = [];
   const store = EvidenceStore.open(dir, { subject: "value", createdAt: now.toISOString() });
 
+  const stale = await deps.staleWarning?.();
+  if (stale) {
+    notes.push(stale);
+    progress(`warning: ${stale}`);
+  }
   let receiptColumn = false;
   try {
     receiptColumn = (await deps.fields()).some((f) => f.name === "depositary_receipt");
@@ -450,12 +500,9 @@ export async function valueRun(dir: string, opts: ValueOptions, deps: ValueDeps 
   for (const r of runs) for (const s of r.result.top) if (!toValue.includes(s)) toValue.push(s);
   const valuations: ValueValuation[] = [];
   for (const sym of toValue) {
-    if (!deps.covered(sym)) {
-      valuations.push({
-        symbol: sym,
-        ok: false,
-        error: "no price provider covers this market (Euronext, the main European venues, US listings): value it by hand",
-      });
+    const why = deps.covered(sym);
+    if (why !== true) {
+      valuations.push({ symbol: sym, ok: false, error: `${why}: value it by hand` });
       continue;
     }
     const file = `valuations/${sym.replace(/[^A-Za-z0-9.-]/g, "_")}.md`;
@@ -481,7 +528,7 @@ export async function valueRun(dir: string, opts: ValueOptions, deps: ValueDeps 
     const expr = "close <= low52w * 1.02 or rsi14 < 30";
     const existing = deps.loadAlerts();
     for (const sym of toValue) {
-      if (!deps.covered(sym)) continue;
+      if (deps.covered(sym) !== true) continue;
       if (existing.some((r) => r.symbol === sym.toUpperCase() && r.expr === expr)) {
         alerts.push(`${sym}: already watched`);
         continue;
@@ -497,8 +544,42 @@ export async function valueRun(dir: string, opts: ValueOptions, deps: ValueDeps 
   }
 
   store.save();
-  writeArtifact(join(dir, "VALUE.md"), valueMarkdown(store, runs, valuations, alerts, { region: opts.region, minCapEur, shortlist, top, now, notes, dir }));
-  return { dir, region: opts.region.id, styles: runs.map((r) => r.result), valuations, alerts, evidence: store.items.length, notes };
+  const ctx = { region: opts.region, minCapEur, shortlist, top, now, notes, dir };
+  writeArtifact(join(dir, "VALUE.md"), valueMarkdown(store, runs, valuations, alerts, [], ctx));
+
+  // Research, last: it writes documents into the same register, after every figure above is saved.
+  const research: ValueResearch[] = [];
+  if (opts.research) {
+    const names = [...topNames(store, runs)].slice(0, opts.research.top);
+    progress(`research of ${names.length} name(s) with ${opts.research.with}: web searches billed to your plan`);
+    for (const [sym, full] of names) {
+      const name = searchName(full);
+      const tag = researchTag(sym);
+      progress(`research ${sym}: "pourquoi ${name} est-il bon marché ?" — ${opts.research.with} search…`);
+      try {
+        const r = await deps.research(sym, { dir, name, ask: askWhyCheap(name), tag, with: opts.research.with, model: opts.research.model });
+        research.push({ symbol: sym, tag, ...r });
+      } catch (e) {
+        research.push({ symbol: sym, tag, ok: false, notes: [], error: (e as Error).message.split("\n")[0]!.slice(0, 300) });
+      }
+    }
+    writeArtifact(join(dir, "VALUE.md"), valueMarkdown(store, runs, valuations, alerts, research, { ...ctx, researchWith: opts.research.with }));
+  }
+  const evidence = research.length ? (EvidenceStore.load(dir)?.items.length ?? store.items.length) : store.items.length;
+  return { dir, region: opts.region.id, styles: runs.map((r) => r.result), valuations, alerts, research, evidence, notes };
+}
+
+/** The question the research asks of each top name. */
+export const askWhyCheap = (name: string) => `pourquoi ${name} est-il bon marché ?`;
+
+/** The top names of every style, once each, in ranking order, with crible's name (shell-safe). */
+function topNames(store: EvidenceStore, runs: readonly StyleRun[]): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const run of runs)
+    for (const s of run.shortlist)
+      if (run.topSet.has(s.symbol) && !names.has(s.symbol))
+        names.set(s.symbol, shellSafe(String(store.byKey(`${s.symbol}.crible.name`)?.value ?? s.symbol)) || s.symbol);
+  return names;
 }
 
 // ── VALUE.md ───────────────────────────────────────────────────────────────
@@ -516,7 +597,8 @@ function valueMarkdown(
   runs: readonly StyleRun[],
   valuations: readonly ValueValuation[],
   alerts: readonly string[],
-  ctx: { region: ValueRegion; minCapEur: number; shortlist: number; top: number; now: Date; notes: string[]; dir: string },
+  research: readonly ValueResearch[],
+  ctx: { region: ValueRegion; minCapEur: number; shortlist: number; top: number; now: Date; notes: string[]; dir: string; researchWith?: SearchDelegate },
 ): string {
   const by = (key: string) => store.byKey(key);
   const sectorCell = (sym: string) => {
@@ -643,30 +725,62 @@ function valueMarkdown(
   if (alerts.length) L.push("## Alerts (--watch)", "", ...alerts.map((a) => `- ${a}`), "", "Run `ultrastock watch run` on a schedule to evaluate them.", "");
   if (ctx.notes.length) L.push("## Notes", "", ...ctx.notes.map((n) => `- ${n}`), "");
 
+  // The research the run did (--research-with), name by name.
+  if (research.length) {
+    L.push(`## Research (--research-with ${ctx.researchWith})`, "");
+    L.push(
+      `The first ${research.length} name(s) were researched in this run: the question below searched with ${ctx.researchWith}'s web search (billed to your plan), every page read and registered as a document [E#] of this register (\`sources/E#.md\`). Read each dossier before writing about the name.`,
+      "",
+    );
+    for (const r of research) {
+      if (!r.ok) {
+        L.push(`- ${r.symbol}: research failed — ${r.error ?? "unknown error"}`);
+        continue;
+      }
+      L.push(
+        `- ${r.symbol}: ${r.dossier} — ${r.kept ?? 0} source(s) kept${r.underCovered?.length ? `; under-covered angles ${r.underCovered.join(", ")} (a second round: \`ultrastock research --out ${ctx.dir} --for ${r.tag} --search-with ${ctx.researchWith}\`)` : ""}`,
+      );
+      for (const n of r.notes) L.push(`  - ${n}`);
+    }
+    L.push("");
+  }
+
   // The runbook: research each top name before answering.
-  const names = new Map<string, string>();
-  for (const run of runs)
-    for (const s of run.shortlist)
-      if (run.topSet.has(s.symbol) && !names.has(s.symbol))
-        names.set(s.symbol, shellSafe(String(by(`${s.symbol}.crible.name`)?.value ?? s.symbol)) || s.symbol);
+  const names = topNames(store, runs);
+  const done = new Set(research.filter((r) => r.ok).map((r) => r.symbol));
+  const left = [...names].filter(([sym]) => !done.has(sym));
   L.push("## Runbook", "");
   L.push(
     "This ranking is a starting point, not an answer: a low multiple is often deserved. For each top name, find out why the market prices it low before calling it a bargain.",
     "",
-    "1. For each security, ask why it is cheap:",
-    "",
-    "```sh",
-    ...[...names].map(([sym, name]) => `ultrastock research ${sym} --ask "pourquoi ${name} est-il bon marché ?" --out ${ctx.dir}`),
-    "```",
-    "",
-    "2. Run the web searches the research step lists, save the results, and feed them back:",
-    "",
-    "```sh",
-    `ultrastock research --out ${ctx.dir} --web-results websearch.json`,
-    "```",
-    "",
-    "3. Write answer.md: per security, why it is cheap, why it is not a trap, what would invalidate the thesis — every figure citing its [E#] (derived figures through `ultrastock calc`).",
-    "4. Check and publish:",
+  );
+  let step = 1;
+  if (done.size)
+    L.push(
+      `${step++}. Read the dossiers of the names researched above (${research
+        .filter((r) => r.ok)
+        .map((r) => r.dossier)
+        .join(", ")}): why each is cheap, what the sources say, the angles still under-covered.`,
+      "",
+    );
+  if (left.length)
+    L.push(
+      `${step++}. For ${done.size ? "each other" : "each"} security, ask why it is cheap${done.size ? "" : ` (or rerun with --research-with claude|codex|ccs to have it searched — billed to your plan)`}:`,
+      "",
+      "```sh",
+      ...left.map(([sym, name]) => `ultrastock research ${sym} --ask "${askWhyCheap(searchName(name))}" --out ${ctx.dir} --for ${researchTag(sym)}`),
+      "```",
+      "",
+      `${step++}. Run the web searches each research step lists, save the results, and feed them back, one name at a time (each name's files carry its tag: ${researchFiles("<tag>").dossier}):`,
+      "",
+      "```sh",
+      ...left.map(([sym]) => `ultrastock research --out ${ctx.dir} --for ${researchTag(sym)} --web-results websearch.${researchTag(sym)}.json`),
+      "```",
+      "",
+    );
+  L.push(
+    `${step++}. Write answer.md: per security, why it is cheap, why it is not a trap, what would invalidate the thesis — every figure citing its [E#] (derived figures through \`ultrastock calc\`, a source's through \`ultrastock calc <run> --from E#\`).`,
+    `${step++}. Check and publish:`,
     "",
     "```sh",
     `ultrastock check ${ctx.dir} answer.md`,

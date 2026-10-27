@@ -47,6 +47,7 @@ const DAY = 86_400_000;
 /** Years of history the stress reference (the index's worst session) is read over, at least. */
 const STRESS_YEARS = 10;
 const iso = (d: Date) => d.toISOString().slice(0, 10);
+const nextIso = (day: string) => iso(new Date(Date.parse(`${day}T00:00:00Z`) + DAY));
 
 export interface MarketEvent {
   /** Stable id: "election:BR:2026-10-25:presidential", "fed:2026-10-28". */
@@ -664,7 +665,8 @@ async function studyEvent(e: MarketEvent, f: Findings, c: StudyContext): Promise
     const pts = anchorPoints(`${E}.realized.index`, `${market.indexName} since ${e.title}`, index, e, sameDay, market.currency);
     const last = index[index.length - 1];
     const pre = pts.find((p) => p.key.endsWith(".pre"));
-    if (pre && last) {
+    if (last && last.date < (sameDay ? e.date : nextIso(e.endDate ?? e.date))) f.note(`${market.indexName}: no close after ${e.title} yet in the price source`);
+    else if (pre && last) {
       const lastPts: Point[] = [
         {
           key: `${E}.realized.index.last`,
@@ -732,6 +734,11 @@ async function studyEvent(e: MarketEvent, f: Findings, c: StudyContext): Promise
         );
         const lb = bars[bars.length - 1];
         if (!hp.length || !lb) continue;
+        // The latest bar must come after the event: a source that has not printed the session yet is no 0 % move.
+        if (lb.date < (sameDay ? e.date : nextIso(e.endDate ?? e.date))) {
+          f.note(`${sym}: no close after ${e.title} yet in the price source (latest ${lb.date}) — its move is unknown, not zero`);
+          continue;
+        }
         hp.push({ key: `${E}.realized.${sym}.last`, label: `${sym} latest close (${lb.date})`, value: lb.close, unit: r.instrument.currency, asOf: lb.date });
         f.input({ kind: "history", title: `${sym} since ${e.title}`, subject: sym, points: hp, provenance: h.provenance, notes: [] });
         f.derive(

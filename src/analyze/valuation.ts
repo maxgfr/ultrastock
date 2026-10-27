@@ -20,6 +20,7 @@ import { esefFundamentals } from "../providers/fundamentals/esef.js";
 import { secFundamentals } from "../providers/fundamentals/sec.js";
 import { ecbYieldCurve } from "../providers/macro/ecb.js";
 import { treasuryCurve } from "../providers/macro/treasury.js";
+import { referenceRates } from "./portfolio/book.js";
 import { getHistory, getQuote, resolveSymbol } from "../providers/router.js";
 
 export interface ValuationOptions {
@@ -55,19 +56,28 @@ export interface ValuationResult {
 
 const clip = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 
+/** The currency a crible period reports in (`reporting_currency`), when crible knows it. */
+export function reportingCurrencyOf(period: Record<string, unknown>): string | undefined {
+  const r = period.reporting_currency;
+  return typeof r === "string" && /^[A-Z]{3}$/.test(r.trim().toUpperCase()) ? r.trim().toUpperCase() : undefined;
+}
+
 export async function valuationRun(raw: string, dir: string, opts: ValuationOptions = {}): Promise<ValuationResult> {
   const now = opts.now ?? clockNow();
   const notes: string[] = [];
   const resolved = await resolveSymbol(raw);
   const inst = resolved.instrument;
   const sym = inst.symbol;
-  const ccy = inst.currency;
+  const quoteCcy = inst.currency;
+  /** The currency every per-share figure is computed in: the statements' (crible's reporting currency), else the quote's. */
+  let ccy = quoteCcy;
   const store = opts.store ?? EvidenceStore.open(dir, { subject: sym, createdAt: now.toISOString() });
   const reg = (ds: Parameters<typeof registerDatasets>[1]) => registerDatasets(store, ds);
 
   // Price.
   const q = await getQuote(resolved, now);
-  const priceId = store.add({ key: `${sym}.quote.price`, label: `${sym} latest price`, value: q.price, unit: ccy, ...q.provenance, asOf: q.at });
+  let priceId = store.add({ key: `${sym}.quote.price`, label: `${sym} latest price`, value: q.price, unit: quoteCcy, ...q.provenance, asOf: q.at });
+  let price = q.price;
   store.save();
 
   // Statements: the filing, then crible to fill gaps.
@@ -86,34 +96,70 @@ export async function valuationRun(raw: string, dir: string, opts: ValuationOpti
   } catch (e) {
     notes.push(`filings unavailable (${(e as Error).message})`);
   }
+  let rows: Array<Record<string, unknown>> = [];
   try {
     const c = await cribleCompany(sym);
-    const rows = Array.isArray(c?.periods) ? (c!.periods as Array<Record<string, unknown>>) : [];
-    if (rows.length) {
-      const fetchedAt = now.toISOString();
-      const criblePeriods = periodsFromCrible(rows.slice(0, 6), (col, period, value) =>
-        store.add({
-          key: `${sym}.crible.${col}.${period}`,
-          label: `${sym} ${col.replace(/_/g, " ")} (period ending ${period}, crible)`,
-          value,
-          unit: /shares/.test(col) ? "shares" : ccy,
-          source: "crible",
-          fetchedAt,
-          asOf: period,
-          delay: "filing",
-          official: false,
-        }),
-      );
-      const before = periods.length;
-      periods = fillGaps(periods, criblePeriods);
-      const filled = periods.reduce((s, p) => s + p.filled.length, 0);
-      if (filled)
-        notes.push(
-          `${filled} field(s) the filing did not tag were filled from crible (unofficial aggregate)${before ? "" : " — all statements come from crible"}`,
-        );
-    }
+    rows = Array.isArray(c?.periods) ? (c!.periods as Array<Record<string, unknown>>) : [];
   } catch (e) {
     notes.push(`crible unavailable (${(e as Error).message})`);
+  }
+  if (rows.length && !periods.length) {
+    // Statements from crible alone: in its reporting currency, which may not be the quote's (a Hong Kong
+    // line reporting in CNY). Outside the crible try: a missing rate fails the valuation, it never
+    // compares a CNY value with an HKD price.
+    const rep = reportingCurrencyOf(rows[0]!);
+    if (!rep) {
+      if (inst.market === "world")
+        notes.push(
+          `crible gives no reporting currency for ${sym}'s statements: they are taken to be in ${quoteCcy}, the quote's — check the annual report before using the DCF`,
+        );
+    } else if (rep !== quoteCcy) {
+      const fx = await referenceRates([quoteCcy, rep], "EUR");
+      const perEur = (c: string) => (c === "EUR" ? 1 : fx.rates[c] ? 1 / fx.rates[c]! : undefined);
+      const [a, b] = [perEur(quoteCcy), perEur(rep)];
+      if (a === undefined || b === undefined)
+        throw new Error(`${sym}: statements in ${rep}, price in ${quoteCcy}, and no ${quoteCcy}/${rep} rate to compare them — not valued`);
+      const fxIds = registerDatasets(store, fx.datasets).flatMap((r) =>
+        r.items.filter((i) => [quoteCcy, rep].some((c) => i.key === `EUR.fx.${c}`)).map((i) => i.id),
+      );
+      price = Number(((q.price * b) / a).toPrecision(10));
+      priceId = store.addDerived(
+        `${sym}.quote.price.${rep}`,
+        `${sym} latest price converted to ${rep}, the statements' currency`,
+        price,
+        rep,
+        [priceId, ...fxIds],
+        `price (${quoteCcy}) × (${rep} per EUR) / (${quoteCcy} per EUR)`,
+      );
+      ccy = rep;
+      notes.push(
+        ...fx.notes,
+        `${sym} reports in ${rep} and trades in ${quoteCcy}: the price is converted to ${rep} [${priceId}] and every per-share figure is in ${rep}`,
+      );
+    }
+  }
+  if (rows.length) {
+    const fetchedAt = now.toISOString();
+    const criblePeriods = periodsFromCrible(rows.slice(0, 6), (col, period, value) =>
+      store.add({
+        key: `${sym}.crible.${col}.${period}`,
+        label: `${sym} ${col.replace(/_/g, " ")} (period ending ${period}, crible)`,
+        value,
+        unit: /shares/.test(col) ? "shares" : ccy,
+        source: "crible",
+        fetchedAt,
+        asOf: period,
+        delay: "filing",
+        official: false,
+      }),
+    );
+    const before = periods.length;
+    periods = fillGaps(periods, criblePeriods);
+    const filled = periods.reduce((s, p) => s + p.filled.length, 0);
+    if (filled)
+      notes.push(
+        `${filled} field(s) the filing did not tag were filled from crible (unofficial aggregate)${before ? "" : " — all statements come from crible"}`,
+      );
   }
   store.save();
   store.save();
@@ -125,7 +171,11 @@ export async function valuationRun(raw: string, dir: string, opts: ValuationOpti
   let rf: number | undefined;
   let rfId: string | undefined;
   try {
-    const curve = inst.currency === "USD" ? await treasuryCurve(now) : await ecbYieldCurve(["10Y"]);
+    const curve = ccy === "USD" ? await treasuryCurve(now) : await ecbYieldCurve(["10Y"]);
+    if (ccy !== "USD" && ccy !== "EUR")
+      notes.push(
+        `no ${ccy} risk-free curve here: the euro area AAA 10-year stands in — ${ccy} cash flows discounted at a euro rate leave out the inflation and country-risk gap, so read the DCF as indicative`,
+      );
     // This curve's own 10-year point: a shared register may already hold the other currency's.
     const tenItem = reg([curve])[0]?.items.find((i) => /\.(ust|aaa)\.10Y$/.test(i.key) && typeof i.value === "number");
     if (tenItem) {
@@ -174,14 +224,14 @@ export async function valuationRun(raw: string, dir: string, opts: ValuationOpti
     notes.push(`beta unavailable (${(e as Error).message}) — 1.0 assumed`);
   }
 
-  const out = computeValuation(store, { sym, ccy, price: q.price, priceId, periods, rf, rfId, beta, betaId, erp, g, years: opts.years ?? 5, notes });
+  const out = computeValuation(store, { sym, ccy, price, priceId, periods, rf, rfId, beta, betaId, erp, g, years: opts.years ?? 5, notes });
   const cur = periods[0]!;
   mkdirSync(dir, { recursive: true });
   store.save();
   const lines = [
     `# ${sym}${inst.name ? ` — ${inst.name}` : ""} — valuation`,
     "",
-    `Statements: latest fiscal year ending ${cur.period.end}${cur.filled.length ? ` (${cur.filled.length} field(s) from crible)` : ""}. Price ${q.price} ${ccy} as of ${q.at}. Assumptions: ERP ${(erp * 100).toFixed(1)} %, terminal growth ${(g * 100).toFixed(1)} %, scenario weights 25/50/25.`,
+    `Statements: latest fiscal year ending ${cur.period.end}${cur.filled.length ? ` (${cur.filled.length} field(s) from crible)` : ""}. Price ${q.price} ${quoteCcy}${ccy !== quoteCcy ? ` (${price} ${ccy})` : ""} as of ${q.at}. Assumptions: ERP ${(erp * 100).toFixed(1)} %, terminal growth ${(g * 100).toFixed(1)} %, scenario weights 25/50/25.`,
     "",
   ];
   // A shared register holds other symbols too: list this one's figures (and the rate it used).

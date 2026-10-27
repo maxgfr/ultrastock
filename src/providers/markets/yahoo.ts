@@ -1,7 +1,9 @@
 // Yahoo Finance's chart API — keyless, undocumented (marked unofficial), the
-// broadest free coverage of European venues Euronext does not run: Xetra,
-// London, SIX, Madrid, the Nasdaq Nordic markets, Vienna, Warsaw; and a price
-// fallback for US listings.
+// broadest free price coverage there is: the European venues Euronext does not
+// run (Xetra, London, SIX, Madrid, the Nasdaq Nordic markets, Vienna, Warsaw),
+// the rest of the world (São Paulo, Toronto, Mexico, Tokyo, Hong Kong, Seoul,
+// Shanghai, Shenzhen, Taipei, Mumbai, Sydney, Johannesburg, Tel Aviv, Riyadh…),
+// and a price fallback for US listings.
 //
 //   https://query1.finance.yahoo.com/v8/finance/chart/<SYM>?period1=…&period2=…&interval=1d&events=div,split
 //   (query2.finance.yahoo.com serves the same API and stands in when query1 throttles)
@@ -13,8 +15,9 @@
 // (Retry-After is honoured there), then reported as a transient ProviderError.
 //
 // Bars are split-adjusted at the source (Yahoo's `close`; dividends are not
-// folded in — `adjclose` would). London quotes in pence (GBp): converted to GBP
-// here, and said so. Splits and dividends come back as their own dataset.
+// folded in — `adjclose` would). London quotes in pence (GBp), Johannesburg in
+// cents (ZAc), Tel Aviv in agorot (ILA): converted to GBP, ZAR and ILS here,
+// and said so. Splits and dividends come back as their own dataset.
 import type { Dataset, Point } from "../../core/datasets.js";
 import { clockNow, fetchJson, politeUa } from "../../core/net.js";
 import { type AssetKind, type Bar, type Instrument, type Interval, type PriceSeries, ProviderError, type QuoteResult } from "../types.js";
@@ -28,26 +31,109 @@ export interface YahooVenue {
   mic: string;
   name: string;
   country: string;
-  /** The currency Yahoo prices in (GBp = pence). */
+  /** The currency Yahoo prices in (GBp = pence, ZAc = cents, ILA = agorot). */
   currency: string;
-  /** TradingView's exchange prefix for the same venue. */
-  tradingview: string;
+  /** TradingView's exchange prefix for the same venue; absent when TradingView keys it otherwise (Bursa Malaysia by name). */
+  tradingview?: string;
+  /** The router's market: "europe" for European venues outside Euronext, "world" for the rest. */
+  market: "europe" | "world";
+  /** The exchange's time zone (IANA). */
+  timeZone: string;
+  /** Why Yahoo serves a quote but no daily history for this venue, when it does not. */
+  quoteOnly?: string;
 }
 
 /**
- * European venues outside Euronext, by Yahoo suffix: market "europe", the MIC
- * naming the venue.
+ * The venues Yahoo prices, by suffix: European venues Euronext does not run
+ * (market "europe"), then the Americas, Asia, Oceania, the Middle East and
+ * Africa (market "world"). Each suffix was checked live (a quote and a year
+ * of daily bars for one liquid listing) before it was listed here.
  */
-export const YAHOO_EU_VENUES: Record<string, YahooVenue> = {
-  DE: { mic: "XETR", name: "Xetra", country: "DE", currency: "EUR", tradingview: "XETR" },
-  L: { mic: "XLON", name: "London Stock Exchange", country: "GB", currency: "GBp", tradingview: "LSE" },
-  SW: { mic: "XSWX", name: "SIX Swiss Exchange", country: "CH", currency: "CHF", tradingview: "SIX" },
-  MC: { mic: "XMAD", name: "Bolsa de Madrid", country: "ES", currency: "EUR", tradingview: "BME" },
-  ST: { mic: "XSTO", name: "Nasdaq Stockholm", country: "SE", currency: "SEK", tradingview: "OMXSTO" },
-  HE: { mic: "XHEL", name: "Nasdaq Helsinki", country: "FI", currency: "EUR", tradingview: "OMXHEX" },
-  CO: { mic: "XCSE", name: "Nasdaq Copenhagen", country: "DK", currency: "DKK", tradingview: "OMXCOP" },
-  VI: { mic: "XWBO", name: "Wiener Börse", country: "AT", currency: "EUR", tradingview: "VIE" },
-  WA: { mic: "XWAR", name: "Warsaw Stock Exchange", country: "PL", currency: "PLN", tradingview: "GPW" },
+export const YAHOO_VENUES: Record<string, YahooVenue> = {
+  DE: { mic: "XETR", name: "Xetra", country: "DE", currency: "EUR", tradingview: "XETR", market: "europe", timeZone: "Europe/Berlin" },
+  L: { mic: "XLON", name: "London Stock Exchange", country: "GB", currency: "GBp", tradingview: "LSE", market: "europe", timeZone: "Europe/London" },
+  SW: { mic: "XSWX", name: "SIX Swiss Exchange", country: "CH", currency: "CHF", tradingview: "SIX", market: "europe", timeZone: "Europe/Zurich" },
+  MC: { mic: "XMAD", name: "Bolsa de Madrid", country: "ES", currency: "EUR", tradingview: "BME", market: "europe", timeZone: "Europe/Madrid" },
+  ST: { mic: "XSTO", name: "Nasdaq Stockholm", country: "SE", currency: "SEK", tradingview: "OMXSTO", market: "europe", timeZone: "Europe/Stockholm" },
+  HE: { mic: "XHEL", name: "Nasdaq Helsinki", country: "FI", currency: "EUR", tradingview: "OMXHEX", market: "europe", timeZone: "Europe/Helsinki" },
+  CO: { mic: "XCSE", name: "Nasdaq Copenhagen", country: "DK", currency: "DKK", tradingview: "OMXCOP", market: "europe", timeZone: "Europe/Copenhagen" },
+  VI: { mic: "XWBO", name: "Wiener Börse", country: "AT", currency: "EUR", tradingview: "VIE", market: "europe", timeZone: "Europe/Vienna" },
+  WA: { mic: "XWAR", name: "Warsaw Stock Exchange", country: "PL", currency: "PLN", tradingview: "GPW", market: "europe", timeZone: "Europe/Warsaw" },
+  // The Americas.
+  SA: { mic: "BVMF", name: "B3 (São Paulo)", country: "BR", currency: "BRL", tradingview: "BMFBOVESPA", market: "world", timeZone: "America/Sao_Paulo" },
+  MX: { mic: "XMEX", name: "Bolsa Mexicana de Valores", country: "MX", currency: "MXN", tradingview: "BMV", market: "world", timeZone: "America/Mexico_City" },
+  TO: { mic: "XTSE", name: "Toronto Stock Exchange", country: "CA", currency: "CAD", tradingview: "TSX", market: "world", timeZone: "America/Toronto" },
+  V: { mic: "XTSX", name: "TSX Venture Exchange", country: "CA", currency: "CAD", tradingview: "TSXV", market: "world", timeZone: "America/Toronto" },
+  NE: {
+    mic: "NEOE",
+    name: "Cboe Canada",
+    country: "CA",
+    currency: "CAD",
+    tradingview: "NEO",
+    market: "world",
+    timeZone: "America/Toronto",
+    quoteOnly: "Yahoo keeps no daily history for Cboe Canada (.NE) listings, only the last session — the issuer's home line (.TO, or its US ticker) has one",
+  },
+  BA: {
+    mic: "XBUE",
+    name: "Bolsa y Mercados Argentinos (Buenos Aires)",
+    country: "AR",
+    currency: "ARS",
+    tradingview: "BCBA",
+    market: "world",
+    timeZone: "America/Argentina/Buenos_Aires",
+  },
+  SN: { mic: "XSGO", name: "Bolsa de Santiago", country: "CL", currency: "CLP", tradingview: "BCS", market: "world", timeZone: "America/Santiago" },
+  CL: { mic: "XBOG", name: "Bolsa de Valores de Colombia", country: "CO", currency: "COP", tradingview: "BVC", market: "world", timeZone: "America/Bogota" },
+  // Asia.
+  T: { mic: "XTKS", name: "Tokyo Stock Exchange", country: "JP", currency: "JPY", tradingview: "TSE", market: "world", timeZone: "Asia/Tokyo" },
+  HK: { mic: "XHKG", name: "Hong Kong Stock Exchange", country: "HK", currency: "HKD", tradingview: "HKEX", market: "world", timeZone: "Asia/Hong_Kong" },
+  KS: { mic: "XKRX", name: "Korea Exchange (KOSPI)", country: "KR", currency: "KRW", tradingview: "KRX", market: "world", timeZone: "Asia/Seoul" },
+  KQ: { mic: "XKOS", name: "Korea Exchange (KOSDAQ)", country: "KR", currency: "KRW", tradingview: "KRX", market: "world", timeZone: "Asia/Seoul" },
+  SS: { mic: "XSHG", name: "Shanghai Stock Exchange", country: "CN", currency: "CNY", tradingview: "SSE", market: "world", timeZone: "Asia/Shanghai" },
+  SZ: { mic: "XSHE", name: "Shenzhen Stock Exchange", country: "CN", currency: "CNY", tradingview: "SZSE", market: "world", timeZone: "Asia/Shanghai" },
+  TW: { mic: "XTAI", name: "Taiwan Stock Exchange", country: "TW", currency: "TWD", tradingview: "TWSE", market: "world", timeZone: "Asia/Taipei" },
+  TWO: { mic: "ROCO", name: "Taipei Exchange (TPEx)", country: "TW", currency: "TWD", tradingview: "TPEX", market: "world", timeZone: "Asia/Taipei" },
+  SI: { mic: "XSES", name: "Singapore Exchange", country: "SG", currency: "SGD", tradingview: "SGX", market: "world", timeZone: "Asia/Singapore" },
+  KL: { mic: "XKLS", name: "Bursa Malaysia", country: "MY", currency: "MYR", market: "world", timeZone: "Asia/Kuala_Lumpur" },
+  JK: { mic: "XIDX", name: "Indonesia Stock Exchange", country: "ID", currency: "IDR", tradingview: "IDX", market: "world", timeZone: "Asia/Jakarta" },
+  BK: { mic: "XBKK", name: "Stock Exchange of Thailand", country: "TH", currency: "THB", tradingview: "SET", market: "world", timeZone: "Asia/Bangkok" },
+  NS: { mic: "XNSE", name: "National Stock Exchange of India", country: "IN", currency: "INR", tradingview: "NSE", market: "world", timeZone: "Asia/Kolkata" },
+  BO: { mic: "XBOM", name: "BSE (Bombay Stock Exchange)", country: "IN", currency: "INR", tradingview: "BSE", market: "world", timeZone: "Asia/Kolkata" },
+  // Oceania.
+  AX: {
+    mic: "XASX",
+    name: "Australian Securities Exchange",
+    country: "AU",
+    currency: "AUD",
+    tradingview: "ASX",
+    market: "world",
+    timeZone: "Australia/Sydney",
+  },
+  NZ: { mic: "XNZE", name: "NZX (New Zealand)", country: "NZ", currency: "NZD", tradingview: "NZX", market: "world", timeZone: "Pacific/Auckland" },
+  // The Middle East and Africa.
+  JO: {
+    mic: "XJSE",
+    name: "Johannesburg Stock Exchange",
+    country: "ZA",
+    currency: "ZAc",
+    tradingview: "JSE",
+    market: "world",
+    timeZone: "Africa/Johannesburg",
+  },
+  TA: { mic: "XTAE", name: "Tel Aviv Stock Exchange", country: "IL", currency: "ILA", tradingview: "TASE", market: "world", timeZone: "Asia/Jerusalem" },
+  IS: { mic: "XIST", name: "Borsa Istanbul", country: "TR", currency: "TRY", tradingview: "BIST", market: "world", timeZone: "Europe/Istanbul" },
+  SR: { mic: "XSAU", name: "Saudi Exchange (Tadawul)", country: "SA", currency: "SAR", tradingview: "TADAWUL", market: "world", timeZone: "Asia/Riyadh" },
+  QA: { mic: "DSMD", name: "Qatar Stock Exchange", country: "QA", currency: "QAR", tradingview: "QSE", market: "world", timeZone: "Asia/Qatar" },
+};
+
+/**
+ * Suffixes Yahoo answers for but cannot price: no currency and no last price
+ * in the chart metadata. Refused with the reason rather than priced in a
+ * guessed currency (Lima lists both PEN and USD lines).
+ */
+export const YAHOO_UNPRICED: Record<string, string> = {
+  LM: "Yahoo serves Lima (.LM) listings with no currency and no last price (it tags them as mutual funds), and Lima lists both PEN and USD lines — not priced here; a Lima issuer's US line (BAP, SCCO, BVN) is",
 };
 
 /** Sub-unit currencies Yahoo quotes in, and the unit they divide into. */
@@ -60,12 +146,23 @@ const SUBUNITS: Record<string, { currency: string; per: number; name: string }> 
 
 const KINDS: Record<string, AssetKind> = { EQUITY: "equity", ETF: "etf", INDEX: "index", MUTUALFUND: "fund", CRYPTOCURRENCY: "crypto" };
 
-/** The venue a Yahoo symbol trades on, when it is one of the European venues above. */
+/** A Yahoo symbol's suffix and ticker: 7203.T → T / 7203, 6488.TWO → TWO / 6488. */
+function splitSuffix(symbol: string): { ticker: string; suffix: string } | undefined {
+  const m = /^(.+)\.([A-Z]{1,3})$/.exec(symbol.toUpperCase());
+  return m ? { ticker: m[1]!, suffix: m[2]! } : undefined;
+}
+
+/** The venue a Yahoo symbol trades on, when it is one of the venues above. */
 export function yahooVenue(symbol: string): (YahooVenue & { suffix: string; ticker: string }) | undefined {
-  const m = /^(.+)\.([A-Z]{1,2})$/.exec(symbol.toUpperCase());
-  if (!m) return undefined;
-  const v = YAHOO_EU_VENUES[m[2]!];
-  return v ? { ...v, suffix: m[2]!, ticker: m[1]! } : undefined;
+  const parts = splitSuffix(symbol);
+  const v = parts ? YAHOO_VENUES[parts.suffix] : undefined;
+  return v && parts ? { ...v, ...parts } : undefined;
+}
+
+/** Why a Yahoo suffix is refused (Lima), or undefined. */
+export function yahooUnpriced(symbol: string): string | undefined {
+  const parts = splitSuffix(symbol);
+  return parts ? YAHOO_UNPRICED[parts.suffix] : undefined;
 }
 
 export interface YahooMeta {
@@ -183,7 +280,7 @@ export function yahooInstrument(symbol: string, meta: YahooMeta): Instrument {
   const sub = meta.currency ? SUBUNITS[meta.currency] : undefined;
   return {
     symbol: sym,
-    market: venue ? "europe" : meta.instrumentType === "CRYPTOCURRENCY" ? "crypto" : "us",
+    market: venue ? venue.market : meta.instrumentType === "CRYPTOCURRENCY" ? "crypto" : "us",
     kind: KINDS[meta.instrumentType ?? ""] ?? "equity",
     name: meta.longName ?? meta.shortName,
     mic: venue?.mic,
@@ -236,6 +333,9 @@ export async function yahooChart(
   const res = await chart(instrument.venueId, `period1=${p1}&period2=${p2}&interval=${yi}&events=div,split`);
   const parsed = parseYahooChart(res.body, interval, Math.floor(Date.parse(res.fetchedAt) / 1000));
   if (!parsed?.bars.length) throw new ProviderError(SOURCE, `no closed ${interval} bars for ${instrument.venueId} in the window`);
+  // A quote-only venue answers a history request with the last session alone: no series, said why.
+  const quoteOnly = yahooVenue(instrument.venueId)?.quoteOnly;
+  if (quoteOnly && parsed.bars.length < 2 && to.getTime() - from.getTime() > 7 * 86_400_000) throw new ProviderError(SOURCE, quoteOnly, 404);
   const provenance = { source: SOURCE, url: res.url, fetchedAt: res.fetchedAt, delay: "eod", official: false };
   const series: PriceSeries = {
     instrument,
@@ -294,5 +394,47 @@ export async function yahooQuote(instrument: Instrument, now: Date = clockNow())
     at,
     provenance: { source: SOURCE, url: res.url, fetchedAt: res.fetchedAt, delay: DELAY_QUOTE, official: false },
     notes: parsed.notes,
+  };
+}
+
+/**
+ * Cross rates Yahoo quotes (`EURTWD=X`): units of each currency per one
+ * `base`, for the currencies the ECB does not fix (TWD, SAR, QAR, ARS, CLP,
+ * COP…). Unofficial and delayed, keyed like the ECB's (`EUR.fx.TWD`), one
+ * call per currency, in the order given; a currency Yahoo does not quote is
+ * left out and said so.
+ */
+export async function yahooFxRates(base: string, currencies: readonly string[]): Promise<Dataset> {
+  const b = base.toUpperCase();
+  const points: Point[] = [];
+  const notes: string[] = ["Yahoo's cross rate (unofficial, delayed): no central-bank fixing for these currencies here"];
+  let url = "";
+  let fetchedAt = clockNow().toISOString();
+  for (const c of currencies.map((x) => x.toUpperCase())) {
+    try {
+      const res = await chart(`${b}${c}=X`, "range=5d&interval=1d");
+      const meta = res.body.chart!.result![0]!.meta;
+      if (meta.regularMarketPrice === undefined || !(meta.regularMarketPrice > 0)) throw new ProviderError(SOURCE, "no rate");
+      url ||= res.url;
+      fetchedAt = res.fetchedAt;
+      points.push({
+        key: `${b}.fx.${c}`,
+        label: `${c} per ${b} (Yahoo cross rate, unofficial)`,
+        value: meta.regularMarketPrice,
+        unit: c,
+        url: res.url,
+        ...(meta.regularMarketTime ? { asOf: new Date(meta.regularMarketTime * 1000).toISOString().slice(0, 10) } : {}),
+      });
+    } catch (e) {
+      notes.push(`no Yahoo rate for ${b}/${c} (${(e as Error).message})`);
+    }
+  }
+  return {
+    kind: "fx",
+    title: `${b} cross rates — Yahoo (unofficial)`,
+    subject: b,
+    points,
+    provenance: { source: SOURCE, url: url || `${HOSTS[0]}/v8/finance/chart/${b}`, fetchedAt, delay: DELAY_QUOTE, official: false },
+    notes,
   };
 }

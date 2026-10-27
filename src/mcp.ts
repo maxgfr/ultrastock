@@ -162,7 +162,7 @@ export const TOOLS: Tool[] = [
   {
     name: "research",
     description:
-      "Web research compiled into evidence. With a subject: write the worklist (RESEARCH.todo.json: angles and FR+EN queries — business model, results, governance, controversies, short-sellers; ETF factsheet/KID/replication/PEA; focus=results for the latest report, ask for one precise question). Then run those queries with YOUR web search and call again with out + hits (inline) to ingest: pages and PDFs fetched, walls rescued (Wayback, optional browser) or dropped, linked reports followed, each page a document [E#] (sources/E#.md, DOSSIER.md). No web search of your own: search-with claude|codex. check refuses a figure the cited page does not state.",
+      "Web research compiled into evidence. With a subject: write the worklist (RESEARCH.todo.json: angles and FR+EN queries — business model, results, governance, controversies, short-sellers; ETF factsheet/KID/replication/PEA; focus=results for the latest report, ask for one precise question). Then run those queries with YOUR web search and call again with out + hits (inline) to ingest: pages and PDFs fetched, walls rescued (Wayback, optional browser) or dropped, linked reports followed, each page a document [E#] (sources/E#.md, DOSSIER.md; an angle with fewer than two sources gets a rephrased second round in the worklist). No web search of your own: search-with claude|codex. check refuses a figure the cited page does not state.",
     command: ["research"],
     params: {
       subject: { kind: "string", description: "a symbol, an ISIN or a company name (omit when ingesting)", positional: 0 },
@@ -183,13 +183,14 @@ export const TOOLS: Tool[] = [
       },
       browser: { kind: "boolean", description: "render a refused or walled page in a separate browser (opens a window)" },
       limit: { kind: "number", description: "most sources kept (default 15)" },
+      for: { kind: "string", description: "the subject's tag in a run that researches several (a value run's top names: their symbol)" },
       out: { ...OUT, required: true },
     },
   },
   {
     name: "value",
     description:
-      "A value search on crible: candidates per style (quality-value default, deep-value, dividend, garp, magic-formula, all) over a region (world default, europe, pea, us, ISO codes), hygiene and anti value-trap gates (null = unknown, never a pass), sector-relative percentiles, the top names valued; writes VALUE.md and its research runbook.",
+      "A value search on crible: candidates per style (quality-value default, deep-value, dividend, garp, magic-formula, all) over a region (world default, europe, pea, us, ISO codes), hygiene and anti value-trap gates (null = unknown, never a pass), sector-relative percentiles, the top names valued (any venue ultrastock prices: Euronext, Europe, US, and Yahoo's world venues — Tokyo, Hong Kong, Seoul, Shanghai, São Paulo…); writes VALUE.md and its research runbook; research-with claude|codex researches the first names in the same run (DOSSIER.<symbol>.md).",
     command: ["value"],
     params: {
       style: {
@@ -201,6 +202,12 @@ export const TOOLS: Tool[] = [
       shortlist: { kind: "number", description: "names registered as evidence (default 30)" },
       top: { kind: "number", description: "names valued (default 10)" },
       "min-cap-eur": { kind: "number", description: "minimum market cap in EUR (default 500 M)" },
+      "research-with": {
+        kind: "string",
+        description: "claude or codex: research the first top names in the same run with that agent CLI's web search (billed to the user's plan)",
+        enum: ["claude", "codex"],
+      },
+      "research-top": { kind: "number", description: "names researched with research-with (default 3)" },
       out: OUT,
     },
   },

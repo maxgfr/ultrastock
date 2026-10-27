@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/PETR4.SA?range=1d&interval=1d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"BRL\",\"symbol\":\"PETR4.SA\",\"exchangeName\":\"SAO\",\"fullExchangeName\":\"São Paulo\",\"instrumentType\":\"EQUITY\",\"firstTradeDate\":946900800,\"regularMarketTime\":1793045134,\"hasPrePostMarketData\":false,\"gmtoffset\":-10800,\"timezone\":\"BRT\",\"exchangeTimezoneName\":\"America/Sao_Paulo\",\"regularMarketPrice\":53.88,\"regularMarketChangePercent\":-8.18,\"fulldayPrice\":53.88,\"fulldayChange\":-4.8,\"fulldayChangePercent\":-8.18,\"fiftyTwoWeekHigh\":59.79,\"fiftyTwoWeekLow\":0.0,\"regularMarketDayHigh\":0.0,\"regularMarketDayLow\":0.0,\"regularMarketVolume\":0,\"longName\":\"Petróleo Brasileiro S.A. - Petrobras\",\"shortName\":\"PETROBRAS   PN      N2\",\"chartPreviousClose\":58.68,\"priceHint\":2,\"currentTradingPeriod\":{\"pre\":{\"timezone\":\"BRT\",\"end\":1793106000,\"start\":1793105100,\"gmtoffset\":-10800},\"regular\":{\"timezone\":\"BRT\",\"end\":1793131200,\"start\":1793106000,\"gmtoffset\":-10800},\"post\":{\"timezone\":\"BRT\",\"end\":1793134800,\"start\":1793131200,\"gmtoffset\":-10800}},\"dataGranularity\":\"1d\",\"range\":\"1d\",\"validRanges\":[\"1d\",\"5d\",\"1mo\",\"3mo\",\"6mo\",\"1y\",\"2y\",\"5y\",\"10y\",\"ytd\",\"max\"]},\"timestamp\":[1793019600],\"indicators\":{\"quote\":[{\"open\":[51.20000076293945],\"high\":[54.22999954223633],\"volume\":[141338400],\"low\":[51.16999816894531],\"close\":[53.880001068115234]}],\"adjclose\":[{\"adjclose\":[53.880001068115234]}]}}],\"error\":null}}",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/PETR4.SA?range=1d&interval=1d",
+  "fetchedAt": "2026-10-27T06:50:13.519Z"
+ }
+}

@@ -3,6 +3,11 @@
 // moveable feasts from the date of Easter, early closes, and a short list of
 // one-off closures (a national day of mourning) each with its source.
 // `calendar verify` lists what a web search should confirm for a given year.
+//
+// Only the venues below have a calendar. Any other listing (Xetra, London,
+// Tokyo, São Paulo…) gets none: its sessions are counted as weekdays and the
+// caller says so — a holiday is never guessed.
+import type { Instrument } from "../providers/types.js";
 
 export type CalendarMarket = "XNYS" | "XPAR" | "XMIL" | "XOSL" | "CRYPTO";
 
@@ -163,10 +168,23 @@ export function marketForMic(mic: string | undefined): CalendarMarket {
   return /^X?NAS|NYSE|ARCA|AMEX|BATS/i.test(mic) ? "XNYS" : "XPAR";
 }
 
-export function isTradingDay(market: CalendarMarket, date: string): boolean {
+/**
+ * The calendar an instrument follows, or undefined when this module has none
+ * for its venue (a European venue outside Euronext, the rest of the world).
+ */
+export function calendarFor(i: Pick<Instrument, "market" | "mic">): CalendarMarket | undefined {
+  if (i.market === "crypto") return "CRYPTO";
+  if (i.market === "us") return "XNYS";
+  if (i.market === "euronext") return marketForMic(i.mic);
+  return undefined;
+}
+
+/** A session day; with no calendar (undefined), any weekday — holidays unknown, never guessed. */
+export function isTradingDay(market: CalendarMarket | undefined, date: string): boolean {
   if (market === "CRYPTO") return true;
   const d = new Date(`${date}T00:00:00Z`);
   if ([0, 6].includes(d.getUTCDay())) return false;
+  if (!market) return true;
   return !holidays(market, d.getUTCFullYear()).some((h) => h.date === date && h.kind === "closed");
 }
 
@@ -183,8 +201,8 @@ export function nextSessions(market: CalendarMarket, from: string, n: number): A
   return out;
 }
 
-/** Trading sessions strictly between two dates — for "five trading days later". */
-export function addSessions(market: CalendarMarket, from: string, n: number): string {
+/** Trading sessions strictly between two dates — for "five trading days later" (weekdays when the venue has no calendar). */
+export function addSessions(market: CalendarMarket | undefined, from: string, n: number): string {
   let d = new Date(`${from}T00:00:00Z`);
   let left = n;
   for (let guard = 0; left > 0 && guard < 2000; guard++) {

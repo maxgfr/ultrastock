@@ -44,10 +44,19 @@ cheap?", "what did Anthropic report this year?").
    `sources/E#.md`, and `DOSSIER.md` lists the sources per angle with their most
    relevant passage. `--engine-search` adds the engine's keyless search engines
    (best effort: they throttle quickly; never during a fixture replay).
-4. **Second round** — DOSSIER.md names the angles no source covers and the terms
-   fewer than two sources mention; their queries are appended to
-   `RESEARCH.todo.json`. Search them and ingest again into the same run: sources
-   accumulate, ids never change.
+4. **Second round** — an angle whose search kept **fewer than two sources** is
+   under-covered (an angle nobody searched is missing, not under-covered).
+   DOSSIER.md's Coverage section lists the sources per angle, and
+   `RESEARCH.todo.json` gets a `more-<angle>` angle per under-covered one: **the
+   angle's own queries, rephrased** — with "pdf" for a document angle (the
+   results, the filing, the deck, a factsheet), restricted to the issuer's
+   official domain (`site:lvmh.com`) when one of its pages was kept, and the
+   English query with the name quoted. A second round's sources count toward
+   its angle; a second round never spawns a third. Search them and ingest again
+   into the same run: sources accumulate, ids never change. The share of sources
+   mentioning each query term is still reported, as a statistic only — template
+   words ("call", "transcription", "universel") name no topic and are never
+   searched on their own.
 5. **Answer, check, report** — write the answer; every figure taken from a page
    cites that page's `[E#]`, written as the page writes it (rounding allowed: "38,6
    Md€" for "€38.6 billion"). `ultrastock check <run> answer.md` refuses a figure
@@ -80,8 +89,17 @@ Three lanes, best first — they mix in one run:
    (`ultrastock searxng up`, Docker — reliable and keyless), then DuckDuckGo and
    Mojeek, which throttle after a few queries. An amplifier, never the floor.
 
-Each round searches only the angles not searched yet (and the gaps the last round
-found); `RESEARCH.todo.json` keeps the list.
+Each round searches only the angles not searched yet (and the second-round angles
+the last round wrote); `RESEARCH.todo.json` keeps the list.
+
+## Several subjects in one run
+
+A run can research several subjects side by side — `value --research-with` does it
+for its top names. Each subject's files carry a tag (its symbol):
+`RESEARCH.<tag>.todo.json`, `DOSSIER.<tag>.md`, `research.<tag>.json`; the
+documents share the run's one register. Start one with `research <SYM> --out <run>
+--for <SYM>`, add a round with `research --out <run> --for <SYM> --web-results
+<file>` (a run with a single tagged subject needs no `--for`).
 
 ## Pages that refuse
 

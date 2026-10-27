@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/BHP.AX?range=5d&interval=1d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"AUD\",\"symbol\":\"BHP.AX\",\"exchangeName\":\"ASX\",\"fullExchangeName\":\"ASX\",\"instrumentType\":\"EQUITY\",\"firstTradeDate\":570409200,\"regularMarketTime\":1793078102,\"hasPrePostMarketData\":false,\"gmtoffset\":39600,\"timezone\":\"AEDT\",\"exchangeTimezoneName\":\"Australia/Sydney\",\"regularMarketPrice\":57.99,\"regularMarketChangePercent\":4.261,\"fulldayPrice\":57.99,\"fulldayChange\":2.37,\"fulldayChangePercent\":4.261,\"fiftyTwoWeekHigh\":68.77,\"fiftyTwoWeekLow\":40.175,\"regularMarketDayHigh\":57.99,\"regularMarketDayLow\":56.05,\"regularMarketVolume\":10012111,\"longName\":\"BHP Group Limited\",\"shortName\":\"BHP GROUP FPO [BHP]\",\"chartPreviousClose\":59.5,\"priceHint\":2,\"currentTradingPeriod\":{\"pre\":{\"timezone\":\"AEDT\",\"end\":1793055600,\"start\":1793044800,\"gmtoffset\":39600},\"regular\":{\"timezone\":\"AEDT\",\"end\":1793077920,\"start\":1793055600,\"gmtoffset\":39600},\"post\":{\"timezone\":\"AEDT\",\"end\":1793077920,\"start\":1793077920,\"gmtoffset\":39600}},\"dataGranularity\":\"1d\",\"range\":\"5d\",\"validRanges\":[\"1d\",\"5d\",\"1mo\",\"3mo\",\"6mo\",\"1y\",\"2y\",\"5y\",\"10y\",\"ytd\",\"max\"]},\"timestamp\":[1792537200,1792623600,1792710000,1792969200,1793055600,1793078102],\"indicators\":{\"quote\":[{\"volume\":[6604813,7948111,16386119,6339862,10012111,10012111],\"high\":[59.09000015258789,58.029998779296875,55.81999969482422,56.0,57.9900016784668,57.9900016784668],\"close\":[58.540000915527344,57.130001068115234,55.04999923706055,55.619998931884766,null,57.9900016784668],\"open\":[58.599998474121094,57.77000045776367,55.54999923706055,56.0,56.68000030517578,56.68000030517578],\"low\":[58.439998626708984,57.130001068115234,54.779998779296875,55.380001068115234,56.04999923706055,56.04999923706055]}],\"adjclose\":[{\"adjclose\":[58.540000915527344,57.130001068115234,55.04999923706055,55.619998931884766,null,57.9900016784668]}]}}],\"error\":null}}",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/BHP.AX?range=5d&interval=1d",
+  "fetchedAt": "2026-10-27T06:50:14.585Z"
+ }
+}
