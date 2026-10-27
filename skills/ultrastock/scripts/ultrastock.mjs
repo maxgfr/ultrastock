@@ -31040,7 +31040,9 @@ async function valuationRun(raw, dir2, opts = {}) {
     periods = fillGaps(periods, criblePeriods);
     const filled = periods.reduce((s, p) => s + p.filled.length, 0);
     if (filled)
-      notes.push(`${filled} field(s) the filing did not tag were filled from crible (unofficial aggregate)${before ? "" : " \u2014 all statements come from crible"}`);
+      notes.push(
+        `${filled} field(s) the filing did not tag were filled from crible (unofficial aggregate)${before ? "" : " \u2014 all statements come from crible"}`
+      );
   }
   store.save();
   store.save();
