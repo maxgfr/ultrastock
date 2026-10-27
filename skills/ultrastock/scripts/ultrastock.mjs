@@ -32901,6 +32901,7 @@ function reactionStats(values) {
 var DAY5 = 864e5;
 var STRESS_YEARS = 10;
 var iso3 = (d) => d.toISOString().slice(0, 10);
+var nextIso = (day4) => iso3(new Date(Date.parse(`${day4}T00:00:00Z`) + DAY5));
 async function marketEvents(from, to, notes) {
   const out5 = [];
   const years = /* @__PURE__ */ new Set([Number(from.slice(0, 4)), Number(to.slice(0, 4))]);
@@ -33396,7 +33397,8 @@ async function studyEvent(e, f3, c) {
     const pts = anchorPoints(`${E}.realized.index`, `${market.indexName} since ${e.title}`, index, e, sameDay, market.currency);
     const last2 = index[index.length - 1];
     const pre = pts.find((p) => p.key.endsWith(".pre"));
-    if (pre && last2) {
+    if (last2 && last2.date < (sameDay ? e.date : nextIso(e.endDate ?? e.date))) f3.note(`${market.indexName}: no close after ${e.title} yet in the price source`);
+    else if (pre && last2) {
       const lastPts = [
         {
           key: `${E}.realized.index.last`,
@@ -33461,6 +33463,10 @@ async function studyEvent(e, f3, c) {
         );
         const lb = bars[bars.length - 1];
         if (!hp.length || !lb) continue;
+        if (lb.date < (sameDay ? e.date : nextIso(e.endDate ?? e.date))) {
+          f3.note(`${sym3}: no close after ${e.title} yet in the price source (latest ${lb.date}) \u2014 its move is unknown, not zero`);
+          continue;
+        }
         hp.push({ key: `${E}.realized.${sym3}.last`, label: `${sym3} latest close (${lb.date})`, value: lb.close, unit: r2.instrument.currency, asOf: lb.date });
         f3.input({ kind: "history", title: `${sym3} since ${e.title}`, subject: sym3, points: hp, provenance: h.provenance, notes: [] });
         f3.derive(
