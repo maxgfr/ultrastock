@@ -8,6 +8,7 @@
 // Notifications go to stdout always; to an ntfy topic or a webhook only when
 // the user configured one, and webhooks only to URLs on an allowlist. A rule's
 // message is the user's text; external text never becomes part of a rule.
+import { upcomingEventAlerts } from "../analyze/events/run.js";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { atr, ema, macd, rsi, sma } from "../analytics/indicators.js";
@@ -21,7 +22,7 @@ import { getHistory, resolveSymbol } from "../providers/router.js";
 import type { Bar } from "../providers/types.js";
 import { listTickets } from "../trading/tickets.js";
 
-export type RuleKind = "expr" | "8k" | "stops";
+export type RuleKind = "expr" | "8k" | "stops" | "events";
 
 export interface AlertRule {
   id: string;
@@ -34,8 +35,11 @@ export interface AlertRule {
   /** The condition's value at the last run: a fire needs false (or unknown) → true. */
   last?: boolean;
   firedAt?: string;
-  /** Event ids already notified (8-K accession numbers, stop keys). */
+  /** Event ids already notified (8-K accession numbers, stop keys, market events). */
   seen?: string[];
+  /** For "events": how far ahead to look, and the least share of the book (%) an event must touch. */
+  days?: number;
+  minWeight?: number;
 }
 
 export interface AlertEvent {
@@ -112,7 +116,10 @@ export function alertSeries(bars: readonly Bar[]): Record<string, Array<number |
   };
 }
 
-export function addRule(input: { kind: RuleKind; symbol?: string; expr?: string; message?: string }, now = new Date()): AlertRule {
+export function addRule(
+  input: { kind: RuleKind; symbol?: string; expr?: string; message?: string; days?: number; minWeight?: number },
+  now = new Date(),
+): AlertRule {
   if (input.kind === "expr") {
     if (!input.symbol || !input.expr) throw new Error("an expression alert needs a symbol and a condition");
     const unknown = exprVariables(compileExpr(input.expr)).filter((v) => !(ALERT_VARIABLES as readonly string[]).includes(v));
@@ -187,6 +194,15 @@ export async function runAlerts(now = clockNow()): Promise<{ events: AlertEvent[
           if (!/\[important\]/.test(p.label) || seen.has(p.key)) continue;
           seen.add(p.key);
           events.push({ rule: rule.id, symbol: rule.symbol, at, message: `${rule.symbol}: ${p.label}` });
+        }
+        rules[k] = { ...rule, seen: [...seen].slice(-200) };
+      } else if (rule.kind === "events") {
+        // Elections and rate decisions ahead that touch the book: once per event.
+        const seen = new Set(rule.seen ?? []);
+        for (const ev of await upcomingEventAlerts({ days: rule.days, minWeight: rule.minWeight, now })) {
+          if (seen.has(ev.id)) continue;
+          seen.add(ev.id);
+          events.push({ rule: rule.id, at, message: rule.message ? `${rule.message} — ${ev.message}` : ev.message });
         }
         rules[k] = { ...rule, seen: [...seen].slice(-200) };
       } else if (rule.kind === "stops") {

@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/%5EBVSP?range=5d&interval=1d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"BRL\",\"symbol\":\"^BVSP\",\"exchangeName\":\"SAO\",\"fullExchangeName\":\"São Paulo\",\"instrumentType\":\"INDEX\",\"firstTradeDate\":735915600,\"regularMarketTime\":1793045940,\"hasPrePostMarketData\":false,\"gmtoffset\":-10800,\"timezone\":\"BRT\",\"exchangeTimezoneName\":\"America/Sao_Paulo\",\"regularMarketPrice\":176608.23,\"regularMarketChangePercent\":-13.884,\"fulldayPrice\":176608.23,\"fulldayChange\":-28474.328,\"fulldayChangePercent\":-13.884,\"fiftyTwoWeekHigh\":209714.0,\"fiftyTwoWeekLow\":0.0,\"regularMarketDayHigh\":0.0,\"regularMarketDayLow\":0.0,\"regularMarketVolume\":0,\"longName\":\"IBOVESPA\",\"shortName\":\"IBOVESPA\",\"chartPreviousClose\":205079.0,\"priceHint\":2,\"currentTradingPeriod\":{\"pre\":{\"timezone\":\"BRT\",\"end\":1793106000,\"start\":1793105100,\"gmtoffset\":-10800},\"regular\":{\"timezone\":\"BRT\",\"end\":1793131200,\"start\":1793106000,\"gmtoffset\":-10800},\"post\":{\"timezone\":\"BRT\",\"end\":1793134800,\"start\":1793131200,\"gmtoffset\":-10800}},\"dataGranularity\":\"1d\",\"range\":\"5d\",\"validRanges\":[\"1d\",\"5d\",\"1mo\",\"3mo\",\"6mo\",\"1y\",\"2y\",\"5y\",\"10y\",\"ytd\",\"max\"]},\"timestamp\":[1792501200,1792587600,1792674000,1792760400,1793019600],\"indicators\":{\"quote\":[{\"volume\":[11417200,9682800,9855400,11863800,41232400],\"low\":[205082.0,205988.0,203052.0,203428.0,169516.0],\"high\":[208942.0,209245.0,206493.0,205757.0,205089.0],\"close\":[208296.0,206495.0,204120.0,205083.0,176608.0],\"open\":[205082.0,208296.0,206492.0,204120.0,205070.0]}],\"adjclose\":[{\"adjclose\":[208296.0,206495.0,204120.0,205083.0,176608.0]}]}}],\"error\":null}}",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/%5EBVSP?range=5d&interval=1d",
+  "fetchedAt": "2026-10-27T06:36:55.740Z"
+ }
+}

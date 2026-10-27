@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.nasdaq.com/api/quote/EWZ/historical?assetclass=etf&fromdate=2026-10-13&todate=2026-10-27&limit=9999"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"data\":{\"symbol\":\"EWZ\",\"totalRecords\":10,\"tradesTable\":{\"asOf\":null,\"headers\":{\"date\":\"Date\",\"close\":\"Close/Last\",\"volume\":\"Volume\",\"open\":\"Open\",\"high\":\"High\",\"low\":\"Low\"},\"rows\":[{\"date\":\"10/26/2026\",\"close\":\"34.15\",\"volume\":\"299,049,300\",\"open\":\"31.71\",\"high\":\"34.54\",\"low\":\"31.40\"},{\"date\":\"10/23/2026\",\"close\":\"42.59\",\"volume\":\"82,953,960\",\"open\":\"41.945\",\"high\":\"42.63\",\"low\":\"41.61\"},{\"date\":\"10/22/2026\",\"close\":\"41.85\",\"volume\":\"61,089,620\",\"open\":\"42.335\",\"high\":\"42.46\",\"low\":\"41.57\"},{\"date\":\"10/21/2026\",\"close\":\"42.51\",\"volume\":\"45,085,270\",\"open\":\"42.95\",\"high\":\"42.98\",\"low\":\"42.28\"},{\"date\":\"10/20/2026\",\"close\":\"42.94\",\"volume\":\"63,048,050\",\"open\":\"42.65\",\"high\":\"43.22\",\"low\":\"42.385\"},{\"date\":\"10/19/2026\",\"close\":\"41.93\",\"volume\":\"37,918,010\",\"open\":\"42.28\",\"high\":\"42.545\",\"low\":\"41.70\"},{\"date\":\"10/16/2026\",\"close\":\"41.83\",\"volume\":\"52,534,920\",\"open\":\"42.075\",\"high\":\"42.215\",\"low\":\"41.62\"},{\"date\":\"10/15/2026\",\"close\":\"41.58\",\"volume\":\"42,047,880\",\"open\":\"41.78\",\"high\":\"42.49\",\"low\":\"41.45\"},{\"date\":\"10/14/2026\",\"close\":\"42.60\",\"volume\":\"59,614,280\",\"open\":\"42.21\",\"high\":\"42.715\",\"low\":\"41.85\"},{\"date\":\"10/13/2026\",\"close\":\"42.87\",\"volume\":\"52,444,120\",\"open\":\"42.78\",\"high\":\"43.185\",\"low\":\"42.77\"}]}},\"message\":null,\"status\":{\"rCode\":200,\"bCodeMessage\":null,\"developerMessage\":null}}",
+  "url": "https://api.nasdaq.com/api/quote/EWZ/historical?assetclass=etf&fromdate=2026-10-13&todate=2026-10-27&limit=9999",
+  "fetchedAt": "2026-10-27T06:37:00.681Z"
+ }
+}

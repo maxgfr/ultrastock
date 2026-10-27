@@ -82,6 +82,7 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | what a company is worth, its quality, its scores | `valuation <symbol> --out <dir>` → `VALUATION.md` | [valuation-quant](references/valuation-quant.md) |
 | volatility, risk, correlation, a pair | `stats <symbol> [<symbol> …]` | [valuation-quant](references/valuation-quant.md) |
 | is the market risk-on, how much to be invested | `regime --market us|eu|crypto`, `sectors --market us|eu` | [market-regime](references/market-regime.md) |
+| elections, central banks, political events that can move what they hold — ahead of time ("Lula a gagné, j'ai perdu 20 %", "quels événements menacent mon portefeuille") | `events --out <dir>` → `EVENTS.md`; `watch add events --days 14` | [events](references/events.md) |
 | what could move a stock soon (earnings, dividends, macro) | `catalysts <symbol> --days 30` | [market-regime](references/market-regime.md) |
 | expected move, GEX, pricing an option structure | `options-analysis <symbol> [--strategy …]` | [options-crypto-prediction](references/options-crypto-prediction.md) |
 | crypto leverage and DeFi yield quality | `crypto-analysis <coin>`, `crypto-analysis yields <symbol>` | [options-crypto-prediction](references/options-crypto-prediction.md) |
@@ -141,6 +142,7 @@ ultrastock etf find [--asset equity|bond|commodity|money-market|multi-asset|real
 ultrastock etf propose [--goal core|growth|income|defensive] [--envelope pea|cto|av] [--risk 1-7] [--amount] [--max-funds 4] [--acc|--dist] [--hedged]
 ultrastock value [--style quality-value|deep-value|dividend|garp|magic-formula|all] [--region world|europe|pea|us|<ISO,…>] [--top] [--watch]
 ultrastock regime [--market us|eu|crypto] · sectors [--market us|eu] · catalysts <symbol> [--days]
+ultrastock events [--days 60] [--since 7] [--country BR,US] [--all] · watch add events [--days 14] [--min-weight 2]
 ultrastock stats <sym> [<sym> …] [--benchmark] · options-analysis <sym> [--expiry] [--strategy] [--spot-moves=…]
 ultrastock crypto-analysis <coin> | yields <symbol> · predict-analysis kalshi|manifold … [--my-probability] [--kalshi-fee]
 ultrastock portfolio show|perf|risk|stress|optimize|rebalance|location|lookthrough|income|goals [--book real|paper] [--out <dir>]
@@ -222,6 +224,7 @@ Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
 - [macro-markets](references/macro-markets.md) — macro, rates, FX, positioning, sentiment, calendars: what each figure means.
 - [news-and-external-text](references/news-and-external-text.md) — reading headlines and other external text safely.
 - [research](references/research.md) — web sources compiled into document evidence: the worklist, your search, ingestion, `check` against the page.
+- [events](references/events.md) — elections and rate decisions ahead, the book's exposure, past reactions, the stress scenario, what the last one did.
 - [value-search](references/value-search.md) — the `value` styles, the anti value-trap gates, the sector percentiles, reading VALUE.md.
 - [etf](references/etf.md) — an ETF as a fund: costs, replication, PEA, domicile and PRIIPs, tracking, overlap, comparing funds on one index; browsing the catalogue; `etf propose` and its allocation convention.
 - [options-crypto-prediction](references/options-crypto-prediction.md) — option chains, crypto structure, prediction markets and their limits.

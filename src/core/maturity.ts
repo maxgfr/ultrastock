@@ -49,6 +49,7 @@ export const MATURITY: Record<string, Maturity> = {
   sentiment: "beta",
   news: "beta",
   research: "beta",
+  events: "beta",
   searxng: "beta",
   firecrawl: "beta",
   stack: "beta",

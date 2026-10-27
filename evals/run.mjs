@@ -10,6 +10,7 @@
 //   cw8-full  a PEA world ETF at --depth full: ETF.md and the full-depth extras
 //   research-mc-pa  LVMH's own H1 2026 releases, ingested as document evidence
 //   value-pt  a recorded crible screen through the value pipeline to VALUE.md
+//   events-br a book exposed to Brazil and the US: the run-off just past, the Fed ahead
 //   etf-propose-pea  `etf propose` for a PEA at risk 4: the convention, the picks, PROPOSAL.md
 //
 // offline  replays the fixture: `analyze` must produce the expected evidence,
@@ -38,10 +39,15 @@ if (suite !== "offline" && suite !== "network") {
 const scratch = mkdtempSync(join(tmpdir(), "ultrastock-evals-"));
 const env = { ...process.env, ULTRASTOCK_HOME: join(scratch, "home"), ULTRASTOCK_CACHE_DIR: join(scratch, "cache"), ULTRASTOCK_CODE_CHANNELS: "none" };
 
-/** Run the bundle; returns exit status and parsed JSON stdout. */
-function cli(args) {
+/** Run the bundle; returns exit status and parsed JSON stdout. `home` gives a case a state directory of its own. */
+function cli(args, home) {
   try {
-    const out = execFileSync(process.execPath, [bundle, ...args, "--json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5 * 60_000, env });
+    const out = execFileSync(process.execPath, [bundle, ...args, "--json"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 5 * 60_000,
+      env: home ? { ...env, ULTRASTOCK_HOME: home } : env,
+    });
     return { status: 0, json: JSON.parse(out) };
   } catch (e) {
     let json;
@@ -69,7 +75,24 @@ for (const name of readdirSync(join(here, "cases")).sort()) {
   console.log(`${name} — ${spec.kind}`);
   const run = mkdtempSync(join(scratch, `${name}-`));
   const source = suite === "offline" ? ["--fixture", join(root, spec.fixture)] : [];
-  if (spec.value) {
+  if (spec.events) {
+    // An events case: a small book set up in the eval's own home, then the calendar, the study and the impact.
+    if (suite !== "offline") continue;
+    // Its own home: the book it sets up must not leak into the other cases' portfolio context.
+    const home = mkdtempSync(join(scratch, `${name}-home-`));
+    for (const step of spec.events.setup ?? []) cli(step, home);
+    const v = cli(["events", ...spec.events.args, "--out", run, ...source], home);
+    ok(
+      v.status === 0,
+      `events ${spec.events.args.join(" ")} (${v.status === 0 ? `${v.json.ahead.length} ahead, ${v.json.past.length} past` : v.stderr.trim()})`,
+    );
+    if (v.status !== 0) continue;
+    const ev = cli(["evidence", run], home);
+    const keys = new Set((ev.json?.items ?? []).map((i) => i.key));
+    ok((ev.json?.items ?? []).length >= spec.expect.evidenceMin, `at least ${spec.expect.evidenceMin} evidence items (got ${(ev.json?.items ?? []).length})`);
+    const missing = spec.expect.keys.filter((k) => !keys.has(k));
+    ok(missing.length === 0, `evidence keys present (${missing.length ? `missing ${missing.join(", ")}` : spec.expect.keys.join(", ")})`);
+  } else if (spec.value) {
     // A value case: a recorded crible screen through hygiene, gates and ranking to VALUE.md.
     if (suite !== "offline") continue;
     const v = cli(["value", ...spec.value.args, "--out", run, ...source]);

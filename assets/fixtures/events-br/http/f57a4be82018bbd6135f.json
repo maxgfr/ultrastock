@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/EURBRL%3DX?range=5d&interval=1d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"BRL\",\"symbol\":\"EURBRL=X\",\"exchangeName\":\"CCY\",\"fullExchangeName\":\"CCY\",\"instrumentType\":\"CURRENCY\",\"firstTradeDate\":1070236800,\"regularMarketTime\":1793071604,\"hasPrePostMarketData\":false,\"gmtoffset\":0,\"timezone\":\"GMT\",\"exchangeTimezoneName\":\"Europe/London\",\"regularMarketPrice\":5.9997,\"regularMarketChangePercent\":-0.1381,\"fulldayPrice\":5.9997,\"fulldayChange\":-0.0083,\"fulldayChangePercent\":-0.1381,\"fiftyTwoWeekHigh\":6.6181,\"fiftyTwoWeekLow\":5.5432,\"regularMarketDayHigh\":6.0019,\"regularMarketDayLow\":5.9971,\"regularMarketVolume\":0,\"longName\":\"EUR/BRL\",\"shortName\":\"EUR/BRL\",\"chartPreviousClose\":5.637,\"priceHint\":4,\"currentTradingPeriod\":{\"pre\":{\"timezone\":\"GMT\",\"end\":1793059200,\"start\":1793059200,\"gmtoffset\":0},\"regular\":{\"timezone\":\"GMT\",\"end\":1793145540,\"start\":1793059200,\"gmtoffset\":0},\"post\":{\"timezone\":\"GMT\",\"end\":1793145540,\"start\":1793145540,\"gmtoffset\":0}},\"dataGranularity\":\"1d\",\"range\":\"5d\",\"validRanges\":[\"1d\",\"5d\",\"1mo\",\"3mo\",\"6mo\",\"1y\",\"2y\",\"5y\",\"10y\",\"ytd\",\"max\"]},\"timestamp\":[1792537200,1792623600,1792710000,1792972800,1793059200],\"indicators\":{\"quote\":[{\"volume\":[0,0,0,0,0],\"high\":[5.649717807769775,5.652911186218262,5.668933868408203,6.131499767303467,6.0019001960754395],\"close\":[5.636979103088379,5.640158176422119,5.665721893310547,5.535999774932861,5.99970006942749],\"open\":[5.640158176422119,5.643341064453125,5.668933868408203,5.571031093597412,6.000999927520752],\"low\":[5.630630970001221,5.621135234832764,5.633802890777588,5.553800106048584,5.997099876403809]}],\"adjclose\":[{\"adjclose\":[5.636979103088379,5.640158176422119,5.665721893310547,5.535999774932861,5.99970006942749]}]}}],\"error\":null}}",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/EURBRL%3DX?range=5d&interval=1d",
+  "fetchedAt": "2026-10-27T06:36:55.975Z"
+ }
+}

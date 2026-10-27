@@ -14,7 +14,7 @@
 // article, its URL attached.
 import type { Dataset, Point } from "../../core/datasets.js";
 import { parseFeed } from "../../engine.js";
-import { fetchText, politeUa } from "../../core/net.js";
+import { FixtureMiss, fetchText, politeUa } from "../../core/net.js";
 import { ProviderError } from "../types.js";
 
 export interface Article {
@@ -178,9 +178,11 @@ export async function newsSearch(
       used.push({ source: s, url: r.url, fetchedAt: r.fetchedAt });
       notes.push(`${s}: ${r.articles.length} articles`);
     } catch (e) {
-      if (!(e instanceof ProviderError)) throw e;
-      errors.push(e);
-      notes.push(`${s} unavailable: ${e.message}`);
+      // A source missing from a fixture is one that did not answer while recording.
+      const err = e instanceof FixtureMiss ? new ProviderError(s, "did not answer when the fixture was recorded", 0) : e;
+      if (!(err instanceof ProviderError)) throw err;
+      errors.push(err);
+      notes.push(`${s} unavailable: ${err.message}`);
     }
     if (i === sources.length - 1 && !all.length && opts.symbol && !sources.includes("yahoo")) sources.push("yahoo");
   }
