@@ -20,7 +20,10 @@ import { recordedCall } from "../core/net.js";
 import { env, have, shAsync } from "../engine.js";
 import type { WebHit } from "./ingest.js";
 
-export const SEARCH_DELEGATES = ["claude", "codex"] as const;
+// "ccs" is Claude Code Switch: Claude Code launched on another provider —
+// `ccs with anthropic` runs it on the user's own API key, so their API credits
+// pay for the search instead of their subscription (ULTRASTOCK_CCS_PROVIDER).
+export const SEARCH_DELEGATES = ["claude", "codex", "ccs"] as const;
 export type SearchDelegate = (typeof SEARCH_DELEGATES)[number];
 
 /** Queries per CLI call: enough to amortise its start-up, few enough to finish in a few minutes. */
@@ -77,17 +80,29 @@ export function delegatePrompt(queries: readonly string[]): string {
   ].join("\n");
 }
 
-/** The command line for one batch — ULTRASTOCK_CLAUDE_CMD / ULTRASTOCK_CODEX_CMD override the binary. */
+/**
+ * The command a delegate starts, as words: ULTRASTOCK_CLAUDE_CMD / ULTRASTOCK_CODEX_CMD
+ * override it and may carry arguments ("ccs with anthropic").
+ */
+export function delegateLauncher(who: SearchDelegate): string[] {
+  const words = (s: string) => s.split(/\s+/).filter(Boolean);
+  if (who === "ccs") return ["ccs", "with", env("CCS_PROVIDER") ?? "anthropic"];
+  if (who === "claude") return words(env("CLAUDE_CMD") ?? "claude");
+  return words(env("CODEX_CMD") ?? "codex");
+}
+
+/** The command line for one batch. */
 export function delegateCommand(
   who: SearchDelegate,
   prompt: string,
   opts: { model?: string; schemaFile: string; outFile: string },
 ): { cmd: string; args: string[] } {
-  if (who === "claude") {
-    const cmd = env("CLAUDE_CMD") ?? "claude";
+  const [cmd, ...pre] = delegateLauncher(who);
+  if (who === "claude" || who === "ccs") {
     return {
-      cmd,
+      cmd: cmd!,
       args: [
+        ...pre,
         "-p",
         prompt,
         "--allowedTools",
@@ -103,10 +118,10 @@ export function delegateCommand(
       ],
     };
   }
-  const cmd = env("CODEX_CMD") ?? "codex";
   return {
-    cmd,
+    cmd: cmd!,
     args: [
+      ...pre,
       "--search",
       "exec",
       "--skip-git-repo-check",
@@ -128,7 +143,7 @@ export function parseDelegateAnswer(
   stdout: string,
   lastMessage?: string,
 ): { queries: Array<{ query: string; results: WebHit[] }>; cost?: number } {
-  if (who === "claude") {
+  if (who === "claude" || who === "ccs") {
     const d = JSON.parse(stdout.slice(stdout.indexOf("{"))) as { is_error?: boolean; result?: string; structured_output?: unknown; total_cost_usd?: number };
     if (d.is_error) throw new Error(`claude: ${String(d.result ?? "error").slice(0, 200)}`);
     const so = (d.structured_output ?? (typeof d.result === "string" ? JSON.parse(d.result) : undefined)) as { queries?: unknown } | undefined;
@@ -184,7 +199,7 @@ async function runBatch(
 export async function delegatedSearch(who: SearchDelegate, queries: readonly DelegateQuery[], opts: { model?: string } = {}): Promise<DelegateResult> {
   const notes: string[] = [];
   const lists: WebHit[][] = [];
-  const bin = who === "claude" ? (env("CLAUDE_CMD") ?? "claude") : (env("CODEX_CMD") ?? "codex");
+  const bin = delegateLauncher(who).join(" ");
   let cost = 0;
   for (let i = 0; i < queries.length; i += DELEGATE_BATCH) {
     const batch = queries.slice(i, i + DELEGATE_BATCH);
@@ -212,8 +227,9 @@ export async function delegatedSearch(who: SearchDelegate, queries: readonly Del
       else notes.push(`${who} search returned nothing for "${q.query}"`);
     });
   }
+  const payer = who === "ccs" ? `the ${env("CCS_PROVIDER") ?? "anthropic"} API key ccs uses` : "your plan";
   notes.push(
-    `${queries.length} quer${queries.length === 1 ? "y" : "ies"} searched with ${who}${cost ? ` (${cost.toFixed(2)} USD, billed to your plan)` : " (billed to your plan)"}`,
+    `${queries.length} quer${queries.length === 1 ? "y" : "ies"} searched with ${who}${cost ? ` (${cost.toFixed(2)} USD, billed to ${payer})` : ` (billed to ${payer})`}`,
   );
   return { lists, notes };
 }

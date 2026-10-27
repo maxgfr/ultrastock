@@ -88,8 +88,8 @@ USAGE
   ultrastock cot <market> [--report legacy|tff] [--out <dir>] [--json]
   ultrastock sentiment [all|cnn|crypto|vix|putcall] [--out <dir>] [--json]
   ultrastock research <symbol|name> [--kind equity|etf|crypto|company] [--focus results] [--ask "<question>"] [--name <search name>] --out <run> [--json]
-  ultrastock research --out <run> --web-results <websearch.json|-> | --urls <a,b> | --search-with claude|codex | --engine-search [--browser] [--no-wayback] [--limit <n>] [--json]
-  ultrastock research <symbol|name> --search-with claude|codex [--search-model <m>] --out <run> [--json]   (worklist, search and ingestion in one call)
+  ultrastock research --out <run> --web-results <websearch.json|-> | --urls <a,b> | --search-with claude|codex|ccs | --engine-search [--browser] [--no-wayback] [--limit <n>] [--json]
+  ultrastock research <symbol|name> --search-with claude|codex|ccs [--search-model <m>] --out <run> [--json]   (worklist, search and ingestion in one call)
   ultrastock events [--days 60] [--since 7] [--country BR,US] [--all] [--book real|paper] [--limit <n>] [--out <dir>] [--json]
   ultrastock news <query> [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>] [--out <dir>] [--json]
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
@@ -240,7 +240,7 @@ COMMANDS
             round) and cross-checks a listed company against crible. \`check\`
             refuses a figure the cited document does not state. Hits come
             from your search (--web-results, - for stdin; --urls), or
-            --search-with claude|codex (your agent CLI's own web search,
+            --search-with claude|codex|ccs (your agent CLI's own web search,
             headless, batched — billed to your plan), or --engine-search (a
             local SearXNG from \`webindex stack up\`, then keyless engines).
             A refused or walled page falls back to its Wayback copy

@@ -418,3 +418,26 @@ describe("discovery and rescue", () => {
     ]);
   });
 });
+
+describe("ccs delegate", () => {
+  it("launches Claude Code through ccs on the configured provider, and takes a command with arguments", async () => {
+    const { delegateCommand, delegateLauncher } = await import("../src/research/delegate.js");
+    const prev = { p: process.env.ULTRASTOCK_CCS_PROVIDER, c: process.env.ULTRASTOCK_CLAUDE_CMD };
+    try {
+      delete process.env.ULTRASTOCK_CCS_PROVIDER;
+      const c = delegateCommand("ccs", "P", { schemaFile: "/s", outFile: "/o" });
+      expect([c.cmd, ...c.args.slice(0, 4)]).toEqual(["ccs", "with", "anthropic", "-p", "P"]);
+      expect(c.args).toEqual(expect.arrayContaining(["--allowedTools", "WebSearch", "--model", "haiku"]));
+      process.env.ULTRASTOCK_CCS_PROVIDER = "openrouter";
+      expect(delegateLauncher("ccs")).toEqual(["ccs", "with", "openrouter"]);
+      process.env.ULTRASTOCK_CLAUDE_CMD = "ccs with anthropic";
+      const k = delegateCommand("claude", "P", { schemaFile: "/s", outFile: "/o" });
+      expect([k.cmd, ...k.args.slice(0, 3)]).toEqual(["ccs", "with", "anthropic", "-p"]);
+    } finally {
+      if (prev.p === undefined) delete process.env.ULTRASTOCK_CCS_PROVIDER;
+      else process.env.ULTRASTOCK_CCS_PROVIDER = prev.p;
+      if (prev.c === undefined) delete process.env.ULTRASTOCK_CLAUDE_CMD;
+      else process.env.ULTRASTOCK_CLAUDE_CMD = prev.c;
+    }
+  });
+});
