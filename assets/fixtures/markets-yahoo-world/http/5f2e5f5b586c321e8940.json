@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/600519.SS?range=5d&interval=1d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"CNY\",\"symbol\":\"600519.SS\",\"exchangeName\":\"SHH\",\"fullExchangeName\":\"Shanghai\",\"instrumentType\":\"EQUITY\",\"firstTradeDate\":998875800,\"regularMarketTime\":1793082910,\"hasPrePostMarketData\":false,\"gmtoffset\":28800,\"timezone\":\"CST\",\"exchangeTimezoneName\":\"Asia/Shanghai\",\"regularMarketPrice\":1355.71,\"regularMarketChangePercent\":0.424,\"fulldayPrice\":1355.71,\"fulldayChange\":5.73,\"fulldayChangePercent\":0.424,\"fiftyTwoWeekHigh\":1568.0,\"fiftyTwoWeekLow\":1151.01,\"regularMarketDayHigh\":1357.0,\"regularMarketDayLow\":1338.01,\"regularMarketVolume\":3107260,\"longName\":\"Kweichow Moutai Co., Ltd.\",\"shortName\":\"KWEICHOW MOUTAI\",\"chartPreviousClose\":1309.69,\"priceHint\":2,\"currentTradingPeriod\":{\"pre\":{\"timezone\":\"CST\",\"start\":1793064600,\"end\":1793064600,\"gmtoffset\":28800},\"regular\":{\"timezone\":\"CST\",\"start\":1793064600,\"end\":1793084400,\"gmtoffset\":28800},\"post\":{\"timezone\":\"CST\",\"start\":1793084400,\"end\":1793084400,\"gmtoffset\":28800}},\"dataGranularity\":\"1d\",\"range\":\"5d\",\"validRanges\":[\"1d\",\"5d\",\"1mo\",\"3mo\",\"6mo\",\"1y\",\"2y\",\"5y\",\"10y\",\"ytd\",\"max\"]},\"timestamp\":[1792546200,1792632600,1792719000,1792978200,1793064600],\"indicators\":{\"quote\":[{\"open\":[1331.8800048828125,1303.2099609375,1311.8399658203125,1325.4000244140625,1343.8800048828125],\"high\":[1331.97998046875,1322.0,1343.8800048828125,1350.0,1357.0],\"close\":[1309.68994140625,1318.489990234375,1335.0,1349.97998046875,1355.7099609375],\"low\":[1302.3599853515625,1296.0,1310.0,1324.7900390625,1338.010009765625],\"volume\":[3351416,4249133,5768593,4159916,3107260]}],\"adjclose\":[{\"adjclose\":[1309.68994140625,1318.489990234375,1335.0,1349.97998046875,1355.7099609375]}]}}],\"error\":null}}",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/600519.SS?range=5d&interval=1d",
+  "fetchedAt": "2026-10-27T06:50:14.310Z"
+ }
+}

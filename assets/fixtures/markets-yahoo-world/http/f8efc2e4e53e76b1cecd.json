@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/EURSAR%3DX?range=5d&interval=1d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"SAR\",\"symbol\":\"EURSAR=X\",\"exchangeName\":\"CCY\",\"fullExchangeName\":\"CCY\",\"instrumentType\":\"CURRENCY\",\"firstTradeDate\":1070236800,\"regularMarketTime\":1793083814,\"hasPrePostMarketData\":false,\"gmtoffset\":0,\"timezone\":\"GMT\",\"exchangeTimezoneName\":\"Europe/London\",\"regularMarketPrice\":4.1885,\"regularMarketChangePercent\":-0.1026,\"fulldayPrice\":4.1885,\"fulldayChange\":-0.0043,\"fulldayChangePercent\":-0.1026,\"fiftyTwoWeekHigh\":4.5054,\"fiftyTwoWeekLow\":4.0679,\"regularMarketDayHigh\":4.1947,\"regularMarketDayLow\":4.1877,\"regularMarketVolume\":0,\"longName\":\"EUR/SAR\",\"shortName\":\"EUR/SAR\",\"chartPreviousClose\":4.0937,\"priceHint\":4,\"currentTradingPeriod\":{\"pre\":{\"timezone\":\"GMT\",\"end\":1793059200,\"start\":1793059200,\"gmtoffset\":0},\"regular\":{\"timezone\":\"GMT\",\"end\":1793145540,\"start\":1793059200,\"gmtoffset\":0},\"post\":{\"timezone\":\"GMT\",\"end\":1793145540,\"start\":1793145540,\"gmtoffset\":0}},\"dataGranularity\":\"1d\",\"range\":\"5d\",\"validRanges\":[\"1d\",\"5d\",\"1mo\",\"3mo\",\"6mo\",\"1y\",\"2y\",\"5y\",\"10y\",\"ytd\",\"max\"]},\"timestamp\":[1792537200,1792623600,1792710000,1792972800,1793059200],\"indicators\":{\"quote\":[{\"high\":[4.208499908447266,4.092899799346924,4.081099987030029,4.071400165557861,4.194699764251709],\"volume\":[0,0,0,0,0],\"low\":[4.074100017547607,4.077600002288818,4.071199893951416,4.071199893951416,4.187699794769287],\"open\":[4.093699932098389,4.092899799346924,4.081099987030029,4.071199893951416,4.19320011138916],\"close\":[4.093699932098389,4.092899799346924,4.081099987030029,4.071199893951416,4.188499927520752]}],\"adjclose\":[{\"adjclose\":[4.093699932098389,4.092899799346924,4.081099987030029,4.071199893951416,4.188499927520752]}]}}],\"error\":null}}",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/EURSAR%3DX?range=5d&interval=1d",
+  "fetchedAt": "2026-10-27T06:50:15.661Z"
+ }
+}

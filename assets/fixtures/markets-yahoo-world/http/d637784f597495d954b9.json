@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/NPN.JO?range=5d&interval=1d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"ZAc\",\"symbol\":\"NPN.JO\",\"exchangeName\":\"JNB\",\"fullExchangeName\":\"Johannesburg\",\"instrumentType\":\"EQUITY\",\"firstTradeDate\":946969200,\"regularMarketTime\":1793027115,\"hasPrePostMarketData\":false,\"gmtoffset\":7200,\"timezone\":\"SAST\",\"exchangeTimezoneName\":\"Africa/Johannesburg\",\"regularMarketPrice\":67723.0,\"regularMarketChangePercent\":-1.033,\"fulldayPrice\":67723.0,\"fulldayChange\":-707.0,\"fulldayChangePercent\":-1.033,\"fiftyTwoWeekHigh\":129572.0,\"fiftyTwoWeekLow\":65056.0,\"regularMarketDayHigh\":69444.0,\"regularMarketDayLow\":67201.0,\"regularMarketVolume\":1616617,\"longName\":\"Naspers Limited\",\"shortName\":\"Naspers Ltd -N-\",\"chartPreviousClose\":70702.0,\"priceHint\":2,\"currentTradingPeriod\":{\"pre\":{\"timezone\":\"SAST\",\"end\":1793084400,\"start\":1793084400,\"gmtoffset\":7200},\"regular\":{\"timezone\":\"SAST\",\"end\":1793113200,\"start\":1793084400,\"gmtoffset\":7200},\"post\":{\"timezone\":\"SAST\",\"end\":1793113200,\"start\":1793113200,\"gmtoffset\":7200}},\"dataGranularity\":\"1d\",\"range\":\"5d\",\"validRanges\":[\"1d\",\"5d\",\"1mo\",\"3mo\",\"6mo\",\"1y\",\"2y\",\"5y\",\"10y\",\"ytd\",\"max\"]},\"timestamp\":[1792479600,1792566000,1792652400,1792738800,1792998000],\"indicators\":{\"quote\":[{\"low\":[70176.0,68226.0,65056.0,68000.0,67201.0],\"volume\":[1403058,1882489,2869054,1565238,1616617],\"open\":[70250.0,68774.0,66306.0,68600.0,68700.0],\"close\":[70702.0,68226.0,67899.0,68430.0,null],\"high\":[71504.0,69689.0,68017.0,69339.0,69444.0]}],\"adjclose\":[{\"adjclose\":[70702.0,68226.0,67899.0,68430.0,null]}]}}],\"error\":null}}",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/NPN.JO?range=5d&interval=1d",
+  "fetchedAt": "2026-10-27T06:50:15.357Z"
+ }
+}

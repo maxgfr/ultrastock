@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/AAPL.NE?range=5d&interval=1d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"CAD\",\"symbol\":\"AAPL.NE\",\"exchangeName\":\"NEO\",\"fullExchangeName\":\"Cboe CA\",\"instrumentType\":\"EQUITY\",\"firstTradeDate\":1629898200,\"regularMarketTime\":1793044276,\"hasPrePostMarketData\":false,\"gmtoffset\":-14400,\"timezone\":\"EDT\",\"exchangeTimezoneName\":\"America/Toronto\",\"regularMarketPrice\":48.33,\"regularMarketChangePercent\":-0.923,\"fulldayPrice\":48.33,\"fulldayChange\":-0.45,\"fulldayChangePercent\":-0.923,\"fiftyTwoWeekHigh\":48.67,\"fiftyTwoWeekLow\":24.28,\"regularMarketDayHigh\":48.67,\"regularMarketDayLow\":48.07,\"regularMarketVolume\":23300,\"longName\":\"Apple Inc.\",\"shortName\":\"APPLE CDR (CAD HEDGED)\",\"chartPreviousClose\":48.78,\"priceHint\":2,\"currentTradingPeriod\":{\"pre\":{\"timezone\":\"EDT\",\"end\":1793107800,\"start\":1793102400,\"gmtoffset\":-14400},\"regular\":{\"timezone\":\"EDT\",\"end\":1793131200,\"start\":1793107800,\"gmtoffset\":-14400},\"post\":{\"timezone\":\"EDT\",\"end\":1793134800,\"start\":1793131200,\"gmtoffset\":-14400}},\"dataGranularity\":\"1d\",\"range\":\"5d\",\"validRanges\":[\"1d\",\"5d\",\"1mo\",\"3mo\",\"6mo\",\"1y\",\"2y\",\"5y\",\"10y\",\"ytd\",\"max\"]},\"timestamp\":[1793044276],\"indicators\":{\"quote\":[{\"volume\":[23300],\"high\":[48.66999816894531],\"close\":[48.33000183105469],\"open\":[48.11000061035156],\"low\":[48.06999969482422]}],\"adjclose\":[{\"adjclose\":[48.33000183105469]}]}}],\"error\":null}}",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/AAPL.NE?range=5d&interval=1d",
+  "fetchedAt": "2026-10-27T06:50:15.387Z"
+ }
+}

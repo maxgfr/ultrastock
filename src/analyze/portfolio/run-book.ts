@@ -82,7 +82,7 @@ export async function rebalanceAnalysis(m: MarkedBook, f: Findings, o: Rebalance
   const missingCcy = extra.map((h) => h.currency).filter((c) => m.rates[c] === undefined);
   if (missingCcy.length) {
     const fx = await referenceRates(missingCcy, m.base);
-    if (fx.dataset) f.input(fx.dataset);
+    for (const d of fx.datasets) f.input(d);
     Object.assign(m.rates, fx.rates);
     Object.assign(m.keys.fx, fx.keys);
   }

@@ -8,7 +8,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Decision, journalDir } from "../analyze/decision.js";
 import { defaultBenchmark } from "../analyze/technicals.js";
-import { addSessions, marketForMic } from "../core/calendar.js";
+import { addSessions, calendarFor } from "../core/calendar.js";
 import { clockNow } from "../core/net.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
 import type { Bar } from "../providers/types.js";
@@ -80,7 +80,8 @@ export async function settleDecisions(now = clockNow()): Promise<{ settled: Sett
     if (!due.length) continue;
     try {
       const r = await resolveSymbol(d.symbol);
-      const market = r.instrument.market === "crypto" ? "CRYPTO" : marketForMic(r.instrument.mic);
+      // No calendar for the venue (Xetra, Tokyo…): horizons are counted in weekdays, holidays unknown.
+      const market = calendarFor(r.instrument);
       const start = d.decidedAt.slice(0, 10);
       const matured = due.filter(
         (h) => (market === "CRYPTO" ? new Date(Date.parse(start) + h * 86_400_000).toISOString().slice(0, 10) : addSessions(market, start, h)) <= today,

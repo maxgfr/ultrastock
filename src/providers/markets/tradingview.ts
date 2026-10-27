@@ -194,6 +194,7 @@ const SUBUNITS: Record<string, { currency: string; per: number }> = {
   GBX: { currency: "GBP", per: 100 },
   GBp: { currency: "GBP", per: 100 },
   ZAC: { currency: "ZAR", per: 100 },
+  ILA: { currency: "ILS", per: 100 },
 };
 
 /** Euronext Yahoo-style suffixes on TradingView: one EURONEXT prefix, except Milan and Oslo. */
@@ -201,14 +202,20 @@ const EURONEXT_SUFFIX: Record<string, string> = { PA: "EURONEXT", AS: "EURONEXT"
 
 /**
  * The TradingView ticker for a user symbol: SAP.DE → XETR:SAP, VOLV-B.ST →
- * OMXSTO:VOLV_B, MC.PA → EURONEXT:MC. An already-prefixed ticker passes
+ * OMXSTO:VOLV_B, MC.PA → EURONEXT:MC, 0700.HK → HKEX:700, PETR4.SA →
+ * BMFBOVESPA:PETR4 (a venue TradingView keys otherwise, Bursa Malaysia, gives undefined). An already-prefixed ticker passes
  * through; a bare US ticker needs its exchange and is returned undefined.
  */
 export function toTradingViewTicker(symbol: string): string | undefined {
   const s = symbol.toUpperCase().trim();
   if (/^[A-Z0-9_]+:[A-Z0-9._!-]+$/.test(s)) return s;
   const venue = yahooVenue(s);
-  if (venue) return `${venue.tradingview}:${venue.ticker.replace(/-/g, "_")}`;
+  if (venue) {
+    if (!venue.tradingview) return undefined;
+    // Hong Kong codes lose their leading zeros on TradingView (0700.HK → HKEX:700).
+    const ticker = venue.suffix === "HK" ? venue.ticker.replace(/^0+(?=\d)/, "") : venue.ticker;
+    return `${venue.tradingview}:${ticker.replace(/-/g, "_")}`;
+  }
   const m = /^(.+)\.([A-Z]{2})$/.exec(s);
   if (m && EURONEXT_SUFFIX[m[2]!]) return `${EURONEXT_SUFFIX[m[2]!]}:${m[1]!.replace(/-/g, "_")}`;
   return undefined;

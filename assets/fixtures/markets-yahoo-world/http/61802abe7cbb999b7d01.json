@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/600519.SS?range=1d&interval=1d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"CNY\",\"symbol\":\"600519.SS\",\"exchangeName\":\"SHH\",\"fullExchangeName\":\"Shanghai\",\"instrumentType\":\"EQUITY\",\"firstTradeDate\":998875800,\"regularMarketTime\":1793082910,\"hasPrePostMarketData\":false,\"gmtoffset\":28800,\"timezone\":\"CST\",\"exchangeTimezoneName\":\"Asia/Shanghai\",\"regularMarketPrice\":1355.71,\"regularMarketChangePercent\":0.424,\"fulldayPrice\":1355.71,\"fulldayChange\":5.73,\"fulldayChangePercent\":0.424,\"fiftyTwoWeekHigh\":1568.0,\"fiftyTwoWeekLow\":1151.01,\"regularMarketDayHigh\":1357.0,\"regularMarketDayLow\":1338.01,\"regularMarketVolume\":3107260,\"longName\":\"Kweichow Moutai Co., Ltd.\",\"shortName\":\"KWEICHOW MOUTAI\",\"chartPreviousClose\":1349.98,\"priceHint\":2,\"currentTradingPeriod\":{\"pre\":{\"timezone\":\"CST\",\"end\":1793064600,\"start\":1793064600,\"gmtoffset\":28800},\"regular\":{\"timezone\":\"CST\",\"end\":1793084400,\"start\":1793064600,\"gmtoffset\":28800},\"post\":{\"timezone\":\"CST\",\"end\":1793084400,\"start\":1793084400,\"gmtoffset\":28800}},\"dataGranularity\":\"1d\",\"range\":\"1d\",\"validRanges\":[\"1d\",\"5d\",\"1mo\",\"3mo\",\"6mo\",\"1y\",\"2y\",\"5y\",\"10y\",\"ytd\",\"max\"]},\"timestamp\":[1793082910],\"indicators\":{\"quote\":[{\"high\":[1357.0],\"low\":[1338.010009765625],\"open\":[1343.8800048828125],\"close\":[1355.7099609375],\"volume\":[3107260]}],\"adjclose\":[{\"adjclose\":[1355.7099609375]}]}}],\"error\":null}}",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/600519.SS?range=1d&interval=1d",
+  "fetchedAt": "2026-10-27T06:50:14.443Z"
+ }
+}

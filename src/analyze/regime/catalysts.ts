@@ -22,7 +22,7 @@
 // Two or more catalysts (earnings, an ex-date, a macro day) within three
 // sessions are flagged as an event cluster: moves compound when news stacks.
 import { type ChainOption, expectedMove } from "../../analytics/options.js";
-import { type CalendarMarket, holidays, isTradingDay, MARKETS, marketForMic } from "../../core/calendar.js";
+import { type CalendarMarket, calendarFor, holidays, isTradingDay, MARKETS } from "../../core/calendar.js";
 import type { Dataset, Point } from "../../core/datasets.js";
 import { clockNow, fetchJson, netMode } from "../../core/net.js";
 import { mapLimit, sleep } from "../../engine.js";
@@ -152,7 +152,7 @@ export function toChainOptions(contracts: readonly OptionContract[], now: Date):
 export function sessionOrdinal(date: string, from: string, market: CalendarMarket | undefined): number {
   let n = 0;
   let d = from;
-  const open = (x: string) => (market ? isTradingDay(market, x) : ![0, 6].includes(new Date(`${x}T00:00:00Z`).getUTCDay()));
+  const open = (x: string) => isTradingDay(market, x);
   for (let guard = 0; d < date && guard < 800; guard++, d = shiftDay(d, 1)) if (open(d)) n++;
   return n;
 }
@@ -209,9 +209,6 @@ interface TimelineEntry {
   text: string;
   keys: string[];
 }
-
-const calendarFor = (i: Instrument): CalendarMarket | undefined =>
-  i.market === "crypto" ? "CRYPTO" : i.market === "us" ? "XNYS" : i.market === "euronext" ? marketForMic(i.mic) : undefined;
 
 /** Everything dated in the window for one instrument. */
 export async function catalystsReport(raw: string, days: number, now: Date = clockNow()): Promise<Report> {

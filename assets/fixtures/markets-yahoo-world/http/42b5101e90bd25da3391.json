@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/EURTWD%3DX?range=5d&interval=1d"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"TWD\",\"symbol\":\"EURTWD=X\",\"exchangeName\":\"CCY\",\"fullExchangeName\":\"CCY\",\"instrumentType\":\"CURRENCY\",\"firstTradeDate\":1143500400,\"regularMarketTime\":1793083603,\"hasPrePostMarketData\":false,\"gmtoffset\":0,\"timezone\":\"GMT\",\"exchangeTimezoneName\":\"Europe/London\",\"regularMarketPrice\":36.327,\"regularMarketChangePercent\":-0.3046,\"fulldayPrice\":36.327,\"fulldayChange\":-0.111,\"fulldayChangePercent\":-0.3046,\"fiftyTwoWeekHigh\":39.034,\"fiftyTwoWeekLow\":35.3672,\"regularMarketDayHigh\":36.439,\"regularMarketDayLow\":36.31,\"regularMarketVolume\":0,\"longName\":\"EUR/TWD\",\"shortName\":\"EUR/TWD\",\"chartPreviousClose\":36.5794,\"priceHint\":4,\"currentTradingPeriod\":{\"pre\":{\"timezone\":\"GMT\",\"start\":1793059200,\"end\":1793059200,\"gmtoffset\":0},\"regular\":{\"timezone\":\"GMT\",\"start\":1793059200,\"end\":1793145540,\"gmtoffset\":0},\"post\":{\"timezone\":\"GMT\",\"start\":1793145540,\"end\":1793145540,\"gmtoffset\":0}},\"dataGranularity\":\"1d\",\"range\":\"5d\",\"validRanges\":[\"1d\",\"5d\",\"1mo\",\"3mo\",\"6mo\",\"1y\",\"2y\",\"5y\",\"10y\",\"ytd\",\"max\"]},\"timestamp\":[1792537200,1792623600,1792710000,1792972800,1793059200],\"indicators\":{\"quote\":[{\"open\":[36.58634567260742,36.358917236328125,36.58216094970703,36.54459762573242,36.43299865722656],\"volume\":[0,0,0,0,0],\"high\":[36.68391799926758,36.68478012084961,36.59040069580078,36.570884704589844,36.43899917602539],\"low\":[36.3277587890625,36.352413177490234,36.42399215698242,36.40217590332031,36.310001373291016],\"close\":[36.579383850097656,36.362911224365234,36.574771881103516,35.38800048828125,36.32699966430664]}],\"adjclose\":[{\"adjclose\":[36.579383850097656,36.362911224365234,36.574771881103516,35.38800048828125,36.32699966430664]}]}}],\"error\":null}}",
+  "url": "https://query1.finance.yahoo.com/v8/finance/chart/EURTWD%3DX?range=5d&interval=1d",
+  "fetchedAt": "2026-10-27T06:50:15.597Z"
+ }
+}

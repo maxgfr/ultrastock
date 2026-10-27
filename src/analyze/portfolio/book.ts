@@ -11,6 +11,7 @@ import { mapLimit } from "../../engine.js";
 import { type Book, buildBook, readLedger, type Transaction } from "../../portfolio/ledger.js";
 import { ecbFx } from "../../providers/macro/ecb.js";
 import { frankfurterLatest } from "../../providers/macro/frankfurter.js";
+import { yahooFxRates } from "../../providers/markets/yahoo.js";
 import { getQuote, type Resolved, resolveSymbol } from "../../providers/router.js";
 import type { AssetKind, Instrument } from "../../providers/types.js";
 import type { Findings } from "./findings.js";
@@ -100,27 +101,48 @@ export function aggregateHoldings(book: Book, profile: Profile): Holding[] {
   return [...bySymbol.values()].sort((a, b) => a.symbol.localeCompare(b.symbol));
 }
 
-/** ECB reference rates (Frankfurter as fallback) for `currencies`, as a dataset and base-per-unit rates. */
+/**
+ * ECB reference rates (Frankfurter as fallback) for `currencies`, as datasets and
+ * base-per-unit rates. A currency the ECB does not fix (TWD, SAR, QAR, ARS,
+ * CLP, COP…) is read from Yahoo's EUR<CCY>=X quote instead — unofficial, and
+ * said so in the notes.
+ */
 export async function referenceRates(
   currencies: readonly string[],
   base: string,
-): Promise<{ dataset?: Dataset; rates: Record<string, number>; keys: Record<string, string>; notes: string[] }> {
+): Promise<{ datasets: Dataset[]; rates: Record<string, number>; keys: Record<string, string>; notes: string[] }> {
   const notes: string[] = [];
   const rates: Record<string, number> = { [base]: 1 };
   const keys: Record<string, string> = {};
+  const datasets: Dataset[] = [];
   const want = [...new Set(currencies.map((c) => (AS_USD.has(c) ? "USD" : c)).filter((c) => c !== base))];
   if (currencies.some((c) => AS_USD.has(c))) notes.push("stablecoin amounts converted at the US dollar rate");
-  if (!want.length) return { rates, keys, notes };
+  if (!want.length) return { datasets, rates, keys, notes };
   if (base !== "EUR") throw new Error(`only a EUR base currency is supported for now (profile says ${base})`);
+  const take = (ds: Dataset) => {
+    for (const p of ds.points) {
+      const m = /^EUR\.fx\.([A-Z]{3})$/.exec(p.key);
+      if (m && typeof p.value === "number" && p.value > 0 && !rates[m[1]!]) {
+        rates[m[1]!] = 1 / p.value;
+        keys[m[1]!] = p.key;
+      }
+    }
+    datasets.push({ ...ds, points: ds.points.filter((p) => /^EUR\.fx\.[A-Z]{3}$/.test(p.key)) });
+  };
   const ds = await ecbFx(want, 5).catch((e: Error) => {
     notes.push(`ECB reference rates unavailable (${e.message}) — Frankfurter stood in`);
     return frankfurterLatest("EUR", want);
   });
-  for (const p of ds.points) {
-    const m = /^EUR\.fx\.([A-Z]{3})$/.exec(p.key);
-    if (m && typeof p.value === "number" && p.value > 0) {
-      rates[m[1]!] = 1 / p.value;
-      keys[m[1]!] = p.key;
+  take(ds);
+  const unfixed = want.filter((c) => !rates[c]);
+  if (unfixed.length) {
+    const y = await yahooFxRates("EUR", unfixed).catch((e: Error) => {
+      notes.push(`Yahoo rates unavailable for ${unfixed.join(", ")} (${e.message})`);
+      return undefined;
+    });
+    if (y?.points.length) {
+      take(y);
+      notes.push(`no ECB reference rate for ${unfixed.filter((c) => rates[c]).join(", ")}: Yahoo's EUR cross rate stood in (unofficial)`);
     }
   }
   for (const c of currencies)
@@ -129,7 +151,7 @@ export async function referenceRates(
       keys[c] = keys.USD!;
     }
   for (const c of want) if (!rates[c]) notes.push(`no ${c}→${base} rate: positions in ${c} are left out of the total`);
-  return { dataset: { ...ds, points: ds.points.filter((p) => /^EUR\.fx\.[A-Z]{3}$/.test(p.key)) }, rates, keys, notes };
+  return { datasets, rates, keys, notes };
 }
 
 /**
@@ -225,7 +247,7 @@ export async function loadMarkedBook(bookName: string, f: Findings, now: Date): 
 
   const base = profile.baseCurrency;
   const fx = await referenceRates([...holdings.map((h) => h.currency), ...book.cash.map((c) => c.currency)], base);
-  if (fx.dataset) f.input(fx.dataset);
+  for (const d of fx.datasets) f.input(d);
   f.note(...fx.notes);
   const cash = book.cash.map((c) => ({ ...c, amountBase: fx.rates[c.currency] !== undefined ? c.amount * fx.rates[c.currency]! : undefined }));
   const cashKeys = book.cash.map((c) => `${P}.cash.${c.account}.${c.currency}`);

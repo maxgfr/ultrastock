@@ -1,7 +1,8 @@
 // The shapes every price provider returns, whatever it read.
 import type { Provenance } from "../core/evidence.js";
 
-export type Market = "euronext" | "us" | "europe" | "crypto";
+/** "europe": a European venue outside Euronext; "world": any other non-US venue Yahoo prices (São Paulo, Tokyo, Sydney…). */
+export type Market = "euronext" | "us" | "europe" | "world" | "crypto";
 export type AssetKind = "equity" | "etf" | "index" | "crypto" | "fund";
 
 export interface Instrument {
