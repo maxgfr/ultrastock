@@ -1,6 +1,6 @@
 ---
 name: ultrastock
-description: Investing copilot for real money — US and European stocks and ETFs (PEA/CTO), crypto, prediction markets — that analyses, screens, values and reads the market regime from public, keyless data (exchanges, regulators, filings), registers every figure as an evidence [E#], and checks that the answer states no number the evidence does not hold. Use only when the user explicitly asks for ultrastock or for an investment analysis, e.g. "analyse LVMH", "should I buy NVDA", "find quality growth stocks in Europe", "is the market risk-on", "what is NVDA worth", "analyse cette action", "faut-il acheter", "trouve-moi des actions value éligibles PEA", "cherche des values", "compare ces ETF", "analyse le dernier rapport d'Anthropic", "le marché est-il haussier". Decision support, not a licensed adviser; places no order.
+description: Investing copilot for real money — US, European and world stocks and ETFs (PEA/CTO), crypto, prediction markets — that analyses, screens, values and reads the market regime from public, keyless data (exchanges, regulators, filings), registers every figure as an evidence [E#], and checks that the answer states no number the evidence does not hold. Use only when the user explicitly asks for ultrastock or for an investment analysis, e.g. "analyse LVMH", "should I buy NVDA", "find quality growth stocks in Europe", "is the market risk-on", "what is NVDA worth", "analyse cette action", "faut-il acheter", "trouve-moi des actions value éligibles PEA", "cherche des values", "compare ces ETF", "analyse le dernier rapport d'Anthropic", "le marché est-il haussier". Decision support, not a licensed adviser; places no order.
 license: MIT
 metadata:
   version: 1.5.0
@@ -54,7 +54,7 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 |---|---|---|
 | an analysis of a stock, an ETF or a coin ("should I buy…") | `analyze <symbol> --out <dir>` (`--depth quick|standard|deep`), read `BRIEF.md`, run the debate in `RUNBOOK.md`, `decide`, `check`, `report` | [analysis-workflow](references/analysis-workflow.md) |
 | a complete analysis ("analyse complète", everything on it) | `analyze <symbol> --depth full --out <dir>`, then step 0 of `RUNBOOK.md`: your web search on `RESEARCH.todo.json`, `research --out <dir> --web-results <file>`, then the debate | [analysis-workflow](references/analysis-workflow.md), [research](references/research.md) |
-| undervalued stocks ("cherche des values", deep value, dividend, GARP, magic formula) | `value [--style …] [--region world|europe|pea|us|FR,DE] --out <dir>` → `VALUE.md`, then its runbook (`research --ask` on the first names) | [value-search](references/value-search.md) |
+| undervalued stocks ("cherche des values", deep value, dividend, GARP, magic formula) | `value [--style …] [--region world|europe|pea|us|FR,DE] --out <dir>` → `VALUE.md`, then its runbook (`research --ask` on the first names; `--research-with claude|codex` does it in the run, billed to the user's plan) | [value-search](references/value-search.md) |
 | an ETF: what it holds, costs, whether it is PEA-eligible; which of several to pick | `analyze <ETF> --out <dir>` → `ETF.md`; `etf compare A,B,C`, `etf overlap A,B`, `etf find "MSCI World" --pea` | [etf](references/etf.md) |
 | ETFs to buy for a goal ("propose-moi des ETF pour mon PEA", "quels ETF pour débuter"), or the catalogue ("des ETF obligataires en EUR") | `etf propose [--goal core|growth|income|defensive] [--envelope pea|cto|av] [--risk 1-7] [--amount <EUR>] --out <dir>` → `PROPOSAL.md` + `TARGETS.json`, then its runbook; `etf find --asset bond --currency EUR` | [etf](references/etf.md) |
 | what changed since the last analysis | `analyze <symbol> --since <old run> --out <dir>` → `DELTA.md` | [analysis-workflow](references/analysis-workflow.md) |
@@ -112,8 +112,11 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | to know why a source failed | the note, then `doctor --probe` | [engine-evidence](references/engine-evidence.md) |
 
 Symbols: `MC.PA`, `ASML.AS`, `CW8.PA` or an EU ISIN (Euronext); `SAP.DE`,
-`SHEL.L`, `NESN.SW` (other European venues); `NVDA`, `QQQ` (US); `BTCUSDT`,
-`ETH-EUR` (Binance, then Kraken and Coinbase).
+`SHEL.L`, `NESN.SW` (other European venues); `PETR4.SA`, `RY.TO`, `7203.T`,
+`0700.HK`, `005930.KS`, `600519.SS`, `2330.TW`, `RELIANCE.NS`, `BHP.AX`, `NPN.JO`
+(the rest of the world, Yahoo — [data-sources](references/data-sources.md) lists
+every suffix); `NVDA`, `QQQ` (US); `BTCUSDT`, `ETH-EUR` (Binance, then Kraken and
+Coinbase).
 
 ## Commands
 
@@ -124,7 +127,7 @@ ultrastock history <symbol> [--from <date>] [--to <date>] [--interval 1d|1w|4h|1
 ultrastock calc <run> "<formula>" --label <text> [--unit <unit>] [--json]
 ultrastock calc <run> --from <E#> "<figure as the document writes it>" --label <text> [--json]
 ultrastock research <subject> [--kind equity|etf|crypto|company] [--focus results] [--ask "<question>"] [--search-with claude|codex|ccs] --out <run>
-ultrastock research --out <run> --web-results <file|-> | --urls <a,b> | --search-with claude|codex|ccs | --engine-search [--browser] [--no-wayback]
+ultrastock research --out <run> [--for <tag>] --web-results <file|-> | --urls <a,b> | --search-with claude|codex|ccs | --engine-search [--browser] [--no-wayback]
 ultrastock searxng|firecrawl|stack up|down|status   (optional local search stack, Docker)
 ultrastock evidence <run> [--json]
 ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
@@ -138,11 +141,11 @@ ultrastock fundamentals <sym> [--asof <date>] [--source sec|esef|crible] · fili
 ultrastock insiders <sym> · holdings <manager> · analyst|short|dividends <US sym> · congress [--member] [--doc]
 ultrastock options <symbol> · crypto <view> [<target>] · predict kalshi|manifold|polymarket [<query>]
 ultrastock technicals <symbol> [--interval] [--indicators <name:k=v;…>] [--benchmark] · valuation <symbol> [--erp] [--terminal]
-ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market] [--universe] [--sort] [--limit] · screen --list
+ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market] [--universe] [--sort] [--limit] · screen --list · screen --engine crible --bootstrap (refresh a stale dataset)
 ultrastock etf compare <A,B,C> · etf overlap <A,B> · etf find "<index|theme>" [--pea] [--acc|--dist] [--ucits] [--currency EUR]
 ultrastock etf find [--asset equity|bond|commodity|money-market|multi-asset|real-estate] [--focus] [--exposure] [--sort aum|ter|perf] [--leveraged]
 ultrastock etf propose [--goal core|growth|income|defensive] [--envelope pea|cto|av] [--risk 1-7] [--amount] [--max-funds 4] [--acc|--dist] [--hedged]
-ultrastock value [--style quality-value|deep-value|dividend|garp|magic-formula|all] [--region world|europe|pea|us|<ISO,…>] [--top] [--watch]
+ultrastock value [--style quality-value|deep-value|dividend|garp|magic-formula|all] [--region world|europe|pea|us|<ISO,…>] [--top] [--watch] [--research-with claude|codex [--research-top 3]]
 ultrastock regime [--market us|eu|crypto] · sectors [--market us|eu] · catalysts <symbol> [--days]
 ultrastock events [--days 60] [--since 7] [--country BR,US] [--all] · watch add events [--days 14] [--min-weight 2]
 ultrastock stats <sym> [<sym> …] [--benchmark] · options-analysis <sym> [--expiry] [--strategy] [--spot-moves=…]

@@ -87,8 +87,8 @@ USAGE
   ultrastock fx [USD,GBP,…] [--out <dir>] [--json]
   ultrastock cot <market> [--report legacy|tff] [--out <dir>] [--json]
   ultrastock sentiment [all|cnn|crypto|vix|putcall] [--out <dir>] [--json]
-  ultrastock research <symbol|name> [--kind equity|etf|crypto|company] [--focus results] [--ask "<question>"] [--name <search name>] --out <run> [--json]
-  ultrastock research --out <run> --web-results <websearch.json|-> | --urls <a,b> | --search-with claude|codex|ccs | --engine-search [--browser] [--no-wayback] [--limit <n>] [--json]
+  ultrastock research <symbol|name> [--kind equity|etf|crypto|company] [--focus results] [--ask "<question>"] [--name <search name>] [--for <tag>] --out <run> [--json]
+  ultrastock research --out <run> [--for <tag>] --web-results <websearch.json|-> | --urls <a,b> | --search-with claude|codex|ccs | --engine-search [--browser] [--no-wayback] [--limit <n>] [--json]
   ultrastock research <symbol|name> --search-with claude|codex|ccs [--search-model <m>] --out <run> [--json]   (worklist, search and ingestion in one call)
   ultrastock events [--days 60] [--since 7] [--country BR,US] [--all] [--book real|paper] [--limit <n>] [--out <dir>] [--json]
   ultrastock news <query> [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>] [--out <dir>] [--json]
@@ -96,11 +96,12 @@ USAGE
   ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
   ultrastock fundamentals <symbol> [--asof <date>] [--years <n>] [--quarters <n>] [--source sec|esef|crible] [--out <dir>] [--json]
   ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market <m>] [--universe <idx|list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--all-listings] [--out <dir>] [--json]
+  ultrastock screen --engine crible --bootstrap [--json]   (download crible's dataset, or replace a stale local copy with the published one)
   ultrastock screen --list [--engine tradingview|crible|builtin] [--json]
   ultrastock etf compare <A,B,C> | etf overlap <A,B> | etf find "<index|theme>" [--pea] [--acc|--dist] [--ucits] [--currency EUR] [--limit <n>] [--out <dir>] [--json]
   ultrastock etf find [--asset equity|bond|commodity|money-market|multi-asset|real-estate] [--focus "<focus>"] [--exposure <region>] [--sort aum|ter|perf] [--leveraged] [--pea] [--acc|--dist] [--currency EUR] [--limit <n>] [--out <dir>] [--json]
   ultrastock etf propose [--goal core|growth|income|defensive] [--envelope pea|cto|av] [--risk 1-7] [--amount <EUR>] [--max-funds 4] [--acc|--dist] [--currency EUR] [--hedged] [--out <run>] [--json]
-  ultrastock value [--style quality-value|deep-value|dividend|garp|magic-formula|all] [--region world|europe|pea|us|<ISO,…>] [--shortlist 30] [--top 10] [--min-cap-eur <n>] [--watch] [--out <run>] [--json]
+  ultrastock value [--style quality-value|deep-value|dividend|garp|magic-formula|all] [--region world|europe|pea|us|<ISO,…>] [--shortlist 30] [--top 10] [--min-cap-eur <n>] [--watch] [--research-with claude|codex [--research-top 3] [--search-model <m>]] [--out <run>] [--json]
   ultrastock regime [--market us|eu|crypto] [--out <dir>] [--json]
   ultrastock sectors [--market us|eu] [--out <dir>] [--json]
   ultrastock catalysts <symbol> [--days <1-90>] [--out <dir>] [--json]
@@ -186,6 +187,11 @@ COMMANDS
             filled in); RUNBOOK.md is the debate: analysts → bull / bear → judge
             → trader → risk trio → portfolio manager → decide → check → report.
   quote     The latest price. With --out, registers it in that run's evidence.
+            Euronext (official), US listings (Nasdaq), crypto pairs, and the
+            venues Yahoo prices (unofficial): Europe .DE .L .SW .MC .ST .HE .CO
+            .VI .WA; Americas .SA .MX .TO .V .NE .BA .SN .CL; Asia .T .HK .KS
+            .KQ .SS .SZ .TW .TWO .SI .KL .JK .BK .NS .BO; Oceania .AX .NZ;
+            Middle East and Africa .JO .TA .IS .SR .QA.
   history   Daily (or crypto intraday) bars, oldest first; --limit keeps the last n.
   calc      Compute a derived figure from evidence ids — "(E3 / E7 - 1) * 100" —
             and register it as a new [E#] (abs, min, max, round, pct, share, cagr…).
@@ -236,8 +242,12 @@ COMMANDS
             replication, PEA; --focus results for the latest report, --ask for
             one precise question — then, with --web-results, fetches the pages
             and PDFs, drops walls and duplicates, registers each as a document
-            [E#] (sources/E#.md, DOSSIER.md, under-covered terms for a second
-            round) and cross-checks a listed company against crible. \`check\`
+            [E#] (sources/E#.md, DOSSIER.md; an angle with fewer than two
+            sources is under-covered and the next round searches its own
+            queries again, rephrased — "pdf", the issuer's site:, the English
+            query with the name quoted) and cross-checks a listed company
+            against crible. --for <tag> names one subject of a run that
+            researches several (a value run's top names). \`check\`
             refuses a figure the cited document does not state. Hits come
             from your search (--web-results, - for stdin; --urls), or
             --search-with claude|codex|ccs (your agent CLI's own web search,
@@ -264,7 +274,10 @@ COMMANDS
             exhaustion-hammer, pullback-to-50, golden-cross, rs-leaders); crible
             (--engine crible: a crible preset or any DSL, e.g. "piotroski_f >= 7
             AND country IN ('FR','DE')"; --bootstrap downloads its dataset once,
-            about a minute; primary listings only, ADRs of an issuer listed
+            about a minute — alone, it replaces a local copy with the published
+            one; every crible-backed command warns when the local dataset is
+            over 7 days old (ULTRASTOCK_CRIBLE_MAX_AGE_DAYS) and never downloads
+            by itself; primary listings only, ADRs of an issuer listed
             at home dropped, --all-listings keeps every line). --list prints
             every preset's rules and source.
   etf       ETFs as funds. compare (2–6): TER, AUM, NAV, flows, dividend
@@ -299,9 +312,14 @@ COMMANDS
             falling knife — null is "unknown", never a pass); a composite of
             sector-relative percentiles recomputed on the filtered universe;
             the --shortlist registered as evidence, the --top valued one after
-            the other on the same run. Writes VALUE.md (why cheap, why not a
-            trap, what would invalidate it, then the research runbook);
-            --watch adds an alert on each top name.
+            the other on the same run — any venue ultrastock prices, Tokyo,
+            Hong Kong, Seoul, Shanghai, São Paulo included. Writes VALUE.md
+            (why cheap, why not a trap, what would invalidate it, then the
+            research runbook); --watch adds an alert on each top name;
+            --research-with claude|codex researches the first --research-top
+            (3) names in the same run — "pourquoi <name> est-il bon marché ?",
+            searched by the agent CLI (billed to your plan), the pages
+            registered — and VALUE.md points at each DOSSIER.<symbol>.md.
   regime    Market regime and an exposure ceiling. us: SPY trend, RSP/SPY
             breadth, HYG/LQD credit, SPY/QQQ distribution days and follow-through,
             VIX/VIX3M, CNN Fear & Greed read contrarian, % of US large caps above
@@ -531,6 +549,9 @@ export const VALUE_FLAGS = [
   "urls",
   "search-with",
   "search-model",
+  "for",
+  "research-with",
+  "research-top",
   "from",
   "to",
   "interval",
@@ -795,13 +816,14 @@ const SPEC: CliSpec = {
       "browser",
       "no-wayback",
       "limit",
+      "for",
       "out",
       ...NET,
     ],
     universe: ["out", ...NET],
     resolve: ["out", ...NET],
     fundamentals: ["asof", "years", "quarters", "source", "out", ...NET],
-    value: ["style", "region", "shortlist", "top", "min-cap-eur", "watch", "out", ...NET],
+    value: ["style", "region", "shortlist", "top", "min-cap-eur", "watch", "research-with", "research-top", "search-model", "out", ...NET],
     regime: ["market", "out", ...NET],
     sectors: ["market", "out", ...NET],
     catalysts: ["days", "out", ...NET],

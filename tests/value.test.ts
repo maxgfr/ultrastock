@@ -350,7 +350,8 @@ describe("value run", () => {
       dividendGrowth: async () => undefined,
       loadAlerts: () => [],
       addAlert: (input) => ({ id: `a-${input.symbol}`, ...input, createdAt: NOW.toISOString() }),
-      covered: (s) => !s.endsWith(".T"),
+      covered: (s) => (s.endsWith(".T") ? "no provider covers this test market" : true),
+      research: async () => ({ ok: true, dossier: "DOSSIER.x.md", kept: 0, notes: [] }),
       ...over,
     };
     return { d, calls, valued };
@@ -388,8 +389,8 @@ describe("value run", () => {
     expect(md).toMatch(/Why it is not a trap/);
     expect(md).toMatch(/What would invalidate the thesis/);
     expect(md).toMatch(/<<<UNTRUSTED_DATA source=crible/);
-    expect(md).toMatch(/ultrastock research AAA\.PA --ask "pourquoi Alpha SA est-il bon marché \?" --out /);
-    expect(md).toMatch(/ultrastock research --out .* --web-results websearch\.json/);
+    expect(md).toMatch(/ultrastock research AAA\.PA --ask "pourquoi Alpha est-il bon marché \?" --out .* --for AAA\.PA/);
+    expect(md).toMatch(/ultrastock research --out .* --for AAA\.PA --web-results websearch\.AAA\.PA\.json/);
     expect(md).toMatch(/ultrastock check .* answer\.md/);
     expect(md).toMatch(/margin of safety 20 \[E\d+\] %/);
     expect(md).not.toMatch(/PEA: to be confirmed/);
@@ -434,16 +435,70 @@ describe("value run", () => {
       }),
     );
     const ds = await valueDividendGrowth(
-      [row({ symbol: "KO", exchange: "NYQ", country: "US" }), row({ symbol: "MC.PA" }), row({ symbol: "1.HK", exchange: "HKG" })],
+      [row({ symbol: "KO", exchange: "NYQ", country: "US" }), row({ symbol: "MC.PA" }), row({ symbol: "1155.KL", exchange: "KLS" })],
       scan as never,
     );
+    // Bursa Malaysia has no TradingView mapping (TradingView keys it by name): left out.
     expect(scan.mock.calls[0]![1].tickers).toEqual(["NYSE:KO", "EURONEXT:MC"]);
     expect(ds!.points.map((p) => [p.key, p.value, p.unit])).toEqual([
       ["KO.tv.continuous_dividend_growth", 12, "years"],
       ["MC.PA.tv.continuous_dividend_growth", 3, "years"],
     ]);
     expect(tvTickerOfRow({ symbol: "BRK-B", exchange: "NYQ" })).toBe("NYSE:BRK.B");
-    expect(await valueDividendGrowth([row({ symbol: "1.HK", exchange: "HKG" })], scan as never)).toBeUndefined();
+    expect(await valueDividendGrowth([row({ symbol: "1155.KL", exchange: "KLS" })], scan as never)).toBeUndefined();
+    expect(tvTickerOfRow({ symbol: "0001.HK", exchange: "HKG" })).toBe("HKEX:1");
+  });
+
+  it("researches the first names with --research-with, in the same run, and points VALUE.md at their dossiers", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "us-value-"));
+    const asked: Array<{ sym: string; ask: string; tag: string; dir: string; with: string }> = [];
+    const { d } = deps(universe(), {
+      research: async (sym, input) => {
+        asked.push({ sym, ask: input.ask, tag: input.tag, dir: input.dir, with: input.with });
+        if (sym === "BBB.PA") throw new Error("codex exited with an error: quota");
+        return {
+          ok: true,
+          dossier: `DOSSIER.${input.tag}.md`,
+          kept: 4,
+          underCovered: ["ask-primary"],
+          notes: ["3 queries searched with codex (billed to your plan)"],
+        };
+      },
+    });
+    const r = await valueRun(dir, { styles: [QV], region: WORLD, shortlist: 5, top: 3, now: NOW, research: { with: "codex", top: 2 } }, d);
+    const top = r.styles[0]!.top;
+    expect(asked.map((a) => a.sym)).toEqual(top.slice(0, 2));
+    expect(asked.every((a) => a.dir === dir && a.with === "codex" && a.tag === a.sym)).toBe(true);
+    expect(asked[0]!.ask).toMatch(/^pourquoi .+ est-il bon marché \?$/);
+    expect(r.research.map((x) => x.ok)).toEqual(top.slice(0, 2).map((s) => s !== "BBB.PA"));
+    const md = readFileSync(join(dir, "VALUE.md"), "utf8");
+    expect(md).toMatch(/## Research \(--research-with codex\)/);
+    expect(md).toMatch(/billed to your plan/);
+    const ok = r.research.find((x) => x.ok)!;
+    expect(md).toContain(`- ${ok.symbol}: DOSSIER.${ok.tag}.md — 4 source(s) kept; under-covered angles ask-primary`);
+    expect(md).toMatch(new RegExp(`Read the dossiers of the names researched above \\(DOSSIER\\.${ok.tag.replace(/\./g, "\\.")}\\.md\\)`));
+    if (r.research.some((x) => !x.ok)) expect(md).toMatch(/research failed — codex exited with an error: quota/);
+    // The names left (the third, and a failed one) keep their manual research commands.
+    expect(md).toContain(`ultrastock research ${top[2]} --ask`);
+    expect(md).not.toContain(`ultrastock research ${ok.symbol} --ask`);
+  });
+
+  it("researches nothing without --research-with", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "us-value-"));
+    const research = vi.fn();
+    const { d } = deps(universe(), { research });
+    const r = await valueRun(dir, { styles: [QV], region: WORLD, shortlist: 5, top: 2, now: NOW }, d);
+    expect(research).not.toHaveBeenCalled();
+    expect(r.research).toEqual([]);
+    expect(readFileSync(join(dir, "VALUE.md"), "utf8")).toMatch(/rerun with --research-with claude\|codex/);
+  });
+
+  it("puts a stale-dataset warning in VALUE.md's notes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "us-value-"));
+    const { d } = deps(universe(), { staleWarning: async () => "crible's local dataset is 15 days old — refresh it" });
+    const r = await valueRun(dir, { styles: [QV], region: WORLD, top: 0, now: NOW }, d);
+    expect(r.notes[0]).toMatch(/15 days old/);
+    expect(readFileSync(join(dir, "VALUE.md"), "utf8")).toMatch(/## Notes\n\n- crible's local dataset is 15 days old/);
   });
 
   it("refuses bad flags before touching crible", async () => {
@@ -452,6 +507,8 @@ describe("value run", () => {
     await expect(run({ region: "mars" })).rejects.toThrow(/--region/);
     await expect(run({ top: "20", shortlist: "10" })).rejects.toThrow(/cannot exceed/);
     await expect(run({ "min-cap-eur": "lots" })).rejects.toThrow(/--min-cap-eur/);
+    await expect(run({ "research-with": "gemini" })).rejects.toThrow(/--research-with is one of claude, codex/);
+    await expect(run({ "research-top": "2" })).rejects.toThrow(/--research-top goes with --research-with/);
   });
 });
 
