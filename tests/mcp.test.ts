@@ -11,6 +11,17 @@ describe("MCP tools", () => {
     expect(TOOLS.filter((t) => t.writes).map((t) => t.name)).toEqual(["plan"]);
     for (const t of TOOLS) expect(t.command[0]).not.toMatch(/^(broker|paper|profile|decide|watch|knowledge)$/);
     expect(TOOLS.find((t) => t.command[0] === "portfolio")!.params.action!.enum).not.toContain("add");
+    // The local store: read-only tools only — no db init/export/off, no track, no --mark-seen.
+    expect(tool("portfolio_db").params.action!.enum).toEqual(["status", "query"]);
+    expect(Object.keys(tool("portfolio_news").params)).not.toContain("mark-seen");
+    for (const t of TOOLS.filter((x) => x.command[0] === "portfolio")) expect(t.command[1] ?? "", t.name).not.toMatch(/^(track|add|import|deposit|withdraw)$/);
+    expect(argvFor(tool("portfolio_db"), { action: "query", sql: "select count(*) from transactions" })).toEqual([
+      "portfolio",
+      "db",
+      "query",
+      "select count(*) from transactions",
+      "--json",
+    ]);
     const decls = mcpAdapter(async () => "").listTools("2025-06-18" as never);
     expect(decls.find((d) => d.name === "plan")!.annotations!.readOnlyHint).toBe(false);
     expect(decls.find((d) => d.name === "quote")!.annotations!.readOnlyHint).toBe(true);

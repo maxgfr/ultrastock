@@ -11,6 +11,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { contentHash } from "../engine.js";
+import { inTransaction, ledgerBackend, type SqlDatabase, StoreUnavailableError, withStore } from "../core/db.js";
 import { withFileLock } from "../core/lock.js";
 import { homeDir } from "../core/paths.js";
 
@@ -93,7 +94,29 @@ export function transactionId(t: Omit<Transaction, "id">): string {
   return contentHash(norm).slice(0, 16);
 }
 
+/** The transactions of a book, in the order they were recorded (JSONL or SQLite, per store.json). */
 export function readLedger(book = "real"): Transaction[] {
+  ledgerPath(book);
+  if (ledgerBackend() === "sqlite") return withLedgerStore((db) => readSqliteLedger(db, book));
+  return readJsonlLedger(book);
+}
+
+/** withStore for the ledger: on a Node without node:sqlite, say that THIS ledger lives in the store. */
+function withLedgerStore<T>(fn: (db: SqlDatabase) => T): T {
+  try {
+    return withStore(fn);
+  } catch (e) {
+    if (e instanceof StoreUnavailableError)
+      throw new StoreUnavailableError(
+        `${e.message} — but this ledger lives in the SQLite store (store.json): run ultrastock on Node ≥ 22.5, where \`portfolio db off\` writes it back to JSONL`,
+        true,
+      );
+    throw e;
+  }
+}
+
+/** The JSONL file of a book, whatever the active backend. */
+export function readJsonlLedger(book = "real"): Transaction[] {
   const path = ledgerPath(book);
   if (!existsSync(path)) return [];
   return readFileSync(path, "utf8")
@@ -125,8 +148,21 @@ function validate(t: Omit<Transaction, "id">): void {
 export async function appendTransactions(txs: ReadonlyArray<Omit<Transaction, "id">>, book = "real"): Promise<{ added: Transaction[]; duplicates: number }> {
   const path = ledgerPath(book);
   mkdirSync(join(homeDir(), "ledger"), { recursive: true });
+  const sqlite = ledgerBackend() === "sqlite";
   return withFileLock(`${path}.lock`, () => {
-    const seen = new Set(readLedger(book).map((t) => t.id));
+    if (sqlite) {
+      for (const raw of txs) validate(raw);
+      return withLedgerStore((db) =>
+        inTransaction(db, () =>
+          insertSqliteTransactions(
+            db,
+            txs.map((raw) => ({ ...raw, id: transactionId(raw) }) as Transaction),
+            book,
+          ),
+        ),
+      );
+    }
+    const seen = new Set(readJsonlLedger(book).map((t) => t.id));
     const added: Transaction[] = [];
     let duplicates = 0;
     for (const raw of txs) {
@@ -142,6 +178,61 @@ export async function appendTransactions(txs: ReadonlyArray<Omit<Transaction, "i
     if (added.length) appendFileSync(path, added.map((t) => `${JSON.stringify(t)}\n`).join(""), { mode: 0o600 });
     return { added, duplicates };
   });
+}
+
+// ---- SQLite backend -------------------------------------------------------------
+
+/** A book's transactions from the store, in recording order. */
+export function readSqliteLedger(db: SqlDatabase, book: string): Transaction[] {
+  ledgerPath(book);
+  return db
+    .prepare("SELECT doc FROM transactions WHERE book = ? ORDER BY seq")
+    .all(book)
+    .map((r) => JSON.parse(String(r.doc)) as Transaction);
+}
+
+/**
+ * Insert transactions (ids already set) into a book in the store; an id the
+ * book already holds is skipped and counted. The caller holds the transaction.
+ */
+export function insertSqliteTransactions(
+  db: SqlDatabase,
+  txs: readonly Transaction[],
+  book: string,
+  now = new Date(),
+): { added: Transaction[]; duplicates: number } {
+  ledgerPath(book);
+  const ins = db.prepare(
+    `INSERT INTO transactions (book, id, date, type, account, symbol, isin, quantity, price, amount, fee, currency, fx_to_base, note, origin, doc, recorded_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (book, id) DO NOTHING`,
+  );
+  const added: Transaction[] = [];
+  let duplicates = 0;
+  const at = now.toISOString();
+  for (const t of txs) {
+    const r = ins.run(
+      book,
+      t.id,
+      t.date,
+      t.type,
+      t.account,
+      t.symbol ?? null,
+      t.isin ?? null,
+      t.quantity ?? null,
+      t.price ?? null,
+      t.amount ?? null,
+      t.fee ?? null,
+      t.currency,
+      t.fxToBase ?? null,
+      t.note ?? null,
+      t.origin,
+      JSON.stringify(t),
+      at,
+    );
+    if (Number(r.changes) > 0) added.push(t);
+    else duplicates++;
+  }
+  return { added, duplicates };
 }
 
 const tradeCash = (t: Transaction) => {

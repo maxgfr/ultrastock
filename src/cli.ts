@@ -120,6 +120,11 @@ USAGE
   ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name|file.json>] [--dry-run] [--json]
   ultrastock portfolio deposit|withdraw <account> <amount> [--currency EUR] [--date <date>] [--book real|paper]
   ultrastock portfolio add buy|sell|dividend|fee|interest|tax|split --account <id> [--symbol] [--quantity] [--price] [--amount] [--fee] [--currency] [--date] [--book]
+  ultrastock portfolio db init|status|export [--book]|off [--json]
+  ultrastock portfolio db query "<SELECT …>"
+  ultrastock portfolio track [--book] [--json]
+  ultrastock portfolio history [--symbol <sym>] [--days 365] [--book] [--out <dir>] [--json]
+  ultrastock portfolio news [--days 7] [--book] [--mark-seen] [--json]
   ultrastock plan <symbol> --account <id> [--entry <n>] [--stop <n>] [--target <a,b>] [--venue paper] [--ticket] [--out <dir>] [--json]
   ultrastock ticket list|show|check|cancel [<ticket-id>] [--status <s>] [--json]
   ultrastock paper book|submit <ticket-id>|sweep|readiness [--json]
@@ -367,6 +372,17 @@ COMMANDS
             lookthrough (ETF holdings from iShares, Amundi, SEC N-PORT), income
             (received, forward 12 months, yield on cost), goals (seeded Monte
             Carlo, the monthly contribution for 80 %). None places an order.
+            Local store (beta, opt-in, Node >= 22.5): db init creates
+            ULTRASTOCK_HOME/ultrastock.db (0600), imports the JSONL books and
+            switches the ledger to SQLite (store.json says which backend is
+            active); db export writes the JSONL back, db off exports and
+            returns to JSONL, db status shows counts and schema, db query runs
+            ONE read-only SELECT and prints JSON. track stores one snapshot row
+            per position and cash balance per day (a missing price stays
+            missing); history reads them back (value, gain vs cost, drawdown;
+            [E#] with --out); news searches headlines for every holding,
+            keeps them and lists what is NEW first (--mark-seen). No broker or
+            account API is called.
   plan      From a view to an order within the profile's limits: entry, a stop
             below support or 2 ATR, targets at 2R and 3R, the size from the risk
             per trade (and every cap), dry-run through the risk gate → ready,
@@ -653,6 +669,7 @@ export const VALUE_FLAGS = [
 export const BOOL_FLAGS = [
   "json",
   "all",
+  "mark-seen",
   "refresh",
   "offline",
   "probe",
@@ -841,6 +858,8 @@ const SPEC: CliSpec = {
       "target",
       "years",
       "monthly",
+      "days",
+      "mark-seen",
       "out",
       ...NET,
     ],

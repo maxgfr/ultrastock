@@ -55,6 +55,8 @@ export const MATURITY: Record<string, Maturity> = {
   stack: "beta",
   universe: "beta",
   portfolio: "stable",
+  // The local SQLite store (portfolio db|track|history|news): opt-in, node:sqlite.
+  "portfolio db": "beta",
   plan: "stable",
   ticket: "stable",
   paper: "stable",

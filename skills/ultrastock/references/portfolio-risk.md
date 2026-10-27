@@ -4,7 +4,9 @@
 
 Every movement of money and securities is one line of
 `<home>/ledger/<book>.jsonl`. The `real` book is what the user holds; the
-`paper` book is simulation.
+`paper` book is simulation. After `portfolio db init` the same transactions
+live in the local SQLite store instead, with daily snapshots and holdings
+news beside them. See [local-store](local-store.md).
 
 - **Recomputed, never stored.** Positions, cash, the average cost (PMP, the
   French rule) and FIFO lots are recomputed from the transactions each time. A

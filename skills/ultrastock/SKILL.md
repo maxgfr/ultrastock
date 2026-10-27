@@ -60,6 +60,8 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | what changed since the last analysis | `analyze <symbol> --since <old run> --out <dir>` → `DELTA.md` | [analysis-workflow](references/analysis-workflow.md) |
 | to record or import what they hold | `portfolio add|deposit|withdraw`, `portfolio import <file> --format … --account … --dry-run` | [portfolio-risk](references/portfolio-risk.md) |
 | their portfolio: value, performance, risk, stress, income | `portfolio show|perf|risk|stress|income|lookthrough --out <dir>` | [portfolio-risk](references/portfolio-risk.md) |
+| to keep their positions locally and follow them ("enregistre mes positions", "garde mon portefeuille sur mon PC", "suis mon portefeuille", "historique de mon portefeuille") | once: `portfolio db init` (SQLite, Node ≥ 22.5; the ledger moves into it); then `portfolio add …`, `portfolio track` once a day, `portfolio history [--symbol] --out <dir>`; anything else: `portfolio db query "<SELECT …>"` | [local-store](references/local-store.md) |
+| the news on their holdings ("quelles news sur mes lignes", "quoi de neuf sur mon portefeuille") | `portfolio news [--days 7]` (NEW first; external text), `--mark-seen` once the user has read them | [local-store](references/local-store.md), [news-and-external-text](references/news-and-external-text.md) |
 | how to allocate or rebalance, which envelope, a savings goal | `portfolio optimize|rebalance --targets …|location|goals --target … --years …` | [portfolio-risk](references/portfolio-risk.md) |
 | to turn a view into an order, sized within their limits | `plan <symbol> --account <id> [--entry] [--stop] [--target]`, then `ticket` | [trading-paper](references/trading-paper.md) |
 | to record the call an analysis ended on | `decide <run> <run>/decision.json` | [journal-alerts](references/journal-alerts.md) |
@@ -148,6 +150,7 @@ ultrastock crypto-analysis <coin> | yields <symbol> · predict-analysis kalshi|m
 ultrastock portfolio show|perf|risk|stress|optimize|rebalance|location|lookthrough|income|goals [--book real|paper] [--out <dir>]
 ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--map] [--dry-run]
 ultrastock portfolio deposit|withdraw <account> <amount> · portfolio add buy|sell|dividend|… --account <id> […]
+ultrastock portfolio db init|status|export [--book]|off|query "<SELECT …>" · portfolio track · portfolio history [--symbol] [--days] [--out] · portfolio news [--days 7] [--mark-seen]
 ultrastock plan <symbol> --account <id> [--entry] [--stop] [--target a,b] [--ticket] · ticket list|show|check|cancel [<id>]
 ultrastock paper book|submit <ticket-id>|sweep|readiness
 ultrastock decide <run> <decision.json> · journal settle|hits|review|digest [--book] · journal lesson "<text>" | lessons
@@ -216,6 +219,7 @@ Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
 - [valuation-quant](references/valuation-quant.md) — scores, quality, multiples, DCF and reverse DCF; return statistics, volatility, cointegration.
 - [market-regime](references/market-regime.md) — the regime signals and exposure coach, sector rotation, the catalyst timeline.
 - [portfolio-risk](references/portfolio-risk.md) — the ledger, statement imports, risk, stress, optimisation, rebalancing, location, income, goals.
+- [local-store](references/local-store.md) — the opt-in SQLite store (beta): the ledger in `ultrastock.db`, switching back and forth, daily snapshots and history, holdings news, read-only `db query`.
 - [trading-paper](references/trading-paper.md) — plan, the risk gate's codes, tickets, paper trading and readiness.
 - [journal-alerts](references/journal-alerts.md) — decisions settled against the market, hit rates, theses, trade reviews, lessons, alerts.
 - [backtesting](references/backtesting.md) — the strategy format, honest fills, walk-forward, sweeps with deflated Sharpe and PBO, Monte Carlo, the review verdict.
