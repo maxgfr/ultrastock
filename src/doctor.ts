@@ -66,11 +66,12 @@ export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) 
     uvx: { installed: has("uvx"), purpose: "runs maxgfr/crible, the global fundamental screener" },
     pdftotext: { installed: has("pdftotext"), purpose: "optional: faster reading of Congress trade PDFs" },
     claude: {
-      installed: has(process.env.ULTRASTOCK_CLAUDE_CMD ?? "claude"),
+      installed: has((process.env.ULTRASTOCK_CLAUDE_CMD ?? "claude").split(/\s+/)[0]!),
       purpose: "optional: research --search-with claude (Claude Code's web search, billed to your plan)",
     },
+    ccs: { installed: has("ccs"), purpose: "optional: research --search-with ccs (Claude Code on your API key: `ccs with anthropic`)" },
     codex: {
-      installed: has(process.env.ULTRASTOCK_CODEX_CMD ?? "codex"),
+      installed: has((process.env.ULTRASTOCK_CODEX_CMD ?? "codex").split(/\s+/)[0]!),
       purpose: "optional: research --search-with codex (Codex's web search, billed to your plan)",
     },
     docker: { installed: has("docker"), purpose: "optional: `ultrastock searxng up` — a local SearXNG for research --engine-search" },

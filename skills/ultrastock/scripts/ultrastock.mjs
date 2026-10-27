@@ -19832,7 +19832,7 @@ import { join as join22, resolve as resolve5 } from "path";
 import { mkdtempSync as mkdtempSync3, readFileSync as readFileSync17, rmSync as rmSync3, writeFileSync as writeFileSync7 } from "fs";
 import { tmpdir as tmpdir4 } from "os";
 import { join as join20 } from "path";
-var SEARCH_DELEGATES = ["claude", "codex"];
+var SEARCH_DELEGATES = ["claude", "codex", "ccs"];
 var DELEGATE_BATCH = 6;
 var HITS_PER_QUERY = 8;
 var CALL_TIMEOUT_MS = 6 * 6e4;
@@ -19872,12 +19872,19 @@ function delegatePrompt(queries) {
     ...queries.map((q, i) => `${i + 1}. ${q}`)
   ].join("\n");
 }
+function delegateLauncher(who) {
+  const words3 = (s) => s.split(/\s+/).filter(Boolean);
+  if (who === "ccs") return ["ccs", "with", env("CCS_PROVIDER") ?? "anthropic"];
+  if (who === "claude") return words3(env("CLAUDE_CMD") ?? "claude");
+  return words3(env("CODEX_CMD") ?? "codex");
+}
 function delegateCommand(who, prompt, opts) {
-  if (who === "claude") {
-    const cmd2 = env("CLAUDE_CMD") ?? "claude";
+  const [cmd, ...pre] = delegateLauncher(who);
+  if (who === "claude" || who === "ccs") {
     return {
-      cmd: cmd2,
+      cmd,
       args: [
+        ...pre,
         "-p",
         prompt,
         "--allowedTools",
@@ -19893,10 +19900,10 @@ function delegateCommand(who, prompt, opts) {
       ]
     };
   }
-  const cmd = env("CODEX_CMD") ?? "codex";
   return {
     cmd,
     args: [
+      ...pre,
       "--search",
       "exec",
       "--skip-git-repo-check",
@@ -19912,7 +19919,7 @@ function delegateCommand(who, prompt, opts) {
   };
 }
 function parseDelegateAnswer(who, stdout, lastMessage) {
-  if (who === "claude") {
+  if (who === "claude" || who === "ccs") {
     const d = JSON.parse(stdout.slice(stdout.indexOf("{")));
     if (d.is_error) throw new Error(`claude: ${String(d.result ?? "error").slice(0, 200)}`);
     const so2 = d.structured_output ?? (typeof d.result === "string" ? JSON.parse(d.result) : void 0);
@@ -19956,7 +19963,7 @@ async function runBatch(who, batch, model) {
 async function delegatedSearch(who, queries, opts = {}) {
   const notes = [];
   const lists = [];
-  const bin = who === "claude" ? env("CLAUDE_CMD") ?? "claude" : env("CODEX_CMD") ?? "codex";
+  const bin = delegateLauncher(who).join(" ");
   let cost = 0;
   for (let i = 0; i < queries.length; i += DELEGATE_BATCH) {
     const batch = queries.slice(i, i + DELEGATE_BATCH);
@@ -19983,8 +19990,9 @@ async function delegatedSearch(who, queries, opts = {}) {
       else notes.push(`${who} search returned nothing for "${q.query}"`);
     });
   }
+  const payer = who === "ccs" ? `the ${env("CCS_PROVIDER") ?? "anthropic"} API key ccs uses` : "your plan";
   notes.push(
-    `${queries.length} quer${queries.length === 1 ? "y" : "ies"} searched with ${who}${cost ? ` (${cost.toFixed(2)} USD, billed to your plan)` : " (billed to your plan)"}`
+    `${queries.length} quer${queries.length === 1 ? "y" : "ies"} searched with ${who}${cost ? ` (${cost.toFixed(2)} USD, billed to ${payer})` : ` (billed to ${payer})`}`
   );
   return { lists, notes };
 }
@@ -42243,8 +42251,8 @@ var TOOLS = [
       urls: { kind: "string[]", description: "pages to add directly (a report PDF you already know)" },
       "search-with": {
         kind: "string",
-        description: "claude or codex: run the worklist through that agent CLI's own web search (headless, billed to the user's plan) \u2014 when you have no web search yourself",
-        enum: ["claude", "codex"]
+        description: "claude, codex or ccs (Claude Code on the user's API key): run the worklist through that agent CLI's own web search (headless, billed to the user's plan) \u2014 when you have no web search yourself",
+        enum: ["claude", "codex", "ccs"]
       },
       browser: { kind: "boolean", description: "render a refused or walled page in a separate browser (opens a window)" },
       limit: { kind: "number", description: "most sources kept (default 15)" },
@@ -51900,11 +51908,12 @@ async function doctorReport(opts = {}) {
     uvx: { installed: has("uvx"), purpose: "runs maxgfr/crible, the global fundamental screener" },
     pdftotext: { installed: has("pdftotext"), purpose: "optional: faster reading of Congress trade PDFs" },
     claude: {
-      installed: has(process.env.ULTRASTOCK_CLAUDE_CMD ?? "claude"),
+      installed: has((process.env.ULTRASTOCK_CLAUDE_CMD ?? "claude").split(/\s+/)[0]),
       purpose: "optional: research --search-with claude (Claude Code's web search, billed to your plan)"
     },
+    ccs: { installed: has("ccs"), purpose: "optional: research --search-with ccs (Claude Code on your API key: `ccs with anthropic`)" },
     codex: {
-      installed: has(process.env.ULTRASTOCK_CODEX_CMD ?? "codex"),
+      installed: has((process.env.ULTRASTOCK_CODEX_CMD ?? "codex").split(/\s+/)[0]),
       purpose: "optional: research --search-with codex (Codex's web search, billed to your plan)"
     },
     docker: { installed: has("docker"), purpose: "optional: `ultrastock searxng up` \u2014 a local SearXNG for research --engine-search" }
@@ -52002,8 +52011,8 @@ USAGE
   ultrastock cot <market> [--report legacy|tff] [--out <dir>] [--json]
   ultrastock sentiment [all|cnn|crypto|vix|putcall] [--out <dir>] [--json]
   ultrastock research <symbol|name> [--kind equity|etf|crypto|company] [--focus results] [--ask "<question>"] [--name <search name>] --out <run> [--json]
-  ultrastock research --out <run> --web-results <websearch.json|-> | --urls <a,b> | --search-with claude|codex | --engine-search [--browser] [--no-wayback] [--limit <n>] [--json]
-  ultrastock research <symbol|name> --search-with claude|codex [--search-model <m>] --out <run> [--json]   (worklist, search and ingestion in one call)
+  ultrastock research --out <run> --web-results <websearch.json|-> | --urls <a,b> | --search-with claude|codex|ccs | --engine-search [--browser] [--no-wayback] [--limit <n>] [--json]
+  ultrastock research <symbol|name> --search-with claude|codex|ccs [--search-model <m>] --out <run> [--json]   (worklist, search and ingestion in one call)
   ultrastock events [--days 60] [--since 7] [--country BR,US] [--all] [--book real|paper] [--limit <n>] [--out <dir>] [--json]
   ultrastock news <query> [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>] [--out <dir>] [--json]
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
@@ -52154,7 +52163,7 @@ COMMANDS
             round) and cross-checks a listed company against crible. \`check\`
             refuses a figure the cited document does not state. Hits come
             from your search (--web-results, - for stdin; --urls), or
-            --search-with claude|codex (your agent CLI's own web search,
+            --search-with claude|codex|ccs (your agent CLI's own web search,
             headless, batched \u2014 billed to your plan), or --engine-search (a
             local SearXNG from \`webindex stack up\`, then keyless engines).
             A refused or walled page falls back to its Wayback copy

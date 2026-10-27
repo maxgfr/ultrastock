@@ -178,8 +178,8 @@ export const TOOLS: Tool[] = [
       "search-with": {
         kind: "string",
         description:
-          "claude or codex: run the worklist through that agent CLI's own web search (headless, billed to the user's plan) — when you have no web search yourself",
-        enum: ["claude", "codex"],
+          "claude, codex or ccs (Claude Code on the user's API key): run the worklist through that agent CLI's own web search (headless, billed to the user's plan) — when you have no web search yourself",
+        enum: ["claude", "codex", "ccs"],
       },
       browser: { kind: "boolean", description: "render a refused or walled page in a separate browser (opens a window)" },
       limit: { kind: "number", description: "most sources kept (default 15)" },

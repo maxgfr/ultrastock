@@ -62,13 +62,18 @@ Three lanes, best first — they mix in one run:
    the worklist's queries, pass the hits with `--web-results <file>` (`-` reads
    stdin; a bare array of URLs works) or, over MCP, inline as `hits`. Free, and
    the best index you have. Add pages you already know with `--urls a,b`.
-2. **Delegated** — `--search-with claude|codex [--search-model <m>]`: ultrastock
+2. **Delegated** — `--search-with claude|codex|ccs [--search-model <m>]`: ultrastock
    runs the worklist through that CLI's own web search, headless, six queries a
    call, structured output holding the hits only (never a summary; a URL the
    search did not return fails to fetch). For a script, a scheduled run, an MCP
    client with no search, or a long worklist. **Billed to the user's plan**
    (measured: about 2 cents a query with Claude's small model; Codex counts
    against its quota) — use it when asked or when you cannot search yourself.
+   `ccs` runs Claude Code through Claude Code Switch on another provider —
+   `ccs with anthropic` by default (`ULTRASTOCK_CCS_PROVIDER`), i.e. the user's
+   own API key and credits rather than the subscription (measured: about 1.7
+   cents a query on the small model). `ULTRASTOCK_CLAUDE_CMD` / `_CODEX_CMD`
+   may also name a command with arguments.
    One call does it all: `research LVMH --focus results --search-with codex --out <run>`
    writes the worklist, searches it and ingests the pages.
 3. **Engines** — `--engine-search`: the engine's cascade, a local SearXNG first
