@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.8.0](https://github.com/maxgfr/ultrastock/compare/v1.7.0...v1.8.0) (2026-10-28)
+
+
+### Features
+
+* **morning:** the brief that starts the day, and a watchlist ([faf7aa6](https://github.com/maxgfr/ultrastock/commit/faf7aa675f35bde9c6fdd94ba48b16a29fed74ce)), closes [hi#impact](https://github.com/hi/issues/impact) [#52](https://github.com/maxgfr/ultrastock/issues/52)
+
 # [1.7.0](https://github.com/maxgfr/ultrastock/compare/v1.6.0...v1.7.0) (2026-10-27)
 
 
