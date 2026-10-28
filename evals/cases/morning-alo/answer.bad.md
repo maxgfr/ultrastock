@@ -2,3 +2,4 @@
 
 - ALO.PA cote 17.50 EUR [E4].
 - ALO.PA a perdu 3 % hier.
+- Alstom publie ses résultats le 2026-11-12 [E8].

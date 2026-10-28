@@ -24,6 +24,6 @@
   "status": 200,
   "body": "{\"totalCount\":1,\"data\":[{\"s\":\"EURONEXT:ALO\",\"d\":[1794934800,1,null]}]}",
   "url": "https://scanner.tradingview.com/global/scan",
-  "fetchedAt": "2026-10-28T09:55:04.577Z"
+  "fetchedAt": "2026-10-28T11:31:31.508Z"
  }
 }

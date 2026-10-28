@@ -17,7 +17,13 @@
 // reader as the answer: a figure the claim states must be in the document as
 // written ("4,2 Md€" against "4.2 billion"), and a figure the document holds
 // only far from the claim's words is noted as distant.
+//
+// A calendar date in a claim that cites evidence is held to it the same way:
+// it must be a date one of the cited items holds (its value, label, key or
+// as-of day) or that a cited document writes — in any usual form, so "le 17
+// novembre" stands for 2026-11-17. A results date copied wrong is refused.
 import { bm25Tokenize, citationTokensIn, collectCitations, EVIDENCE_TOKEN, extractClaimUnits, unitTexts } from "./engine.js";
+import { datesIn, extractDates, holdsDate, type WrittenDate } from "./core/dates.js";
 import { type EvidenceItem, EvidenceStore, readDocText } from "./core/evidence.js";
 
 export interface CheckProblem {
@@ -211,6 +217,10 @@ function lineFinder(lines: string[]) {
   };
 }
 
+/** A written date after `today` (YYYY-MM-DD); one without its year is not judged. */
+const isAhead = (d: WrittenDate, today: string) =>
+  d.year !== undefined && d.readings.every(([m, day]) => `${d.year}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}` > today);
+
 const words = (t: string) => t.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 const quote = (t: string) => (t.length > 70 ? `${t.slice(0, 67)}…` : t);
 
@@ -231,11 +241,12 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
   const problems: CheckProblem[] = [];
   const cited = new Set<string>();
   const now = (opts.now ?? new Date()).getTime();
+  const today = new Date(now).toISOString().slice(0, 10);
   let claims = 0;
   let figures = 0;
   const staleReported = new Set<string>();
   // Each cited document is read once: its text and its figures.
-  const docs = new Map<string, { text: string; figures: EvidenceItem[] } | null>();
+  const docs = new Map<string, { text: string; figures: EvidenceItem[]; dates?: Set<string> } | null>();
   const docOf = (item: EvidenceItem) => {
     if (!docs.has(item.id)) {
       const text = readDocText(dir, item);
@@ -243,14 +254,37 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
     }
     return docs.get(item.id) ?? undefined;
   };
+  // The dates an item holds: a data point's value, label, key and days; a document's text.
+  const itemDates = new Map<string, Set<string>>();
+  const datesOf = (item: EvidenceItem): Set<string> => {
+    if (item.doc) {
+      const d = docOf(item);
+      if (!d) return new Set();
+      d.dates ??= datesIn(d.text);
+      return d.dates;
+    }
+    if (!itemDates.has(item.id))
+      itemDates.set(item.id, datesIn([String(item.value), item.label, item.key, item.asOf ?? "", item.fetchedAt.slice(0, 10)].join(" ")));
+    return itemDates.get(item.id)!;
+  };
 
   for (const unit of extractClaimUnits(answer, unitOpts)) {
     for (const text of unitTexts(unit)) {
       const tokens = citationTokensIn(text, isEvidenceCitation);
       const figs = extractFigures(text);
+      const dates = extractDates(text.replace(/`[^`]*`/g, " ").replace(/\[[^\]]*\]/g, " "));
       const line = lineOf(text);
       if (!figs.length && !tokens.length) {
-        if (words(text) >= 12)
+        // A date ahead is one the user acts on (results, a decision): it needs its [E#]. A past one is context (an as-of day).
+        const ahead = dates.filter((d) => isAhead(d, today));
+        if (ahead.length) {
+          claims++;
+          problems.push({
+            line,
+            kind: "uncited",
+            message: `${ahead.map((d) => d.raw).join(", ")} stated without an [E#] — a date ahead cites the evidence that holds it: "${quote(text)}"`,
+          });
+        } else if (words(text) >= 12)
           problems.push({ line, kind: "unsourced", message: `a claim with no evidence cited — fine for reasoning, not for a fact: "${quote(text)}"` });
         continue;
       }
@@ -285,6 +319,16 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
         problems.push({ line, kind: "uncited", message: `${figs.map((f) => f.raw).join(", ")} stated without an [E#] — "${quote(text)}"` });
         continue;
       }
+      const cites = [...known, ...citedDocs];
+      if (cites.length)
+        for (const d of dates) {
+          if (cites.some((it) => holdsDate(datesOf(it), d))) continue;
+          problems.push({
+            line,
+            kind: "unsupported",
+            message: `the date ${d.raw} is in none of ${cites.map((c) => `[${c.id}]`).join(" ")} — cite the evidence that holds it (any usual form is read: 2026-11-17, 17/11/2026, 17 novembre 2026)`,
+          });
+        }
       for (const f of figs) {
         if (figureMatches(f, known)) continue;
         const holder = citedDocs.find((d) => figureMatches(f, docOf(d)!.figures));

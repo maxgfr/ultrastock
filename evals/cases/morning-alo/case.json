@@ -1,5 +1,5 @@
 {
-  "kind": "morning — a PEA holding Alstom: its next results after the window kept in sight, the line's session and result against cost, a name asked for, the Europe regime, the Fed and the ECB ahead",
+  "kind": "morning — a PEA holding Alstom: its next results after the window kept in sight, the line's session and result against cost, a name asked for, the Europe regime, the Fed and the ECB ahead, the calendar worklist for the web, a results date copied wrong",
   "morning": {
     "setup": [
       ["profile", "init", "--jurisdiction", "FR", "--currency", "EUR"],
@@ -20,5 +20,5 @@
       "SESSION.XPAR.next"
     ]
   },
-  "answers": { "good": 0, "bad": 2 }
+  "answers": { "good": 0, "bad": 3 }
 }

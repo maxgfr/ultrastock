@@ -42,9 +42,16 @@ interface IndexEntry {
   via?: string;
 }
 
-/** "LVMH Moët Hennessy - Louis Vuitton, Société Européenne" → "LVMH Moët Hennessy": what a search engine is asked. */
+/** The share-class words a listing's name carries ("NVIDIA Corporation Common Stock", "Alphabet Inc. Class A"). */
+export const SHARE_CLASS =
+  /\b(?:common stock|common shares?|ordinary shares?|class [a-c](?: (?:common )?(?:stock|shares?))?|american depositary shares?|depositary shares?|adrs?|ads)\b/gi;
+
+/** "LVMH Moët Hennessy - Louis Vuitton, Société Européenne" → "LVMH Moët Hennessy", "NVIDIA Corporation Common Stock" → "NVIDIA": what a search engine is asked. */
 export function searchName(name: string): string {
   const cut = name
+    .replace(SHARE_CLASS, " ")
+    .replace(/\s+/g, " ")
+    .trim()
     .replace(/\s*[-–,(].*$/, "")
     .replace(/\b(?:S\.?A\.?|SE|S\.?p\.?A\.?|N\.?V\.?|AG|PLC|plc|Inc\.?|Corp\.?|Corporation|Ltd\.?|Limited|Holdings?|Group|Groupe|Company|Co\.)$/i, "")
     .trim();
@@ -87,13 +94,15 @@ export interface ResearchStart {
   out?: string;
   /** Tag the subject's files, for a run that researches several subjects (see researchFiles). */
   tag?: string;
+  /** The year the queries ask about (default: this year) — the year of the date a calendar search confirms. */
+  year?: number;
 }
 
 /** A new worklist for a subject: resolve it, write its angles. Searches nothing. */
 export async function startResearch(raw: string, opts: ResearchStart = {}): Promise<{ dir: string; todo: ResearchTodo; notes: string[] }> {
   const sub = await subjectOf(raw, opts.kind, opts.name);
   const dir = runDirFor(opts.out, `research-${(sub.s.symbol ?? sub.s.name).replace(/[^A-Za-z0-9.-]+/g, "_")}-${runId()}`);
-  const subject: ResearchSubject = { ...sub.s, focus: opts.focus ?? "general", ask: opts.ask, year: clockNow().getUTCFullYear() };
+  const subject: ResearchSubject = { ...sub.s, focus: opts.focus ?? "general", ask: opts.ask, year: opts.year ?? clockNow().getUTCFullYear() };
   const todo: ResearchTodo = {
     schema: 1,
     ...subject,

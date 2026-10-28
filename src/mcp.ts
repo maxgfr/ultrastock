@@ -186,7 +186,11 @@ export const TOOLS: Tool[] = [
     params: {
       subject: { kind: "string", description: "a symbol, an ISIN or a company name (omit when ingesting)", positional: 0 },
       kind: { kind: "string", description: "equity, etf, crypto or company (a name with no listing)", enum: ["equity", "etf", "crypto", "company"] },
-      focus: { kind: "string", description: "general (default) or results (the latest publication)", enum: ["general", "results"] },
+      focus: {
+        kind: "string",
+        description: "general (default), results (the latest publication) or calendar (the issuer's financial calendar: next results, general meeting)",
+        enum: ["general", "results", "calendar"],
+      },
       ask: { kind: "string", description: "one precise question the research answers" },
       hits: {
         kind: "hits",

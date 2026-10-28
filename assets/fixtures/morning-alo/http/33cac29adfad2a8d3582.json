@@ -24,6 +24,6 @@
   "status": 200,
   "body": "{\"totalCount\":1,\"data\":[{\"s\":\"XETR:SAP\",\"d\":[1801112400,-1,null]}]}",
   "url": "https://scanner.tradingview.com/global/scan",
-  "fetchedAt": "2026-10-28T09:55:06.577Z"
+  "fetchedAt": "2026-10-28T11:31:33.510Z"
  }
 }

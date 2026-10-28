@@ -88,11 +88,12 @@ USAGE
   ultrastock fx [USD,GBP,…] [--out <dir>] [--json]
   ultrastock cot <market> [--report legacy|tff] [--out <dir>] [--json]
   ultrastock sentiment [all|cnn|crypto|vix|putcall] [--out <dir>] [--json]
-  ultrastock research <symbol|name> [--kind equity|etf|crypto|company] [--focus results] [--ask "<question>"] [--name <search name>] [--for <tag>] --out <run> [--json]
+  ultrastock research <symbol|name> [--kind equity|etf|crypto|company] [--focus results|calendar] [--ask "<question>"] [--name <search name>] [--for <tag>] --out <run> [--json]
   ultrastock research --out <run> [--for <tag>] --web-results <websearch.json|-> | --urls <a,b> | --search-with claude|codex|ccs | --engine-search [--browser] [--no-wayback] [--limit <n>] [--json]
   ultrastock research <symbol|name> --search-with claude|codex|ccs [--search-model <m>] --out <run> [--json]   (worklist, search and ingestion in one call)
   ultrastock events [--days 60] [--since 7] [--country BR,US] [--all] [--book real|paper] [--limit <n>] [--out <dir>] [--json]
-  ultrastock morning [--days 14] [--book real|paper] [--symbols A,B] [--market eu,us,crypto] [--notify] [--out <dir>] [--json]
+  ultrastock morning [--days 14] [--book real|paper] [--symbols A,B] [--market eu,us,crypto] [--research-with claude|codex|ccs [--search-model <m>]] [--no-news] [--notify] [--out <dir>] [--json]
+  ultrastock morning --confirm --out <dir> [--json]   (after the web search of the run's calendar worklists)
   ultrastock news <query> [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>] [--out <dir>] [--json]
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
   ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
@@ -245,13 +246,19 @@ COMMANDS
             review; the market regime, sessions and closures, high-impact macro
             today and on the next weekday, rate decisions and elections that
             touch the book — all ranked into a "To watch" list, each flag with
-            the command that digs into it. --notify sends the HIGH flags.
+            the command that digs into it; the last two days' headlines. Each
+            flagged results date gets a financial-calendar worklist for the
+            web: --research-with searches it in the run, \`morning --confirm\`
+            reads the pages your own search brought, and says whether the
+            issuer's page confirms the date. --notify sends the HIGH flags.
   news      Recent articles (Google News, GDELT; Yahoo for a symbol) — titles
             are external text, fenced as untrusted.
   research  Web sources compiled into evidence: writes the angles and queries
             (FR + EN) for your own web search — business model, results,
             governance, controversies, short-sellers…; an ETF's factsheet, KID,
-            replication, PEA; --focus results for the latest report, --ask for
+            replication, PEA; --focus results for the latest report, --focus
+            calendar for the dates ahead (financial calendar, next results,
+            general meeting), --ask for
             one precise question — then, with --web-results, fetches the pages
             and PDFs, drops walls and duplicates, registers each as a document
             [E#] (sources/E#.md, DOSSIER.md; an angle with fewer than two
@@ -705,6 +712,8 @@ export const VALUE_FLAGS = [
 export const BOOL_FLAGS = [
   "json",
   "all",
+  "confirm",
+  "no-news",
   "mark-seen",
   "refresh",
   "offline",
@@ -820,7 +829,7 @@ const SPEC: CliSpec = {
     firecrawl: ["json"],
     stack: ["json"],
     events: ["days", "since", "country", "all", "book", "limit", "out", ...NET],
-    morning: ["days", "book", "symbols", "market", "notify", "out", ...NET],
+    morning: ["days", "book", "symbols", "market", "research-with", "search-model", "no-news", "confirm", "notify", "out", ...NET],
     research: [
       "kind",
       "focus",

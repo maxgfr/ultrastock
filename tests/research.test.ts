@@ -228,6 +228,12 @@ describe("sources", () => {
     expect(searchName("LVMH Moët Hennessy - Louis Vuitton, Société Européenne")).toBe("LVMH Moët Hennessy");
     expect(searchName("Apple Inc.")).toBe("Apple");
   });
+  it("drops the listing's share-class words, so the issuer's own site is recognised", () => {
+    expect(searchName("NVIDIA Corporation Common Stock")).toBe("NVIDIA");
+    expect(searchName("Alphabet Inc. Class A Common Stock")).toBe("Alphabet");
+    expect(searchName("Taiwan Semiconductor Manufacturing Company Ltd. American Depositary Shares")).toBe("Taiwan Semiconductor Manufacturing");
+    expect(officialHost("nvidianews.nvidia.com", searchName("NVIDIA Corporation Common Stock"))).toBe(true);
+  });
 });
 
 describe("recorded plumbing", () => {

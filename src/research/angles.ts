@@ -9,13 +9,14 @@
 // KID, holdings, replication, PEA, tracking difference), a crypto-asset
 // (tokenomics, incidents, regulation) or a company with no listing, whose
 // figures exist only in what it publishes and what the press reports.
-// `--focus results` narrows to the latest publication; `--ask` turns one
+// `--focus results` narrows to the latest publication, `--focus calendar` to
+// the dates the issuer announces ahead; `--ask` turns one
 // precise question into its own angles.
 import { rankedKeywords } from "../engine.js";
 
 export const RESEARCH_KINDS = ["equity", "etf", "crypto", "company"] as const;
 export type ResearchKind = (typeof RESEARCH_KINDS)[number];
-export const RESEARCH_FOCUSES = ["general", "results"] as const;
+export const RESEARCH_FOCUSES = ["general", "results", "calendar"] as const;
 export type ResearchFocus = (typeof RESEARCH_FOCUSES)[number];
 
 export interface ResearchAngle {
@@ -103,6 +104,19 @@ const RESULTS: Template[] = [
   ["results-reaction", "Market and analysts' reaction", "{n} résultats {y} réaction marché analystes", "{n} {y} earnings reaction analysts"],
 ];
 
+// The dates ahead as the issuer announces them: its financial calendar, the next
+// results, the general meeting — the confirmation a data feed's date needs.
+const CALENDAR: Template[] = [
+  [
+    "financial-calendar",
+    "The issuer's financial calendar",
+    "{n} calendrier financier {y} agenda investisseurs",
+    "{n} financial calendar {y} investor relations",
+  ],
+  ["results-date", "The next results date", "{n} date de publication des résultats {y}", "{n} {y} results date announcement"],
+  ["agm-date", "The general meeting", "{n} assemblée générale {y} date", "{n} {y} annual general meeting date"],
+];
+
 // A private company publishes no filing: its own reports and the press stand in.
 const COMPANY_RESULTS: Template[] = [
   ["results-release", "What it published", "{n} rapport {y} annonce chiffres", "{n} {y} report announcement figures"],
@@ -140,6 +154,7 @@ export function researchAngles(s: ResearchSubject): ResearchAngle[] {
     return out;
   }
   if (s.focus === "results") return (s.kind === "company" ? COMPANY_RESULTS : RESULTS).map((t) => angle(t, s));
+  if (s.focus === "calendar") return CALENDAR.map((t) => angle(t, s));
   const table = s.kind === "etf" ? ETF : s.kind === "crypto" ? CRYPTO : s.kind === "company" ? COMPANY : EQUITY;
   return table.map((t) => angle(t, s));
 }
