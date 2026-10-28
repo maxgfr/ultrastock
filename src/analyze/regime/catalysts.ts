@@ -74,7 +74,7 @@ export const MACRO_REGIONS: Record<string, { countries: string[]; ff: string; ev
   CAD: { countries: ["Canada"], ff: "CAD", events: HEADLINE },
 };
 /** Stablecoin quotes move with the dollar's calendar. */
-const currencyOf = (i: Instrument) => (i.market === "crypto" ? "USD" : /^(USDT|USDC|FDUSD|BUSD)$/.test(i.currency) ? "USD" : i.currency);
+export const currencyOf = (i: Instrument) => (i.market === "crypto" ? "USD" : /^(USDT|USDC|FDUSD|BUSD)$/.test(i.currency) ? "USD" : i.currency);
 
 export interface EarningsDate {
   date: string;
@@ -204,14 +204,106 @@ async function macroCalendar(days: readonly string[]): Promise<Array<Dataset | E
   return out;
 }
 
+export interface AgendaItem {
+  date: string;
+  currency: string;
+  key: string;
+  /** "country | event" as the calendar writes it: external text. */
+  text: string;
+}
+
+/**
+ * The high-impact macro releases of several currencies from `from` to `to`,
+ * read once for many instruments: ForexFactory's high-impact week and Nasdaq's
+ * day-by-day calendar, filtered by MACRO_REGIONS as `catalysts` does. Keys
+ * `<ns>.macro.<date>.<n>`, values fenced as untrusted.
+ */
+export async function macroAgenda(
+  currencies: readonly string[],
+  from: string,
+  to: string,
+  now: Date,
+  ns = "AGENDA",
+): Promise<{ datasets: Dataset[]; items: AgendaItem[]; notes: string[] }> {
+  const notes: string[] = [];
+  const regions = [...new Set(currencies)].flatMap((c) => {
+    const r = MACRO_REGIONS[c];
+    if (!r) notes.push(`no macro calendar mapping for ${c}`);
+    return r ? [{ ccy: c, ...r }] : [];
+  });
+  if (!regions.length) return { datasets: [], items: [], notes };
+  const days: string[] = [];
+  for (let d = from; d <= to && days.length < MAX_MACRO_DAYS; d = shiftDay(d, 1)) if (![0, 6].includes(new Date(`${d}T00:00:00Z`).getUTCDay())) days.push(d);
+  const side = await settle<unknown>({
+    "ForexFactory high-impact week": () => forexFactoryCalendar({ now, minImpact: "high" }),
+    "Nasdaq economic calendar": () => macroCalendar(days),
+  });
+  for (const f of side.failed) notes.push(`unavailable — ${f}`);
+  const sources: Array<{ ds: Dataset; match: (r: (typeof regions)[number], country: string, event: string) => boolean }> = [];
+  const ff = side.ok["ForexFactory high-impact week"] as Dataset | undefined;
+  if (ff) sources.push({ ds: ff, match: (r, c) => c === r.ff });
+  const nq = (side.ok["Nasdaq economic calendar"] as Array<Dataset | Error> | undefined) ?? [];
+  const failedDays = nq.map((d, i) => (d instanceof Error ? days[i] : undefined)).filter(Boolean);
+  if (failedDays.length) notes.push(`Nasdaq's economic calendar gave no usable answer for ${failedDays.join(", ")}: releases on those days may be missing`);
+  for (const d of nq) if (!(d instanceof Error)) sources.push({ ds: d, match: (r, c, e) => r.countries.includes(c) && r.events.test(e) });
+
+  const datasets: Dataset[] = [];
+  const items: AgendaItem[] = [];
+  const perDay = new Map<string, number>();
+  for (const { ds, match } of sources) {
+    const points: Point[] = [];
+    const seen = new Set<string>();
+    for (const p of ds.points) {
+      const m = /^CAL\.econ\.(\d{4}-\d{2}-\d{2})\.\d+$/.exec(p.key);
+      if (!m || typeof p.value !== "string") continue;
+      const date = m[1]!;
+      const [country = "", event = ""] = p.value.split(" | ");
+      const r = regions.find((x) => match(x, country, event));
+      if (date < from || date > to || !r || seen.has(`${date}|${country}|${event}`)) continue;
+      seen.add(`${date}|${country}|${event}`);
+      const n = (perDay.get(date) ?? 0) + 1;
+      perDay.set(date, n);
+      const key = `${ns}.macro.${date}.${n}`;
+      points.push({
+        key,
+        label: `high-impact ${r.ccy} macro release on ${date} (${ds.provenance.source})`,
+        value: `${country} | ${event}`,
+        untrusted: true,
+        asOf: date,
+      });
+      items.push({ date, currency: r.ccy, key, text: `${country} | ${event}` });
+    }
+    if (points.length)
+      datasets.push({
+        kind: "calendar",
+        title: `High-impact macro releases ${from} → ${to} (${ds.provenance.source})`,
+        subject: ns,
+        points,
+        provenance: ds.provenance,
+        notes: [
+          ds.provenance.source === "nasdaq"
+            ? "Nasdaq's calendar has no impact level: kept by the event list in MACRO_REGIONS"
+            : "ForexFactory's own high-impact flag",
+        ],
+      });
+  }
+  items.sort((a, b) => a.date.localeCompare(b.date) || a.key.localeCompare(b.key));
+  return { datasets, items, notes };
+}
+
 interface TimelineEntry {
   date: string;
   text: string;
   keys: string[];
 }
 
-/** Everything dated in the window for one instrument. */
-export async function catalystsReport(raw: string, days: number, now: Date = clockNow()): Promise<Report> {
+/**
+ * Everything dated in the window for one instrument. `light` keeps the
+ * company's own dates (earnings, ex-dividend) and leaves out the filings, the
+ * macro calendar, the holidays and the option chain — for callers that read
+ * many symbols and fetch the shared calendars once.
+ */
+export async function catalystsReport(raw: string, days: number, now: Date = clockNow(), opts: { light?: boolean } = {}): Promise<Report> {
   const { instrument: inst } = await resolveSymbol(raw);
   const sym = inst.symbol;
   const ns = `${sym}.cat`;
@@ -220,9 +312,10 @@ export async function catalystsReport(raw: string, days: number, now: Date = clo
   const inWindow = (d: string) => d >= today && d <= end;
   const market = calendarFor(inst);
   const us = inst.market === "us";
+  const full = !opts.light;
   const company = us && inst.kind === "equity";
   const ccy = currencyOf(inst);
-  const region = MACRO_REGIONS[ccy];
+  const region = full ? MACRO_REGIONS[ccy] : undefined;
   const datasets: Dataset[] = [];
   const notes: string[] = [];
   const timeline: TimelineEntry[] = [];
@@ -242,7 +335,7 @@ export async function catalystsReport(raw: string, days: number, now: Date = clo
 
   const tvTicker = tvTickerFor(inst);
   // EDGAR asks for a paced client: the filings first, then the insider forms (the ticker map is then cached).
-  const sec8k = company ? secFilings(sym, { forms: ["8-K"], days: 30, now, limit: 20 }).catch((e: Error) => e) : undefined;
+  const sec8k = company && full ? secFilings(sym, { forms: ["8-K"], days: 30, now, limit: 20 }).catch((e: Error) => e) : undefined;
   const side = await settle<unknown>({
     ...(company ? { "Nasdaq earnings date": () => nasdaqEarningsDate(sym) } : {}),
     ...(company ? { "Nasdaq dividends": () => nasdaqDividends(sym, { limit: 12 }) } : {}),
@@ -270,7 +363,7 @@ export async function catalystsReport(raw: string, days: number, now: Date = clo
       : {}),
     ...(region ? { "ForexFactory high-impact week": () => forexFactoryCalendar({ now, minImpact: "high" }) } : {}),
     ...(region ? { "Nasdaq economic calendar": () => macroCalendar(macroDays) } : {}),
-    ...(us ? { "CBOE option chain": () => cboeChain(sym) } : {}),
+    ...(us && full ? { "CBOE option chain": () => cboeChain(sym) } : {}),
   });
   const ok = side.ok;
   for (const f of side.failed) {
@@ -417,7 +510,7 @@ export async function catalystsReport(raw: string, days: number, now: Date = clo
   }
 
   // Macro
-  if (!region) notes.push(`no macro calendar mapping for ${ccy}`);
+  if (!region && full) notes.push(`no macro calendar mapping for ${ccy}`);
   const macroPts = new Map<string, { prov: DatasetProvenance; points: Point[] }>();
   const addMacro = (ds: Dataset, filter: (country: string, event: string) => boolean) => {
     const seen = new Set<string>();
@@ -465,8 +558,8 @@ export async function catalystsReport(raw: string, days: number, now: Date = clo
   for (const e of macroPts.values()) for (const p of e.points) byDay.set(p.asOf!, [...(byDay.get(p.asOf!) ?? []), p.key]);
   for (const [d, keys] of byDay) timeline.push({ date: d, text: `${keys.length} high-impact ${ccy} macro release(s)`, keys });
 
-  // Holidays
-  if (market && market !== "CRYPTO") {
+  // Holidays (a light caller reads one calendar per venue itself)
+  if (full && market && market !== "CRYPTO") {
     const years = [...new Set([today.slice(0, 4), end.slice(0, 4)])].map(Number);
     const hol = years.flatMap((y) => holidays(market, y)).filter((h) => inWindow(h.date));
     const pts: Point[] = hol.map((h) => ({
@@ -481,7 +574,7 @@ export async function catalystsReport(raw: string, days: number, now: Date = clo
       ]);
     for (const h of hol)
       timeline.push({ date: h.date, text: h.kind === "closed" ? "market closed" : `early close ${h.closeAt}`, keys: [`${ns}.holiday.${h.date}`] });
-  } else if (!market) notes.push(`no exchange calendar for ${inst.mic ?? inst.market} here: holidays not listed, sessions counted as weekdays`);
+  } else if (full && !market) notes.push(`no exchange calendar for ${inst.mic ?? inst.market} here: holidays not listed, sessions counted as weekdays`);
 
   // Options expected move to the first expiry after the window
   const chain = ok["CBOE option chain"] as Awaited<ReturnType<typeof cboeChain>> | undefined;
@@ -540,7 +633,7 @@ export async function catalystsReport(raw: string, days: number, now: Date = clo
         keys: [`${ns}.options.move1sd`, `${ns}.options.move1sdPct`],
       });
     } else notes.push(expiry ? `no two-sided ATM quote at ${expiry} — no expected move` : `no option expiry on or after ${end}`);
-  } else if (!us) notes.push("options-implied move: US listings only (CBOE)");
+  } else if (!us && full) notes.push("options-implied move: US listings only (CBOE)");
 
   // Clusters
   const clusters = eventClusters(
@@ -573,7 +666,7 @@ export async function catalystsReport(raw: string, days: number, now: Date = clo
     provenance: derived,
     notes: [
       ...notes,
-      ...(inst.market !== "us" && inst.market !== "crypto"
+      ...(full && inst.market !== "us" && inst.market !== "crypto"
         ? ["8-K and insider filings: SEC registrants only — no keyless equivalent read for this listing"]
         : []),
     ],

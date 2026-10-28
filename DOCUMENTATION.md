@@ -71,7 +71,7 @@ in it is sent anywhere, and files are created 0600.
 | `ledger/<book>.jsonl` | append-only transactions; positions, PMP, FIFO lots and cash are recomputed, never stored |
 | `tickets/`, `audit/orders.jsonl` | every order's life, appended and fsync'd before and after anything executes |
 | `journal/`, `theses/`, `knowledge/` | decisions and their settlements, theses, lessons, imported documents |
-| `state/` | alert rules, live limits, approval codes (scrypt-hashed) |
+| `state/` | alert rules, the watchlist, live limits, approval codes (scrypt-hashed) |
 | `KILL` | the kill switch |
 
 ## From a view to an order

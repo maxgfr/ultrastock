@@ -75,16 +75,18 @@ for (const name of readdirSync(join(here, "cases")).sort()) {
   console.log(`${name} — ${spec.kind}`);
   const run = mkdtempSync(join(scratch, `${name}-`));
   const source = suite === "offline" ? ["--fixture", join(root, spec.fixture)] : [];
-  if (spec.events) {
-    // An events case: a small book set up in the eval's own home, then the calendar, the study and the impact.
+  if (spec.events || spec.morning) {
+    // A book case: a small book set up in the eval's own home, then `events` (the calendar, the study and the impact)
+    // or `morning` (the day's brief over the book and the names followed).
     if (suite !== "offline") continue;
+    const [cmd, c] = spec.events ? ["events", spec.events] : ["morning", spec.morning];
     // Its own home: the book it sets up must not leak into the other cases' portfolio context.
     const home = mkdtempSync(join(scratch, `${name}-home-`));
-    for (const step of spec.events.setup ?? []) cli(step, home);
-    const v = cli(["events", ...spec.events.args, "--out", run, ...source], home);
+    for (const step of c.setup ?? []) cli(step, home);
+    const v = cli([cmd, ...c.args, "--out", run, ...source], home);
     ok(
       v.status === 0,
-      `events ${spec.events.args.join(" ")} (${v.status === 0 ? `${v.json.ahead.length} ahead, ${v.json.past.length} past` : v.stderr.trim()})`,
+      `${cmd} ${c.args.join(" ")} (${v.status === 0 ? (spec.events ? `${v.json.ahead.length} ahead, ${v.json.past.length} past` : `${v.json.flags.length} flags`) : v.stderr.trim()})`,
     );
     if (v.status !== 0) continue;
     const ev = cli(["evidence", run], home);

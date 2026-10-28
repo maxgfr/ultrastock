@@ -23,6 +23,7 @@ import {
 } from "../journal/journal.js";
 import { hitRates, readSettlements, settleDecisions } from "../journal/settle.js";
 import { readLedger } from "../portfolio/ledger.js";
+import { addToWatchlist, loadWatchlist, removeFromWatchlist } from "../portfolio/watchlist.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
 
 const out = (asJson: boolean, value: unknown, text: string): void => {
@@ -216,4 +217,30 @@ export async function watchCommand(args: CommandArgs, asJson: boolean): Promise<
   throw new UsageError(
     'usage: ultrastock watch list|add <SYM> "<condition>"|add 8k <SYM>|add stops|add events [--days 14] [--min-weight 2]|rm <id>|run [--notify]',
   );
+}
+
+export async function watchlistCommand(args: CommandArgs, asJson: boolean): Promise<void> {
+  const [sub = "list", ...syms] = args.positional;
+  if (sub === "list") {
+    const w = loadWatchlist();
+    return out(
+      asJson,
+      w,
+      w.map((x) => `${x.symbol.padEnd(12)} ${x.addedAt.slice(0, 10)}${x.note ? `  ${x.note}` : ""}`).join("\n") || "the watchlist is empty",
+    );
+  }
+  if (sub === "add") {
+    if (!syms.length) throw new UsageError('usage: ultrastock watchlist add <SYM> [<SYM> …] [--note "<why>"]');
+    // Stored as the listing it resolves to, so a name and its ticker are one entry.
+    const resolved: string[] = [];
+    for (const s of syms) resolved.push((await resolveSymbol(s)).instrument.symbol);
+    const w = addToWatchlist(resolved, argValue(args, "note"), clockNow());
+    return out(asJson, w, `watchlist: ${resolved.join(", ")} added (${w.length} name${w.length === 1 ? "" : "s"}) — \`ultrastock morning\` reads it`);
+  }
+  if (sub === "rm") {
+    if (!syms[0]) throw new UsageError("usage: ultrastock watchlist rm <SYM>");
+    const removed = removeFromWatchlist(syms[0]);
+    return out(asJson, { removed }, removed ? `${syms[0].toUpperCase()} removed from the watchlist` : `${syms[0].toUpperCase()} is not on the watchlist`);
+  }
+  throw new UsageError('usage: ultrastock watchlist list|add <SYM> [<SYM> …] [--note "<why>"]|rm <SYM>');
 }

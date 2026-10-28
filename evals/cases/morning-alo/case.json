@@ -1,0 +1,24 @@
+{
+  "kind": "morning — a PEA holding Alstom: its next results after the window kept in sight, the line's session and result against cost, a name asked for, the Europe regime, the Fed and the ECB ahead",
+  "morning": {
+    "setup": [
+      ["profile", "init", "--jurisdiction", "FR", "--currency", "EUR"],
+      ["portfolio", "deposit", "pea", "10000", "--currency", "EUR", "--date", "2026-06-01"],
+      ["portfolio", "add", "buy", "--account", "pea", "--symbol", "ALO.PA", "--quantity", "100", "--price", "20", "--currency", "EUR", "--date", "2026-06-01"]
+    ],
+    "args": ["--market", "eu", "--symbols", "MC.PA"]
+  },
+  "fixture": "assets/fixtures/morning-alo",
+  "calcs": [],
+  "expect": {
+    "evidenceMin": 50,
+    "keys": [
+      "ALO.PA.cat.earnings.date",
+      "ALO.PA.quote.changePct",
+      "PORTFOLIO.real.ALO.PA.unrealizedPct",
+      "MC.PA.quote.price",
+      "SESSION.XPAR.next"
+    ]
+  },
+  "answers": { "good": 0, "bad": 2 }
+}

@@ -1,6 +1,6 @@
 ---
 name: ultrastock
-description: Investing copilot for real money — US, European and world stocks and ETFs (PEA/CTO), crypto, prediction markets — that analyses, screens, values and reads the market regime from public, keyless data (exchanges, regulators, filings), registers every figure as an evidence [E#], and checks that the answer states no number the evidence does not hold. Use only when the user explicitly asks for ultrastock or for an investment analysis, e.g. "analyse LVMH", "should I buy NVDA", "find quality growth stocks in Europe", "is the market risk-on", "what is NVDA worth", "analyse cette action", "faut-il acheter", "trouve-moi des actions value éligibles PEA", "cherche des values", "compare ces ETF", "analyse le dernier rapport d'Anthropic", "le marché est-il haussier". Decision support, not a licensed adviser; places no order.
+description: Investing copilot for real money — US, European and world stocks and ETFs (PEA/CTO), crypto, prediction markets — that analyses, screens, values and reads the market regime from public, keyless data (exchanges, regulators, filings), registers every figure as an evidence [E#], and checks that the answer states no number the evidence does not hold. Use only when the user explicitly asks for ultrastock or for an investment analysis, e.g. "analyse LVMH", "should I buy NVDA", "find quality growth stocks in Europe", "is the market risk-on", "what is NVDA worth", "analyse cette action", "faut-il acheter", "trouve-moi des actions value éligibles PEA", "cherche des values", "compare ces ETF", "analyse le dernier rapport d'Anthropic", "le marché est-il haussier", "fais-moi le brief du matin", "qu'est-ce que je dois surveiller aujourd'hui". Decision support, not a licensed adviser; places no order.
 license: MIT
 metadata:
   version: 1.7.0
@@ -52,6 +52,8 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 
 | The user wants | Do | Read |
 |---|---|---|
+| to start the day ("brief du matin", "résume mes actions et le marché", "quoi surveiller aujourd'hui", "quand sont les prochains résultats de mes lignes") | `morning --out <dir>` → `MORNING.md`: To watch first, then the lines, the watchlist, the market; dig into each HIGH flag with its command, answer, `check --max-age 36h` | [morning](references/morning.md) |
+| to follow names without holding them ("ajoute Alstom à ma watchlist") | `watchlist add <SYM> [--note "…"]`, `watchlist list|rm` | [morning](references/morning.md) |
 | an analysis of a stock, an ETF or a coin ("should I buy…") | `analyze <symbol> --out <dir>` (`--depth quick|standard|deep`), read `BRIEF.md`, run the debate in `RUNBOOK.md`, `decide`, `check`, `report` | [analysis-workflow](references/analysis-workflow.md) |
 | a complete analysis ("analyse complète", everything on it) | `analyze <symbol> --depth full --out <dir>`, then step 0 of `RUNBOOK.md`: your web search on `RESEARCH.todo.json`, `research --out <dir> --web-results <file>`, then the debate | [analysis-workflow](references/analysis-workflow.md), [research](references/research.md) |
 | undervalued stocks ("cherche des values", deep value, dividend, GARP, magic formula) | `value [--style …] [--region world|europe|pea|us|FR,DE] --out <dir>` → `VALUE.md`, then its runbook (`research --ask` on the first names; `--research-with claude|codex` does it in the run, billed to the user's plan) | [value-search](references/value-search.md) |
@@ -148,6 +150,7 @@ ultrastock etf propose [--goal core|growth|income|defensive] [--envelope pea|cto
 ultrastock value [--style quality-value|deep-value|dividend|garp|magic-formula|all] [--region world|europe|pea|us|<ISO,…>] [--top] [--watch] [--research-with claude|codex [--research-top 3]]
 ultrastock regime [--market us|eu|crypto] · sectors [--market us|eu] · catalysts <symbol> [--days]
 ultrastock events [--days 60] [--since 7] [--country BR,US] [--all] · watch add events [--days 14] [--min-weight 2]
+ultrastock morning [--days 14] [--book real|paper] [--symbols A,B] [--market eu,us,crypto] [--notify] · watchlist list|add <SYM…> [--note]|rm <SYM>
 ultrastock stats <sym> [<sym> …] [--benchmark] · options-analysis <sym> [--expiry] [--strategy] [--spot-moves=…]
 ultrastock crypto-analysis <coin> | yields <symbol> · predict-analysis kalshi|manifold … [--my-probability] [--kalshi-fee]
 ultrastock portfolio show|perf|risk|stress|optimize|rebalance|location|lookthrough|income|goals [--book real|paper] [--out <dir>]
@@ -214,6 +217,7 @@ Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
 ## References
 
 - [analysis-workflow](references/analysis-workflow.md) — reading a brief, forming a view, writing the answer.
+- [morning](references/morning.md) — the morning brief: the names it follows, the flags and their thresholds, the watchlist, writing the day's answer.
 - [citation-format](references/citation-format.md) — `[E#]`, grouping, `calc`, and what `check` refuses.
 - [data-sources](references/data-sources.md) — which source answers for which symbol, its delay and its limits.
 - [onboarding-profile](references/onboarding-profile.md) — the profile, the suitability questionnaire, envelopes, jurisdiction rules.

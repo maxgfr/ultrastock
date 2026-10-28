@@ -160,6 +160,25 @@ export const TOOLS: Tool[] = [
     },
   },
   {
+    name: "morning",
+    description:
+      "The brief that starts the day (MORNING.md): the user's held lines with the last session's change, their watchlist, open theses, alert symbols and open tickets; each name's next earnings and ex-dividend dates with the sessions to go; stops near the price, alert conditions true now, theses due for review; the market regime, sessions and closures, high-impact macro today and on the next weekday, rate decisions and elections touching the book — ranked into a 'To watch' list, each flag with the command that digs into it.",
+    command: ["morning"],
+    params: {
+      days: { kind: "number", description: "days of dated events ahead (default 14, max 60)" },
+      book: { kind: "string", description: "real (default) or paper" },
+      symbols: { kind: "string[]", description: "extra symbols for this brief only: ALO.PA, NVDA" },
+      market: { kind: "string[]", description: "regimes to read (us, eu, crypto); default from the names followed" },
+      out: OUT,
+    },
+  },
+  {
+    name: "watchlist_list",
+    description: "The names the user follows without holding them (`watchlist add` records them; `morning` reads them).",
+    command: ["watchlist", "list"],
+    params: {},
+  },
+  {
     name: "research",
     description:
       "Web research compiled into evidence. With a subject: write the worklist (RESEARCH.todo.json: angles and FR+EN queries — business model, results, governance, controversies, short-sellers; ETF factsheet/KID/replication/PEA; focus=results for the latest report, ask for one precise question). Then run those queries with YOUR web search and call again with out + hits (inline) to ingest: pages and PDFs fetched, walls rescued (Wayback, optional browser) or dropped, linked reports followed, each page a document [E#] (sources/E#.md, DOSSIER.md; an angle with fewer than two sources gets a rephrased second round in the worklist). No web search of your own: search-with claude|codex. check refuses a figure the cited page does not state.",

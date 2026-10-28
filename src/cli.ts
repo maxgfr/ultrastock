@@ -31,7 +31,8 @@ import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "
 import { backtestCommand, strategyCommand } from "./commands/backtest.js";
 import { brokerCommand } from "./commands/broker.js";
 import { serveMcp } from "./mcp.js";
-import { decideCommand, journalCommand, knowledgeCommand, watchCommand } from "./commands/journal.js";
+import { decideCommand, journalCommand, knowledgeCommand, watchCommand, watchlistCommand } from "./commands/journal.js";
+import { morningCommand } from "./commands/morning.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
 import { taxCommand } from "./commands/tax.js";
 import { paperCommand, planCommand, portfolioCommand, ticketCommand } from "./commands/trading.js";
@@ -91,6 +92,7 @@ USAGE
   ultrastock research --out <run> [--for <tag>] --web-results <websearch.json|-> | --urls <a,b> | --search-with claude|codex|ccs | --engine-search [--browser] [--no-wayback] [--limit <n>] [--json]
   ultrastock research <symbol|name> --search-with claude|codex|ccs [--search-model <m>] --out <run> [--json]   (worklist, search and ingestion in one call)
   ultrastock events [--days 60] [--since 7] [--country BR,US] [--all] [--book real|paper] [--limit <n>] [--out <dir>] [--json]
+  ultrastock morning [--days 14] [--book real|paper] [--symbols A,B] [--market eu,us,crypto] [--notify] [--out <dir>] [--json]
   ultrastock news <query> [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>] [--out <dir>] [--json]
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
   ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
@@ -146,6 +148,7 @@ USAGE
   ultrastock mcp [--transport stdio|http] [--port 8765] [--token <24+ chars>]
   ultrastock strategy list | show <name|file.json> | validate <name|file.json> | new <name> [--like <strategy>] [--json]
   ultrastock watch list|add <symbol> <condition>|add 8k <symbol>|add stops|add events [--days 14] [--min-weight 2]|rm <id>|run [--notify] [--message <text>] [--json]
+  ultrastock watchlist list|add <symbol> [<symbol> …] [--note <text>]|rm <symbol> [--json]
   ultrastock options <symbol> [--expiries <n>] [--out <dir>] [--json]
   ultrastock options-analysis <symbol> [--expiry <date>] [--strategy <spec>] [--spot-moves=<list>] [--rate <pct>] [--out <dir>] [--json]
   ultrastock stats <symbol> [<symbol> …] [--days <n>] [--benchmark <symbol>] [--out <dir>] [--json]
@@ -234,6 +237,15 @@ COMMANDS
             reaction, prediction markets and the implied move of the country ETF,
             and for a past event what it did to the index, the currency and your
             own lines (EVENTS.md). \`watch add events\` warns ahead of time.
+  morning   The brief that starts the day (MORNING.md): the held lines with the
+            last session's change, the watchlist, open theses, alert symbols
+            and open tickets; their next earnings and ex-dividend dates with the
+            sessions to go; stops near the price, alert conditions true now
+            (read without consuming \`watch run\`'s edges), theses due for
+            review; the market regime, sessions and closures, high-impact macro
+            today and on the next weekday, rate decisions and elections that
+            touch the book — all ranked into a "To watch" list, each flag with
+            the command that digs into it. --notify sends the HIGH flags.
   news      Recent articles (Google News, GDELT; Yahoo for a symbol) — titles
             are external text, fenced as untrusted.
   research  Web sources compiled into evidence: writes the angles and queries
@@ -480,6 +492,8 @@ COMMANDS
             rsi14 < 30"), important 8-Ks for a US symbol, or a stop reached by an
             open position. \`watch run\` is idempotent: schedule it. --notify sends to
             ULTRASTOCK_NTFY_URL (with ULTRASTOCK_NTFY_TOKEN) and allowlisted webhooks.
+  watchlist The names followed without holding them (state/watchlist.json),
+            stored as the listing they resolve to; \`morning\` reads them.
   options   An option chain summary per expiry — ATM IV, put/call open interest
             and volume, totals: US listings from CBOE (15 min delayed), BTC and
             ETH from Deribit with the DVOL volatility index.
@@ -572,6 +586,7 @@ export const VALUE_FLAGS = [
   "broker",
   "venues",
   "market",
+  "symbols",
   "days",
   "year",
   "expiries",
@@ -757,6 +772,7 @@ export const COMMANDS = [
   "news",
   "research",
   "events",
+  "morning",
   "searxng",
   "firecrawl",
   "stack",
@@ -770,6 +786,7 @@ export const COMMANDS = [
   "tax",
   "knowledge",
   "watch",
+  "watchlist",
   "backtest",
   "strategy",
   "broker",
@@ -803,6 +820,7 @@ const SPEC: CliSpec = {
     firecrawl: ["json"],
     stack: ["json"],
     events: ["days", "since", "country", "all", "book", "limit", "out", ...NET],
+    morning: ["days", "book", "symbols", "market", "notify", "out", ...NET],
     research: [
       "kind",
       "focus",
@@ -954,6 +972,7 @@ const SPEC: CliSpec = {
     journal: ["book", "symbol", "thesis", "invalidation", "catalysts", "review-by", "note", "outcome", "ticket-id", "tags", "tag", "out", ...NET],
     knowledge: ["title", "json"],
     watch: ["notify", "message", "days", "min-weight", ...NET],
+    watchlist: ["note", ...NET],
     options: ["expiries", "out", ...NET],
     "options-analysis": ["expiry", "strategy", "spot-moves", "rate", "out", ...NET],
     stats: ["days", "benchmark", "out", ...NET],
@@ -978,7 +997,7 @@ function usage(msg: string): never {
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 function arity(args: CommandArgs): number {
-  if (args.command === "doctor" || args.command === "version" || args.command === "value" || args.command === "events") return 0;
+  if (args.command === "doctor" || args.command === "version" || args.command === "value" || args.command === "events" || args.command === "morning") return 0;
   if (args.command === "check" || args.command === "calc") return 2;
   if (args.command === "profile") return 3;
   if (args.command === "crypto" || args.command === "calendar" || args.command === "macro" || args.command === "crypto-analysis") return 2;
@@ -999,6 +1018,7 @@ function arity(args: CommandArgs): number {
   if (
     args.command === "journal" ||
     args.command === "watch" ||
+    args.command === "watchlist" ||
     args.command === "tax" ||
     args.command === "backtest" ||
     args.command === "strategy" ||
@@ -1186,6 +1206,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "tax") return taxCommand(args, asJson);
   if (cmd === "knowledge") return knowledgeCommand(args, asJson);
   if (cmd === "watch") return watchCommand(args, asJson);
+  if (cmd === "watchlist") return watchlistCommand(args, asJson);
   if (cmd === "backtest") return backtestCommand(args, asJson);
   if (cmd === "strategy") return strategyCommand(args, asJson);
   if (cmd === "broker") return brokerCommand(args, asJson);
@@ -1212,6 +1233,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "news") return newsCommand(args, asJson);
   if (cmd === "research") return researchCommand(args, asJson);
   if (cmd === "events") return eventsCommand(args, asJson);
+  if (cmd === "morning") return morningCommand(args, asJson);
   if (cmd === "searxng" || cmd === "firecrawl" || cmd === "stack") return stackCommand(args, asJson);
   if (cmd === "universe") return universeCommand(args, asJson);
 
