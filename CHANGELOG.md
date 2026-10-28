@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.9.0](https://github.com/maxgfr/ultrastock/compare/v1.8.0...v1.9.0) (2026-10-28)
+
+
+### Features
+
+* **morning:** confirm results dates on the web, check dates, headlines in the brief ([07a45d8](https://github.com/maxgfr/ultrastock/commit/07a45d8765bc6cfe765675a89284e325d4760699)), closes [#54](https://github.com/maxgfr/ultrastock/issues/54)
+
 # [1.8.0](https://github.com/maxgfr/ultrastock/compare/v1.7.0...v1.8.0) (2026-10-28)
 
 
