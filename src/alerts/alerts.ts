@@ -19,7 +19,7 @@ import { contentHash, env, writeFileAtomic } from "../engine.js";
 import { buildBook, readLedger } from "../portfolio/ledger.js";
 import { secFilings } from "../providers/fundamentals/sec.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
-import type { Bar } from "../providers/types.js";
+import type { Bar, PriceSeries } from "../providers/types.js";
 import { listTickets } from "../trading/tickets.js";
 
 export type RuleKind = "expr" | "8k" | "stops" | "events";
@@ -146,7 +146,11 @@ export function removeRule(id: string): boolean {
 }
 
 /** Evaluate one expression rule on bars; pure. Returns the new state and the event when it fires. */
-export function evaluateRule(rule: AlertRule, bars: readonly Bar[], at: string): { rule: AlertRule; event?: AlertEvent; value?: boolean } {
+export function evaluateRule(
+  rule: AlertRule,
+  bars: readonly Bar[],
+  at: string,
+): { rule: AlertRule; event?: AlertEvent; value?: boolean; values?: Record<string, number> } {
   const s = alertSeries(bars);
   const i = bars.length - 1;
   const v = evaluateExpr(compileExpr(rule.expr!), { get: (name, off) => s[name]?.[i + off] });
@@ -162,10 +166,56 @@ export function evaluateRule(rule: AlertRule, bars: readonly Bar[], at: string):
   return {
     rule: next,
     value: now,
+    values,
     event: fire
       ? { rule: rule.id, symbol: rule.symbol, at, message: rule.message ?? `${rule.symbol}: ${rule.expr} is now true (bar ${bars[i]!.date})`, values }
       : undefined,
   };
+}
+
+export interface PeekedAlert {
+  rule: string;
+  symbol: string;
+  expr: string;
+  message?: string;
+  /** The bar the condition was read on. */
+  bar: string;
+  values: Record<string, number>;
+  provenance: PriceSeries["provenance"];
+}
+
+/**
+ * The expression rules whose condition is true on the latest bar, for the
+ * symbols given (every rule when omitted). Read-only: the rules' edge state is
+ * not saved, so a brief that peeks never eats an alert `watch run` would fire.
+ */
+export async function peekAlerts(now = clockNow(), symbols?: readonly string[]): Promise<{ hits: PeekedAlert[]; errors: string[] }> {
+  const want = symbols ? new Set(symbols.map((s) => s.toUpperCase())) : undefined;
+  const rules = loadRules().filter((r) => r.kind === "expr" && r.symbol && r.expr && (!want || want.has(r.symbol)));
+  const hits: PeekedAlert[] = [];
+  const errors: string[] = [];
+  const series = new Map<string, PriceSeries>();
+  for (const rule of rules) {
+    try {
+      if (!series.has(rule.symbol!))
+        series.set(rule.symbol!, await getHistory(await resolveSymbol(rule.symbol!), { from: new Date(now.getTime() - 420 * 86_400_000), to: now }));
+      const s = series.get(rule.symbol!)!;
+      const r = evaluateRule(rule, s.bars, now.toISOString());
+      if (r.value === true)
+        hits.push({
+          rule: rule.id,
+          symbol: rule.symbol!,
+          expr: rule.expr!,
+          message: rule.message,
+          bar: s.bars[s.bars.length - 1]!.date.slice(0, 10),
+          values: r.values ?? {},
+          provenance: s.provenance,
+        });
+    } catch (e) {
+      errors.push(`${rule.id} (${rule.symbol}): ${(e as Error).message}`);
+    }
+  }
+  return { hits, errors };
 }
 
 /** Run every rule once; fires only on edges and unseen events. */

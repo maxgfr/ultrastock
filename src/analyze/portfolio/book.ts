@@ -43,13 +43,15 @@ export interface Holding {
   assetClass: AssetClass;
   isin?: string;
   price?: number;
+  /** The last session's change, % (only when the book was loaded with `dayChange`). */
+  changePct?: number;
   /** Units of base per one unit of the trade currency. */
   fx?: number;
   valueBase?: number;
   /** % of the whole portfolio, cash included. */
   weightPct?: number;
   /** Evidence keys of the quantity, the quote, the rate and the derived value. */
-  keys: { quantity: string; price?: string; fx?: string; value?: string; weight?: string };
+  keys: { quantity: string; price?: string; change?: string; fx?: string; value?: string; weight?: string };
 }
 
 export interface MarkedBook {
@@ -158,8 +160,10 @@ export async function referenceRates(
  * Load, price and weigh a book. Registers into `f`: the ledger dataset
  * (quantities, average costs, cash), one quote dataset per symbol, the FX
  * dataset, and the derived value and weight of every position and the total.
+ * With `dayChange`, each quote dataset also carries the last session's change
+ * (off by default: the other analyses' evidence ids stay as they were).
  */
-export async function loadMarkedBook(bookName: string, f: Findings, now: Date): Promise<MarkedBook> {
+export async function loadMarkedBook(bookName: string, f: Findings, now: Date, opts: { dayChange?: boolean } = {}): Promise<MarkedBook> {
   const profile = loadProfile();
   if (!profile) throw new Error("no profile: run `ultrastock profile init` first");
   const txs = readLedger(bookName);
@@ -228,12 +232,18 @@ export async function loadMarkedBook(bookName: string, f: Findings, now: Date): 
     const q = r.quote;
     h.price = q.price;
     h.keys.price = `${h.symbol}.quote.price`;
+    const change = opts.dayChange && q.changePct !== undefined && Number.isFinite(q.changePct);
+    if (change) {
+      h.changePct = q.changePct;
+      h.keys.change = `${h.symbol}.quote.changePct`;
+    }
     f.input({
       kind: "quote",
       title: `${h.symbol} quote`,
       subject: h.symbol,
       points: [
         { key: h.keys.price, label: `${h.symbol} latest price`, value: q.price, unit: q.instrument.currency },
+        ...(change ? [{ key: h.keys.change!, label: `${h.symbol} change over the last session`, value: Number(q.changePct!.toFixed(4)), unit: "%" }] : []),
         { key: `${h.symbol}.instrument.kind`, label: `${h.symbol} instrument kind (${h.instrument.market} listing)`, value: h.instrument.kind },
         ...(h.isin ? [{ key: `${h.symbol}.instrument.isin`, label: `${h.symbol} ISIN`, value: h.isin }] : []),
       ],

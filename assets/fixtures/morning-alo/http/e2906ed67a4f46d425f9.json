@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://live.euronext.com/en/instrumentSearch/searchJSON?q=ALO"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "[{\"value\":\"FR0010220475\",\"isin\":\"FR0010220475\",\"mic\":\"XPAR\",\"label\":\"\\u003Cspan class=\\u0027name\\u0027\\u003E\\u003Ca href=\\u0027\\/en\\/product\\/equities\\/FR0010220475-XPAR\\u0027 style=\\u0027color: #007aff !important;\\u0027\\u003EALSTOM\\u003C\\/a\\u003E\\u003C\\/span\\u003E\\u003Cspan class=\\u0027symbol\\u0027\\u003EALO\\u003C\\/span\\u003E\\u003Cspan class=\\u0027mic\\u0027\\u003EXPAR\\u003C\\/span\\u003E\",\"link\":\"\\/en\\/product\\/equities\\/FR0010220475-XPAR\",\"name\":\"ALSTOM\"},{\"value\":\"FR0010220475\",\"isin\":\"FR0010220475\",\"mic\":\"DPAR\",\"label\":\"\\u003Cspan class=\\u0027name\\u0027\\u003E\\u003Ca href=\\u0027\\/en\\/product\\/stock-options\\/AS1-DPAR\\u0027 style=\\u0027color: #007aff !important;\\u0027\\u003EAlstom (100)\\u003C\\/a\\u003E\\u003C\\/span\\u003E\\u003Cspan class=\\u0027symbol\\u0027\\u003EAS1\\u003C\\/span\\u003E\\u003Cspan class=\\u0027mic\\u0027\\u003EDPAR\\u003C\\/span\\u003E\",\"link\":\"\\/en\\/product\\/stock-options\\/AS1-DPAR\",\"name\":\"Alstom (100)\"},{\"value\":\"FR0010220475\",\"isin\":\"FR0010220475\",\"mic\":\"DPAR\",\"label\":\"\\u003Cspan class=\\u0027name\\u0027\\u003E\\u003Ca href=\\u0027\\/en\\/product\\/stock-options\\/AS4-DPAR\\u0027 style=\\u0027color: #007aff !important;\\u0027\\u003EAlstom - European Stock Option (100)\\u003C\\/a\\u003E\\u003C\\/span\\u003E\\u003Cspan class=\\u0027symbol\\u0027\\u003EAS4\\u003C\\/span\\u003E\\u003Cspan class=\\u0027mic\\u0027\\u003EDPAR\\u003C\\/span\\u003E\",\"link\":\"\\/en\\/product\\/stock-options\\/AS4-DPAR\",\"name\":\"Alstom - European Stock Option (100)\"},{\"value\":\"\",\"isin\":\"\",\"mic\":\"\",\"label\":\"See all results\",\"link\":\"\\/en\\/search_instruments\\/alo?restMic\",\"name\":\"\"}]",
+  "url": "https://live.euronext.com/en/instrumentSearch/searchJSON?q=ALO",
+  "fetchedAt": "2026-10-28T09:55:06.907Z"
+ }
+}
