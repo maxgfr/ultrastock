@@ -52,7 +52,7 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 
 | The user wants | Do | Read |
 |---|---|---|
-| to start the day ("brief du matin", "résume mes actions et le marché", "quoi surveiller aujourd'hui", "quand sont les prochains résultats de mes lignes") | `morning --out <dir>` → `MORNING.md`: To watch first, then the lines, the watchlist, the market; dig into each HIGH flag with its command, answer, `check --max-age 36h` | [morning](references/morning.md) |
+| to start the day ("brief du matin", "résume mes actions et le marché", "quoi surveiller aujourd'hui", "quand sont les prochains résultats de mes lignes") | `morning --out <dir>` → `MORNING.md`: To watch first, then the lines, the watchlist, headlines, the market; confirm the flagged results dates on the web (your search of `RESEARCH.<SYM>.todo.json`, `research --for <SYM> --web-results`, `morning --confirm`), dig into each HIGH flag, answer, `check --max-age 36h` | [morning](references/morning.md) |
 | to follow names without holding them ("ajoute Alstom à ma watchlist") | `watchlist add <SYM> [--note "…"]`, `watchlist list|rm` | [morning](references/morning.md) |
 | an analysis of a stock, an ETF or a coin ("should I buy…") | `analyze <symbol> --out <dir>` (`--depth quick|standard|deep`), read `BRIEF.md`, run the debate in `RUNBOOK.md`, `decide`, `check`, `report` | [analysis-workflow](references/analysis-workflow.md) |
 | a complete analysis ("analyse complète", everything on it) | `analyze <symbol> --depth full --out <dir>`, then step 0 of `RUNBOOK.md`: your web search on `RESEARCH.todo.json`, `research --out <dir> --web-results <file>`, then the debate | [analysis-workflow](references/analysis-workflow.md), [research](references/research.md) |
@@ -106,7 +106,7 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | the week's events: data releases, earnings, dividends | `calendar econ|earnings|dividends [date]` | [macro-markets](references/macro-markets.md) |
 | sentiment and positioning | `sentiment`, `cot <market>` | [macro-markets](references/macro-markets.md) |
 | news on a company or a theme | `news "<query>" [--symbol] [--lang fr]` | [news-and-external-text](references/news-and-external-text.md) |
-| web sources compiled and checked: business model, controversies, short-sellers, the latest report ("analyse le dernier rapport de X"), one precise question | `research <subject> [--focus results] [--ask "…"] --out <run>`, your web search, then `research --out <run> --web-results <file>` — no search of your own: `--search-with claude|codex|ccs` | [research](references/research.md) |
+| web sources compiled and checked: business model, controversies, short-sellers, the latest report ("analyse le dernier rapport de X"), one precise question | `research <subject> [--focus results|calendar] [--ask "…"] --out <run>`, your web search, then `research --out <run> --web-results <file>` — no search of your own: `--search-with claude|codex|ccs` | [research](references/research.md) |
 | an option chain, implied volatility | `options <symbol>` (US: CBOE; BTC/ETH: Deribit) | [options-crypto-prediction](references/options-crypto-prediction.md) |
 | crypto market structure, DeFi, on-chain | `crypto global|top|coin|derivatives|defi|yields|stables|fees|onchain|dex|holders` | [options-crypto-prediction](references/options-crypto-prediction.md) |
 | what prediction markets price (Fed, recession, elections) | `predict kalshi|manifold …` (Polymarket only where lawful) | [options-crypto-prediction](references/options-crypto-prediction.md) |
@@ -128,7 +128,7 @@ ultrastock quote <symbol> [--out <dir>] [--json]
 ultrastock history <symbol> [--from <date>] [--to <date>] [--interval 1d|1w|4h|1h|15m] [--limit <n>] [--json]
 ultrastock calc <run> "<formula>" --label <text> [--unit <unit>] [--json]
 ultrastock calc <run> --from <E#> "<figure as the document writes it>" --label <text> [--json]
-ultrastock research <subject> [--kind equity|etf|crypto|company] [--focus results] [--ask "<question>"] [--search-with claude|codex|ccs] --out <run>
+ultrastock research <subject> [--kind equity|etf|crypto|company] [--focus results|calendar] [--ask "<question>"] [--search-with claude|codex|ccs] --out <run>
 ultrastock research --out <run> [--for <tag>] --web-results <file|-> | --urls <a,b> | --search-with claude|codex|ccs | --engine-search [--browser] [--no-wayback]
 ultrastock searxng|firecrawl|stack up|down|status   (optional local search stack, Docker)
 ultrastock evidence <run> [--json]
@@ -150,7 +150,8 @@ ultrastock etf propose [--goal core|growth|income|defensive] [--envelope pea|cto
 ultrastock value [--style quality-value|deep-value|dividend|garp|magic-formula|all] [--region world|europe|pea|us|<ISO,…>] [--top] [--watch] [--research-with claude|codex [--research-top 3]]
 ultrastock regime [--market us|eu|crypto] · sectors [--market us|eu] · catalysts <symbol> [--days]
 ultrastock events [--days 60] [--since 7] [--country BR,US] [--all] · watch add events [--days 14] [--min-weight 2]
-ultrastock morning [--days 14] [--book real|paper] [--symbols A,B] [--market eu,us,crypto] [--notify] · watchlist list|add <SYM…> [--note]|rm <SYM>
+ultrastock morning [--days 14] [--book real|paper] [--symbols A,B] [--market eu,us,crypto] [--research-with claude|codex|ccs] [--no-news] [--notify] · morning --confirm --out <run>
+ultrastock watchlist list|add <SYM…> [--note]|rm <SYM>
 ultrastock stats <sym> [<sym> …] [--benchmark] · options-analysis <sym> [--expiry] [--strategy] [--spot-moves=…]
 ultrastock crypto-analysis <coin> | yields <symbol> · predict-analysis kalshi|manifold … [--my-probability] [--kalshi-fee]
 ultrastock portfolio show|perf|risk|stress|optimize|rebalance|location|lookthrough|income|goals [--book real|paper] [--out <dir>]

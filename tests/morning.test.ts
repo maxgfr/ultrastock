@@ -216,6 +216,13 @@ describe("morning on a recorded fixture", () => {
       expect(md).toMatch(/## To watch/);
       expect(md).toMatch(/\| ALO\.PA \| [\d.]+ EUR \[E\d+\] \|/);
       expect(md).toMatch(/### Europe regime/);
+      // The flagged results date: a calendar worklist for the web, not searched yet; the line's headlines.
+      expect(r.confirmations.map((c) => `${c.symbol} ${c.status}`)).toEqual(["ALO.PA not-searched"]);
+      const todo = JSON.parse(readFileSync(join(dir, "RESEARCH.ALO.PA.todo.json"), "utf8"));
+      expect(todo.focus).toBe("calendar");
+      expect(md).toMatch(/## Dates on the web\n\n<!-- web-dates -->\n- ALO\.PA earnings \d{4}-\d{2}-\d{2} \(tradingview\) \[E\d+\]: not searched yet/);
+      expect(md).toMatch(/## Headlines — the last two days/);
+      expect(store.items.some((i) => /^ALO\.PA\.news\.\d+$/.test(i.key) && /alstom/i.test(String(i.value)))).toBe(true);
       expect(readFileSync(join(homeDir(), "state", "alerts.json"), "utf8")).toBe(alertsBefore);
 
       // No profile, no book: the watchlist alone still gets its brief.

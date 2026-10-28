@@ -24,6 +24,6 @@
   "status": 200,
   "body": "{\"totalCount\":1,\"data\":[{\"s\":\"EURONEXT:MC\",\"d\":[1801137600,0,1796083200]}]}",
   "url": "https://scanner.tradingview.com/global/scan",
-  "fetchedAt": "2026-10-28T09:55:14.022Z"
+  "fetchedAt": "2026-10-28T11:31:41.551Z"
  }
 }

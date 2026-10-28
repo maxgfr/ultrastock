@@ -33,7 +33,10 @@ its own financial number reader (signs, `%`, `bn`/`Md`, French and English
 separators, more than eight figures per row), and requires each figure to be
 among the values of the `[E#]` the same claim cites, at the precision written.
 Dates, years, indicator settings, index names and spans are not figures. A
-closing sources list is set aside.
+calendar date is checked on its own (`src/core/dates.ts` reads ISO, numeric,
+French and English forms): in a claim that cites evidence it must be a date a
+cited `[E#]` holds or a cited document writes, and a date ahead with no `[E#]`
+fails. A closing sources list is set aside.
 
 ## Determinism
 

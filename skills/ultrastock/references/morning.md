@@ -9,6 +9,9 @@ ultrastock morning --out <run>                          # real book, 14 days of 
 ultrastock morning --book paper --days 7 --out <run>
 ultrastock morning --symbols ALO.PA,NVDA --out <run>    # extra names for this brief only
 ultrastock morning --market eu,us --out <run>           # force the regimes read
+ultrastock morning --research-with claude --out <run>  # also search the flagged results dates on the web (billed to the plan)
+ultrastock morning --confirm --out <run>                # after YOUR web search of the run's calendar worklists
+ultrastock morning --no-news --out <run>                # skip the headlines
 ultrastock morning --notify                             # also send the HIGH flags (ntfy / webhooks)
 ultrastock watchlist add ALO.PA SAP.DE --note "earnings season"
 ultrastock watchlist list · watchlist rm SAP.DE
@@ -46,8 +49,42 @@ no ledger, the holdings are skipped and said so; the rest still runs.
   and the closures of each venue; the high-impact macro releases of the
   currencies in play today and on the next weekday; the Fed and ECB decisions
   in the window, and the elections that touch the book (with its weight).
-- **Not available**: general-meeting (AGM) dates — no keyless source gives
-  them. Say "unavailable", never guess.
+- **Headlines** of the last two days for the held lines, the names that moved
+  3 % or more and those reporting within 3 sessions (Google News, the company's
+  name searched as a phrase): only titles that name the company, never a quote
+  page. External text — what was written, not what is true.
+- **Not in any data feed**: general-meeting (AGM) dates. The calendar worklist
+  asks the web for them; without a page that states one, say "unavailable".
+
+## Dates on the web
+
+A results date from a feed is unofficial. For each flagged one (at most 4),
+the brief writes a `research --focus calendar` worklist in the run
+(`RESEARCH.<SYM>.todo.json`: the issuer's financial calendar, the next
+results, the general meeting) and the section **Dates on the web** says what
+the pages read state:
+
+| Status | Meaning — what to write |
+|---|---|
+| **confirmed** | the issuer's own page states the date: cite it (and the derived `[E#]` that records the confirmation) |
+| press-only | only pages off the issuer's domain state it: "selon la presse" |
+| **differs** | the issuer's page dates its next results otherwise: give the issuer's date, and say the feed disagrees |
+| unconfirmed | none of the pages read states it: say so; the next round's queries are in the worklist |
+| not searched | no page read yet: search it |
+
+The loop, with your own web search (free, best index):
+
+1. `morning --out <run>` → read `RESEARCH.<SYM>.todo.json`.
+2. Run each query with your web search; save the hits as
+   `[{ "angle": "financial-calendar", "query": "…", "results": [{ "url": "…", "title": "…" }] }]`
+   (prefer the issuer's site: `…/finance/financial-calendar`, the investor
+   pages, the last release that announces the next date).
+3. `research --out <run> --for <SYM> --web-results <file>` — the pages become
+   documents `[E#]`.
+4. `morning --confirm --out <run>` — rewrites **Dates on the web**.
+
+`--research-with claude|codex|ccs` does steps 2–4 inside `morning` (billed to
+the user's plan, about 2 cents a query).
 
 ## The flags ("To watch")
 
@@ -68,12 +105,14 @@ Each flag ends with the command that digs into it.
    say that a stop does not protect against a gap — the size decides the risk.
 2. Then the lines (session move, result against the average cost, weight),
    the names followed, the market in two or three sentences.
-3. Say which dates are projected or unofficial (TradingView, Nasdaq/Zacks
-   "expected"): confirm on the issuer's investor-relations page before acting.
+3. A results date is cited to the issuer's page once **confirmed**; until then
+   say it is projected or unofficial (TradingView, Nasdaq/Zacks "expected").
 4. Dig before concluding: `catalysts <SYM>` (US: the options-implied move),
-   `research <SYM> --focus results`, `analyze <SYM>`, `portfolio news`.
-5. `ultrastock check <run> <run>/answer.md --max-age 36h`. One line: decision
-   support, not personalised advice.
+   `research <SYM> --focus results`, `analyze <SYM>`; a headline that matters
+   is read, not paraphrased: `research <SYM> --ask "…"`.
+5. `ultrastock check <run> <run>/answer.md --max-age 36h` — it holds every date
+   to the evidence: a results date copied wrong, or a date ahead with no
+   `[E#]`, fails. One line: decision support, not personalised advice.
 
 ## Every day
 

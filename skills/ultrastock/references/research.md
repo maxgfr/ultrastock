@@ -21,6 +21,10 @@ cheap?", "what did Anthropic report this year?").
    - `--focus results`: the latest publication — the release, the investor
      presentation, the filing itself (10-K/10-Q, URD, half-year report), the call
      transcript, guidance, segments, the market's reaction.
+   - `--focus calendar`: the dates ahead as the issuer announces them — its
+     financial calendar, the next results date, the general meeting (no data
+     feed holds AGM dates). `morning` writes one per flagged results date, and
+     `morning --confirm` reads them back (see [morning](morning.md)).
    - `--ask "<question>"`: angles built from one precise question.
    - `--kind equity|etf|crypto|company` overrides the detection; `--name` the
      name searched with.

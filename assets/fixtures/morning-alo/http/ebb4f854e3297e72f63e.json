@@ -8,6 +8,6 @@
   "status": 200,
   "body": "[{\"value\":\"LU1681043599\",\"isin\":\"LU1681043599\",\"mic\":\"ETFP\",\"label\":\"\\u003Cspan class=\\u0027name\\u0027\\u003E\\u003Ca href=\\u0027\\/en\\/product\\/etfs\\/LU1681043599-ETFP\\u0027 style=\\u0027color: #007aff !important;\\u0027\\u003EAmundi MSCI World Swap UCITS ETF EUR Acc\\u003C\\/a\\u003E\\u003C\\/span\\u003E\\u003Cspan class=\\u0027symbol\\u0027\\u003ECW8\\u003C\\/span\\u003E\\u003Cspan class=\\u0027mic\\u0027\\u003EETFP\\u003C\\/span\\u003E\",\"link\":\"\\/en\\/product\\/etfs\\/LU1681043599-ETFP\",\"name\":\"AMUETFMXWOETFP\"},{\"value\":\"LU1681043599\",\"isin\":\"LU1681043599\",\"mic\":\"XPAR\",\"label\":\"\\u003Cspan class=\\u0027name\\u0027\\u003E\\u003Ca href=\\u0027\\/en\\/product\\/etfs\\/LU1681043599-XPAR\\u0027 style=\\u0027color: #007aff !important;\\u0027\\u003EAmundi MSCI World Swap UCITS ETF EUR Acc\\u003C\\/a\\u003E\\u003C\\/span\\u003E\\u003Cspan class=\\u0027symbol\\u0027\\u003ECW8\\u003C\\/span\\u003E\\u003Cspan class=\\u0027mic\\u0027\\u003EXPAR\\u003C\\/span\\u003E\",\"link\":\"\\/en\\/product\\/etfs\\/LU1681043599-XPAR\",\"name\":\"AMUNDI ETF MSCI WR\"},{\"value\":\"\",\"isin\":\"\",\"mic\":\"\",\"label\":\"See all results\",\"link\":\"\\/en\\/search_instruments\\/cw8?restMic\",\"name\":\"\"}]",
   "url": "https://live.euronext.com/en/instrumentSearch/searchJSON?q=CW8",
-  "fetchedAt": "2026-10-28T09:55:14.122Z"
+  "fetchedAt": "2026-10-28T11:31:41.655Z"
  }
 }

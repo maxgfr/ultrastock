@@ -1,6 +1,6 @@
 // `research`: web sources, compiled into evidence the answer cites and `check` verifies.
 //
-//   research <subject> [--kind equity|etf|crypto|company] [--focus results] [--ask "<question>"] --out <run>
+//   research <subject> [--kind equity|etf|crypto|company] [--focus results|calendar] [--ask "<question>"] --out <run>
 //       writes RESEARCH.todo.json — the angles and their queries (FR + EN) — for the agent's own web search
 //   research --out <run> [--for <tag>] --web-results websearch.json [--engine-search] [--limit 15]
 //       reads what the agent found: fetches, cleans, dedupes and ranks the pages, registers each as a
@@ -26,7 +26,7 @@ function oneOf<T extends string>(v: string | undefined, all: readonly T[], flag:
 
 function printTodo(todo: ResearchTodo, dir: string, notes: string[]): string {
   const lines = [
-    `Research worklist — ${todo.name}${todo.symbol ? ` (${todo.symbol})` : ""}, ${todo.kind}${todo.ask ? `, question: ${todo.ask}` : todo.focus === "results" ? ", latest results" : ""}`,
+    `Research worklist — ${todo.name}${todo.symbol ? ` (${todo.symbol})` : ""}, ${todo.kind}${todo.ask ? `, question: ${todo.ask}` : todo.focus === "results" ? ", latest results" : todo.focus === "calendar" ? ", financial calendar" : ""}`,
     `run: ${dir}`,
     "",
     "Search each query with your own web search (one angle per query, French and English):",
