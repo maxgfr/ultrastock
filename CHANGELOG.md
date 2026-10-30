@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.9.1](https://github.com/maxgfr/ultrastock/compare/v1.9.0...v1.9.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* **engine:** update shared engines and maintenance tool ([1f40a10](https://github.com/maxgfr/ultrastock/commit/1f40a1003c8bcb64be93cdde2746e256b5e64e2a))
+
 # [1.9.0](https://github.com/maxgfr/ultrastock/compare/v1.8.0...v1.9.0) (2026-10-28)
 
 
