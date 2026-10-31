@@ -63,7 +63,7 @@
     "@types/node": "^20.19.43",
     "@vitest/coverage-v8": "^4.1.11",
     "semantic-release": "^25.0.9",
-    "tsup": "^8.5.1",
+    "tsup": "^9.0.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11",
     "@maxgfr/webindex": "https://codeload.github.com/maxgfr/webindex/tar.gz/f96bf60c3fa99fb474720f9449f3d1d880ee7268"
