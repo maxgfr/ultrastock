@@ -95,8 +95,9 @@ function stripNonFigures(text: string): string {
   );
 }
 
+// A thousands group is exactly three digits: "0.775886" and "5,8741" are decimals, not "0.775" or "5,874" cut short.
 const FIGURE_RE =
-  /(?<![\p{L}\p{N}_.,])([+\-−–]?)\s?([$€£]\s?)?(\d{1,3}(?:[ ,.  ']\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(\s?(?:%|pts?|bps|x|×)|\s?(?:k|K|M|m|mn|Mn|mio|Md|Mds|md|mds|bn|Bn|B|T|tn|million|millions|milliard|milliards|billion|billions|trillion|trillions|mille)\b)?(\s?(?:[$€£]|EUR|USD|USDT|USDC|GBP|CHF|NOK|BTC|ETH)\b|\s?[$€£])?/gu;
+  /(?<![\p{L}\p{N}_.,])([+\-−–]?)\s?([$€£]\s?)?(\d{1,3}(?:[ ,.  ']\d{3})+(?!\d)(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(\s?(?:%|pts?|bps|x|×)|\s?(?:k|K|M|m|mn|Mn|mio|Md|Mds|md|mds|bn|Bn|B|T|tn|million|millions|milliard|milliards|billion|billions|trillion|trillions|mille)\b)?(\s?(?:[$€£]|EUR|USD|USDT|USDC|GBP|CHF|NOK|BTC|ETH)\b|\s?[$€£])?/gu;
 const PARAMETER_AFTER =
   /^[-\s]?(?:days?|d|jours?|j|weeks?|wks?|w|semaines?|months?|mo|mois|years?|yrs?|y|ans?|années?|bars?|séances?|sessions?|hours?|h|heures?|min|minutes?|périodes?|periods?|ème|e|er|re|st|nd|rd|th)\b/iu;
 

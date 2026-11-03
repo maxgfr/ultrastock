@@ -17,6 +17,11 @@ describe("extractFigures", () => {
     expect(values("a 31.4x multiple, +12 bps")).toEqual([31.4, 0.12]);
     expect(extractFigures("up 12.34%")[0]).toMatchObject({ percent: true, decimals: 2 });
   });
+  it("reads a decimal with more than three digits whole, not as a thousands group", () => {
+    expect(values("HHI 0.775886, correlation 0.1349")).toEqual([0.775886, 0.1349]);
+    expect(values("le real a perdu 5,8741 %, à 15,1923 % du plus haut")).toEqual([5.8741, 15.1923]);
+    expect(values("1 234,5678 € et 1,234.5678 USD")).toEqual([1234.5678, 1234.5678]);
+  });
   it("ignores dates, times, years, parameters, identifiers and citation tokens", () => {
     expect(values("au 23/10/2026, le 2026-10-23 à 17:35, le 23 oct. 2026, on Oct 23, 2026")).toEqual([]);
     expect(values("RSI(14), MACD(12,26,9), SMA 200, MM50, EMA20 and the CAC 40 or S&P 500")).toEqual([]);
