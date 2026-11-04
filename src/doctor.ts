@@ -53,6 +53,8 @@ const PROBES: Array<{ source: string; url: string }> = [
   { source: "euronext", url: "https://live.euronext.com/en/instrumentSearch/searchJSON?q=FR0000121014" },
   { source: "nasdaq", url: "https://api.nasdaq.com/api/quote/AAPL/info?assetclass=stocks" },
   { source: "binance", url: "https://api.binance.com/api/v3/ping" },
+  { source: "apewisdom", url: "https://apewisdom.io/api/v1.0/filter/all-stocks/page/1" },
+  { source: "wikimedia", url: "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/Nvidia/daily/20260101/20260102" },
 ];
 
 export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) => boolean } = {}): Promise<DoctorReport> {

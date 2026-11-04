@@ -146,6 +146,16 @@ export const TOOLS: Tool[] = [
     },
   },
   {
+    name: "social",
+    description:
+      "Retail attention per name: Reddit mentions and rank over 24 hours (ApeWisdom, unofficial; US listings and coins) and Wikipedia pageviews, the last 7 days against the 90 before (Wikimedia). Attention, not opinion.",
+    command: ["social"],
+    params: {
+      symbols: { kind: "string", description: "one or more symbols, comma-separated (NVDA,MC.PA,BTCUSDT)", positional: 0, required: true },
+      out: OUT,
+    },
+  },
+  {
     name: "events",
     description:
       "Elections, referendums and Fed/ECB decisions ahead (and just past) that touch the user's book: exposure by country and currency, what the same kind of event did before (index and currency, in the base currency), the stress scenario (the index's worst session), the book impact, prediction markets and the options' implied move; for a past event, what it did to the index, the currency and the user's lines (EVENTS.md).",

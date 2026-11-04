@@ -23,7 +23,7 @@ import { ruleStatus } from "../core/jurisdiction.js";
 import { clockNow } from "../core/net.js";
 import { loadProfile } from "../core/profile.js";
 import { mapLimit, writeArtifact } from "../engine.js";
-import { cribleAvailable, cribleBootstrapped, cribleScreen } from "../providers/external/crible.js";
+import { cribleAvailable, cribleBootstrapped, cribleScreen, cribleStaleWarning } from "../providers/external/crible.js";
 import { type AmundiFacts, amundiFacts, amundiHoldings } from "../providers/funds/amundi.js";
 import { compositionDataset, type FundComposition, type FundLine } from "../providers/funds/common.js";
 import { ISHARES_PRODUCTS, isharesHoldings } from "../providers/funds/ishares.js";
@@ -606,6 +606,8 @@ export async function topHoldingMultiples(
     });
   }
   const at = now.toISOString();
+  const stale = await cribleStaleWarning();
+  if (stale) notes.push(stale);
   notes.push(
     `multiples cover ${covered.length} of the top ${top.length} lines; the rest of the fund is not included — a top-holdings reading, not the fund's own P/E`,
   );
@@ -617,7 +619,7 @@ export async function topHoldingMultiples(
         subject: S,
         points: [...points, ...derived],
         provenance: { source: "crible", fetchedAt: at, delay: "filing", official: false, ...(asOf ? { asOf } : {}) },
-        notes: ["crible: audited statements and prices it aggregates (unofficial)"],
+        notes: ["crible: audited statements and prices it aggregates (unofficial)", ...(stale ? [stale] : [])],
       },
     ],
     notes,

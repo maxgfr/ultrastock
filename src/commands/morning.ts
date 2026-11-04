@@ -1,4 +1,4 @@
-// `morning [--days 14] [--book real|paper] [--symbols A,B] [--market eu,us,crypto] [--research-with claude|codex|ccs] [--no-news] [--notify] [--out <run>]`:
+// `morning [--days 14] [--book real|paper] [--symbols A,B] [--market eu,us,crypto] [--research-with claude|codex|ccs] [--no-news] [--no-social] [--notify] [--out <run>]`:
 // the brief that starts the day — what is dated ahead of the held and watched
 // names, what moved and what was written about them, the stops, alerts and
 // theses to look at, and the market (MORNING.md). The flagged results dates get
@@ -51,6 +51,7 @@ export async function morningCommand(args: CommandArgs, asJson: boolean): Promis
     markets: markets as RegimeMarket[],
     ...(researchWith ? { researchWith: researchWith as SearchDelegate, model: argValue(args, "search-model") } : {}),
     news: !argBool(args, "no-news"),
+    social: !argBool(args, "no-social"),
   });
   const high = r.flags.filter((x) => x.level === "high");
   const at = clockNow().toISOString();

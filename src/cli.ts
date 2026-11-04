@@ -26,7 +26,7 @@ import {
   resolveCommand,
   shortCommand,
 } from "./commands/fundamentals.js";
-import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentimentCommand, universeCommand } from "./commands/macro.js";
+import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentimentCommand, socialCommand, universeCommand } from "./commands/macro.js";
 import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
 import { backtestCommand, strategyCommand } from "./commands/backtest.js";
 import { brokerCommand } from "./commands/broker.js";
@@ -92,9 +92,10 @@ USAGE
   ultrastock research --out <run> [--for <tag>] --web-results <websearch.json|-> | --urls <a,b> | --search-with claude|codex|ccs | --engine-search [--browser] [--no-wayback] [--limit <n>] [--json]
   ultrastock research <symbol|name> --search-with claude|codex|ccs [--search-model <m>] --out <run> [--json]   (worklist, search and ingestion in one call)
   ultrastock events [--days 60] [--since 7] [--country BR,US] [--all] [--book real|paper] [--limit <n>] [--out <dir>] [--json]
-  ultrastock morning [--days 14] [--book real|paper] [--symbols A,B] [--market eu,us,crypto] [--research-with claude|codex|ccs [--search-model <m>]] [--no-news] [--notify] [--out <dir>] [--json]
+  ultrastock morning [--days 14] [--book real|paper] [--symbols A,B] [--market eu,us,crypto] [--research-with claude|codex|ccs [--search-model <m>]] [--no-news] [--no-social] [--notify] [--out <dir>] [--json]
   ultrastock morning --confirm --out <dir> [--json]   (after the web search of the run's calendar worklists)
-  ultrastock news <query> [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock news <query> [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>] [--pulse] [--out <dir>] [--json]
+  ultrastock social <symbol…> [--out <dir>] [--json]
   ultrastock universe <SPX|NDX|DJI|CAC40|SBF120|DAX|SX5E|AEX|UKX> [--out <dir>] [--json]
   ultrastock resolve <name|ticker|ISIN> [--out <dir>] [--json]
   ultrastock fundamentals <symbol> [--asof <date>] [--years <n>] [--quarters <n>] [--source sec|esef|crible] [--out <dir>] [--json]
@@ -252,7 +253,12 @@ COMMANDS
             reads the pages your own search brought, and says whether the
             issuer's page confirms the date. --notify sends the HIGH flags.
   news      Recent articles (Google News, GDELT; Yahoo for a symbol) — titles
-            are external text, fenced as untrusted.
+            are external text, fenced as untrusted. --pulse adds GDELT's
+            coverage volume and tone, the last days against the month.
+  social    Retail attention per name: its Reddit mentions and rank over 24
+            hours (ApeWisdom; US listings and coins) and its Wikipedia views,
+            last 7 days against the 90 before (Wikimedia). Attention, not
+            opinion; a name a source does not rank is said so, never zero.
   research  Web sources compiled into evidence: writes the angles and queries
             (FR + EN) for your own web search — business model, results,
             governance, controversies, short-sellers…; an ETF's factsheet, KID,
@@ -714,6 +720,8 @@ export const BOOL_FLAGS = [
   "all",
   "confirm",
   "no-news",
+  "no-social",
+  "pulse",
   "mark-seen",
   "refresh",
   "offline",
@@ -779,6 +787,7 @@ export const COMMANDS = [
   "cot",
   "sentiment",
   "news",
+  "social",
   "research",
   "events",
   "morning",
@@ -824,12 +833,13 @@ const SPEC: CliSpec = {
     fx: ["out", ...NET],
     cot: ["report", "out", ...NET],
     sentiment: ["out", ...NET],
-    news: ["symbol", "lang", "days", "limit", "out", ...NET],
+    news: ["symbol", "lang", "days", "limit", "pulse", "out", ...NET],
+    social: ["out", ...NET],
     searxng: ["json"],
     firecrawl: ["json"],
     stack: ["json"],
     events: ["days", "since", "country", "all", "book", "limit", "out", ...NET],
-    morning: ["days", "book", "symbols", "market", "research-with", "search-model", "no-news", "confirm", "notify", "out", ...NET],
+    morning: ["days", "book", "symbols", "market", "research-with", "search-model", "no-news", "no-social", "confirm", "notify", "out", ...NET],
     research: [
       "kind",
       "focus",
@@ -1020,7 +1030,7 @@ function arity(args: CommandArgs): number {
     args.command === "catalysts"
   )
     return Number.POSITIVE_INFINITY;
-  if (args.command === "news" || args.command === "cot" || args.command === "resolve") return Number.POSITIVE_INFINITY;
+  if (args.command === "news" || args.command === "social" || args.command === "cot" || args.command === "resolve") return Number.POSITIVE_INFINITY;
   if (args.command === "congress") return 0;
   if (args.command === "portfolio") return 3;
   if (args.command === "ticket" || args.command === "paper" || args.command === "decide" || args.command === "knowledge") return 2;
@@ -1240,6 +1250,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "cot") return cotCommand(args, asJson);
   if (cmd === "sentiment") return sentimentCommand(args, asJson);
   if (cmd === "news") return newsCommand(args, asJson);
+  if (cmd === "social") return socialCommand(args, asJson);
   if (cmd === "research") return researchCommand(args, asJson);
   if (cmd === "events") return eventsCommand(args, asJson);
   if (cmd === "morning") return morningCommand(args, asJson);

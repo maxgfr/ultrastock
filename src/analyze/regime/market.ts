@@ -32,6 +32,7 @@ import { clockNow } from "../../core/net.js";
 import { binanceFuturesPositioning } from "../../providers/crypto/binance-futures.js";
 import { coingeckoMarkets } from "../../providers/crypto/coingecko.js";
 import { ecbYieldCurve } from "../../providers/macro/ecb.js";
+import { fredSeries } from "../../providers/macro/fred.js";
 import { cnnFearGreed, vixTermStructure } from "../../providers/macro/sentiment.js";
 import type { PriceSeries } from "../../providers/types.js";
 import { breadthSignal, EU_LARGE_CAP, EU_MARKETS, largeCapRows, shareAbove200, usBreadthCount } from "./breadth.js";
@@ -78,6 +79,59 @@ class Sections {
   list(): Dataset[] {
     return [...this.map.values()];
   }
+}
+
+/** The option-adjusted credit spreads read as context beside the HYG/LQD ratio (FRED, ICE BofA indices). */
+export const CREDIT_SPREADS = [
+  { sid: "BAMLH0A0HYM2", id: "hy", label: "US high yield option-adjusted spread" },
+  { sid: "BAMLC0A0CM", id: "ig", label: "US investment grade option-adjusted spread" },
+] as const;
+/** Observations a spread's change is measured over (≈ a month of sessions). */
+export const SPREAD_LOOKBACK = 20;
+/** A high-yield spread this much wider (bp) over the lookback is flagged "widening". */
+export const HY_WIDENING_BP = 50;
+
+/**
+ * A credit spread as context: its level, its change over SPREAD_LOOKBACK
+ * observations in basis points and, for high yield, whether it widened by
+ * HY_WIDENING_BP or more. Observations are the FRED dataset's dated points.
+ */
+export function spreadContext(
+  ns: string,
+  spread: (typeof CREDIT_SPREADS)[number],
+  ds: Dataset,
+): { points: Point[]; level?: number; changeBp?: number; widening?: boolean } {
+  const re = new RegExp(`^US\\.fred\\.${spread.sid}\\.(\\d{4}-\\d{2}-\\d{2})$`);
+  const obs = ds.points
+    .flatMap((p) => {
+      const m = re.exec(p.key);
+      return m && typeof p.value === "number" ? [{ date: m[1]!, value: p.value }] : [];
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const last = obs[obs.length - 1];
+  if (!last) return { points: [] };
+  const k = `${ns}.credit.oas.${spread.id}`;
+  const points: Point[] = [{ key: k, label: spread.label, value: last.value, unit: "%", asOf: last.date }];
+  const then = obs[obs.length - 1 - SPREAD_LOOKBACK];
+  if (!then) return { points, level: last.value };
+  const changeBp = Number(((last.value - then.value) * 100).toFixed(2));
+  points.push({
+    key: `${k}.chg${SPREAD_LOOKBACK}`,
+    label: `${spread.label}, change over ${SPREAD_LOOKBACK} observations (since ${then.date})`,
+    value: changeBp,
+    unit: "bp",
+    formula: `(spread@${last.date} − spread@${then.date}) × 100`,
+    asOf: last.date,
+  });
+  if (spread.id !== "hy") return { points, level: last.value, changeBp };
+  const widening = changeBp >= HY_WIDENING_BP;
+  points.push({
+    key: `${k}.widening`,
+    label: `${spread.label} widening (≥ ${HY_WIDENING_BP} bp over ${SPREAD_LOOKBACK} observations)`,
+    value: widening,
+    asOf: last.date,
+  });
+  return { points, level: last.value, changeBp, widening };
 }
 
 /** A signal as two points: its −1…+1 value (with how it was computed) and its reason. */
@@ -250,6 +304,7 @@ export async function usRegime(now: Date = clockNow()): Promise<Report> {
       "Cboe VIX term structure": () => vixTermStructure(["VIX", "VIX3M"]),
       "CNN Fear & Greed": () => cnnFearGreed(now),
       "TradingView large-cap breadth": () => usBreadthCount(),
+      ...Object.fromEntries(CREDIT_SPREADS.map((s) => [`FRED ${s.label}`, () => fredSeries(s.sid, { days: 60, now })])),
     }),
   ]);
   const notes = [...hist.failed.map((f) => `history unavailable — ${f}`), ...side.failed.map((f) => `unavailable — ${f}`)];
@@ -376,6 +431,19 @@ export async function usRegime(now: Date = clockNow()): Promise<Report> {
     ]);
   }
 
+  // Credit spreads: context beside the scored HYG/LQD ratio, never a weight of the coach.
+  const spreads: Array<{ spread: (typeof CREDIT_SPREADS)[number]; r: ReturnType<typeof spreadContext> }> = [];
+  for (const spread of CREDIT_SPREADS) {
+    const ds = side.ok[`FRED ${spread.label}`] as Dataset | undefined;
+    if (!ds) continue;
+    const r = spreadContext(ns, spread, ds);
+    if (!r.points.length) continue;
+    spreads.push({ spread, r });
+    sec.add("US credit spreads (FRED, ICE BofA indices) — context, not scored", { ...ds.provenance }, r.points, [
+      `the option-adjusted spread over Treasuries of the ICE BofA index; a widening of ${HY_WIDENING_BP} bp or more in high yield over ${SPREAD_LOOKBACK} observations is flagged`,
+    ]);
+  }
+
   const breadth = meanOf([breadthRatio?.value, breadthPct?.value]);
   const advice = exposureCoach({
     trend: trend?.value,
@@ -391,7 +459,7 @@ export async function usRegime(now: Date = clockNow()): Promise<Report> {
   const coachNotes = [
     "breadth = mean of the RSP/SPY signal and the % of large caps above their 200-day signal, when both are available",
     "distribution: the more severe of SPY and QQQ; follow-through: the less favourable of the two (conservative)",
-    "IWM/SPY, XLY/XLP and SPY/TLT are context: reported, not scored",
+    "IWM/SPY, XLY/XLP, SPY/TLT and the HY and IG credit spreads (FRED) are context: reported, not scored",
     ...(comp.missing.length ? [`not computable, weights renormalised over the rest: ${comp.missing.join("; ")}`] : []),
     ...notes,
   ];
@@ -414,6 +482,10 @@ export async function usRegime(now: Date = clockNow()): Promise<Report> {
         : []),
       "context (not scored):",
       ...context.map((s) => signalLine(ns, s, cite)),
+      ...spreads.map(({ spread, r }) => {
+        const k = `${ns}.credit.oas.${spread.id}`;
+        return `  - ${spread.label}: ${fmt(r.level)} %${cite(k)}${r.changeBp !== undefined ? `, ${r.changeBp >= 0 ? "+" : ""}${fmt(r.changeBp, 0)} bp over ${SPREAD_LOOKBACK} observations${cite(`${k}.chg${SPREAD_LOOKBACK}`)}` : ""}${r.widening ? ` — WIDENING${cite(`${k}.widening`)}: credit is pricing more risk` : ""}`;
+      }),
       ...(notes.length ? ["notes:", ...notes.map((n) => `  - ${n}`)] : []),
     ],
   };

@@ -123,6 +123,30 @@ describe("morning flags", () => {
     expect(flags.map((f) => `${f.level} ${f.date}`)).toEqual(["high 2026-10-28", "info 2026-11-05"]);
   });
 
+  it("flags unusual attention — a Wikipedia spike, a Reddit jump or a new top-20 entry — and nothing ordinary", () => {
+    const flags = morningFlags(
+      facts({
+        attention: [
+          { symbol: "MC.PA", source: "wikipedia", ratio: 2.4, keys: ["MC.PA.social.wiki.ratio"] },
+          { symbol: "ALO.PA", source: "wikipedia", ratio: 1.3, keys: ["ALO.PA.social.wiki.ratio"] },
+          { symbol: "NVDA", source: "reddit", mentions: 90, mentionsPrev: 25, rank: 4, keys: ["NVDA.social.reddit.mentions"] },
+          { symbol: "AMD", source: "reddit", mentions: 15, mentionsPrev: 2, rank: 30, keys: ["AMD.social.reddit.mentions"] }, // too few to mean anything
+          { symbol: "SMCI", source: "reddit", mentions: 48, rank: 2, keys: ["SMCI.social.reddit.rank"] },
+          { symbol: "TSLA", source: "reddit", mentions: 300, mentionsPrev: 250, rank: 1, keys: ["TSLA.social.reddit.mentions"] }, // always talked about
+        ],
+      }),
+    ).filter((f) => f.kind === "attention");
+    expect(flags.map((f) => [f.symbol, f.level])).toEqual([
+      ["NVDA", "medium"],
+      ["MC.PA", "info"],
+      ["SMCI", "info"],
+    ]);
+    expect(flags[0]!.text).toMatch(/90 Reddit mentions in 24 hours, against 25 the day before/);
+    expect(flags[1]!.text).toMatch(/2\.4× their 90-day baseline/);
+    expect(flags[2]!.text).toMatch(/new in Reddit's 20 most discussed/);
+    expect(flags.every((f) => /not a direction/.test(f.text))).toBe(true);
+  });
+
   it("the next weekday skips the weekend", () => {
     expect(nextWeekday("2026-10-30")).toBe("2026-11-02");
     expect(nextWeekday("2026-10-28")).toBe("2026-10-29");

@@ -1,6 +1,9 @@
 // Macro, rates, FX, positioning, sentiment, news and index universes.
+import { socialDatasets } from "../analyze/social.js";
 import type { Dataset } from "../core/datasets.js";
-import { argInt, argValue, type CommandArgs, UsageError } from "../engine.js";
+import { clockNow } from "../core/net.js";
+import { argBool, argInt, argValue, type CommandArgs, UsageError } from "../engine.js";
+import { resolveSymbol } from "../providers/router.js";
 import { blsHeadlines } from "../providers/macro/bls.js";
 import { dividendsCalendar, earningsCalendar, forexFactoryCalendar, nasdaqEconomicCalendar } from "../providers/macro/calendars.js";
 import { cotReport } from "../providers/macro/cftc.js";
@@ -9,7 +12,7 @@ import { eurostatIndicator } from "../providers/macro/eurostat.js";
 import { frankfurterLatest } from "../providers/macro/frankfurter.js";
 import { fredSeries } from "../providers/macro/fred.js";
 import { inseeSeries } from "../providers/macro/insee.js";
-import { newsSearch } from "../providers/macro/news.js";
+import { gdeltPulse, newsSearch } from "../providers/macro/news.js";
 import { cboePutCall, cnnFearGreed, cryptoFearGreed, vixTermStructure } from "../providers/macro/sentiment.js";
 import { treasuryCurve } from "../providers/macro/treasury.js";
 import { indexUniverse } from "../providers/macro/universe.js";
@@ -116,20 +119,48 @@ export async function sentimentCommand(args: CommandArgs, asJson: boolean): Prom
 
 export async function newsCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const query = args.positional.join(" ").trim();
-  if (!query) throw new UsageError('usage: ultrastock news "<query>" [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>]');
+  if (!query) throw new UsageError('usage: ultrastock news "<query>" [--symbol <SYM>] [--lang en|fr] [--days <n>] [--limit <n>] [--pulse]');
   const lang = (argValue(args, "lang") ?? "en") as "en" | "fr";
-  emitDatasets(
-    args,
-    [
-      await newsSearch(query, {
-        lang,
-        days: argInt(args, "days", { min: 1, max: 90 }) ?? 7,
-        limit: argInt(args, "limit", { min: 1, max: 100 }) ?? 20,
-        symbol: argValue(args, "symbol"),
-      }),
-    ],
-    asJson,
-  );
+  const symbol = argValue(args, "symbol");
+  const out = [
+    await newsSearch(query, {
+      lang,
+      days: argInt(args, "days", { min: 1, max: 90 }) ?? 7,
+      limit: argInt(args, "limit", { min: 1, max: 100 }) ?? 20,
+      symbol,
+    }),
+  ];
+  if (argBool(args, "pulse")) {
+    try {
+      out.push(await gdeltPulse(query, { symbol }));
+    } catch (e) {
+      // The headlines stand; the pulse says why it is missing.
+      out[0] = { ...out[0]!, notes: [...out[0]!.notes, `news pulse unavailable: ${(e as Error).message}`] };
+    }
+  }
+  emitDatasets(args, out, asJson);
+}
+
+export async function socialCommand(args: CommandArgs, asJson: boolean): Promise<void> {
+  const symbols = args.positional.flatMap((s) => s.split(",")).filter(Boolean);
+  if (!symbols.length) throw new UsageError("usage: ultrastock social <symbol…> (e.g. NVDA MC.PA BTCUSDT)");
+  if (symbols.length > 20) throw new UsageError("social reads at most 20 symbols per call");
+  const out: Dataset[] = [];
+  for (const raw of symbols) {
+    const { instrument } = await resolveSymbol(raw);
+    const r = await socialDatasets(instrument);
+    out.push(...r.datasets);
+    if (r.notes.length)
+      out.push({
+        kind: "social",
+        title: `${instrument.symbol} — attention sources not read`,
+        subject: instrument.symbol,
+        points: [],
+        provenance: { source: "ultrastock", fetchedAt: clockNow().toISOString(), official: false },
+        notes: r.notes,
+      });
+  }
+  emitDatasets(args, out, asJson);
 }
 
 export async function universeCommand(args: CommandArgs, asJson: boolean): Promise<void> {

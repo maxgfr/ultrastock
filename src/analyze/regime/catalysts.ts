@@ -33,6 +33,7 @@ import { forexFactoryCalendar, nasdaqEconomicCalendar } from "../../providers/ma
 import { toTradingViewTicker, tradingviewScan } from "../../providers/markets/tradingview.js";
 import { monthDayYear } from "../../providers/nasdaq.js";
 import { cboeChain } from "../../providers/options/cboe.js";
+import { resultsReactionsDataset } from "../events/earnings.js";
 import type { OptionContract } from "../../providers/options/chain.js";
 import { resolveSymbol } from "../../providers/router.js";
 import { type Instrument, ProviderError } from "../../providers/types.js";
@@ -635,6 +636,31 @@ export async function catalystsReport(raw: string, days: number, now: Date = clo
     } else notes.push(expiry ? `no two-sided ATM quote at ${expiry} — no expected move` : `no option expiry on or after ${end}`);
   } else if (!us && full) notes.push("options-implied move: US listings only (CBOE)");
 
+  // What past results did to the stock: the base rate beside the options' price of the next one.
+  const past: string[] = [];
+  if (company && full) {
+    try {
+      const ds = await resultsReactionsDataset(sym, now);
+      datasets.push(ds);
+      provs.push(ds.provenance);
+      const v = (k: string) => pointNumber(ds, `${sym}.results.${k}`);
+      const n = v("n");
+      const abs = v("absMedian");
+      if (n !== undefined && abs !== undefined) {
+        const ex = v("excessMedian");
+        const dr = v("driftMedian");
+        past.push(
+          `past results: a median move of ±${fmt(abs, 1)} %{${sym}.results.absMedian} over ${n}{${sym}.results.n} reports` +
+            (ex !== undefined ? `, ${fmt(ex, 1)} %{${sym}.results.excessMedian} median against SPY` : "") +
+            (dr !== undefined ? `, then a median 20-session drift of ${fmt(dr, 1)} %{${sym}.results.driftMedian} against SPY` : ""),
+        );
+      }
+    } catch (e) {
+      notes.push(`past results reactions unavailable: ${(e as Error).message.split("\n")[0]}`);
+    }
+  } else if (full && inst.kind === "equity" && !us)
+    notes.push("past results reactions: SEC registrants only — no keyless history of other issuers' results dates");
+
   // Clusters
   const clusters = eventClusters(
     catalysts.filter((c) => inWindow(c.date)),
@@ -682,6 +708,7 @@ export async function catalystsReport(raw: string, days: number, now: Date = clo
       "timeline:",
       ...(timeline.length ? timeline.map((t) => `  ${t.date}  ${t.text}${t.keys.map(cite).join("")}`) : ["  nothing dated in the window"]),
       ...(recent.length ? ["recent (context):", ...recent.map((t) => `  ${t.date}  ${t.text}${t.keys.map(cite).join("")}`)] : []),
+      ...past.map((l) => l.replace(/\{([^}]+)\}/g, (_, k: string) => cite(k))),
       ...(notes.length ? ["notes:", ...notes.map((n) => `  - ${n}`)] : []),
     ],
   };

@@ -1,10 +1,10 @@
-// maxgfr/crible — the owner's self-hosted global fundamental screener (~95k
+// maxgfr/crible — the owner's self-hosted global fundamental screener (~150k
 // equities; SEC, ESEF, Companies House… audited figures; Piotroski, Altman,
 // Beneish, composite quality/value/momentum ranks). A Python tool: ultrastock
 // runs it through uvx at a pinned tag, never reads its Parquet itself.
 //
 //   uvx --from git+https://github.com/maxgfr/crible@<tag> crible --data-dir <dir> screen "<DSL>" --format json
-//   … company <symbol>                via its MCP server (stdio JSON-RPC), the only door to it
+//   … company <symbol>, stats <fields> via its MCP server (stdio JSON-RPC), the only door to them
 //
 // `--data-dir` must precede the subcommand, and a fresh directory needs
 // `bootstrap` once (~1 minute, downloads the published dataset).
@@ -23,7 +23,7 @@ import { homeDir } from "../../core/paths.js";
 import { ProviderError } from "../types.js";
 
 export const SOURCE = "crible";
-export const CRIBLE_TAG = "v0.16.0";
+export const CRIBLE_TAG = "v0.17.0";
 const REPO = "https://github.com/maxgfr/crible";
 
 /** The command that runs crible: ULTRASTOCK_CRIBLE_CMD (e.g. "crible" when installed), else uvx at the pinned tag. */
@@ -257,4 +257,34 @@ async function cribleMcpLive(tool: string, toolArgs: Record<string, unknown>, ti
 export async function cribleCompany(symbol: string): Promise<Record<string, unknown> | undefined> {
   const r = await cribleMcpCall("company", { symbol });
   return r && typeof r === "object" ? (r as Record<string, unknown>) : undefined;
+}
+
+export interface CribleFieldStats {
+  n: number;
+  mean?: number | null;
+  min?: number | null;
+  max?: number | null;
+  p10?: number | null;
+  p25?: number | null;
+  median?: number | null;
+  p75?: number | null;
+  p90?: number | null;
+  value?: number | null;
+  percentile?: number | null;
+}
+export interface CribleStats {
+  symbol: string | null;
+  group: { basis: string; rows: number; query?: string; region?: string; sector?: string; reason?: string };
+  fields: Record<string, CribleFieldStats>;
+}
+
+/**
+ * crible's `stats` tool (crible ≥ v0.17): each numeric field's distribution
+ * over a peer group — the DSL `query`, else the symbol's region×sector, else
+ * the universe — and the symbol's value and percentile in it. Undefined when
+ * the symbol is not in crible's snapshot.
+ */
+export async function cribleStats(fields: string[], opts: { symbol?: string; query?: string } = {}): Promise<CribleStats | undefined> {
+  const r = await cribleMcpCall("stats", { fields, ...(opts.symbol ? { symbol: opts.symbol } : {}), ...(opts.query ? { query: opts.query } : {}) });
+  return r && typeof r === "object" && "fields" in r ? (r as CribleStats) : undefined;
 }

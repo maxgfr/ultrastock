@@ -10,7 +10,7 @@ import type { Dataset } from "../src/core/datasets.js";
 import { EvidenceStore } from "../src/core/evidence.js";
 import { setNetMode } from "../src/core/net.js";
 import { contentHash } from "../src/engine.js";
-import { peersDataset } from "../src/analyze/peers.js";
+import { DISTRIBUTION_FIELDS, peersDataset } from "../src/analyze/peers.js";
 
 const ds = (title: string): Dataset => ({
   kind: "t",
@@ -158,6 +158,36 @@ describe("peers", () => {
       const at = (k: string) => d.points.find((p) => p.key === `MC.PA.peers.${k}`)?.value;
       expect(at("median.price_to_earnings_ratio")).toBe(24); // the 0.04 P/E is a mismatch, not a peer's price
       expect(at("premium.price_to_earnings_ratio")).toBeCloseTo(-25, 9);
+      // no stats answer recorded: the peers stand, the distribution says why it is missing
+      expect(d.points.some((p) => p.key.startsWith("MC.PA.peers.dist."))).toBe(false);
+      expect(d.notes.some((n) => /no peer distribution: crible stats failed/.test(n))).toBe(true);
+
+      // with crible's stats: the whole group's quartiles and the subject's percentile
+      const group = "industry = 'Luxury' AND primary_listing = true AND country IN (" + PEER_EUROPE.map((c) => `'${c}'`).join(", ") + ")";
+      const call = ["mcp", "stats", { fields: DISTRIBUTION_FIELDS.map(([f]) => f), symbol: "MC.PA", query: group }];
+      writeFileSync(
+        join(dir, "crible", `${contentHash(JSON.stringify(call)).slice(0, 20)}.json`),
+        JSON.stringify({
+          call,
+          value: {
+            symbol: "MC.PA",
+            group: { basis: "query", query: group, rows: 41 },
+            fields: {
+              price_to_earnings_ratio: { n: 33, p25: 14, median: 21, p75: 29, value: 18, percentile: 39.4 },
+              roic: { n: 3, median: 0.1, value: 0.2, percentile: 66.7 }, // too few to place
+            },
+          },
+        }),
+      );
+      const s = (await peersDataset("MC.PA"))!;
+      const dist = (k: string) => s.points.find((p) => p.key === `MC.PA.peers.dist.${k}`);
+      expect(dist("rows")?.value).toBe(41);
+      expect(dist("price_to_earnings_ratio.median")?.value).toBe(21);
+      expect(dist("price_to_earnings_ratio.p25")?.value).toBe(14);
+      expect(dist("price_to_earnings_ratio.pct")).toMatchObject({ value: 39.4, unit: "percentile" });
+      expect(dist("price_to_earnings_ratio.n")?.value).toBe(33);
+      expect(dist("roic.median")).toBeUndefined();
+      expect(s.notes.some((n) => /every primary listing of the industry/.test(n))).toBe(true);
     } finally {
       setNetMode({ kind: "live" });
     }

@@ -6,7 +6,7 @@
 // discount to them — the "cheap or dear against whom" a judge needs.
 import type { Dataset, Point } from "../core/datasets.js";
 import { clockNow } from "../core/net.js";
-import { cribleScreen, cribleStaleWarning } from "../providers/external/crible.js";
+import { cribleScreen, cribleStaleWarning, cribleStats } from "../providers/external/crible.js";
 import { medianOf } from "./regime/sectors.js";
 import { collapseForeignLines, issuerKey } from "./screen/crible.js";
 
@@ -79,6 +79,63 @@ function saneValue(field: string, v: unknown): number | undefined {
   return b && (x < b[0] || x > b[1]) ? undefined : x;
 }
 
+/** The fields placed in the whole peer group's distribution (crible `stats`): the multiples, margins, returns and scores. */
+export const DISTRIBUTION_FIELDS: Array<[field: string, label: string, unit: string]> = [
+  ...PEER_FIELDS,
+  ["gross_margin", "gross margin", "ratio"],
+  ["operating_margin", "operating margin", "ratio"],
+  ["free_cash_flow_yield", "free cash flow yield", "ratio"],
+  ["net_debt_to_ebitda_ratio", "net debt / EBITDA", "x"],
+  ["piotroski_f", "Piotroski F-score", "score"],
+  ["altman_z", "Altman Z-score", "score"],
+];
+
+/**
+ * The subject placed in the whole group's distribution — every primary
+ * listing of its industry in its region, not the few largest — through
+ * crible's `stats`: quartiles, n and the subject's percentile per field.
+ * Undefined (with the reason) when the pinned crible has no `stats` tool or
+ * does not hold the subject.
+ */
+export async function distributionPoints(symbol: string, group: string, groupLabel: string): Promise<{ points: Point[]; note?: string }> {
+  let st: Awaited<ReturnType<typeof cribleStats>>;
+  try {
+    st = await cribleStats(
+      DISTRIBUTION_FIELDS.map(([f]) => f),
+      { symbol, query: group },
+    );
+  } catch (e) {
+    return { points: [], note: `no peer distribution: crible stats failed (${(e as Error).message.slice(0, 160)})` };
+  }
+  if (!st) return { points: [], note: `no peer distribution: crible does not hold ${symbol}` };
+  const k = `${symbol}.peers.dist`;
+  const points: Point[] = [{ key: `${k}.rows`, label: `${symbol} peer group size (${groupLabel}, crible)`, value: st.group.rows, unit: "count" }];
+  for (const [field, label, unit] of DISTRIBUTION_FIELDS) {
+    const f = st.fields[field];
+    if (!f || f.n < 5) continue;
+    const of = `${f.n} ${groupLabel} with a value`;
+    for (const [q, name] of [
+      ["p25", "first quartile"],
+      ["median", "median"],
+      ["p75", "third quartile"],
+    ] as const) {
+      const v = num(f[q]);
+      if (v !== undefined) points.push({ key: `${k}.${field}.${q}`, label: `${symbol} peer group ${name} ${label} (${of})`, value: v, unit });
+    }
+    points.push({ key: `${k}.${field}.n`, label: `${symbol} peers with a ${label} (${groupLabel})`, value: f.n, unit: "count" });
+    const pct = num(f.percentile);
+    if (pct !== undefined)
+      points.push({
+        key: `${k}.${field}.pct`,
+        label: `${symbol} ${label} percentile in its peer group (0 lowest, 100 highest; ${of})`,
+        value: pct,
+        unit: "percentile",
+        formula: "share of the group below the value, ties counted half, × 100",
+      });
+  }
+  return { points };
+}
+
 /** The peers dataset for one company, or undefined when crible does not know its industry. */
 export async function peersDataset(symbol: string, opts: { max?: number } = {}): Promise<Dataset | undefined> {
   const me = (await cribleScreen(`symbol = '${symbol.replace(/'/g, "\\'")}'`, { limit: 1 })).rows[0];
@@ -94,6 +151,8 @@ export async function peersDataset(symbol: string, opts: { max?: number } = {}):
     .slice(0, opts.max ?? 6);
   const asOf = clockNow().toISOString().slice(0, 10);
   const stale = await cribleStaleWarning();
+  const groupLabel = `${industry} listings, ${countries.length > 2 ? "Europe" : countries.join("/")}`;
+  const dist = await distributionPoints(symbol, dsl, groupLabel);
   const k = `${symbol}.peers`;
   const points: Point[] = [
     { key: `${k}.industry`, label: `${symbol} industry (crible)`, value: industry, untrusted: true },
@@ -149,6 +208,7 @@ export async function peersDataset(symbol: string, opts: { max?: number } = {}):
         formula: `(${label} / peers' median − 1) × 100`,
       });
   }
+  points.push(...dist.points);
   return {
     kind: "peers",
     title: `Peers — ${industry} (crible)`,
@@ -158,6 +218,10 @@ export async function peersDataset(symbol: string, opts: { max?: number } = {}):
     notes: [
       "peers are crible's primary listings of the same industry, ranked by EUR market cap; their multiples are on each one's latest period",
       ...(screen.total > rows.length ? [`${screen.total} listings match the industry in this region; the ${rows.length} largest issuers are shown`] : []),
+      ...(dist.points.length
+        ? ["the peer-group quartiles and percentiles cover every primary listing of the industry in the region (crible stats), not only the peers shown"]
+        : []),
+      ...(dist.note ? [dist.note] : []),
       ...(stale ? [stale] : []),
     ],
   };

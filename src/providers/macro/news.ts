@@ -198,3 +198,159 @@ export async function newsSearch(
     notes: [...notes, `${kept.length} kept after merging and removing near-duplicate titles; aggregator links, not publisher pages.`],
   });
 }
+
+// ─── the pulse: how much coverage, and in what tone ──────────────────────
+//
+//   GDELT DOC 2.0 timelines   …/doc/doc?query=…&mode=timelinevolraw|timelinetone&timespan=30d&format=json
+//   {"timeline":[{"series":"Article Count"|"Average Tone","data":[{"date":"20261006T000000Z","value":12,…}]}]}
+//   A day with no article is absent from both series. Tone is GDELT's machine
+//   score of each article's wording, about −10 to +10 in practice (−100…+100 in
+//   theory), averaged over the day's articles.
+
+export interface DayValue {
+  date: string;
+  value: number;
+}
+
+/** The first series of a GDELT timeline answer as day values, oldest first. */
+export function parseGdeltTimeline(js: { timeline?: Array<{ data?: Array<{ date?: string; value?: number }> }> }): DayValue[] {
+  return (js.timeline?.[0]?.data ?? [])
+    .flatMap((d) => {
+      const m = /^(\d{4})(\d{2})(\d{2})/.exec(d.date ?? "");
+      return m && typeof d.value === "number" && Number.isFinite(d.value) ? [{ date: `${m[1]}-${m[2]}-${m[3]}`, value: d.value }] : [];
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export const PULSE_DAYS = 30;
+export const PULSE_RECENT_VOLUME = 3;
+export const PULSE_RECENT_TONE = 7;
+
+export interface NewsPulse {
+  /** The last full day (yesterday, UTC). */
+  last: string;
+  volume: { recent: number; base: number; ratio?: number; recentDays: number; baseDays: number };
+  tone?: { recent?: number; base?: number; recentDays: number; baseDays: number };
+}
+
+/**
+ * Coverage over the last full days against the rest of the window: daily
+ * article counts (a day GDELT does not list is zero articles) and the
+ * article-weighted mean tone. Today, still filling, is left out.
+ */
+export function newsPulse(volume: readonly DayValue[], tone: readonly DayValue[], now: Date, days = PULSE_DAYS): NewsPulse {
+  const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const dayAt = (i: number) => new Date(midnight - i * 86_400_000).toISOString().slice(0, 10);
+  const window = Array.from({ length: days - 1 }, (_, i) => dayAt(days - 1 - i)); // oldest → yesterday
+  const vol = new Map(volume.map((d) => [d.date, d.value]));
+  const tn = new Map(tone.map((d) => [d.date, d.value]));
+  const counts = window.map((d) => vol.get(d) ?? 0);
+  const mean = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
+  const rv = counts.slice(-PULSE_RECENT_VOLUME);
+  const bv = counts.slice(0, -PULSE_RECENT_VOLUME);
+  const base = mean(bv);
+  const out: NewsPulse = {
+    last: window[window.length - 1]!,
+    volume: { recent: mean(rv), base, ...(base > 0 ? { ratio: mean(rv) / base } : {}), recentDays: rv.length, baseDays: bv.length },
+  };
+  if (tn.size) {
+    const weighted = (ds: string[]) => {
+      let w = 0;
+      let s = 0;
+      for (const d of ds) {
+        const t = tn.get(d);
+        if (t === undefined) continue;
+        const n = vol.get(d) ?? 1;
+        w += n;
+        s += t * n;
+      }
+      return w > 0 ? s / w : undefined;
+    };
+    const rt = window.slice(-PULSE_RECENT_TONE);
+    const bt = window.slice(0, -PULSE_RECENT_TONE);
+    out.tone = { recent: weighted(rt), base: weighted(bt), recentDays: rt.length, baseDays: bt.length };
+  }
+  return out;
+}
+
+async function gdeltTimeline(
+  query: string,
+  mode: "timelinevolraw" | "timelinetone",
+  days: number,
+): Promise<{ data: DayValue[]; url: string; fetchedAt: string }> {
+  const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}&mode=${mode}&timespan=${days}d&format=json`;
+  const res = await fetchText(url, { hostIntervalMs: 5200, retries: 0 });
+  if (!res.ok) throw new ProviderError("gdelt", `timeline unavailable (HTTP ${res.status})`, res.status);
+  if (!res.body.trim()) return { data: [], url: res.url, fetchedAt: res.fetchedAt };
+  let js: Parameters<typeof parseGdeltTimeline>[0];
+  try {
+    js = JSON.parse(res.body);
+  } catch {
+    throw new ProviderError("gdelt", `query refused: ${res.body.slice(0, 120)}`, /limit requests/i.test(res.body) ? 429 : 400);
+  }
+  return { data: parseGdeltTimeline(js), url: res.url, fetchedAt: res.fetchedAt };
+}
+
+/** GDELT's coverage volume and tone for `query` over the last `days` days, as a dataset. */
+export async function gdeltPulse(query: string, opts: { symbol?: string; days?: number; now?: Date } = {}): Promise<Dataset> {
+  const days = opts.days ?? PULSE_DAYS;
+  const vol = await gdeltTimeline(query, "timelinevolraw", days);
+  let tone: DayValue[] = [];
+  const notes: string[] = [];
+  try {
+    tone = (await gdeltTimeline(query, "timelinetone", days)).data;
+  } catch (e) {
+    const err = e instanceof FixtureMiss ? new ProviderError("gdelt", "did not answer when the fixture was recorded", 0) : e;
+    if (!(err instanceof ProviderError)) throw err;
+    notes.push(`GDELT tone unavailable: ${err.message}`);
+  }
+  const p = newsPulse(vol.data, tone, opts.now ?? new Date(vol.fetchedAt), days);
+  const S = (opts.symbol ?? "NEWS").toUpperCase();
+  const k = `${S}.news.pulse`;
+  const v = p.volume;
+  const points: Point[] = [
+    { key: `${k}.volume.recent`, label: `${S} articles a day in GDELT, last ${v.recentDays} full days`, value: v.recent, unit: "count", asOf: p.last },
+    { key: `${k}.volume.base`, label: `${S} articles a day in GDELT, the ${v.baseDays} days before`, value: v.base, unit: "count", asOf: p.last },
+  ];
+  if (v.ratio !== undefined)
+    points.push({
+      key: `${k}.volume.ratio`,
+      label: `${S} news coverage: last ${v.recentDays} days vs the ${v.baseDays} before`,
+      value: v.ratio,
+      unit: "x",
+      formula: `mean daily articles last ${v.recentDays} days / mean daily articles the ${v.baseDays} days before`,
+      asOf: p.last,
+    });
+  const t = p.tone;
+  if (t?.recent !== undefined)
+    points.push({
+      key: `${k}.tone.recent`,
+      label: `${S} mean news tone, last ${t.recentDays} days (GDELT, machine-scored; below 0 negative)`,
+      value: t.recent,
+      unit: "index",
+      asOf: p.last,
+    });
+  if (t?.base !== undefined)
+    points.push({ key: `${k}.tone.base`, label: `${S} mean news tone, the ${t.baseDays} days before (GDELT)`, value: t.base, unit: "index", asOf: p.last });
+  if (t?.recent !== undefined && t.base !== undefined)
+    points.push({
+      key: `${k}.tone.change`,
+      label: `${S} news tone change: last ${t.recentDays} days minus the ${t.baseDays} before`,
+      value: t.recent - t.base,
+      unit: "index",
+      formula: "mean tone recent − mean tone before (article-weighted)",
+      asOf: p.last,
+    });
+  return {
+    kind: "news",
+    title: `News pulse — coverage and tone over ${days} days (GDELT)`,
+    subject: S,
+    points,
+    provenance: { source: "gdelt", url: vol.url, fetchedAt: vol.fetchedAt, official: false, asOf: p.last },
+    notes: [
+      `GDELT monitors news sites worldwide; "${query}" matches article text, so a common word inflates the count`,
+      "tone is GDELT's machine score of the wording (about −10 to +10 in practice), averaged per article: a reading of the coverage, not of the facts",
+      ...notes,
+    ],
+  };
+}
