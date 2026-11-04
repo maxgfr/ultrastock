@@ -6,7 +6,7 @@ import { valueRun } from "../analyze/value/run.js";
 import { valueRegion, valueStyles } from "../analyze/value/styles.js";
 import { runDirFor } from "../core/paths.js";
 import { argBool, argInt, argValue, type CommandArgs, jsonLine, runId, UsageError } from "../engine.js";
-import { cribleAvailable, cribleBootstrapped, cribleDataDir, SOURCE as CRIBLE } from "../providers/external/crible.js";
+import { NOT_RUNNABLE as CRIBLE_NOT_RUNNABLE, cribleAvailable, cribleBootstrapped, cribleDataDir, SOURCE as CRIBLE } from "../providers/external/crible.js";
 import { ProviderError } from "../providers/types.js";
 import { SEARCH_DELEGATES, type SearchDelegate } from "../research/delegate.js";
 
@@ -35,7 +35,7 @@ export async function valueCommand(args: CommandArgs, asJson: boolean): Promise<
     throw new UsageError(`--research-with is one of ${SEARCH_DELEGATES.join(", ")}, not "${researchWith}"`);
   const researchTop = argInt(args, "research-top", { min: 1, max: 30 });
   if (researchTop !== undefined && !researchWith) throw new UsageError("--research-top goes with --research-with claude|codex|ccs");
-  if (!cribleAvailable()) throw new ProviderError(CRIBLE, "uvx is not installed — install uv (https://docs.astral.sh/uv/) to use crible", 0);
+  if (!cribleAvailable()) throw new ProviderError(CRIBLE, CRIBLE_NOT_RUNNABLE, 0);
   if (!cribleBootstrapped())
     throw new ProviderError(
       CRIBLE,

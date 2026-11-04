@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { readFileSync as readFileSync50, realpathSync as realpathSync3 } from "fs";
+import { readFileSync as readFileSync50, realpathSync as realpathSync4 } from "fs";
 import { resolve as resolve19 } from "path";
 import { pathToFileURL } from "url";
 
@@ -12997,9 +12997,9 @@ async function cachedJson(key, ttlMs, produce) {
 }
 
 // src/core/csv.ts
-function parseCsvText(text, delimiter) {
+function parseCsvText(text, delimiter2) {
   const src2 = text.charCodeAt(0) === 65279 ? text.slice(1) : text;
-  const sep3 = delimiter ?? sniffDelimiter(src2);
+  const sep3 = delimiter2 ?? sniffDelimiter(src2);
   const rows = [];
   let row = [];
   let cell2 = "";
@@ -14099,18 +14099,50 @@ function emitDatasets(args, datasets, asJson) {
 
 // src/providers/external/crible.ts
 import { spawn as spawn4 } from "child_process";
-import { existsSync as existsSync11, readFileSync as readFileSync14 } from "fs";
-import { join as join14 } from "path";
+import { existsSync as existsSync11, readFileSync as readFileSync14, realpathSync as realpathSync3 } from "fs";
+import { delimiter, join as join14 } from "path";
 var SOURCE7 = "crible";
 var CRIBLE_TAG = "v0.17.0";
 var REPO = "https://github.com/maxgfr/crible";
+var NOT_RUNNABLE = `crible cannot run here: install it with \`brew install maxgfr/tap/crible\` (${CRIBLE_TAG.slice(1)}), or install uv (https://docs.astral.sh/uv/) so uvx runs the pinned tag`;
+function brewKegVersion(realPath) {
+  return /\/Cellar\/crible\/(\d+\.\d+\.\d+)(?:_\d+)?\/bin\/crible$/.exec(realPath)?.[1];
+}
+function servesPin(version, tag = CRIBLE_TAG) {
+  const v = version.split(".").map(Number);
+  const p = tag.replace(/^v/, "").split(".").map(Number);
+  return v.length === 3 && p.length === 3 && v[0] === p[0] && v[1] === p[1] && v[2] >= p[2];
+}
+function brewCrible(pathEnv = process.env.PATH ?? "") {
+  for (const dir2 of pathEnv.split(delimiter)) {
+    if (!dir2) continue;
+    const bin = join14(dir2, "crible");
+    if (!existsSync11(bin)) continue;
+    let real2;
+    try {
+      real2 = realpathSync3(bin);
+    } catch {
+      continue;
+    }
+    const version = brewKegVersion(real2);
+    return version ? { path: bin, version } : void 0;
+  }
+  return void 0;
+}
 function cribleInvocation() {
   const custom = env("CRIBLE_CMD");
   if (custom) {
     const [cmd, ...args] = custom.split(/\s+/).filter(Boolean);
-    return { cmd, args };
+    return { cmd, args, via: "env" };
   }
-  return { cmd: "uvx", args: ["--from", `git+${REPO}@${CRIBLE_TAG}`, "crible"] };
+  const brew = brewCrible();
+  if (brew && servesPin(brew.version)) return { cmd: brew.path, args: [], via: "brew" };
+  return {
+    cmd: "uvx",
+    args: ["--from", `git+${REPO}@${CRIBLE_TAG}`, "crible"],
+    via: "uvx",
+    ...brew ? { note: `the Homebrew crible is ${brew.version}, not the pinned ${CRIBLE_TAG}: \`brew upgrade crible\` once the tap follows it` } : {}
+  };
 }
 function cribleDataDir() {
   return env("CRIBLE_DATA_DIR") ?? join14(homeDir(), "crible");
@@ -14128,7 +14160,7 @@ async function run(sub, timeoutMs = 12e4) {
   return recordedCall("crible", ["cli", ...sub], () => runLive(sub, timeoutMs));
 }
 async function runLive(sub, timeoutMs) {
-  if (!cribleAvailable()) throw new ProviderError(SOURCE7, "uvx is not installed \u2014 install uv (https://docs.astral.sh/uv/) to use crible", 0);
+  if (!cribleAvailable()) throw new ProviderError(SOURCE7, NOT_RUNNABLE, 0);
   const { cmd, args } = cribleInvocation();
   const r3 = await shAsync(cmd, [...args, "--data-dir", cribleDataDir(), ...sub], { timeoutMs });
   if (!r3.ok) throw new ProviderError(SOURCE7, `crible ${sub[0]} failed: ${(r3.stderr || r3.stdout).trim().split("\n").slice(-3).join(" ").slice(0, 400)}`, 0);
@@ -14215,7 +14247,7 @@ async function cribleMcpCall(tool, toolArgs, timeoutMs = 12e4) {
   return recordedCall("crible", ["mcp", tool, toolArgs], () => cribleMcpLive(tool, toolArgs, timeoutMs));
 }
 async function cribleMcpLive(tool, toolArgs, timeoutMs) {
-  if (!cribleAvailable()) throw new ProviderError(SOURCE7, "uvx is not installed \u2014 install uv to use crible", 0);
+  if (!cribleAvailable()) throw new ProviderError(SOURCE7, NOT_RUNNABLE, 0);
   const { cmd, args } = cribleInvocation();
   const child = spawn4(cmd, [...args, "--data-dir", cribleDataDir(), "mcp"], { stdio: ["pipe", "pipe", "pipe"] });
   const send = (msg) => child.stdin.write(`${JSON.stringify(msg)}
@@ -24985,7 +25017,7 @@ async function topHoldingMultiples(S, lines, now) {
     return {
       datasets: [],
       notes: [
-        `multiples of the top holdings unavailable: crible ${cribleAvailable() ? "has no dataset \u2014 run `ultrastock screen --engine crible --bootstrap` once" : "needs uvx (install uv)"}`
+        `multiples of the top holdings unavailable: crible ${cribleAvailable() ? "has no dataset \u2014 run `ultrastock screen --engine crible --bootstrap` once" : "cannot run here (`brew install maxgfr/tap/crible`, or install uv)"}`
       ]
     };
   const top = lines.slice(0, 10);
@@ -47698,9 +47730,9 @@ import { resolve as resolve15 } from "path";
 
 // src/portfolio/import/shared.ts
 var emptyResult = () => ({ transactions: [], skipped: [], warnings: [] });
-function csvRowsWithLines(text, delimiter) {
+function csvRowsWithLines(text, delimiter2) {
   const src2 = text.charCodeAt(0) === 65279 ? text.slice(1) : text;
-  const sep3 = delimiter ?? sniffSeparator(src2);
+  const sep3 = delimiter2 ?? sniffSeparator(src2);
   const rows = [];
   let row = [];
   let cell2 = "";
@@ -48230,9 +48262,9 @@ function parseGeneric(text, opts) {
   const res = emptyResult();
   const map = opts.map;
   const src2 = text.charCodeAt(0) === 65279 ? text.slice(1) : text;
-  const delimiter = map.delimiter ?? sniffSeparator(src2);
-  const decimal = map.decimal ?? (delimiter === ";" ? "," : void 0);
-  const rows = csvRowsWithLines(src2, delimiter);
+  const delimiter2 = map.delimiter ?? sniffSeparator(src2);
+  const decimal = map.decimal ?? (delimiter2 === ";" ? "," : void 0);
+  const rows = csvRowsWithLines(src2, delimiter2);
   const want = headerKey(map.date);
   const h = rows.findIndex((r3) => r3.cells.some((c) => headerKey(c) === want));
   const hint = opts.presetName ? ` (the "${opts.presetName}" map is best-effort: pass --map '{\u2026}' with your file's headers)` : "";
@@ -52448,7 +52480,7 @@ function listText(engine) {
 }
 async function listCommand(engine, asJson) {
   if (engine === "crible") {
-    if (!cribleAvailable()) throw new ProviderError(SOURCE7, "uvx is not installed \u2014 install uv (https://docs.astral.sh/uv/) to use crible", 0);
+    if (!cribleAvailable()) throw new ProviderError(SOURCE7, NOT_RUNNABLE, 0);
     const presets = await criblePresets();
     if (asJson) return void process.stdout.write(jsonLine({ engine: "crible", presets }));
     process.stdout.write(
@@ -52502,7 +52534,7 @@ function universeArg(args) {
   return { symbols: argList(args, "universe") };
 }
 async function cribleRun(query2, args) {
-  if (!cribleAvailable()) throw new ProviderError(SOURCE7, "uvx is not installed \u2014 install uv (https://docs.astral.sh/uv/) to use crible", 0);
+  if (!cribleAvailable()) throw new ProviderError(SOURCE7, NOT_RUNNABLE, 0);
   if (!cribleBootstrapped()) {
     if (!argBool(args, "bootstrap"))
       throw new ProviderError(
@@ -52535,7 +52567,7 @@ async function cribleRun(query2, args) {
   return warn(cribleRowsToDataset({ total: r3.total, rows: rows.slice(0, limit) }, { query: dsl, preset, dsl: run3, dropped }));
 }
 async function cribleRefresh(asJson) {
-  if (!cribleAvailable()) throw new ProviderError(SOURCE7, "uvx is not installed \u2014 install uv (https://docs.astral.sh/uv/) to use crible", 0);
+  if (!cribleAvailable()) throw new ProviderError(SOURCE7, NOT_RUNNABLE, 0);
   const existing = cribleBootstrapped();
   process.stderr.write(
     `${existing ? "replacing the local crible dataset with the published one" : "downloading crible's published dataset"} into ${cribleDataDir()} (about a minute)\u2026
@@ -54683,7 +54715,7 @@ async function valueCommand(args, asJson) {
     throw new UsageError(`--research-with is one of ${SEARCH_DELEGATES.join(", ")}, not "${researchWith}"`);
   const researchTop = argInt(args, "research-top", { min: 1, max: 30 });
   if (researchTop !== void 0 && !researchWith) throw new UsageError("--research-top goes with --research-with claude|codex|ccs");
-  if (!cribleAvailable()) throw new ProviderError(SOURCE7, "uvx is not installed \u2014 install uv (https://docs.astral.sh/uv/) to use crible", 0);
+  if (!cribleAvailable()) throw new ProviderError(SOURCE7, NOT_RUNNABLE, 0);
   if (!cribleBootstrapped())
     throw new ProviderError(
       SOURCE7,
@@ -54788,6 +54820,12 @@ var PROBES = [
   { source: "apewisdom", url: "https://apewisdom.io/api/v1.0/filter/all-stocks/page/1" },
   { source: "wikimedia", url: "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/Nvidia/daily/20260101/20260102" }
 ];
+function cribleRunner() {
+  const inv = cribleInvocation();
+  if (inv.via === "env") return `ULTRASTOCK_CRIBLE_CMD (${[inv.cmd, ...inv.args].join(" ")})`;
+  if (inv.via === "brew") return `Homebrew crible (${inv.cmd})`;
+  return `uvx at ${CRIBLE_TAG}${inv.note ? ` \u2014 ${inv.note}` : " \u2014 `brew install maxgfr/tap/crible` starts faster"}`;
+}
 async function doctorReport(opts = {}) {
   const has = opts.has ?? have;
   const major = Number(process.versions.node.split(".")[0]);
@@ -54796,7 +54834,7 @@ async function doctorReport(opts = {}) {
       installed: has("binance-historical"),
       purpose: "bulk crypto klines (years of bars, futures mark/index/premium)"
     },
-    uvx: { installed: has("uvx"), purpose: "runs maxgfr/crible, the global fundamental screener" },
+    uvx: { installed: has("uvx"), purpose: "runs maxgfr/crible, the global fundamental screener, unless a Homebrew crible of the pinned version is installed" },
     pdftotext: { installed: has("pdftotext"), purpose: "optional: faster reading of Congress trade PDFs" },
     claude: {
       installed: has((process.env.ULTRASTOCK_CLAUDE_CMD ?? "claude").split(/\s+/)[0]),
@@ -54828,7 +54866,7 @@ async function doctorReport(opts = {}) {
     cache: dataCacheDir(),
     profile,
     tools,
-    crible: { dataDir: cribleDataDir(), bootstrapped: cribleBootstrapped(), tag: CRIBLE_TAG },
+    crible: { dataDir: cribleDataDir(), bootstrapped: cribleBootstrapped(), tag: CRIBLE_TAG, runner: cribleRunner() },
     secContact: !!process.env.ULTRASTOCK_SEC_CONTACT?.trim(),
     maturity: byMaturity()
   };
@@ -54858,6 +54896,7 @@ function formatDoctor(r3) {
     `  sec         ${r3.secContact ? "contact set (ULTRASTOCK_SEC_CONTACT)" : "no contact \u2014 set ULTRASTOCK_SEC_CONTACT to your e-mail: SEC EDGAR's fair-access policy asks for one and may block anonymous tools"}`,
     ...(r3.services ?? []).map((s) => `  ${s.name.padEnd(11)} ${s.up ? `up at ${s.url}` : `not running \u2014 \`ultrastock ${s.name} up\` (optional, Docker)`}`),
     `  crible      ${r3.crible.bootstrapped ? "dataset ready" : "no dataset yet (first `screen --engine crible` bootstraps it, ~1 min)"} in ${r3.crible.dataDir} (pinned ${r3.crible.tag})`,
+    `              runs through ${r3.crible.runner}`,
     ...r3.crible.freshness ? [`              ${r3.crible.freshness.stale ? "STALE \u2014 " : ""}${r3.crible.freshness.message}`] : [],
     ...Object.entries(r3.tools).map(
       ([name, t]) => `  ${name.padEnd(19)} ${t.installed ? `installed${t.version ? ` (${t.version})` : ""}` : "not installed"} \u2014 ${t.purpose}`
@@ -55376,7 +55415,7 @@ ENVIRONMENT
   ULTRASTOCK_TIMEOUT_MS  network budget per attempt (default 20000)
   ULTRASTOCK_SEC_CONTACT an e-mail for SEC EDGAR's fair-access User-Agent (required by the SEC)
   ULTRASTOCK_FRED_API_KEY, ULTRASTOCK_COINGECKO_API_KEY, ULTRASTOCK_SOLANA_RPC   optional keys
-  ULTRASTOCK_CRIBLE_CMD, ULTRASTOCK_CRIBLE_DATA_DIR   how to run crible, and where its dataset lives
+  ULTRASTOCK_CRIBLE_CMD, ULTRASTOCK_CRIBLE_DATA_DIR   how to run crible (default: a Homebrew crible of the pinned version, else uvx), and where its dataset lives
 
 Nothing here needs an API key. Exit codes: 0 done, 1 failed or refused, 2 bad invocation.`;
 var VALUE_FLAGS = [
@@ -56087,7 +56126,7 @@ async function main(argv) {
 }
 function isStartedFile() {
   try {
-    return !!process.argv[1] && pathToFileURL(realpathSync3(process.argv[1])).href === import.meta.url;
+    return !!process.argv[1] && pathToFileURL(realpathSync4(process.argv[1])).href === import.meta.url;
   } catch {
     return false;
   }

@@ -9,7 +9,7 @@ import { loadProfile } from "./core/profile.js";
 import { ENGINE_VERSION, have } from "./engine.js";
 import { binanceHistoricalInfo } from "./providers/external/binance-historical.js";
 import { localServices } from "./commands/stack.js";
-import { CRIBLE_TAG, type CribleFreshness, cribleBootstrapped, cribleDataDir, cribleFreshness } from "./providers/external/crible.js";
+import { CRIBLE_TAG, type CribleFreshness, cribleBootstrapped, cribleDataDir, cribleFreshness, cribleInvocation } from "./providers/external/crible.js";
 import { VERSION } from "./version.js";
 
 /** Live order submission refuses Node releases that no longer get security fixes. */
@@ -38,7 +38,7 @@ export interface DoctorReport {
   cache: string;
   profile: { exists: boolean; jurisdiction?: string; riskScore?: number; envelopes?: number };
   tools: Record<string, ToolReport>;
-  crible: { dataDir: string; bootstrapped: boolean; tag: string; freshness?: CribleFreshness };
+  crible: { dataDir: string; bootstrapped: boolean; tag: string; runner: string; freshness?: CribleFreshness };
   /** The optional local search containers, probed only with --probe. */
   services?: Array<{ name: string; url: string | null; up: boolean }>;
   /** SEC EDGAR asks automated clients for a contact in the User-Agent. */
@@ -57,6 +57,14 @@ const PROBES: Array<{ source: string; url: string }> = [
   { source: "wikimedia", url: "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/Nvidia/daily/20260101/20260102" },
 ];
 
+/** Which crible runs, in one line. */
+function cribleRunner(): string {
+  const inv = cribleInvocation();
+  if (inv.via === "env") return `ULTRASTOCK_CRIBLE_CMD (${[inv.cmd, ...inv.args].join(" ")})`;
+  if (inv.via === "brew") return `Homebrew crible (${inv.cmd})`;
+  return `uvx at ${CRIBLE_TAG}${inv.note ? ` — ${inv.note}` : " — `brew install maxgfr/tap/crible` starts faster"}`;
+}
+
 export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) => boolean } = {}): Promise<DoctorReport> {
   const has = opts.has ?? have;
   const major = Number(process.versions.node.split(".")[0]);
@@ -65,7 +73,7 @@ export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) 
       installed: has("binance-historical"),
       purpose: "bulk crypto klines (years of bars, futures mark/index/premium)",
     },
-    uvx: { installed: has("uvx"), purpose: "runs maxgfr/crible, the global fundamental screener" },
+    uvx: { installed: has("uvx"), purpose: "runs maxgfr/crible, the global fundamental screener, unless a Homebrew crible of the pinned version is installed" },
     pdftotext: { installed: has("pdftotext"), purpose: "optional: faster reading of Congress trade PDFs" },
     claude: {
       installed: has((process.env.ULTRASTOCK_CLAUDE_CMD ?? "claude").split(/\s+/)[0]!),
@@ -98,7 +106,7 @@ export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) 
     cache: dataCacheDir(),
     profile,
     tools,
-    crible: { dataDir: cribleDataDir(), bootstrapped: cribleBootstrapped(), tag: CRIBLE_TAG },
+    crible: { dataDir: cribleDataDir(), bootstrapped: cribleBootstrapped(), tag: CRIBLE_TAG, runner: cribleRunner() },
     secContact: !!process.env.ULTRASTOCK_SEC_CONTACT?.trim(),
     maturity: byMaturity(),
   };
@@ -131,6 +139,7 @@ export function formatDoctor(r: DoctorReport): string {
     `  sec         ${r.secContact ? "contact set (ULTRASTOCK_SEC_CONTACT)" : "no contact — set ULTRASTOCK_SEC_CONTACT to your e-mail: SEC EDGAR's fair-access policy asks for one and may block anonymous tools"}`,
     ...(r.services ?? []).map((s) => `  ${s.name.padEnd(11)} ${s.up ? `up at ${s.url}` : `not running — \`ultrastock ${s.name} up\` (optional, Docker)`}`),
     `  crible      ${r.crible.bootstrapped ? "dataset ready" : "no dataset yet (first `screen --engine crible` bootstraps it, ~1 min)"} in ${r.crible.dataDir} (pinned ${r.crible.tag})`,
+    `              runs through ${r.crible.runner}`,
     ...(r.crible.freshness ? [`              ${r.crible.freshness.stale ? "STALE — " : ""}${r.crible.freshness.message}`] : []),
     ...Object.entries(r.tools).map(
       ([name, t]) => `  ${name.padEnd(19)} ${t.installed ? `installed${t.version ? ` (${t.version})` : ""}` : "not installed"} — ${t.purpose}`,

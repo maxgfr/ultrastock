@@ -560,7 +560,7 @@ ENVIRONMENT
   ULTRASTOCK_TIMEOUT_MS  network budget per attempt (default 20000)
   ULTRASTOCK_SEC_CONTACT an e-mail for SEC EDGAR's fair-access User-Agent (required by the SEC)
   ULTRASTOCK_FRED_API_KEY, ULTRASTOCK_COINGECKO_API_KEY, ULTRASTOCK_SOLANA_RPC   optional keys
-  ULTRASTOCK_CRIBLE_CMD, ULTRASTOCK_CRIBLE_DATA_DIR   how to run crible, and where its dataset lives
+  ULTRASTOCK_CRIBLE_CMD, ULTRASTOCK_CRIBLE_DATA_DIR   how to run crible (default: a Homebrew crible of the pinned version, else uvx), and where its dataset lives
 
 Nothing here needs an API key. Exit codes: 0 done, 1 failed or refused, 2 bad invocation.`;
 

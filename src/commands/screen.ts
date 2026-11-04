@@ -20,6 +20,7 @@ import {
   cribleFreshness,
   cribleScreen,
   cribleStaleWarning,
+  NOT_RUNNABLE as CRIBLE_NOT_RUNNABLE,
   SOURCE as CRIBLE,
 } from "../providers/external/crible.js";
 import { ProviderError } from "../providers/types.js";
@@ -94,7 +95,7 @@ function listText(engine: Engine | undefined): string {
 
 async function listCommand(engine: Engine | undefined, asJson: boolean): Promise<void> {
   if (engine === "crible") {
-    if (!cribleAvailable()) throw new ProviderError(CRIBLE, "uvx is not installed — install uv (https://docs.astral.sh/uv/) to use crible", 0);
+    if (!cribleAvailable()) throw new ProviderError(CRIBLE, CRIBLE_NOT_RUNNABLE, 0);
     const presets = await criblePresets();
     if (asJson) return void process.stdout.write(jsonLine({ engine: "crible", presets }));
     process.stdout.write(
@@ -155,7 +156,7 @@ function universeArg(args: CommandArgs): { universe?: string; symbols?: string[]
 }
 
 async function cribleRun(query: string, args: CommandArgs): Promise<ReturnType<typeof cribleRowsToDataset>> {
-  if (!cribleAvailable()) throw new ProviderError(CRIBLE, "uvx is not installed — install uv (https://docs.astral.sh/uv/) to use crible", 0);
+  if (!cribleAvailable()) throw new ProviderError(CRIBLE, CRIBLE_NOT_RUNNABLE, 0);
   if (!cribleBootstrapped()) {
     if (!argBool(args, "bootstrap"))
       throw new ProviderError(
@@ -190,7 +191,7 @@ async function cribleRun(query: string, args: CommandArgs): Promise<ReturnType<t
 
 /** `screen --engine crible --bootstrap` alone: download the published dataset, or replace the local copy with it. */
 async function cribleRefresh(asJson: boolean): Promise<void> {
-  if (!cribleAvailable()) throw new ProviderError(CRIBLE, "uvx is not installed — install uv (https://docs.astral.sh/uv/) to use crible", 0);
+  if (!cribleAvailable()) throw new ProviderError(CRIBLE, CRIBLE_NOT_RUNNABLE, 0);
   const existing = cribleBootstrapped();
   process.stderr.write(
     `${existing ? "replacing the local crible dataset with the published one" : "downloading crible's published dataset"} into ${cribleDataDir()} (about a minute)…\n`,
