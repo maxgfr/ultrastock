@@ -515,7 +515,7 @@ export async function topHoldingMultiples(
     return {
       datasets: [],
       notes: [
-        `multiples of the top holdings unavailable: crible ${cribleAvailable() ? "has no dataset — run `ultrastock screen --engine crible --bootstrap` once" : "needs uvx (install uv)"}`,
+        `multiples of the top holdings unavailable: crible ${cribleAvailable() ? "has no dataset — run `ultrastock screen --engine crible --bootstrap` once" : "cannot run here (`brew install maxgfr/tap/crible`, or install uv)"}`,
       ],
     };
   const top = lines.slice(0, 10);

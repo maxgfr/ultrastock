@@ -56,11 +56,19 @@ listing", a jurisdiction block) is reported, never routed around.
 | Options | CBOE ✓ (US, 15 min), Deribit ✓ (BTC, ETH) |
 | Crypto | Binance futures ✓, CoinGecko, DefiLlama, CoinMetrics, mempool.space, DexScreener, Solana RPC |
 | Prediction | Kalshi ✓, Manifold, Polymarket (where lawful) |
-| Snapshot, screens | TradingView scanner (unofficial), maxgfr/crible (fundamentals, via uvx; its local dataset is dated — see below) |
+| Snapshot, screens | TradingView scanner (unofficial), maxgfr/crible (fundamentals, at a pinned tag: a Homebrew crible of that version, else uvx; its local dataset is dated — see below) |
 | Universes | Wikipedia index pages (current members only — survivorship) |
 | Regulation | ESMA MiCA registers ✓, regulator DNS blocks |
 
 Optional keys: `ULTRASTOCK_FRED_API_KEY` (or `FRED_API_KEY`), `ULTRASTOCK_COINGECKO_API_KEY` (demo key), `ULTRASTOCK_SOLANA_RPC` (your own RPC endpoint).
+
+## How crible runs
+
+ultrastock pins one crible tag. It runs, in order: `ULTRASTOCK_CRIBLE_CMD` when set;
+the `crible` on PATH when it is a Homebrew keg (`brew install maxgfr/tap/crible`)
+of the pinned minor, at least the pinned patch: it starts faster and needs no git
+lookup; else `uvx --from git+https://github.com/maxgfr/crible@<tag>`. `doctor`
+says which one runs, and why a Homebrew crible was passed over.
 
 ## crible's dataset
 

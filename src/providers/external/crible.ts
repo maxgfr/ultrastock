@@ -1,7 +1,8 @@
 // maxgfr/crible — the owner's self-hosted global fundamental screener (~150k
 // equities; SEC, ESEF, Companies House… audited figures; Piotroski, Altman,
 // Beneish, composite quality/value/momentum ranks). A Python tool: ultrastock
-// runs it through uvx at a pinned tag, never reads its Parquet itself.
+// runs it at a pinned tag (a Homebrew crible of that version, else uvx), never
+// reads its Parquet itself.
 //
 //   uvx --from git+https://github.com/maxgfr/crible@<tag> crible --data-dir <dir> screen "<DSL>" --format json
 //   … company <symbol>, stats <fields> via its MCP server (stdio JSON-RPC), the only door to them
@@ -14,8 +15,8 @@
 // a replay never starts uvx, never needs a dataset, and a call it did not
 // record fails instead of going live.
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { delimiter, join } from "node:path";
 import { env, have, shAsync } from "../../engine.js";
 import { cachedJson, TTL } from "../../core/cache.js";
 import { clockNow, fetchJson, netMode, politeUa, recordedCall } from "../../core/net.js";
@@ -25,15 +26,67 @@ import { ProviderError } from "../types.js";
 export const SOURCE = "crible";
 export const CRIBLE_TAG = "v0.17.0";
 const REPO = "https://github.com/maxgfr/crible";
+/** What to say when crible cannot run here. */
+export const NOT_RUNNABLE = `crible cannot run here: install it with \`brew install maxgfr/tap/crible\` (${CRIBLE_TAG.slice(1)}), or install uv (https://docs.astral.sh/uv/) so uvx runs the pinned tag`;
 
-/** The command that runs crible: ULTRASTOCK_CRIBLE_CMD (e.g. "crible" when installed), else uvx at the pinned tag. */
-export function cribleInvocation(): { cmd: string; args: string[] } {
+/** The version of a Homebrew crible from its keg path (`…/Cellar/crible/0.17.0_1/bin/crible` → 0.17.0). */
+export function brewKegVersion(realPath: string): string | undefined {
+  return /\/Cellar\/crible\/(\d+\.\d+\.\d+)(?:_\d+)?\/bin\/crible$/.exec(realPath)?.[1];
+}
+
+/** Does crible `version` serve what the pinned tag serves? The same minor, at least the pinned patch (0.x: a minor may break). */
+export function servesPin(version: string, tag = CRIBLE_TAG): boolean {
+  const v = version.split(".").map(Number);
+  const p = tag.replace(/^v/, "").split(".").map(Number);
+  return v.length === 3 && p.length === 3 && v[0] === p[0] && v[1] === p[1] && v[2]! >= p[2]!;
+}
+
+/** The `crible` on PATH when it is a Homebrew keg (`brew install maxgfr/tap/crible`), with its version. */
+export function brewCrible(pathEnv = process.env.PATH ?? ""): { path: string; version: string } | undefined {
+  for (const dir of pathEnv.split(delimiter)) {
+    if (!dir) continue;
+    const bin = join(dir, "crible");
+    if (!existsSync(bin)) continue;
+    let real: string;
+    try {
+      real = realpathSync(bin);
+    } catch {
+      continue;
+    }
+    const version = brewKegVersion(real);
+    return version ? { path: bin, version } : undefined; // the first crible on PATH is the one a shell runs
+  }
+  return undefined;
+}
+
+export interface CribleInvocation {
+  cmd: string;
+  args: string[];
+  /** env: ULTRASTOCK_CRIBLE_CMD; brew: a Homebrew crible that serves the pin; uvx: the pinned tag through uvx. */
+  via: "env" | "brew" | "uvx";
+  /** Why a Homebrew crible on PATH was passed over. */
+  note?: string;
+}
+
+/**
+ * The command that runs crible: ULTRASTOCK_CRIBLE_CMD when set; else the Homebrew
+ * crible when it serves the pinned tag (no git resolution, a ready environment);
+ * else uvx at the pinned tag.
+ */
+export function cribleInvocation(): CribleInvocation {
   const custom = env("CRIBLE_CMD");
   if (custom) {
     const [cmd, ...args] = custom.split(/\s+/).filter(Boolean);
-    return { cmd: cmd!, args };
+    return { cmd: cmd!, args, via: "env" };
   }
-  return { cmd: "uvx", args: ["--from", `git+${REPO}@${CRIBLE_TAG}`, "crible"] };
+  const brew = brewCrible();
+  if (brew && servesPin(brew.version)) return { cmd: brew.path, args: [], via: "brew" };
+  return {
+    cmd: "uvx",
+    args: ["--from", `git+${REPO}@${CRIBLE_TAG}`, "crible"],
+    via: "uvx",
+    ...(brew ? { note: `the Homebrew crible is ${brew.version}, not the pinned ${CRIBLE_TAG}: \`brew upgrade crible\` once the tap follows it` } : {}),
+  };
 }
 
 export function cribleDataDir(): string {
@@ -58,7 +111,7 @@ async function run(sub: string[], timeoutMs = 120_000): Promise<string> {
 }
 
 async function runLive(sub: string[], timeoutMs: number): Promise<string> {
-  if (!cribleAvailable()) throw new ProviderError(SOURCE, "uvx is not installed — install uv (https://docs.astral.sh/uv/) to use crible", 0);
+  if (!cribleAvailable()) throw new ProviderError(SOURCE, NOT_RUNNABLE, 0);
   const { cmd, args } = cribleInvocation();
   const r = await shAsync(cmd, [...args, "--data-dir", cribleDataDir(), ...sub], { timeoutMs });
   if (!r.ok) throw new ProviderError(SOURCE, `crible ${sub[0]} failed: ${(r.stderr || r.stdout).trim().split("\n").slice(-3).join(" ").slice(0, 400)}`, 0);
@@ -207,7 +260,7 @@ export async function cribleMcpCall(tool: string, toolArgs: Record<string, unkno
 }
 
 async function cribleMcpLive(tool: string, toolArgs: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
-  if (!cribleAvailable()) throw new ProviderError(SOURCE, "uvx is not installed — install uv to use crible", 0);
+  if (!cribleAvailable()) throw new ProviderError(SOURCE, NOT_RUNNABLE, 0);
   const { cmd, args } = cribleInvocation();
   const child = spawn(cmd, [...args, "--data-dir", cribleDataDir(), "mcp"], { stdio: ["pipe", "pipe", "pipe"] });
   const send = (msg: unknown) => child.stdin.write(`${JSON.stringify(msg)}\n`);
