@@ -15,7 +15,7 @@ import { registerDatasets } from "../core/datasets.js";
 import { EvidenceStore, formatEvidence } from "../core/evidence.js";
 import { clockNow } from "../core/net.js";
 import { writeArtifact } from "../engine.js";
-import { cribleCompany } from "../providers/external/crible.js";
+import { cribleCompany, cribleStaleWarning } from "../providers/external/crible.js";
 import { esefFundamentals } from "../providers/fundamentals/esef.js";
 import { secFundamentals } from "../providers/fundamentals/sec.js";
 import { ecbYieldCurve } from "../providers/macro/ecb.js";
@@ -100,6 +100,8 @@ export async function valuationRun(raw: string, dir: string, opts: ValuationOpti
   try {
     const c = await cribleCompany(sym);
     rows = Array.isArray(c?.periods) ? (c!.periods as Array<Record<string, unknown>>) : [];
+    const stale = rows.length ? await cribleStaleWarning() : undefined;
+    if (stale) notes.push(stale);
   } catch (e) {
     notes.push(`crible unavailable (${(e as Error).message})`);
   }

@@ -2,7 +2,7 @@
 // short interest, dividends, Congress trades, and resolving a name to a listing.
 import type { Dataset } from "../core/datasets.js";
 import { argInt, argList, argValue, type CommandArgs, UsageError } from "../engine.js";
-import { cribleScreen, SOURCE as CRIBLE } from "../providers/external/crible.js";
+import { cribleScreen, cribleStaleWarning, SOURCE as CRIBLE } from "../providers/external/crible.js";
 import { searchEuronext } from "../providers/euronext.js";
 import { amfInsiderDeclarations } from "../providers/fundamentals/amf.js";
 import { esefFundamentals } from "../providers/fundamentals/esef.js";
@@ -60,13 +60,17 @@ export async function cribleFundamentals(symbol: string, currency: string): Prom
     unit: unit === "ccy" ? String(row.currency ?? currency) : unit,
     asOf: period || undefined,
   }));
+  const stale = await cribleStaleWarning();
   return {
     kind: "fundamentals",
     title: `${symbol} fundamentals — latest period (crible)`,
     subject: symbol,
     points,
     provenance: { source: CRIBLE, fetchedAt: clockNow().toISOString(), official: false, delay: "filing", asOf: period || undefined },
-    notes: ["crible aggregates audited filings (SEC, ESEF, registers) and market data; check a figure that matters against the filing"],
+    notes: [
+      "crible aggregates audited filings (SEC, ESEF, registers) and market data; check a figure that matters against the filing",
+      ...(stale ? [stale] : []),
+    ],
   };
 }
 
@@ -91,7 +95,8 @@ export async function fundamentalsCommand(args: CommandArgs, asJson: boolean): P
     try {
       out.push(await esefFundamentals(i.isin, { asOf, subject: i.symbol }));
     } catch (e) {
-      out.push({ ...(await cribleFundamentals(i.symbol, i.currency)), notes: [`ESEF unavailable (${(e as Error).message}) — crible stood in`] });
+      const ds = await cribleFundamentals(i.symbol, i.currency);
+      out.push({ ...ds, notes: [`ESEF unavailable (${(e as Error).message}) — crible stood in`, ...ds.notes] });
     }
   } else out.push(await cribleFundamentals(i.symbol, i.currency));
   emitDatasets(args, out, asJson);
