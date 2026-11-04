@@ -23,7 +23,7 @@ import { homeDir } from "../../core/paths.js";
 import { ProviderError } from "../types.js";
 
 export const SOURCE = "crible";
-export const CRIBLE_TAG = "v0.16.0";
+export const CRIBLE_TAG = "v0.17.0";
 const REPO = "https://github.com/maxgfr/crible";
 
 /** The command that runs crible: ULTRASTOCK_CRIBLE_CMD (e.g. "crible" when installed), else uvx at the pinned tag. */

@@ -14102,7 +14102,7 @@ import { spawn as spawn4 } from "child_process";
 import { existsSync as existsSync11, readFileSync as readFileSync14 } from "fs";
 import { join as join14 } from "path";
 var SOURCE7 = "crible";
-var CRIBLE_TAG = "v0.16.0";
+var CRIBLE_TAG = "v0.17.0";
 var REPO = "https://github.com/maxgfr/crible";
 function cribleInvocation() {
   const custom = env("CRIBLE_CMD");
