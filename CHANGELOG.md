@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.10.0](https://github.com/maxgfr/ultrastock/compare/v1.9.2...v1.10.0) (2026-11-04)
+
+
+### Features
+
+* **catalysts:** what past results did to the stock, beside the implied move ([e200d45](https://github.com/maxgfr/ultrastock/commit/e200d4584bf902c6cd5645b07eaebd7b155d8939))
+* **peers:** place the company in its whole peer group through crible stats ([3d9f751](https://github.com/maxgfr/ultrastock/commit/3d9f7516a202e42770729e39bba28de163efca00))
+* **regime:** the high-yield and investment-grade spreads as context in the US regime ([1a2f192](https://github.com/maxgfr/ultrastock/commit/1a2f192fce937a88fca38b4bd431386a44001a10)), closes [hi#yield](https://github.com/hi/issues/yield)
+* **social:** retail attention per name, and a news pulse of coverage and tone ([5b0fc71](https://github.com/maxgfr/ultrastock/commit/5b0fc71c1e49dcdb0222665d1ca81286bc265fa8))
+
 ## [1.9.2](https://github.com/maxgfr/ultrastock/compare/v1.9.1...v1.9.2) (2026-11-03)
 
 
