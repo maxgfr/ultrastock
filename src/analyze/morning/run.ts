@@ -44,6 +44,7 @@ import { type AgendaItem, catalystsReport, currencyOf, macroAgenda, sessionOrdin
 import { isoDay, type Report, shiftDay } from "../regime/common.js";
 import { cryptoRegimeReport, euRegime, usRegime } from "../regime/market.js";
 import { socialDatasets } from "../social.js";
+import { resultsReactionsDataset } from "../events/earnings.js";
 import { SPIKE_RATIO } from "../../providers/macro/social.js";
 
 /** Earnings within this many sessions are flagged high. */
@@ -128,6 +129,8 @@ export interface MorningFacts {
   events: Array<{ event: MarketEvent; key: string; weightPct?: number; exposureKeys: string[] }>;
   closures: Array<{ market: string; date: string; name: string; early: boolean; key: string }>;
   attention?: AttentionFact[];
+  /** What past results did to a name reporting soon: the median absolute move, over n reports. */
+  pastResults?: Record<string, { absMedian: number; n: number; keys: string[] }>;
 }
 
 export interface MorningFlag {
@@ -174,13 +177,14 @@ export function morningFlags(x: MorningFacts): MorningFlag[] {
     }
     if (d.kind === "earnings") {
       const near = d.sessionsAway <= NEAR_SESSIONS;
+      const past = x.pastResults?.[d.symbol];
       out.push({
         level: near ? "high" : "medium",
         kind: "earnings",
         symbol: d.symbol,
         date: d.date,
-        text: `${d.symbol} reports earnings on ${d.date}${d.timing && d.timing !== "not supplied" ? ` (${d.timing})` : ""}, ${inSessions(d.sessionsAway)}${d.projected ? " — projected, not confirmed by the company" : ""} (${d.source})${held(d.symbol) ? ": a stop does not protect against a gap" : ""}`,
-        keys: [d.key],
+        text: `${d.symbol} reports earnings on ${d.date}${d.timing && d.timing !== "not supplied" ? ` (${d.timing})` : ""}, ${inSessions(d.sessionsAway)}${d.projected ? " — projected, not confirmed by the company" : ""} (${d.source})${held(d.symbol) ? ": a stop does not protect against a gap" : ""}${past ? `; its last ${past.n} results moved it a median ±${past.absMedian.toFixed(1)} %` : ""}`,
+        keys: [d.key, ...(past?.keys ?? [])],
         next: `ultrastock research ${d.symbol} --focus results --out <dir>`,
       });
     } else if (held(d.symbol) || d.sessionsAway <= NEAR_SESSIONS) {
@@ -775,6 +779,34 @@ export async function morningRun(dir: string, opts: MorningOptions = {}): Promis
     if (universe.length > wanted.length) f.note(`retail attention read for the first ${wanted.length} names of ${universe.length}`);
   }
 
+  // What past results did to the US names reporting within a few sessions: the base rate of the gap.
+  const pastResults: NonNullable<MorningFacts["pastResults"]> = {};
+  {
+    const byRow = new Map(rows.map((r) => [r.symbol, r]));
+    const reporting = [
+      ...new Set(
+        dates
+          .filter((d) => d.kind === "earnings" && d.date >= today && d.sessionsAway <= NEAR_SESSIONS)
+          .map((d) => d.symbol)
+          .filter((s) => {
+            const i = byRow.get(s)?.instrument;
+            return i?.market === "us" && i.kind === "equity";
+          }),
+      ),
+    ].slice(0, MAX_CONFIRM);
+    for (const s of reporting) {
+      try {
+        const ds = await resultsReactionsDataset(s, now);
+        f.input(ds);
+        const n = ds.points.find((p) => p.key === `${s}.results.n`);
+        const abs = ds.points.find((p) => p.key === `${s}.results.absMedian`);
+        if (typeof n?.value === "number" && typeof abs?.value === "number") pastResults[s] = { n: n.value, absMedian: abs.value, keys: [abs.key, n.key] };
+      } catch (e) {
+        f.note(`${s}: past results reactions unavailable (${(e as Error).message.split("\n")[0]})`);
+      }
+    }
+  }
+
   // 5. The flags.
   const originsRec: Record<string, Origin[]> = Object.fromEntries(
     universe.map((s) => [s, [...origins.get(s)!].sort((a, b) => ORIGIN_RANK[a] - ORIGIN_RANK[b])]),
@@ -792,6 +824,7 @@ export async function morningRun(dir: string, opts: MorningOptions = {}): Promis
     events,
     closures,
     attention,
+    pastResults,
   });
 
   const { store, result } = registerFindings(dir, f, "morning", now);
