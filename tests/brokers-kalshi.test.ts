@@ -113,7 +113,8 @@ describe("Kalshi live orders and the jurisdiction", () => {
   }
 
   it("refuses a French resident live, whatever else holds", async () => {
-    saveProfile(defaultProfile("FR", "EUR"));
+    // A USD base: an EUR one would size the USD contract through a live FX read, which can outlast the test timeout in CI.
+    saveProfile(defaultProfile("FR", "USD"));
     requestLimits({ maxOrder: 250, maxDaily: 500, venues: ["kalshi"], attestedNoWithdraw: [] }, true, new Date(Date.now() - LOOSEN_DELAY_MS - 1000));
     const p = await preconditions({ ticket: await ticket(), venue: "kalshi", env: "live", adapter, venueSym: "FED-1:YES" });
     expect(p.refusals.map((r) => r.code)).toContain("BLOCKED_JURISDICTION");
