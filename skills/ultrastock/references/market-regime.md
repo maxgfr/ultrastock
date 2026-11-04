@@ -8,7 +8,7 @@ call is an `[E#]`.
 
 | Market | Scored signals | Context only |
 |---|---|---|
-| us | SPY trend (close vs the 200-day, 50 vs 200, slope), RSP/SPY breadth, HYG/LQD credit, distribution days and the follow-through state on SPY and QQQ, VIX/VIX3M term structure, CNN Fear & Greed (read contrarian), % of US large caps above their 200-day | IWM/SPY, XLY/XLP, SPY/TLT |
+| us | SPY trend (close vs the 200-day, 50 vs 200, slope), RSP/SPY breadth, HYG/LQD credit, distribution days and the follow-through state on SPY and QQQ, VIX/VIX3M term structure, CNN Fear & Greed (read contrarian), % of US large caps above their 200-day | IWM/SPY, XLY/XLP, SPY/TLT; the HY and IG option-adjusted spreads (FRED, ICE BofA) with their 20-observation change, high yield flagged "widening" at +50 bp |
 | eu | CAC 40 trend, euro-area large-cap breadth, VIX term structure | CW8, the ECB AAA 2s10s |
 | crypto | BTC trend and 30-day return, alt breadth (top 50), funding, drawdown from the high | — |
 

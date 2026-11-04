@@ -26279,6 +26279,7 @@ function resultsReactions(dates, stock, bench) {
       out5.move5 = s.index5d;
       if (b.index5d !== void 0) out5.excess5 = s.index5d - b.index5d;
     }
+    if (out5.move === void 0) return out5;
     const sd = drift(stock, d.date, DRIFT_SESSIONS);
     const bd = drift(bench, d.date, DRIFT_SESSIONS);
     if (sd !== void 0 && bd !== void 0) out5.drift = sd - bd;
@@ -26304,7 +26305,13 @@ function reactionPoints(sym3, dates, rs) {
     if (r3.excess !== void 0)
       points.push({ key: `${k}.${r3.date}.excess`, label: `${sym3} move around the ${on}, minus ${BENCHMARK}'s`, value: r2(r3.excess), unit: "%", asOf: r3.date });
     if (r3.move5 !== void 0)
-      points.push({ key: `${k}.${r3.date}.move5`, label: `${sym3} move from the close before the ${on} to 5 sessions after`, value: r2(r3.move5), unit: "%", asOf: r3.date });
+      points.push({
+        key: `${k}.${r3.date}.move5`,
+        label: `${sym3} move from the close before the ${on} to 5 sessions after`,
+        value: r2(r3.move5),
+        unit: "%",
+        asOf: r3.date
+      });
     if (r3.drift !== void 0)
       points.push({
         key: `${k}.${r3.date}.drift`,
@@ -26323,7 +26330,12 @@ function reactionPoints(sym3, dates, rs) {
   const add2 = (key, label2, v, formula) => {
     if (v !== void 0) points.push({ key: `${k}.${key}`, label: `${sym3} ${label2} ${over}`, value: r2(v), unit: "%", formula });
   };
-  add2("absMedian", "median absolute move around results", reactionStats(moves.map((m) => m === void 0 ? void 0 : Math.abs(m))).median, "median of |move|");
+  add2(
+    "absMedian",
+    "median absolute move around results",
+    reactionStats(moves.map((m) => m === void 0 ? void 0 : Math.abs(m))).median,
+    "median of |move|"
+  );
   add2("median", "median move around results", st.median, "median of the moves");
   add2("worst", "worst move around results", st.worst, "minimum of the moves");
   add2("best", "best move around results", st.best, "maximum of the moves");
@@ -26980,7 +26992,8 @@ async function catalystsReport(raw, days, now = clockNow(), opts = {}) {
     } catch (e) {
       notes.push(`past results reactions unavailable: ${e.message.split("\n")[0]}`);
     }
-  } else if (full && inst.kind === "equity" && !us2) notes.push("past results reactions: SEC registrants only \u2014 no keyless history of other issuers' results dates");
+  } else if (full && inst.kind === "equity" && !us2)
+    notes.push("past results reactions: SEC registrants only \u2014 no keyless history of other issuers' results dates");
   const clusters = eventClusters(
     catalysts.filter((c) => inWindow(c.date)),
     today,
@@ -27244,6 +27257,74 @@ function cryptoRegime(c) {
     coverage: w.coverage,
     label: s === void 0 ? "unknown" : s >= 70 ? "risk-on" : s >= 55 ? "constructive" : s >= 40 ? "neutral" : s >= 25 ? "defensive" : "risk-off",
     components: w.components
+  };
+}
+
+// src/providers/macro/fred.ts
+var SOURCE19 = "fred";
+var FRED_PRESETS = {
+  DGS10: { label: "US 10-year Treasury constant-maturity yield", unit: "%", freq: "d" },
+  DGS2: { label: "US 2-year Treasury constant-maturity yield", unit: "%", freq: "d" },
+  T10Y2Y: { label: "US 10Y minus 2Y Treasury spread", unit: "%", freq: "d" },
+  BAMLH0A0HYM2: { label: "ICE BofA US high yield option-adjusted spread", unit: "%", freq: "d" },
+  BAMLC0A0CM: { label: "ICE BofA US corporate (IG) option-adjusted spread", unit: "%", freq: "d" },
+  DFF: { label: "Effective federal funds rate", unit: "%", freq: "d" },
+  CPIAUCSL: { label: "US CPI-U all items (SA)", unit: "index", freq: "m" },
+  CPILFESL: { label: "US CPI-U less food and energy (SA)", unit: "index", freq: "m" },
+  UNRATE: { label: "US unemployment rate", unit: "%", freq: "m" },
+  PAYEMS: { label: "US nonfarm payrolls (thousands)", unit: "thousands", freq: "m" },
+  ICSA: { label: "US initial jobless claims (SA)", unit: "count", freq: "w" },
+  M2SL: { label: "US M2 money stock (billions USD, SA)", unit: "USD bn", freq: "m" },
+  WALCL: { label: "Fed total assets (millions USD, weekly)", unit: "USD mn", freq: "w" }
+};
+var fredKey = () => process.env.ULTRASTOCK_FRED_API_KEY || process.env.FRED_API_KEY || void 0;
+function parseFredCsv(text, id) {
+  return csvRecords(text).flatMap((r3) => {
+    const date = r3.observation_date ?? r3.DATE ?? "";
+    const raw = r3[id] ?? "";
+    const value = Number(raw);
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) && raw !== "" && raw !== "." && Number.isFinite(value) ? [{ date, value }] : [];
+  }).sort((a, b) => a.date.localeCompare(b.date));
+}
+function parseFredJson(data) {
+  return (data.observations ?? []).flatMap((o) => o.value !== "." && Number.isFinite(Number(o.value)) ? [{ date: o.date, value: Number(o.value) }] : []).sort((a, b) => a.date.localeCompare(b.date));
+}
+async function fredSeries(id, opts = {}) {
+  const sid = id.toUpperCase();
+  const preset = FRED_PRESETS[sid];
+  const days = opts.days ?? (preset?.freq === "m" ? 400 : preset?.freq === "w" ? 120 : 60);
+  const start = isoDate2(new Date((opts.now ?? clockNow()).getTime() - days * 864e5));
+  const key = fredKey();
+  let obs;
+  let url;
+  let fetchedAt;
+  const notes = [];
+  if (key) {
+    const apiUrl = `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(sid)}&api_key=${encodeURIComponent(key)}&file_type=json&observation_start=${start}`;
+    const res = await fetchJson(apiUrl, { userAgent: politeUa() });
+    if (!res.ok || !res.data) throw new ProviderError(SOURCE19, `${sid}: API answered HTTP ${res.status}`, res.status);
+    obs = parseFredJson(res.data);
+    url = `https://fred.stlouisfed.org/series/${sid}`;
+    fetchedAt = res.fetchedAt;
+  } else {
+    const csvUrl = `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(sid)}&cosd=${start}`;
+    const res = await fetchText(csvUrl, { accept: "text/csv", userAgent: politeUa() });
+    if (res.status === 404 || res.ok && !/observation_date|DATE/.test(res.body.slice(0, 80)))
+      throw new ProviderError(SOURCE19, `no FRED series ${sid}`, res.status === 404 ? 404 : 400);
+    if (!res.ok) throw new ProviderError(SOURCE19, `${sid}: keyless CSV export refused (HTTP ${res.status}) \u2014 set FRED_API_KEY (free)`, res.status);
+    obs = parseFredCsv(res.body, sid);
+    url = res.url;
+    fetchedAt = res.fetchedAt;
+    notes.push("read keyless from FRED's graph CSV export; set FRED_API_KEY (free) to use the documented API");
+  }
+  if (!obs.length) throw new ProviderError(SOURCE19, `${sid}: no observations since ${start}`);
+  return {
+    kind: "macro",
+    title: preset ? `${preset.label} (FRED ${sid})` : `FRED series ${sid}`,
+    subject: "US",
+    points: seriesPoints(`US.fred.${sid}`, preset?.label ?? `FRED series ${sid}`, preset?.unit, obs, { history: opts.history ?? true }),
+    provenance: { source: SOURCE19, url, fetchedAt, official: true, asOf: obs[obs.length - 1].date },
+    notes
   };
 }
 
@@ -27576,6 +27657,43 @@ var Sections = class {
     return [...this.map.values()];
   }
 };
+var CREDIT_SPREADS = [
+  { sid: "BAMLH0A0HYM2", id: "hy", label: "US high yield option-adjusted spread" },
+  { sid: "BAMLC0A0CM", id: "ig", label: "US investment grade option-adjusted spread" }
+];
+var SPREAD_LOOKBACK = 20;
+var HY_WIDENING_BP = 50;
+function spreadContext(ns, spread2, ds) {
+  const re = new RegExp(`^US\\.fred\\.${spread2.sid}\\.(\\d{4}-\\d{2}-\\d{2})$`);
+  const obs = ds.points.flatMap((p) => {
+    const m = re.exec(p.key);
+    return m && typeof p.value === "number" ? [{ date: m[1], value: p.value }] : [];
+  }).sort((a, b) => a.date.localeCompare(b.date));
+  const last2 = obs[obs.length - 1];
+  if (!last2) return { points: [] };
+  const k = `${ns}.credit.oas.${spread2.id}`;
+  const points = [{ key: k, label: spread2.label, value: last2.value, unit: "%", asOf: last2.date }];
+  const then = obs[obs.length - 1 - SPREAD_LOOKBACK];
+  if (!then) return { points, level: last2.value };
+  const changeBp = Number(((last2.value - then.value) * 100).toFixed(2));
+  points.push({
+    key: `${k}.chg${SPREAD_LOOKBACK}`,
+    label: `${spread2.label}, change over ${SPREAD_LOOKBACK} observations (since ${then.date})`,
+    value: changeBp,
+    unit: "bp",
+    formula: `(spread@${last2.date} \u2212 spread@${then.date}) \xD7 100`,
+    asOf: last2.date
+  });
+  if (spread2.id !== "hy") return { points, level: last2.value, changeBp };
+  const widening = changeBp >= HY_WIDENING_BP;
+  points.push({
+    key: `${k}.widening`,
+    label: `${spread2.label} widening (\u2265 ${HY_WIDENING_BP} bp over ${SPREAD_LOOKBACK} observations)`,
+    value: widening,
+    asOf: last2.date
+  });
+  return { points, level: last2.value, changeBp, widening };
+}
 function signalPoints(ns, s, formula, asOf) {
   const at = asOf ? { asOf } : {};
   if (s.value === void 0) return [{ key: `${ns}.signal.${s.id}.reason`, label: `${s.label}: not computable`, value: s.reason, ...at }];
@@ -27715,7 +27833,8 @@ async function usRegime(now = clockNow()) {
     settle2({
       "Cboe VIX term structure": () => vixTermStructure(["VIX", "VIX3M"]),
       "CNN Fear & Greed": () => cnnFearGreed(now),
-      "TradingView large-cap breadth": () => usBreadthCount()
+      "TradingView large-cap breadth": () => usBreadthCount(),
+      ...Object.fromEntries(CREDIT_SPREADS.map((s) => [`FRED ${s.label}`, () => fredSeries(s.sid, { days: 60, now })]))
     })
   ]);
   const notes = [...hist.failed.map((f3) => `history unavailable \u2014 ${f3}`), ...side2.failed.map((f3) => `unavailable \u2014 ${f3}`)];
@@ -27836,6 +27955,17 @@ async function usRegime(now = clockNow()) {
       ...signalPoints(ns, breadthPct, "(% above \u2212 50) / 30, clipped to \u22121\u2026+1", p.asOf)
     ]);
   }
+  const spreads = [];
+  for (const spread2 of CREDIT_SPREADS) {
+    const ds = side2.ok[`FRED ${spread2.label}`];
+    if (!ds) continue;
+    const r3 = spreadContext(ns, spread2, ds);
+    if (!r3.points.length) continue;
+    spreads.push({ spread: spread2, r: r3 });
+    sec.add("US credit spreads (FRED, ICE BofA indices) \u2014 context, not scored", { ...ds.provenance }, r3.points, [
+      `the option-adjusted spread over Treasuries of the ICE BofA index; a widening of ${HY_WIDENING_BP} bp or more in high yield over ${SPREAD_LOOKBACK} observations is flagged`
+    ]);
+  }
   const breadth = meanOf([breadthRatio?.value, breadthPct?.value]);
   const advice = exposureCoach({
     trend: trend?.value,
@@ -27851,7 +27981,7 @@ async function usRegime(now = clockNow()) {
   const coachNotes = [
     "breadth = mean of the RSP/SPY signal and the % of large caps above their 200-day signal, when both are available",
     "distribution: the more severe of SPY and QQQ; follow-through: the less favourable of the two (conservative)",
-    "IWM/SPY, XLY/XLP and SPY/TLT are context: reported, not scored",
+    "IWM/SPY, XLY/XLP, SPY/TLT and the HY and IG credit spreads (FRED) are context: reported, not scored",
     ...comp.missing.length ? [`not computable, weights renormalised over the rest: ${comp.missing.join("; ")}`] : [],
     ...notes
   ];
@@ -27870,6 +28000,10 @@ async function usRegime(now = clockNow()) {
       ] : [],
       "context (not scored):",
       ...context.map((s) => signalLine(ns, s, cite2)),
+      ...spreads.map(({ spread: spread2, r: r3 }) => {
+        const k = `${ns}.credit.oas.${spread2.id}`;
+        return `  - ${spread2.label}: ${fmt3(r3.level)} %${cite2(k)}${r3.changeBp !== void 0 ? `, ${r3.changeBp >= 0 ? "+" : ""}${fmt3(r3.changeBp, 0)} bp over ${SPREAD_LOOKBACK} observations${cite2(`${k}.chg${SPREAD_LOOKBACK}`)}` : ""}${r3.widening ? ` \u2014 WIDENING${cite2(`${k}.widening`)}: credit is pricing more risk` : ""}`;
+      }),
       ...notes.length ? ["notes:", ...notes.map((n2) => `  - ${n2}`)] : []
     ]
   };
@@ -29965,7 +30099,7 @@ var period = (name, def2, description) => ({
   min: 1
 });
 var real = (name, def2, description) => ({ name, kind: "number", default: def2, description, min: 0 });
-var SOURCE19 = { name: "source", kind: "string", default: "close", description: "Price series read", choices: PRICE_SOURCES };
+var SOURCE20 = { name: "source", kind: "string", default: "close", description: "Price series read", choices: PRICE_SOURCES };
 var BENCHMARK2 = { name: "benchmark", kind: "bars", description: "Benchmark bars (as-of joined by date)" };
 var num8 = (p, k) => p[k];
 var str4 = (p, k) => p[k];
@@ -29976,18 +30110,18 @@ function def(name, group, description, params, outputs, run3) {
 }
 var V = ["value"];
 var BAND = ["upper", "middle", "lower"];
-def("sma", "averages", "Simple moving average", [period("period", 20, "Window"), SOURCE19], V, (b, p) => sma(src(b, p), num8(p, "period")));
-def("ema", "averages", "Exponential moving average, SMA-seeded", [period("period", 20, "Window"), SOURCE19], V, (b, p) => ema(src(b, p), num8(p, "period")));
-def("wma", "averages", "Linearly weighted moving average", [period("period", 20, "Window"), SOURCE19], V, (b, p) => wma(src(b, p), num8(p, "period")));
-def("rma", "averages", "Wilder's smoothing (RMA/SMMA)", [period("period", 14, "Window"), SOURCE19], V, (b, p) => rma(src(b, p), num8(p, "period")));
-def("dema", "averages", "Mulloy's double EMA", [period("period", 20, "Window"), SOURCE19], V, (b, p) => dema(src(b, p), num8(p, "period")));
-def("tema", "averages", "Mulloy's triple EMA", [period("period", 20, "Window"), SOURCE19], V, (b, p) => tema(src(b, p), num8(p, "period")));
-def("hma", "averages", "Hull moving average", [period("period", 16, "Window"), SOURCE19], V, (b, p) => hma(src(b, p), num8(p, "period")));
+def("sma", "averages", "Simple moving average", [period("period", 20, "Window"), SOURCE20], V, (b, p) => sma(src(b, p), num8(p, "period")));
+def("ema", "averages", "Exponential moving average, SMA-seeded", [period("period", 20, "Window"), SOURCE20], V, (b, p) => ema(src(b, p), num8(p, "period")));
+def("wma", "averages", "Linearly weighted moving average", [period("period", 20, "Window"), SOURCE20], V, (b, p) => wma(src(b, p), num8(p, "period")));
+def("rma", "averages", "Wilder's smoothing (RMA/SMMA)", [period("period", 14, "Window"), SOURCE20], V, (b, p) => rma(src(b, p), num8(p, "period")));
+def("dema", "averages", "Mulloy's double EMA", [period("period", 20, "Window"), SOURCE20], V, (b, p) => dema(src(b, p), num8(p, "period")));
+def("tema", "averages", "Mulloy's triple EMA", [period("period", 20, "Window"), SOURCE20], V, (b, p) => tema(src(b, p), num8(p, "period")));
+def("hma", "averages", "Hull moving average", [period("period", 16, "Window"), SOURCE20], V, (b, p) => hma(src(b, p), num8(p, "period")));
 def(
   "kama",
   "averages",
   "Kaufman adaptive moving average",
-  [period("period", 10, "Efficiency-ratio window"), period("fast", 2, "Fast EMA period"), period("slow", 30, "Slow EMA period"), SOURCE19],
+  [period("period", 10, "Efficiency-ratio window"), period("fast", 2, "Fast EMA period"), period("slow", 30, "Slow EMA period"), SOURCE20],
   V,
   (b, p) => kama(src(b, p), num8(p, "period"), num8(p, "fast"), num8(p, "slow"))
 );
@@ -29995,7 +30129,7 @@ def(
   "mcginleyDynamic",
   "averages",
   "McGinley Dynamic",
-  [period("period", 14, "Window"), { ...real("k", 1, "McGinley's constant (he suggested 0.6)"), min: 0.01 }, SOURCE19],
+  [period("period", 14, "Window"), { ...real("k", 1, "McGinley's constant (he suggested 0.6)"), min: 0.01 }, SOURCE20],
   V,
   (b, p) => mcginleyDynamic(src(b, p), num8(p, "period"), num8(p, "k"))
 );
@@ -30004,7 +30138,7 @@ def(
   "movingAverage",
   "averages",
   "Moving average of a chosen type",
-  [period("period", 20, "Window"), { name: "type", kind: "string", default: "ema", description: "Average type", choices: MA_TYPES }, SOURCE19],
+  [period("period", 20, "Window"), { name: "type", kind: "string", default: "ema", description: "Average type", choices: MA_TYPES }, SOURCE20],
   V,
   (b, p) => movingAverage(src(b, p), num8(p, "period"), str4(p, "type"))
 );
@@ -30064,7 +30198,7 @@ def(
   "ravi",
   "trend",
   "Chande's Range Action Verification Index (%)",
-  [period("shortPeriod", 7, "Short SMA"), period("longPeriod", 65, "Long SMA"), SOURCE19],
+  [period("shortPeriod", 7, "Short SMA"), period("longPeriod", 65, "Long SMA"), SOURCE20],
   V,
   (b, p) => ravi(src(b, p), num8(p, "shortPeriod"), num8(p, "longPeriod"))
 );
@@ -30072,21 +30206,21 @@ def(
   "linearRegressionSlope",
   "trend",
   "Least-squares slope per bar",
-  [period("period", 14, "Window"), SOURCE19],
+  [period("period", 14, "Window"), SOURCE20],
   V,
   (b, p) => linearRegressionSlope(src(b, p), num8(p, "period"))
 );
-def("rsi", "momentum", "Wilder's RSI", [period("period", 14, "Window"), SOURCE19], V, (b, p) => rsi(src(b, p), num8(p, "period")));
+def("rsi", "momentum", "Wilder's RSI", [period("period", 14, "Window"), SOURCE20], V, (b, p) => rsi(src(b, p), num8(p, "period")));
 def(
   "macd",
   "momentum",
   "Appel's MACD",
-  [period("fast", 12, "Fast EMA"), period("slow", 26, "Slow EMA"), period("signal", 9, "Signal EMA"), SOURCE19],
+  [period("fast", 12, "Fast EMA"), period("slow", 26, "Slow EMA"), period("signal", 9, "Signal EMA"), SOURCE20],
   ["macd", "signal", "histogram"],
   (b, p) => macd(src(b, p), num8(p, "fast"), num8(p, "slow"), num8(p, "signal"))
 );
-def("roc", "momentum", "Rate of change (%)", [period("period", 12, "Lookback"), SOURCE19], V, (b, p) => roc(src(b, p), num8(p, "period")));
-def("momentum", "momentum", "Momentum (price difference)", [period("period", 10, "Lookback"), SOURCE19], V, (b, p) => momentum(src(b, p), num8(p, "period")));
+def("roc", "momentum", "Rate of change (%)", [period("period", 12, "Lookback"), SOURCE20], V, (b, p) => roc(src(b, p), num8(p, "period")));
+def("momentum", "momentum", "Momentum (price difference)", [period("period", 10, "Lookback"), SOURCE20], V, (b, p) => momentum(src(b, p), num8(p, "period")));
 def(
   "stochastic",
   "momentum",
@@ -30121,7 +30255,7 @@ def(
     period("stochasticPeriod", 14, "Stochastic window"),
     period("kPeriod", 3, "%K smoothing"),
     period("dPeriod", 3, "%D smoothing"),
-    SOURCE19
+    SOURCE20
   ],
   ["stochRsi", "k", "d"],
   (b, p) => stochRsi(src(b, p), num8(p, "rsiPeriod"), num8(p, "stochasticPeriod"), num8(p, "kPeriod"), num8(p, "dPeriod"))
@@ -30150,12 +30284,12 @@ def(
   V,
   (b, p) => awesomeOscillator(b, num8(p, "fastPeriod"), num8(p, "slowPeriod"))
 );
-def("trix", "momentum", "Hutson's TRIX (%)", [period("period", 14, "EMA window"), SOURCE19], V, (b, p) => trix(src(b, p), num8(p, "period")));
+def("trix", "momentum", "Hutson's TRIX (%)", [period("period", 14, "EMA window"), SOURCE20], V, (b, p) => trix(src(b, p), num8(p, "period")));
 def(
   "pmo",
   "momentum",
   "DecisionPoint Price Momentum Oscillator",
-  [period("smooth1Period", 35, "First smoothing"), period("smooth2Period", 20, "Second smoothing"), period("signalPeriod", 10, "Signal EMA"), SOURCE19],
+  [period("smooth1Period", 35, "First smoothing"), period("smooth2Period", 20, "Second smoothing"), period("signalPeriod", 10, "Signal EMA"), SOURCE20],
   ["pmo", "signal"],
   (b, p) => pmo(src(b, p), num8(p, "smooth1Period"), num8(p, "smooth2Period"), num8(p, "signalPeriod"))
 );
@@ -30163,7 +30297,7 @@ def(
   "kst",
   "momentum",
   "Pring's Know Sure Thing (daily)",
-  [period("signalPeriod", 9, "Signal SMA"), SOURCE19],
+  [period("signalPeriod", 9, "Signal SMA"), SOURCE20],
   ["kst", "signal"],
   (b, p) => kst(src(b, p), num8(p, "signalPeriod"))
 );
@@ -30171,7 +30305,7 @@ def(
   "pringSpecialK",
   "momentum",
   "Pring's Special K (daily)",
-  [period("signalPeriod", 10, "Signal SMA"), SOURCE19],
+  [period("signalPeriod", 10, "Signal SMA"), SOURCE20],
   ["specialK", "signal"],
   (b, p) => pringSpecialK(src(b, p), num8(p, "signalPeriod"))
 );
@@ -30179,7 +30313,7 @@ def(
   "coppockCurve",
   "momentum",
   "Coppock curve",
-  [period("rocPeriod1", 14, "Long ROC"), period("rocPeriod2", 11, "Short ROC"), period("wmaPeriod", 10, "WMA window"), SOURCE19],
+  [period("rocPeriod1", 14, "Long ROC"), period("rocPeriod2", 11, "Short ROC"), period("wmaPeriod", 10, "WMA window"), SOURCE20],
   V,
   (b, p) => coppockCurve(src(b, p), num8(p, "rocPeriod1"), num8(p, "rocPeriod2"), num8(p, "wmaPeriod"))
 );
@@ -30187,7 +30321,7 @@ def(
   "dpo",
   "momentum",
   "Detrended Price Oscillator (not displaced)",
-  [period("period", 20, "SMA window"), SOURCE19],
+  [period("period", 20, "SMA window"), SOURCE20],
   V,
   (b, p) => dpo(src(b, p), num8(p, "period"))
 );
@@ -30230,7 +30364,7 @@ def(
     return a.map((x, i) => x === void 0 || m[i] === void 0 || m[i] === 0 ? void 0 : x / m[i]);
   }
 );
-def("stdev", "volatility", "Rolling standard deviation", [period("period", 20, "Window"), SOURCE19], V, (b, p) => rollingStdev(src(b, p), num8(p, "period")));
+def("stdev", "volatility", "Rolling standard deviation", [period("period", 20, "Window"), SOURCE20], V, (b, p) => rollingStdev(src(b, p), num8(p, "period")));
 def("choppinessIndex", "volatility", "Dreiss' Choppiness Index", [period("period", 14, "Window")], V, (b, p) => choppinessIndex(b, num8(p, "period")));
 def(
   "massIndex",
@@ -30283,7 +30417,7 @@ def(
   "bollinger",
   "bands",
   "Bollinger bands",
-  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE19],
+  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE20],
   BAND,
   (b, p) => bollinger(src(b, p), num8(p, "period"), num8(p, "stdDev"))
 );
@@ -30291,7 +30425,7 @@ def(
   "bollingerPercentB",
   "bands",
   "Bollinger %B",
-  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE19],
+  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE20],
   V,
   (b, p) => bollingerPercentB(src(b, p), num8(p, "period"), num8(p, "stdDev"))
 );
@@ -30299,7 +30433,7 @@ def(
   "bollingerBandwidth",
   "bands",
   "Bollinger bandwidth",
-  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE19],
+  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE20],
   V,
   (b, p) => bollingerBandwidth(src(b, p), num8(p, "period"), num8(p, "stdDev"))
 );
@@ -30328,7 +30462,7 @@ def(
     period("period", 20, "Window"),
     real("percentage", 2.5, "Envelope %"),
     { name: "type", kind: "string", default: "sma", description: "Average type", choices: ["sma", "ema"] },
-    SOURCE19
+    SOURCE20
   ],
   BAND,
   (b, p) => movingAverageEnvelope(src(b, p), num8(p, "period"), num8(p, "percentage"), str4(p, "type"))
@@ -30373,16 +30507,16 @@ def(
 );
 def("rollingVwap", "volume", "Rolling VWAP", [period("period", 20, "Window")], V, (b, p) => rollingVwap(b, num8(p, "period")));
 def("volumeSma", "volume", "SMA of volume", [period("period", 20, "Window")], V, (b, p) => sma(priceSource(b, "volume"), num8(p, "period")));
-def("rollingMax", "stats", "Rolling maximum", [period("period", 20, "Window"), SOURCE19], V, (b, p) => rollingMax(src(b, p), num8(p, "period")));
-def("rollingMin", "stats", "Rolling minimum", [period("period", 20, "Window"), SOURCE19], V, (b, p) => rollingMin(src(b, p), num8(p, "period")));
+def("rollingMax", "stats", "Rolling maximum", [period("period", 20, "Window"), SOURCE20], V, (b, p) => rollingMax(src(b, p), num8(p, "period")));
+def("rollingMin", "stats", "Rolling minimum", [period("period", 20, "Window"), SOURCE20], V, (b, p) => rollingMin(src(b, p), num8(p, "period")));
 def("highestHigh", "stats", "Highest high", [period("period", 14, "Window")], V, (b, p) => highestHigh(b, num8(p, "period")));
 def("lowestLow", "stats", "Lowest low", [period("period", 14, "Window")], V, (b, p) => lowestLow(b, num8(p, "period")));
-def("zScore", "stats", "Z-score against the rolling mean/stdev", [period("period", 20, "Window"), SOURCE19], V, (b, p) => zScore(src(b, p), num8(p, "period")));
+def("zScore", "stats", "Z-score against the rolling mean/stdev", [period("period", 20, "Window"), SOURCE20], V, (b, p) => zScore(src(b, p), num8(p, "period")));
 def(
   "percentRank",
   "stats",
   "Percent of the previous n values \u2264 the current one",
-  [period("period", 252, "Window"), SOURCE19],
+  [period("period", 252, "Window"), SOURCE20],
   V,
   (b, p) => percentRank(src(b, p), num8(p, "period"))
 );
@@ -31889,7 +32023,7 @@ function growthOf(periods, field2, years = 3) {
 }
 
 // src/providers/macro/treasury.ts
-var SOURCE20 = "us-treasury";
+var SOURCE21 = "us-treasury";
 var BASE21 = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv";
 var treasuryCsvUrl = (year) => `${BASE21}/${year}/all?type=daily_treasury_yield_curve&field_tdr_date_value=${year}&page&_format=csv`;
 function tenorOf(header2) {
@@ -31913,7 +32047,7 @@ function parseTreasuryCsv(text) {
 }
 async function readYear(year) {
   const res = await fetchText(treasuryCsvUrl(year), { accept: "text/csv" });
-  requireOk(SOURCE20, res, `the ${year} par yield curve`);
+  requireOk(SOURCE21, res, `the ${year} par yield curve`);
   return { rows: parseTreasuryCsv(res.body), url: res.url, fetchedAt: res.fetchedAt };
 }
 async function treasuryRows(days, now = clockNow()) {
@@ -31923,7 +32057,7 @@ async function treasuryRows(days, now = clockNow()) {
   let rows = cur.rows;
   if (from.slice(0, 4) < String(year) || !rows.length) rows = [...(await readYear(year - 1)).rows, ...rows];
   rows = rows.filter((r3) => r3.date >= from);
-  if (!rows.length) throw new ProviderError(SOURCE20, `no par yield curve published since ${from}`);
+  if (!rows.length) throw new ProviderError(SOURCE21, `no par yield curve published since ${from}`);
   return { rows, url: cur.url, fetchedAt: cur.fetchedAt };
 }
 var spread = (key, label2, long, short, row) => {
@@ -31966,20 +32100,20 @@ async function treasuryCurve(now = clockNow()) {
     title: `US Treasury par yield curve \u2014 ${last2.date}`,
     subject: "US",
     points,
-    provenance: { source: SOURCE20, url, fetchedAt, delay: "eod", official: true, asOf: last2.date },
+    provenance: { source: SOURCE21, url, fetchedAt, delay: "eod", official: true, asOf: last2.date },
     notes: ["Par yields (bond-equivalent, %), published by the US Treasury each business day after the close."]
   };
 }
 
 // src/providers/macro/frankfurter.ts
-var SOURCE21 = "frankfurter";
+var SOURCE22 = "frankfurter";
 var BASE22 = "https://api.frankfurter.dev/v1";
 var sym = (symbols) => symbols?.length ? `&symbols=${symbols.map((s) => s.toUpperCase()).join(",")}` : "";
 async function frankfurterLatest(base2 = "EUR", symbols) {
   const b = base2.toUpperCase();
   const res = await fetchJson(`${BASE22}/latest?base=${b}${sym(symbols)}`);
-  if (res.status === 404 || res.status === 422) throw new ProviderError(SOURCE21, `unknown currency in ${b}${sym(symbols)}`, res.status);
-  requireOk(SOURCE21, res, `latest rates for ${b}`);
+  if (res.status === 404 || res.status === 422) throw new ProviderError(SOURCE22, `unknown currency in ${b}${sym(symbols)}`, res.status);
+  requireOk(SOURCE22, res, `latest rates for ${b}`);
   const d = res.data;
   const points = Object.entries(d.rates).map(([ccy, v]) => ({
     key: `${b}.fx.${ccy}`,
@@ -31993,7 +32127,7 @@ async function frankfurterLatest(base2 = "EUR", symbols) {
     title: `Euro reference rates via Frankfurter \u2014 ${d.date}`,
     subject: b,
     points,
-    provenance: { source: SOURCE21, url: res.url, fetchedAt: res.fetchedAt, delay: "eod", official: false, asOf: d.date },
+    provenance: { source: SOURCE22, url: res.url, fetchedAt: res.fetchedAt, delay: "eod", official: false, asOf: d.date },
     notes: ["ECB reference rates relayed by frankfurter.dev; cross rates for a non-EUR base are derived from the euro rates."]
   };
 }
@@ -33724,7 +33858,7 @@ async function reportCommand(args, asJson) {
 import { join as join35 } from "path";
 
 // src/providers/macro/elections.ts
-var SOURCE22 = "wikipedia-elections";
+var SOURCE23 = "wikipedia-elections";
 var MONTHS6 = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 var ALIASES = {
   "czech republic": "CZ",
@@ -33860,7 +33994,7 @@ async function electionCalendar(year) {
   const url = `https://en.wikipedia.org/w/api.php?action=parse&page=${page}&prop=wikitext&format=json&formatversion=2`;
   const res = await fetchJson(url, { userAgent: politeUa(), hostIntervalMs: 500 });
   const wikitext = res.data?.parse?.wikitext;
-  if (!res.ok || !wikitext) throw new ProviderError(SOURCE22, `no electoral calendar for ${year} (${res.data?.error?.info ?? res.status})`, res.status);
+  if (!res.ok || !wikitext) throw new ProviderError(SOURCE23, `no electoral calendar for ${year} (${res.data?.error?.info ?? res.status})`, res.status);
   return { events: parseElectionCalendar(wikitext, year), url: `https://en.wikipedia.org/wiki/${page}`, fetchedAt: res.fetchedAt };
 }
 
@@ -35030,7 +35164,7 @@ run: ${dir2}
 }
 
 // src/providers/macro/bls.ts
-var SOURCE23 = "bls";
+var SOURCE24 = "bls";
 var BASE23 = "https://api.bls.gov/publicAPI/v1/timeseries/data/";
 function parseBls(answer) {
   const out5 = /* @__PURE__ */ new Map();
@@ -35069,11 +35203,11 @@ async function fetchBls(ids) {
   const res = ids.length === 1 ? await fetchJson(`${BASE23}${encodeURIComponent(ids[0])}`, opts) : await fetchJson(BASE23, { ...opts, method: "POST", json: { seriesid: ids } });
   if (!res.ok || !res.data) {
     const hint = res.status === 403 || res.status === 503 ? " \u2014 BLS's edge refuses this network; FRED republishes these series (CPIAUCSL, CPILFESL, UNRATE, PAYEMS)" : "";
-    throw new ProviderError(SOURCE23, `API unavailable (HTTP ${res.status})${hint}`, res.status);
+    throw new ProviderError(SOURCE24, `API unavailable (HTTP ${res.status})${hint}`, res.status);
   }
   if (res.data.status !== "REQUEST_SUCCEEDED") {
     const msg = (res.data.message ?? []).join("; ").slice(0, 200);
-    throw new ProviderError(SOURCE23, `request not served: ${msg || res.data.status}`, /threshold|daily/i.test(msg) ? 429 : 400);
+    throw new ProviderError(SOURCE24, `request not served: ${msg || res.data.status}`, /threshold|daily/i.test(msg) ? 429 : 400);
   }
   return { series: parseBls(res.data), url: res.url, fetchedAt: res.fetchedAt };
 }
@@ -35113,13 +35247,13 @@ async function blsHeadlines(which = ["cpi", "coreCpi", "unemployment", "payrolls
       points.push(...seriesPoints(p.key, `${p.label}, employees`, "count", persons));
     } else points.push(...seriesPoints(p.key, p.label, "%", obs));
   }
-  if (!points.length) throw new ProviderError(SOURCE23, `no observations for ${presets.map((p) => p.id).join(", ")}`);
+  if (!points.length) throw new ProviderError(SOURCE24, `no observations for ${presets.map((p) => p.id).join(", ")}`);
   return {
     kind: "macro",
     title: "US labour and price statistics (BLS)",
     subject: "US",
     points,
-    provenance: { source: SOURCE23, url, fetchedAt, official: true },
+    provenance: { source: SOURCE24, url, fetchedAt, official: true },
     notes: [
       ...notes,
       "Monthly data; the latest month is the last release (no revisions history). Payroll changes are the first-difference of the published level."
@@ -35128,7 +35262,7 @@ async function blsHeadlines(which = ["cpi", "coreCpi", "unemployment", "payrolls
 }
 
 // src/providers/macro/cftc.ts
-var SOURCE24 = "cftc";
+var SOURCE25 = "cftc";
 var BASE24 = "https://publicreporting.cftc.gov/resource";
 var DATASETS = { legacy: "6dca-aqww", tff: "gpe5-46if" };
 var COT_MARKETS = {
@@ -35227,12 +35361,12 @@ async function findCotMarket(name, kind = "legacy") {
       $limit: "50"
     })
   );
-  requireOk(SOURCE24, res, `market search "${name}"`);
+  requireOk(SOURCE25, res, `market search "${name}"`);
   const rows = res.data ?? [];
   const latest = rows[0]?.report_date_as_yyyy_mm_dd;
   const current2 = rows.filter((r3) => r3.report_date_as_yyyy_mm_dd === latest);
   const exact = current2.find((r3) => (r3.market_and_exchange_names ?? "").toUpperCase().startsWith(`${q} -`)) ?? current2[0];
-  if (!exact?.cftc_contract_market_code) throw new ProviderError(SOURCE24, `no COT market matching "${name}"`);
+  if (!exact?.cftc_contract_market_code) throw new ProviderError(SOURCE25, `no COT market matching "${name}"`);
   return { code: exact.cftc_contract_market_code, name: exact.market_and_exchange_names ?? name };
 }
 async function cotReport(market, opts = {}) {
@@ -35251,12 +35385,12 @@ async function cotReport(market, opts = {}) {
       $limit: String(weeks)
     })
   );
-  requireOk(SOURCE24, res, `COT ${kind} for ${target.code}`);
+  requireOk(SOURCE25, res, `COT ${kind} for ${target.code}`);
   const rows = res.data ?? [];
   const hist = parseCotRows(rows, kind);
   const last2 = hist[hist.length - 1];
   if (!last2)
-    throw new ProviderError(SOURCE24, `no ${kind} COT report for contract ${target.code}${kind === "tff" ? " (TFF covers financial futures only)" : ""}`);
+    throw new ProviderError(SOURCE25, `no ${kind} COT report for contract ${target.code}${kind === "tff" ? " (TFF covers financial futures only)" : ""}`);
   const prev = hist[hist.length - 2];
   const points = [];
   for (const g of Object.keys(GROUPS[kind])) {
@@ -35308,7 +35442,7 @@ async function cotReport(market, opts = {}) {
     subject,
     points,
     provenance: {
-      source: SOURCE24,
+      source: SOURCE25,
       url: res.url,
       fetchedAt: res.fetchedAt,
       delay: "weekly (Tuesday positions, published Friday)",
@@ -35322,7 +35456,7 @@ async function cotReport(market, opts = {}) {
 }
 
 // src/providers/macro/eurostat.ts
-var SOURCE25 = "eurostat";
+var SOURCE26 = "eurostat";
 var BASE25 = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data";
 var indexOf = (cat) => Array.isArray(cat.index) ? cat.index.map((c, i) => [c, i]) : Object.entries(cat.index);
 function parseJsonStat(js, timeDim = "time") {
@@ -35335,7 +35469,7 @@ function parseJsonStat(js, timeDim = "time") {
     return out5;
   });
   const t = id.indexOf(timeDim);
-  if (t < 0) throw new ProviderError(SOURCE25, `JSON-stat answer has no "${timeDim}" dimension`);
+  if (t < 0) throw new ProviderError(SOURCE26, `JSON-stat answer has no "${timeDim}" dimension`);
   const series = /* @__PURE__ */ new Map();
   const entries = Array.isArray(js.value) ? js.value.map((v, i) => [i, v]) : Object.entries(js.value).map(([k, v]) => [Number(k), v]);
   for (const [flat, v] of entries) {
@@ -35359,9 +35493,9 @@ async function eurostatQuery(dataset3, filters, lastTimePeriod = 13) {
   qs.set("lastTimePeriod", String(lastTimePeriod));
   const url = `${BASE25}/${encodeURIComponent(dataset3)}?${qs}`;
   const res = await fetchJson(url);
-  if (res.status === 400 || res.status === 404) throw new ProviderError(SOURCE25, `no data for ${dataset3} with ${qs}`, res.status);
-  requireOk(SOURCE25, res, `dataset ${dataset3}`);
-  if (!res.data?.id) throw new ProviderError(SOURCE25, `dataset ${dataset3}: not a JSON-stat answer`);
+  if (res.status === 400 || res.status === 404) throw new ProviderError(SOURCE26, `no data for ${dataset3} with ${qs}`, res.status);
+  requireOk(SOURCE26, res, `dataset ${dataset3}`);
+  if (!res.data?.id) throw new ProviderError(SOURCE26, `dataset ${dataset3}: not a JSON-stat answer`);
   return { series: parseJsonStat(res.data), updated: res.data.updated, url: res.url, fetchedAt: res.fetchedAt };
 }
 var EUROSTAT_INDICATORS = {
@@ -35390,86 +35524,18 @@ var EUROSTAT_INDICATORS = {
 };
 async function eurostatIndicator(name, geo = "FR", n2 = 13) {
   const ind = EUROSTAT_INDICATORS[name];
-  if (!ind) throw new ProviderError(SOURCE25, `unknown indicator ${name}`);
+  if (!ind) throw new ProviderError(SOURCE26, `unknown indicator ${name}`);
   const g = geo.toUpperCase();
   const { series, updated, url, fetchedAt } = await eurostatQuery(ind.dataset, { ...ind.filters, geo: g }, n2);
   const obs = series.find((s) => s.dims.geo === g)?.obs ?? [];
-  if (!obs.length) throw new ProviderError(SOURCE25, `${ind.dataset}: no observation for ${g}`);
+  if (!obs.length) throw new ProviderError(SOURCE26, `${ind.dataset}: no observation for ${g}`);
   return {
     kind: "macro",
     title: `${g} ${ind.label} (Eurostat ${ind.dataset})`,
     subject: g,
     points: seriesPoints(`${g}.${ind.key}`, `${g} ${ind.label}`, ind.unit, obs, { history: true }),
-    provenance: { source: SOURCE25, url, fetchedAt, official: true, asOf: obs[obs.length - 1].date },
-    notes: updated ? [`dataset last updated ${updated.slice(0, 10)}`] : []
-  };
-}
-
-// src/providers/macro/fred.ts
-var SOURCE26 = "fred";
-var FRED_PRESETS = {
-  DGS10: { label: "US 10-year Treasury constant-maturity yield", unit: "%", freq: "d" },
-  DGS2: { label: "US 2-year Treasury constant-maturity yield", unit: "%", freq: "d" },
-  T10Y2Y: { label: "US 10Y minus 2Y Treasury spread", unit: "%", freq: "d" },
-  BAMLH0A0HYM2: { label: "ICE BofA US high yield option-adjusted spread", unit: "%", freq: "d" },
-  BAMLC0A0CM: { label: "ICE BofA US corporate (IG) option-adjusted spread", unit: "%", freq: "d" },
-  DFF: { label: "Effective federal funds rate", unit: "%", freq: "d" },
-  CPIAUCSL: { label: "US CPI-U all items (SA)", unit: "index", freq: "m" },
-  CPILFESL: { label: "US CPI-U less food and energy (SA)", unit: "index", freq: "m" },
-  UNRATE: { label: "US unemployment rate", unit: "%", freq: "m" },
-  PAYEMS: { label: "US nonfarm payrolls (thousands)", unit: "thousands", freq: "m" },
-  ICSA: { label: "US initial jobless claims (SA)", unit: "count", freq: "w" },
-  M2SL: { label: "US M2 money stock (billions USD, SA)", unit: "USD bn", freq: "m" },
-  WALCL: { label: "Fed total assets (millions USD, weekly)", unit: "USD mn", freq: "w" }
-};
-var fredKey = () => process.env.ULTRASTOCK_FRED_API_KEY || process.env.FRED_API_KEY || void 0;
-function parseFredCsv(text, id) {
-  return csvRecords(text).flatMap((r3) => {
-    const date = r3.observation_date ?? r3.DATE ?? "";
-    const raw = r3[id] ?? "";
-    const value = Number(raw);
-    return /^\d{4}-\d{2}-\d{2}$/.test(date) && raw !== "" && raw !== "." && Number.isFinite(value) ? [{ date, value }] : [];
-  }).sort((a, b) => a.date.localeCompare(b.date));
-}
-function parseFredJson(data) {
-  return (data.observations ?? []).flatMap((o) => o.value !== "." && Number.isFinite(Number(o.value)) ? [{ date: o.date, value: Number(o.value) }] : []).sort((a, b) => a.date.localeCompare(b.date));
-}
-async function fredSeries(id, opts = {}) {
-  const sid = id.toUpperCase();
-  const preset = FRED_PRESETS[sid];
-  const days = opts.days ?? (preset?.freq === "m" ? 400 : preset?.freq === "w" ? 120 : 60);
-  const start = isoDate2(new Date((opts.now ?? clockNow()).getTime() - days * 864e5));
-  const key = fredKey();
-  let obs;
-  let url;
-  let fetchedAt;
-  const notes = [];
-  if (key) {
-    const apiUrl = `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(sid)}&api_key=${encodeURIComponent(key)}&file_type=json&observation_start=${start}`;
-    const res = await fetchJson(apiUrl, { userAgent: politeUa() });
-    if (!res.ok || !res.data) throw new ProviderError(SOURCE26, `${sid}: API answered HTTP ${res.status}`, res.status);
-    obs = parseFredJson(res.data);
-    url = `https://fred.stlouisfed.org/series/${sid}`;
-    fetchedAt = res.fetchedAt;
-  } else {
-    const csvUrl = `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(sid)}&cosd=${start}`;
-    const res = await fetchText(csvUrl, { accept: "text/csv", userAgent: politeUa() });
-    if (res.status === 404 || res.ok && !/observation_date|DATE/.test(res.body.slice(0, 80)))
-      throw new ProviderError(SOURCE26, `no FRED series ${sid}`, res.status === 404 ? 404 : 400);
-    if (!res.ok) throw new ProviderError(SOURCE26, `${sid}: keyless CSV export refused (HTTP ${res.status}) \u2014 set FRED_API_KEY (free)`, res.status);
-    obs = parseFredCsv(res.body, sid);
-    url = res.url;
-    fetchedAt = res.fetchedAt;
-    notes.push("read keyless from FRED's graph CSV export; set FRED_API_KEY (free) to use the documented API");
-  }
-  if (!obs.length) throw new ProviderError(SOURCE26, `${sid}: no observations since ${start}`);
-  return {
-    kind: "macro",
-    title: preset ? `${preset.label} (FRED ${sid})` : `FRED series ${sid}`,
-    subject: "US",
-    points: seriesPoints(`US.fred.${sid}`, preset?.label ?? `FRED series ${sid}`, preset?.unit, obs, { history: opts.history ?? true }),
     provenance: { source: SOURCE26, url, fetchedAt, official: true, asOf: obs[obs.length - 1].date },
-    notes
+    notes: updated ? [`dataset last updated ${updated.slice(0, 10)}`] : []
   };
 }
 
@@ -44861,13 +44927,14 @@ function morningFlags(x) {
     }
     if (d.kind === "earnings") {
       const near = d.sessionsAway <= NEAR_SESSIONS;
+      const past = x.pastResults?.[d.symbol];
       out5.push({
         level: near ? "high" : "medium",
         kind: "earnings",
         symbol: d.symbol,
         date: d.date,
-        text: `${d.symbol} reports earnings on ${d.date}${d.timing && d.timing !== "not supplied" ? ` (${d.timing})` : ""}, ${inSessions(d.sessionsAway)}${d.projected ? " \u2014 projected, not confirmed by the company" : ""} (${d.source})${held(d.symbol) ? ": a stop does not protect against a gap" : ""}`,
-        keys: [d.key],
+        text: `${d.symbol} reports earnings on ${d.date}${d.timing && d.timing !== "not supplied" ? ` (${d.timing})` : ""}, ${inSessions(d.sessionsAway)}${d.projected ? " \u2014 projected, not confirmed by the company" : ""} (${d.source})${held(d.symbol) ? ": a stop does not protect against a gap" : ""}${past ? `; its last ${past.n} results moved it a median \xB1${past.absMedian.toFixed(1)} %` : ""}`,
+        keys: [d.key, ...past?.keys ?? []],
         next: `ultrastock research ${d.symbol} --focus results --out <dir>`
       });
     } else if (held(d.symbol) || d.sessionsAway <= NEAR_SESSIONS) {
@@ -45397,6 +45464,29 @@ async function morningRun(dir2, opts = {}) {
     });
     if (universe.length > wanted.length) f3.note(`retail attention read for the first ${wanted.length} names of ${universe.length}`);
   }
+  const pastResults = {};
+  {
+    const byRow = new Map(rows.map((r3) => [r3.symbol, r3]));
+    const reporting = [
+      ...new Set(
+        dates.filter((d) => d.kind === "earnings" && d.date >= today && d.sessionsAway <= NEAR_SESSIONS).map((d) => d.symbol).filter((s) => {
+          const i = byRow.get(s)?.instrument;
+          return i?.market === "us" && i.kind === "equity";
+        })
+      )
+    ].slice(0, MAX_CONFIRM);
+    for (const s of reporting) {
+      try {
+        const ds = await resultsReactionsDataset(s, now);
+        f3.input(ds);
+        const n2 = ds.points.find((p) => p.key === `${s}.results.n`);
+        const abs = ds.points.find((p) => p.key === `${s}.results.absMedian`);
+        if (typeof n2?.value === "number" && typeof abs?.value === "number") pastResults[s] = { n: n2.value, absMedian: abs.value, keys: [abs.key, n2.key] };
+      } catch (e) {
+        f3.note(`${s}: past results reactions unavailable (${e.message.split("\n")[0]})`);
+      }
+    }
+  }
   const originsRec = Object.fromEntries(
     universe.map((s) => [s, [...origins.get(s)].sort((a, b) => ORIGIN_RANK[a] - ORIGIN_RANK[b])])
   );
@@ -45412,7 +45502,8 @@ async function morningRun(dir2, opts = {}) {
     macro: agenda.items,
     events,
     closures,
-    attention: attention2
+    attention: attention2,
+    pastResults
   });
   const { store, result } = registerFindings(dir2, f3, "morning", now);
   const toConfirm = [];
