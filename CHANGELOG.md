@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.11.0](https://github.com/maxgfr/ultrastock/compare/v1.10.0...v1.11.0) (2026-11-04)
+
+
+### Features
+
+* **crible:** run a Homebrew crible of the pinned version instead of uvx ([45e0eea](https://github.com/maxgfr/ultrastock/commit/45e0eea2aff13ef5217ce6ab36aa2ac6ed40a845)), closes [#62](https://github.com/maxgfr/ultrastock/issues/62)
+
 # [1.10.0](https://github.com/maxgfr/ultrastock/compare/v1.9.2...v1.10.0) (2026-11-04)
 
 
