@@ -105,7 +105,8 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | rates, curves, credit spreads, FX | `rates [us|ea]`, `fx USD,GBP` | [macro-markets](references/macro-markets.md) |
 | the week's events: data releases, earnings, dividends | `calendar econ|earnings|dividends [date]` | [macro-markets](references/macro-markets.md) |
 | sentiment and positioning | `sentiment`, `cot <market>` | [macro-markets](references/macro-markets.md) |
-| news on a company or a theme | `news "<query>" [--symbol] [--lang fr]` | [news-and-external-text](references/news-and-external-text.md) |
+| news on a company or a theme; is the coverage unusual, its tone turning | `news "<query>" [--symbol] [--lang fr] [--pulse]` | [news-and-external-text](references/news-and-external-text.md) |
+| is the crowd watching it: Reddit buzz, Wikipedia lookups ("est-ce que ça buzze", "retail attention") | `social <sym…>` | [news-and-external-text](references/news-and-external-text.md) |
 | web sources compiled and checked: business model, controversies, short-sellers, the latest report ("analyse le dernier rapport de X"), one precise question | `research <subject> [--focus results|calendar] [--ask "…"] --out <run>`, your web search, then `research --out <run> --web-results <file>` — no search of your own: `--search-with claude|codex|ccs` | [research](references/research.md) |
 | an option chain, implied volatility | `options <symbol>` (US: CBOE; BTC/ETH: Deribit) | [options-crypto-prediction](references/options-crypto-prediction.md) |
 | crypto market structure, DeFi, on-chain | `crypto global|top|coin|derivatives|defi|yields|stables|fees|onchain|dex|holders` | [options-crypto-prediction](references/options-crypto-prediction.md) |
@@ -138,7 +139,7 @@ ultrastock profile init|show|suitability|set|envelope [--json]
 ultrastock jurisdiction show|verify [--venues binance,kraken,coinbase] [--out <dir>] [--json]
 ultrastock calendar sessions|holidays|verify|econ|earnings|dividends [--market XPAR|XNYS|XMIL|XOSL|CRYPTO] [--json]
 ultrastock macro us|ea|fr|<country>|fred <ID> · rates [us|ea] · fx [USD,GBP] · cot <market> · sentiment [cnn|crypto|vix|putcall]
-ultrastock news "<query>" [--symbol <SYM>] [--lang fr] · universe <index> · snapshot <symbol> · resolve "<name|ISIN>"
+ultrastock news "<query>" [--symbol <SYM>] [--lang fr] [--pulse] · social <sym…> · universe <index> · snapshot <symbol> · resolve "<name|ISIN>"
 ultrastock fundamentals <sym> [--asof <date>] [--source sec|esef|crible] · filings <sym> [--forms 8-K] | --search "<text>"
 ultrastock insiders <sym> · holdings <manager> · analyst|short|dividends <US sym> · congress [--member] [--doc]
 ultrastock options <symbol> · crypto <view> [<target>] · predict kalshi|manifold|polymarket [<query>]

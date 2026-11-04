@@ -43,6 +43,8 @@ import { Findings, formatFindings, registerFindings } from "../portfolio/finding
 import { type AgendaItem, catalystsReport, currencyOf, macroAgenda, sessionOrdinal } from "../regime/catalysts.js";
 import { isoDay, type Report, shiftDay } from "../regime/common.js";
 import { cryptoRegimeReport, euRegime, usRegime } from "../regime/market.js";
+import { socialDatasets } from "../social.js";
+import { SPIKE_RATIO } from "../../providers/macro/social.js";
 
 /** Earnings within this many sessions are flagged high. */
 export const NEAR_SESSIONS = 3;
@@ -58,6 +60,11 @@ export const MAX_SYMBOLS = 30;
 export const MAX_CONFIRM = 4;
 /** Names whose headlines are read per brief. */
 export const MAX_NEWS = 8;
+/** Names whose retail attention (Reddit, Wikipedia) is read per brief. */
+export const MAX_SOCIAL = 10;
+/** Reddit mentions flagged: at least this many in 24 hours, and this multiple of the 24 hours before. */
+export const REDDIT_MIN_MENTIONS = 20;
+export const REDDIT_JUMP = 3;
 
 export type Origin = "held" | "ticket" | "thesis" | "alert" | "watchlist" | "asked";
 const ORIGIN_RANK: Record<Origin, number> = { held: 0, ticket: 1, thesis: 2, alert: 3, watchlist: 4, asked: 5 };
@@ -75,7 +82,23 @@ export interface MorningOptions {
   model?: string;
   /** Headlines since the last session (default on). */
   news?: boolean;
+  /** Retail attention: Reddit mentions, Wikipedia views against their baseline (default on). */
+  social?: boolean;
   now?: Date;
+}
+
+/** One name's retail attention, as read: what morningFlags weighs. */
+export interface AttentionFact {
+  symbol: string;
+  source: "reddit" | "wikipedia";
+  /** Wikipedia: last 7 days' mean views over the 90 days before. */
+  ratio?: number;
+  /** Reddit: mentions in the last 24 hours and the 24 before, the rank and the rank 24 hours earlier. */
+  mentions?: number;
+  mentionsPrev?: number;
+  rank?: number;
+  rankPrev?: number;
+  keys: string[];
 }
 
 export interface DatedItem {
@@ -104,11 +127,12 @@ export interface MorningFacts {
   macro: AgendaItem[];
   events: Array<{ event: MarketEvent; key: string; weightPct?: number; exposureKeys: string[] }>;
   closures: Array<{ market: string; date: string; name: string; early: boolean; key: string }>;
+  attention?: AttentionFact[];
 }
 
 export interface MorningFlag {
   level: "high" | "medium" | "info";
-  kind: "earnings" | "ex-dividend" | "stop" | "alert" | "thesis" | "move" | "macro" | "event" | "closure";
+  kind: "earnings" | "ex-dividend" | "stop" | "alert" | "thesis" | "move" | "macro" | "event" | "closure" | "attention";
   symbol?: string;
   date?: string;
   text: string;
@@ -225,6 +249,26 @@ export function morningFlags(x: MorningFacts): MorningFlag[] {
         keys: [m.key],
         next: `ultrastock news "${m.symbol}" --symbol ${m.symbol}`,
       });
+  for (const a of x.attention ?? []) {
+    let text: string | undefined;
+    if (a.source === "wikipedia" && a.ratio !== undefined && a.ratio >= SPIKE_RATIO)
+      text = `${a.symbol}: Wikipedia views over the last 7 days are ${a.ratio.toFixed(1)}× their 90-day baseline — unusual attention, not a direction`;
+    else if (a.source === "reddit" && a.mentions !== undefined && a.mentions >= REDDIT_MIN_MENTIONS) {
+      if (a.mentionsPrev !== undefined && a.mentions >= REDDIT_JUMP * Math.max(1, a.mentionsPrev))
+        text = `${a.symbol}: ${a.mentions} Reddit mentions in 24 hours, against ${a.mentionsPrev} the day before${a.rank !== undefined ? ` (rank ${a.rank})` : ""} — unusual attention, not a direction`;
+      else if (a.mentionsPrev === undefined && a.rank !== undefined && a.rank <= 20)
+        text = `${a.symbol}: new in Reddit's 20 most discussed tickers (rank ${a.rank}, ${a.mentions} mentions in 24 hours) — unusual attention, not a direction`;
+    }
+    if (text)
+      out.push({
+        level: held(a.symbol) ? "medium" : "info",
+        kind: "attention",
+        symbol: a.symbol,
+        text,
+        keys: a.keys,
+        next: `ultrastock news "${a.symbol}" --symbol ${a.symbol} --pulse`,
+      });
+  }
   const byDay = new Map<string, AgendaItem[]>();
   for (const m of x.macro) byDay.set(`${m.date}|${m.currency}`, [...(byDay.get(`${m.date}|${m.currency}`) ?? []), m]);
   for (const [k, items] of byDay) {
@@ -694,11 +738,61 @@ export async function morningRun(dir: string, opts: MorningOptions = {}): Promis
     });
   }
 
+  // Retail attention on the names in play: a Reddit jump, Wikipedia views well above their baseline.
+  const attention: AttentionFact[] = [];
+  if (opts.social !== false) {
+    const byRow = new Map(rows.map((r) => [r.symbol, r]));
+    const wanted = universe.filter((s) => byRow.get(s)?.instrument).slice(0, MAX_SOCIAL);
+    const got = await mapLimit(wanted, 2, async (s) => socialDatasets(byRow.get(s)!.instrument!).catch(() => undefined));
+    wanted.forEach((s, i) => {
+      const r = got[i];
+      if (!r) return;
+      for (const ds of r.datasets) {
+        f.input(ds);
+        const at = (suffix: string) => ds.points.find((p) => p.key.endsWith(suffix));
+        const v = (suffix: string) => {
+          const x = at(suffix)?.value;
+          return typeof x === "number" ? x : undefined;
+        };
+        if (ds.provenance.source === "wikimedia") {
+          const ratio = at(".social.wiki.ratio");
+          if (ratio) attention.push({ symbol: s, source: "wikipedia", ratio: v(".social.wiki.ratio"), keys: [ratio.key] });
+        } else {
+          const keys = ds.points.filter((p) => /\.social\.reddit\.(mentions|mentions_prev|rank)$/.test(p.key)).map((p) => p.key);
+          if (keys.length)
+            attention.push({
+              symbol: s,
+              source: "reddit",
+              mentions: v(".social.reddit.mentions"),
+              mentionsPrev: v(".social.reddit.mentions_prev"),
+              rank: v(".social.reddit.rank"),
+              rankPrev: v(".social.reddit.rank_prev"),
+              keys,
+            });
+        }
+      }
+    });
+    if (universe.length > wanted.length) f.note(`retail attention read for the first ${wanted.length} names of ${universe.length}`);
+  }
+
   // 5. The flags.
   const originsRec: Record<string, Origin[]> = Object.fromEntries(
     universe.map((s) => [s, [...origins.get(s)!].sort((a, b) => ORIGIN_RANK[a] - ORIGIN_RANK[b])]),
   );
-  const flags = morningFlags({ today, end, origins: originsRec, dates, moves, stops, alerts, theses: thesisFacts, macro: agenda.items, events, closures });
+  const flags = morningFlags({
+    today,
+    end,
+    origins: originsRec,
+    dates,
+    moves,
+    stops,
+    alerts,
+    theses: thesisFacts,
+    macro: agenda.items,
+    events,
+    closures,
+    attention,
+  });
 
   const { store, result } = registerFindings(dir, f, "morning", now);
 

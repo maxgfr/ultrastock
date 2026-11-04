@@ -12,6 +12,7 @@ ultrastock morning --market eu,us --out <run>           # force the regimes read
 ultrastock morning --research-with claude --out <run>  # also search the flagged results dates on the web (billed to the plan)
 ultrastock morning --confirm --out <run>                # after YOUR web search of the run's calendar worklists
 ultrastock morning --no-news --out <run>                # skip the headlines
+ultrastock morning --no-social --out <run>              # skip the retail attention (Reddit, Wikipedia)
 ultrastock morning --notify                             # also send the HIGH flags (ntfy / webhooks)
 ultrastock watchlist add ALO.PA SAP.DE --note "earnings season"
 ultrastock watchlist list · watchlist rm SAP.DE
@@ -53,6 +54,14 @@ no ledger, the holdings are skipped and said so; the rest still runs.
   3 % or more and those reporting within 3 sessions (Google News, the company's
   name searched as a phrase): only titles that name the company, never a quote
   page. External text — what was written, not what is true.
+- **Retail attention** of the first 10 names (`social`; `--no-social` skips it):
+  - **Which names reach To watch:**
+    - a Wikipedia ratio of 2 or more over the 90-day baseline;
+    - a Reddit jump: at least 20 mentions in 24 hours, and 3 times the day
+      before;
+    - a new entry in Reddit's 20 most discussed tickers.
+  - **Level:** medium for a held line, info otherwise.
+  - **What it means:** the crowd is looking; it does not say which way.
 - **Not in any data feed**: general-meeting (AGM) dates. The calendar worklist
   asks the web for them; without a page that states one, say "unavailable".
 
