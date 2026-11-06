@@ -22387,7 +22387,7 @@ async function recordCheck(id, gate, now = /* @__PURE__ */ new Date()) {
 }
 function executionRefusal(t, now = /* @__PURE__ */ new Date()) {
   if (t.status !== "checked") return `ticket ${t.id} is ${t.status}, not checked \u2014 run \`ultrastock ticket check ${t.id}\``;
-  if (!t.check || t.check.verdict !== "pass") return "the ticket has no passing risk check";
+  if (t.check?.verdict !== "pass") return "the ticket has no passing risk check";
   if (t.check.fingerprint !== orderFingerprint(t.order) || t.fingerprint !== t.check.fingerprint)
     return "the order changed after its risk check \u2014 check it again";
   if (now.getTime() - Date.parse(t.check.at) > CHECK_TTL_MS)
@@ -36664,7 +36664,7 @@ async function predictionQuote(symbol) {
 }
 async function simulatePredictionFill(o, now) {
   const p = parsePredictionSymbol(o.symbol);
-  if (!p || p.venue !== "kalshi") return { kind: "working", reason: `${o.symbol}: paper fills exist for Kalshi contracts only` };
+  if (p?.venue !== "kalshi") return { kind: "working", reason: `${o.symbol}: paper fills exist for Kalshi contracts only` };
   const { book: book2 } = await kalshiOrderbook(p.ticker);
   const b = outcomeBook(book2, p.outcome);
   const limit = o.orderType === "limit" ? o.price : o.side === "buy" ? 1 : 0;
@@ -50492,10 +50492,14 @@ async function optimizeAnalysis(m, f3, opts = {}) {
   }
   if (days < 1e3)
     f3.note(`the common window is ${days} daily returns (${aligned.dates[0]} \u2192 ${aligned.dates.at(-1)}), shorter than 5 years: the youngest asset sets it`);
-  const { cap: cap2, raised } = effectiveCap(m.profile.limits.maxPositionPct, used.length);
+  const given = opts.maxWeightPct !== void 0;
+  const capPct = opts.maxWeightPct ?? m.profile.limits.maxPositionPct;
+  const capSource = given ? "--max-weight" : "profile limits.maxPositionPct";
+  const { cap: cap2, raised } = effectiveCap(capPct, used.length);
+  if (given) f3.note(`--max-weight caps a position at ${capPct} % for this run, in place of the profile's ${m.profile.limits.maxPositionPct} %`);
   if (raised)
     f3.note(
-      `the profile caps a position at ${m.profile.limits.maxPositionPct} %, which ${used.length} assets cannot reach 100 % under: the cap is raised to ${(cap2 * 100).toFixed(2)} % (1/n) here${cap2 * used.length <= 1 + 1e-9 ? " \u2014 which forces equal weights: add assets or raise limits.maxPositionPct for the methods to differ" : ""}`
+      `${given ? "--max-weight" : "the profile"} caps a position at ${capPct} %, which ${used.length} assets cannot reach 100 % under: the cap is raised to ${(cap2 * 100).toFixed(2)} % (1/n) here${cap2 * used.length <= 1 + 1e-9 ? ` \u2014 which forces equal weights: add assets or ${given ? "raise --max-weight" : "raise limits.maxPositionPct, or pass --max-weight for a book of funds,"} for the methods to differ` : ""}`
     );
   const current2 = used.every((u) => u.value !== void 0) ? used.map((u) => u.value) : void 0;
   const { results, shrinkage, mu } = optimizeAll(aligned.returns, { cap: cap2, current: current2 });
@@ -50511,15 +50515,7 @@ async function optimizeAnalysis(m, f3, opts = {}) {
     histKeys,
     `Ledoit & Wolf (2004) optimal intensity on ${how} (0 = sample covariance, 1 = target)`
   );
-  f3.derive(
-    "estimation",
-    `${P}.cap`,
-    "weight cap per asset",
-    pct10(cap2),
-    "%",
-    histKeys,
-    raised ? "max(profile maxPositionPct, 1/n)" : "profile limits.maxPositionPct"
-  );
+  f3.derive("estimation", `${P}.cap`, "weight cap per asset", pct10(cap2), "%", histKeys, raised ? `max(${capSource}, 1/n)` : capSource);
   used.forEach(
     (u, i) => f3.derive(
       "estimation",
@@ -51205,6 +51201,7 @@ async function portfolioAnalyticsCommand(args, asJson) {
   const band = number(args, "band", (n2) => n2 > 0 && n2 <= 50, "a band in points between 0 and 50, like 5");
   const relBandPct = number(args, "rel-band", (n2) => n2 > 0 && n2 <= 100, "a relative band in % between 0 and 100, like 25");
   const contribution = number(args, "contribution", (n2) => n2 > 0, "a positive amount");
+  const maxWeightPct = number(args, "max-weight", (n2) => n2 > 0 && n2 <= 100, "a weight cap in % between 0 and 100, like 40");
   let goal;
   if (action === "rebalance") {
     const raw = argValue(args, "targets");
@@ -51235,7 +51232,7 @@ async function portfolioAnalyticsCommand(args, asJson) {
       result = await stressAnalysis(m, f3);
       break;
     case "optimize":
-      result = await optimizeAnalysis(m, f3, { universe: argList(args, "universe") });
+      result = await optimizeAnalysis(m, f3, { universe: argList(args, "universe"), maxWeightPct });
       break;
     case "rebalance":
       result = await rebalanceAnalysis(m, f3, {
@@ -55165,7 +55162,7 @@ USAGE
   ultrastock dividends <US symbol> [--limit <n>] [--out <dir>] [--json]
   ultrastock congress [--member <name>] [--doc <DocID>] [--year <yyyy>] [--limit <n>] [--out <dir>] [--json]
   ultrastock portfolio show|perf [--book real|paper] [--out <dir>] [--json]
-  ultrastock portfolio risk|stress|optimize|location|lookthrough|income [--book real|paper] [--benchmark <sym>] [--universe a,b,c] [--out <dir>] [--json]
+  ultrastock portfolio risk|stress|optimize|location|lookthrough|income [--book real|paper] [--benchmark <sym>] [--universe a,b,c] [--max-weight <%>] [--out <dir>] [--json]
   ultrastock portfolio rebalance --targets <file.json|{"CW8.PA":60,"CASH":5}> [--band <pts>] [--rel-band <%>] [--contribution <amount>] [--book] [--out <dir>] [--json]
   ultrastock portfolio goals --target <amount> --years <n> [--monthly <amount>] [--book] [--out <dir>] [--json]
   ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name|file.json>] [--dry-run] [--json]
@@ -55457,7 +55454,7 @@ COMMANDS
             drawdown, correlations, limit breaches), stress (GFC, COVID, 2022
             rates, crypto winter replays and parametric shocks), optimize
             (min-variance, risk parity, HRP, max-Sharpe on Ledoit-Wolf, capped
-            at maxPositionPct), rebalance (bands into whole-share orders with
+            at maxPositionPct, or --max-weight for a book of funds), rebalance (bands into whole-share orders with
             fees and tax notes), location (best envelope per holding, PEA room),
             lookthrough (ETF holdings from iShares, Amundi, SEC N-PORT), income
             (received, forward 12 months, yield on cost), goals (seeded Monte
@@ -55708,6 +55705,7 @@ var VALUE_FLAGS = [
   "band",
   "rel-band",
   "contribution",
+  "max-weight",
   "monthly",
   "expiry",
   "strategy",
@@ -55967,6 +55965,7 @@ var SPEC = {
       "band",
       "rel-band",
       "contribution",
+      "max-weight",
       "target",
       "years",
       "monthly",

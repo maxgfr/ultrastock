@@ -523,6 +523,16 @@ describe("portfolio optimize and goals on a recorded two-position paper book", (
       const b = store.byKey("PORTFOLIO.paper.optimize.minVariance.NVDA")!.value as number;
       expect(a + b).toBeCloseTo(100, 4);
       expect(Math.max(a, b)).toBeLessThanOrEqual(80 + 1e-6);
+      expect(store.byKey("PORTFOLIO.paper.optimize.cap")!.value).toBe(80);
+
+      // --max-weight replaces the profile's cap for this run only.
+      const dir60 = mkdtempSync(join(tmpdir(), "pa-opt60-"));
+      const opt60 = await run(["optimize"], { out: dir60, "max-weight": "60" });
+      expect(opt60.out).toMatch(/--max-weight caps a position at 60 % for this run, in place of the profile's 80 %/);
+      const s60 = EvidenceStore.load(dir60)!;
+      expect(s60.byKey("PORTFOLIO.paper.optimize.cap")!.value).toBe(60);
+      for (const sym of ["MC.PA", "NVDA"]) expect(s60.byKey(`PORTFOLIO.paper.optimize.minVariance.${sym}`)!.value as number).toBeLessThanOrEqual(60 + 1e-6);
+      await expect(run(["optimize"], { out: dir60, "max-weight": "0" })).rejects.toThrow(/weight cap/);
       const goals = await run(["goals"], { out: mkdtempSync(join(tmpdir(), "pa-goals-")), target: "50000", years: "15", monthly: "200" });
       expect(goals.out).toMatch(/probability of reaching 50000 EUR in 15 years = /);
       expect(goals.out).toMatch(/monthly contribution for an 80 % probability = /);

@@ -28,8 +28,16 @@ export interface OptimizeResult {
   methods: Array<{ method: string; label: string; weights: Record<string, number>; volPct: number; retPct: number }>;
 }
 
-/** Everything `portfolio optimize` registers. `universe` replaces the holdings when given. */
-export async function optimizeAnalysis(m: MarkedBook, f: Findings, opts: { universe?: string[] } = {}): Promise<OptimizeResult | undefined> {
+/**
+ * Everything `portfolio optimize` registers. `universe` replaces the holdings when given;
+ * `maxWeightPct` replaces the profile's position cap for this run (a book of diversified
+ * funds, where a single-stock cap of a few % forces equal weights).
+ */
+export async function optimizeAnalysis(
+  m: MarkedBook,
+  f: Findings,
+  opts: { universe?: string[]; maxWeightPct?: number } = {},
+): Promise<OptimizeResult | undefined> {
   const P = `PORTFOLIO.${m.bookName}.optimize`;
   let items: Array<{ symbol: string; resolved: Resolved; weightKey?: string; value?: number }>;
   if (opts.universe?.length) {
@@ -64,10 +72,14 @@ export async function optimizeAnalysis(m: MarkedBook, f: Findings, opts: { unive
   }
   if (days < 1000)
     f.note(`the common window is ${days} daily returns (${aligned.dates[0]} → ${aligned.dates.at(-1)}), shorter than 5 years: the youngest asset sets it`);
-  const { cap, raised } = effectiveCap(m.profile.limits.maxPositionPct, used.length);
+  const given = opts.maxWeightPct !== undefined;
+  const capPct = opts.maxWeightPct ?? m.profile.limits.maxPositionPct;
+  const capSource = given ? "--max-weight" : "profile limits.maxPositionPct";
+  const { cap, raised } = effectiveCap(capPct, used.length);
+  if (given) f.note(`--max-weight caps a position at ${capPct} % for this run, in place of the profile's ${m.profile.limits.maxPositionPct} %`);
   if (raised)
     f.note(
-      `the profile caps a position at ${m.profile.limits.maxPositionPct} %, which ${used.length} assets cannot reach 100 % under: the cap is raised to ${(cap * 100).toFixed(2)} % (1/n) here${cap * used.length <= 1 + 1e-9 ? " — which forces equal weights: add assets or raise limits.maxPositionPct for the methods to differ" : ""}`,
+      `${given ? "--max-weight" : "the profile"} caps a position at ${capPct} %, which ${used.length} assets cannot reach 100 % under: the cap is raised to ${(cap * 100).toFixed(2)} % (1/n) here${cap * used.length <= 1 + 1e-9 ? ` — which forces equal weights: add assets or ${given ? "raise --max-weight" : "raise limits.maxPositionPct, or pass --max-weight for a book of funds,"} for the methods to differ` : ""}`,
     );
   const current = used.every((u) => u.value !== undefined) ? used.map((u) => u.value!) : undefined;
   const { results, shrinkage, mu } = optimizeAll(aligned.returns, { cap, current });
@@ -83,15 +95,7 @@ export async function optimizeAnalysis(m: MarkedBook, f: Findings, opts: { unive
     histKeys,
     `Ledoit & Wolf (2004) optimal intensity on ${how} (0 = sample covariance, 1 = target)`,
   );
-  f.derive(
-    "estimation",
-    `${P}.cap`,
-    "weight cap per asset",
-    pct(cap),
-    "%",
-    histKeys,
-    raised ? "max(profile maxPositionPct, 1/n)" : "profile limits.maxPositionPct",
-  );
+  f.derive("estimation", `${P}.cap`, "weight cap per asset", pct(cap), "%", histKeys, raised ? `max(${capSource}, 1/n)` : capSource);
   used.forEach((u, i) =>
     f.derive(
       "estimation",

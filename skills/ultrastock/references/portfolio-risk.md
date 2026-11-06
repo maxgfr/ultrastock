@@ -42,7 +42,7 @@ Each action works on a book marked to market, and every figure is an `[E#]`.
 |---|---|
 | `risk [--benchmark]` | Exposures by asset class, currency, sector and country; HHI and the effective number of positions; volatility; VaR/CVaR (historical, Cornish-Fisher, 10-day bootstrap); beta; drawdown; correlations; the diversification ratio; **profile limit breaches**. |
 | `stress` | Replays of the GFC, COVID, the 2022 rate shock and the crypto winter on today's holdings, plus parametric shocks (equities, rates, USD, crypto). |
-| `optimize [--universe a,b]` | Minimum-variance, risk-parity, HRP and max-Sharpe weights on a Ledoit-Wolf covariance, capped at `maxPositionPct`. Max-Sharpe rests on weak return estimates; prefer the risk-based ones. |
+| `optimize [--universe a,b] [--max-weight <%>]` | Minimum-variance, risk-parity, HRP and max-Sharpe weights on a Ledoit-Wolf covariance, capped at `maxPositionPct`. Max-Sharpe rests on weak return estimates; prefer the risk-based ones. A single-stock cap of a few % forces equal weights on a book of a few diversified funds (an assurance-vie): `--max-weight 40` sets the cap for that run only. The risk-based methods then pile into the lowest-volatility funds (money market, short bonds) — they minimise risk, they do not weigh the user's goal. |
 | `rebalance --targets <json>` | Band rebalancing (`--band` in points, `--rel-band` in %) into whole-share orders, with fees and tax notes. `--contribution` steers new cash to the underweights first, which is often cheaper than selling. |
 | `location` | The best envelope for each holding (PEA, CTO, AV) for a French resident, and the PEA room left. |
 | `lookthrough` | ETF holdings from iShares, Amundi or SEC N-PORT (at least 60 days old), as shares of the whole portfolio. |

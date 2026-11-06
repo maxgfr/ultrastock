@@ -116,6 +116,15 @@ describe("alerts", () => {
     expect(evaluateRule(c.rule, up, "t4").event).toBeDefined();
     expect(evaluateRule(rule, ramp(10), "t").value).toBeUndefined();
   });
+  it("fires a drawdown rule: a close 25 % below the 52-week high", () => {
+    const rule = addRule({ kind: "expr", symbol: "X", expr: "close < high52w * 0.75" });
+    const flat = fromCloses(Array.from({ length: 260 }, () => 100));
+    expect(evaluateRule(rule, flat, "t1").value).toBe(false);
+    const crash = fromCloses([...Array.from({ length: 250 }, () => 100), 90, 80, 74]);
+    const hit = evaluateRule(rule, crash, "t2");
+    expect(hit.value).toBe(true);
+    expect(hit.event).toBeDefined();
+  });
   it("validates variables, lists and removes rules", () => {
     expect(() => addRule({ kind: "expr", symbol: "X", expr: "price > 3" })).toThrow(/unknown variable/);
     expect(ALERT_VARIABLES).toContain("rsi14");

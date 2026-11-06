@@ -53,6 +53,7 @@ export async function portfolioAnalyticsCommand(args: CommandArgs, asJson: boole
   const band = number(args, "band", (n) => n > 0 && n <= 50, "a band in points between 0 and 50, like 5");
   const relBandPct = number(args, "rel-band", (n) => n > 0 && n <= 100, "a relative band in % between 0 and 100, like 25");
   const contribution = number(args, "contribution", (n) => n > 0, "a positive amount");
+  const maxWeightPct = number(args, "max-weight", (n) => n > 0 && n <= 100, "a weight cap in % between 0 and 100, like 40");
   let goal: { target: number; years: number; monthly: number } | undefined;
   if (action === "rebalance") {
     const raw = argValue(args, "targets");
@@ -84,7 +85,7 @@ export async function portfolioAnalyticsCommand(args: CommandArgs, asJson: boole
       result = await stressAnalysis(m, f);
       break;
     case "optimize":
-      result = await optimizeAnalysis(m, f, { universe: argList(args, "universe") });
+      result = await optimizeAnalysis(m, f, { universe: argList(args, "universe"), maxWeightPct });
       break;
     case "rebalance":
       result = await rebalanceAnalysis(m, f, {

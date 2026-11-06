@@ -1,7 +1,7 @@
 import { readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { readBrief, analyzeSymbol } from "./analyze/pack.js";
+import { readBrief } from "./analyze/pack.js";
 import { analyzeFull, DEPTHS, type Depth } from "./analyze/full.js";
 import { calcEvidence, calcFromDocument } from "./calc.js";
 import { checkAnswer, NOTE_KINDS } from "./check.js";
@@ -119,7 +119,7 @@ USAGE
   ultrastock dividends <US symbol> [--limit <n>] [--out <dir>] [--json]
   ultrastock congress [--member <name>] [--doc <DocID>] [--year <yyyy>] [--limit <n>] [--out <dir>] [--json]
   ultrastock portfolio show|perf [--book real|paper] [--out <dir>] [--json]
-  ultrastock portfolio risk|stress|optimize|location|lookthrough|income [--book real|paper] [--benchmark <sym>] [--universe a,b,c] [--out <dir>] [--json]
+  ultrastock portfolio risk|stress|optimize|location|lookthrough|income [--book real|paper] [--benchmark <sym>] [--universe a,b,c] [--max-weight <%>] [--out <dir>] [--json]
   ultrastock portfolio rebalance --targets <file.json|{"CW8.PA":60,"CASH":5}> [--band <pts>] [--rel-band <%>] [--contribution <amount>] [--book] [--out <dir>] [--json]
   ultrastock portfolio goals --target <amount> --years <n> [--monthly <amount>] [--book] [--out <dir>] [--json]
   ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name|file.json>] [--dry-run] [--json]
@@ -411,7 +411,7 @@ COMMANDS
             drawdown, correlations, limit breaches), stress (GFC, COVID, 2022
             rates, crypto winter replays and parametric shocks), optimize
             (min-variance, risk parity, HRP, max-Sharpe on Ledoit-Wolf, capped
-            at maxPositionPct), rebalance (bands into whole-share orders with
+            at maxPositionPct, or --max-weight for a book of funds), rebalance (bands into whole-share orders with
             fees and tax notes), location (best envelope per holding, PEA room),
             lookthrough (ETF holdings from iShares, Amundi, SEC N-PORT), income
             (received, forward 12 months, yield on cost), goals (seeded Monte
@@ -663,6 +663,7 @@ export const VALUE_FLAGS = [
   "band",
   "rel-band",
   "contribution",
+  "max-weight",
   "monthly",
   "expiry",
   "strategy",
@@ -923,6 +924,7 @@ const SPEC: CliSpec = {
       "band",
       "rel-band",
       "contribution",
+      "max-weight",
       "target",
       "years",
       "monthly",
