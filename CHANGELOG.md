@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.12.0](https://github.com/maxgfr/ultrastock/compare/v1.11.0...v1.12.0) (2026-11-06)
+
+
+### Features
+
+* **funds:** price unlisted funds at their NAV and read their charges (FT) ([3b382d4](https://github.com/maxgfr/ultrastock/commit/3b382d431b88bd7d2f7b77bac952869a08174e84))
+* **portfolio:** --max-weight caps a position for one optimize run ([4934d19](https://github.com/maxgfr/ultrastock/commit/4934d1967c8c690d4da82b0cf4987ed3e69b068b))
+* **rates:** add euro-area 10-year sovereign yields and their spreads over the Bund ([74b9b51](https://github.com/maxgfr/ultrastock/commit/74b9b51051cead0385b485d03aa45bceaa9f0c0f))
+
 # [1.11.0](https://github.com/maxgfr/ultrastock/compare/v1.10.0...v1.11.0) (2026-11-04)
 
 
