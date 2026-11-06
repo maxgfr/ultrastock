@@ -15,10 +15,15 @@ All commands take `--out <dir>`; every figure becomes an `[E#]`.
 ## Rates, credit, FX
 
 `rates` reads the US Treasury par curve (1M–30Y, with the 2s10s and 3m10y
-spreads), the ECB's policy rates, €STR and the euro AAA curve, and the US
-high-yield and investment-grade option-adjusted spreads. An inverted curve
-(2s10s < 0) has preceded most US recessions, with long and variable lags; a
-widening high-yield spread is stress spreading. `fx` gives the ECB's reference
+spreads), the ECB's policy rates, €STR, the euro AAA curve, the 10-year
+government yields of Germany, France, Italy, Spain, the Netherlands and Belgium
+with each one's spread over the Bund, and the US high-yield and
+investment-grade option-adjusted spreads. An inverted curve (2s10s < 0) has
+preceded most US recessions, with long and variable lags; a widening
+high-yield spread is stress spreading; a widening spread over the Bund is a
+sovereign debt scare (Italy in 2011, France since 2024). The sovereign yields
+are the ECB's monthly convergence averages: a trend, published after the month
+ends, not today's price. `fx` gives the ECB's reference
 rates (euro per currency), the rates to use for a portfolio in EUR.
 
 ## Positioning and sentiment

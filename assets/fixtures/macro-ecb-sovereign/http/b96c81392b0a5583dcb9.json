@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://data-api.ecb.europa.eu/service/data/IRS/M.DE+FR+IT.L.L40.CI.0000.EUR.N.Z?lastNObservations=2&format=csvdata&detail=dataonly"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "KEY,FREQ,REF_AREA,IR_TYPE,TR_TYPE,MATURITY_CAT,BS_COUNT_SECTOR,CURRENCY_TRANS,IR_BUS_COV,IR_FV_TYPE,TIME_PERIOD,OBS_VALUE\r\nIRS.M.DE.L.L40.CI.0000.EUR.N.Z,M,DE,L,L40,CI,0000,EUR,N,Z,2026-08,3.185\r\nIRS.M.DE.L.L40.CI.0000.EUR.N.Z,M,DE,L,L40,CI,0000,EUR,N,Z,2026-09,3.473\r\nIRS.M.FR.L.L40.CI.0000.EUR.N.Z,M,FR,L,L40,CI,0000,EUR,N,Z,2026-08,4\r\nIRS.M.FR.L.L40.CI.0000.EUR.N.Z,M,FR,L,L40,CI,0000,EUR,N,Z,2026-09,4.44\r\nIRS.M.IT.L.L40.CI.0000.EUR.N.Z,M,IT,L,L40,CI,0000,EUR,N,Z,2026-08,3.986\r\nIRS.M.IT.L.L40.CI.0000.EUR.N.Z,M,IT,L,L40,CI,0000,EUR,N,Z,2026-09,4.362\r\n",
+  "url": "https://data-api.ecb.europa.eu/service/data/IRS/M.DE+FR+IT.L.L40.CI.0000.EUR.N.Z?lastNObservations=2&format=csvdata&detail=dataonly",
+  "fetchedAt": "2026-11-06T17:12:21.890Z"
+ }
+}

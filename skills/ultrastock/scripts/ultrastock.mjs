@@ -23959,6 +23959,58 @@ async function ecbYieldCurve(tenors = EA_TENORS) {
     notes: ["Spot rates fitted by the ECB on AAA-rated euro area central government bonds (Svensson model)."]
   };
 }
+var COUNTRY_NAMES = {
+  DE: "Germany",
+  FR: "France",
+  IT: "Italy",
+  ES: "Spain",
+  NL: "Netherlands",
+  BE: "Belgium",
+  PT: "Portugal",
+  GR: "Greece",
+  AT: "Austria",
+  IE: "Ireland",
+  FI: "Finland"
+};
+var SOVEREIGN_COUNTRIES = ["DE", "FR", "IT", "ES", "NL", "BE"];
+async function ecbSovereignYields(countries = SOVEREIGN_COUNTRIES) {
+  const ccs = [.../* @__PURE__ */ new Set(["DE", ...countries.map((c) => c.toUpperCase())])].filter((c) => /^[A-Z]{2}$/.test(c));
+  const { series, url, fetchedAt } = await fetchEcb("IRS", `M.${ccs.join("+")}.L.L40.CI.0000.EUR.N.Z`, 2);
+  const byCountry = /* @__PURE__ */ new Map();
+  for (const s of series) {
+    const cc = s.key.split(".")[2];
+    if (cc && s.obs.length) byCountry.set(cc, s.obs);
+  }
+  const name = (cc) => COUNTRY_NAMES[cc] ?? cc;
+  const points = ccs.flatMap((cc) => {
+    const obs = byCountry.get(cc);
+    return obs ? seriesPoints(`${cc}.rates.gov.10Y`, `${name(cc)} 10-year government bond yield`, "%", obs) : [];
+  });
+  const bund = byCountry.get("DE")?.at(-1);
+  if (bund)
+    for (const cc of ccs) {
+      const o = byCountry.get(cc)?.at(-1);
+      if (cc === "DE" || !o || o.date !== bund.date) continue;
+      points.push({
+        key: `${cc}.rates.gov.spread.10Y.DE`,
+        label: `${name(cc)} \u2212 Germany 10-year spread`,
+        value: Number(((o.value - bund.value) * 100).toFixed(2)),
+        unit: "bp",
+        asOf: o.date,
+        formula: `(${cc}.rates.gov.10Y \u2212 DE.rates.gov.10Y) \xD7 100`
+      });
+    }
+  return {
+    kind: "macro",
+    title: "Euro area 10-year sovereign yields and spreads over the Bund (ECB)",
+    subject: "EA",
+    points,
+    provenance: { source: SOURCE18, url, fetchedAt, official: true, asOf: bund?.date },
+    notes: [
+      "Monthly averages of secondary-market yields (the ECB's long-term interest rate for convergence purposes), published after the month ends: a trend, not today's price."
+    ]
+  };
+}
 async function ecbFx(currencies = ["USD", "GBP", "JPY", "CHF"], n2 = 5) {
   const ccys = currencies.map((c) => c.toUpperCase());
   const { series, url, fetchedAt } = await fetchEcb("EXR", `D.${ccys.join("+")}.EUR.SP00.A`, n2);
@@ -35971,7 +36023,8 @@ async function ratesCommand(args, asJson) {
   const ea = [
     ["ECB policy rates", () => ecbPolicyRates()],
     ["\u20ACSTR", () => ecbPreset("estr")],
-    ["euro AAA curve", () => ecbYieldCurve()]
+    ["euro AAA curve", () => ecbYieldCurve()],
+    ["euro sovereign spreads", () => ecbSovereignYields()]
   ];
   const tasks = scope === "us" ? us2 : scope === "ea" ? ea : [...us2, ...ea];
   emitDatasets(args, await gather(tasks), asJson);

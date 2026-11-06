@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setNetMode } from "../src/core/net.js";
 import { parseBls, yoyFromIndex } from "../src/providers/macro/bls.js";
 import { periodEnd, seriesPoints, usSlashDate } from "../src/providers/macro/common.js";
-import { ecbFx, ecbPolicyRates, ecbPreset, ecbYieldCurve, parseSdmxCsv } from "../src/providers/macro/ecb.js";
+import { ecbFx, ecbPolicyRates, ecbPreset, ecbSovereignYields, ecbYieldCurve, parseSdmxCsv } from "../src/providers/macro/ecb.js";
 import { eurostatIndicator, parseJsonStat } from "../src/providers/macro/eurostat.js";
 import { frankfurterHistory, frankfurterLatest, parseFrankfurterRange } from "../src/providers/macro/frankfurter.js";
 import { fredSeries, parseFredCsv, parseFredJson } from "../src/providers/macro/fred.js";
@@ -88,6 +88,20 @@ describe("ECB", () => {
       );
       const fx = await ecbFx(["USD", "GBP"], 2);
       expect(byKey(fx, "EUR.fx.USD")).toBeGreaterThan(0.5);
+    });
+  }, 60_000);
+  it("replays the 10-year sovereign yields and their spreads over the Bund", async () => {
+    await withFixture("macro-ecb-sovereign", async () => {
+      const sov = await ecbSovereignYields(["FR", "IT"]);
+      expect(sov.points.map((p) => p.key)).toEqual(
+        expect.arrayContaining(["DE.rates.gov.10Y", "FR.rates.gov.10Y", "FR.rates.gov.10Y.chg", "FR.rates.gov.spread.10Y.DE", "IT.rates.gov.spread.10Y.DE"]),
+      );
+      expect(byKey(sov, "FR.rates.gov.spread.10Y.DE")).toBeCloseTo(
+        ((byKey(sov, "FR.rates.gov.10Y") as number) - (byKey(sov, "DE.rates.gov.10Y") as number)) * 100,
+        1,
+      );
+      expect(sov.points.some((p) => p.key === "DE.rates.gov.spread.10Y.DE")).toBe(false);
+      expect(sov.provenance).toMatchObject({ source: "ecb", official: true });
     });
   }, 60_000);
 });
