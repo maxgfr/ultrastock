@@ -8,6 +8,7 @@ import { coingeckoCoin, coingeckoGlobal, coingeckoMarkets, coingeckoSearch } fro
 import { coinmetricsAssetMetrics } from "../providers/crypto/coinmetrics.js";
 import { llamaChains, llamaFees, llamaProtocol, llamaStablecoins, llamaYields } from "../providers/crypto/defillama.js";
 import { dexSearchPairs } from "../providers/crypto/dexscreener.js";
+import { ftFundProfile } from "../providers/funds/ft.js";
 import { mempoolNetwork } from "../providers/crypto/mempool.js";
 import { solanaTokenConcentration } from "../providers/crypto/solana.js";
 import { tradingviewSnapshot } from "../providers/markets/tradingview.js";
@@ -134,6 +135,26 @@ export async function snapshotCommand(args: CommandArgs, asJson: boolean): Promi
   const sym = args.positional[0];
   if (!sym) throw new UsageError("usage: ultrastock snapshot <symbol> — a TradingView snapshot (unofficial): ratios, performance, ratings");
   emitDatasets(args, [await tradingviewSnapshot(sym, { market: argValue(args, "market") })], asJson);
+}
+
+/**
+ * `fund <ISIN>[,<ISIN>…] [--wrapper-fee <pct>]`: a fund's charges and profile
+ * (the FT's fund pages), with its total yearly cost inside an assurance-vie
+ * when the contract's fee on unit-linked funds is given.
+ */
+export async function fundCommand(args: CommandArgs, asJson: boolean): Promise<void> {
+  const usage = "usage: ultrastock fund <ISIN>[,<ISIN>…] [--wrapper-fee <% a year, e.g. 0.96>] [--out <dir>] — a fund's charges and profile (FT, unofficial)";
+  const isins = args.positional
+    .flatMap((p) => p.split(","))
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean);
+  if (!isins.length || !isins.every((s) => /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(s))) throw new UsageError(usage);
+  const raw = argValue(args, "wrapper-fee");
+  const wrapperFeePct = raw === undefined ? undefined : Number(raw);
+  if (wrapperFeePct !== undefined && !(wrapperFeePct >= 0 && wrapperFeePct < 10)) throw new UsageError(usage);
+  const datasets: Dataset[] = [];
+  for (const isin of isins) datasets.push(await ftFundProfile(isin, { wrapperFeePct }));
+  emitDatasets(args, datasets, asJson);
 }
 
 /**

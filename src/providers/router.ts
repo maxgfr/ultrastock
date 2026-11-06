@@ -2,6 +2,7 @@
 // which stands in when it cannot:
 //
 //   MC.PA, ASML.AS, an EU ISIN      → Euronext (official, end of day)      → Yahoo
+//   an ISIN Euronext does not list  → FT fund pages (unofficial, daily NAV): an OPCVM, a SICAV
 //   SAP.DE, SHEL.L, NESN.SW, …      → Yahoo (unofficial; other European venues)
 //   PETR4.SA, 7203.T, 0700.HK, BHP.AX, NPN.JO, … → Yahoo (unofficial; the rest of the world)
 //   NVDA, QQQ, BRK.B, NVDA.US       → Nasdaq API (unofficial, US)          → Yahoo
@@ -15,6 +16,7 @@ import { firstAnswer } from "../core/fallback.js";
 import { clockNow } from "../core/net.js";
 import { binanceHistory, binanceQuote, looksLikeCryptoPair, resolveBinance } from "./binance.js";
 import { euronextHistory, resolveEuronext, SUFFIX_MICS } from "./euronext.js";
+import { ftFundHistory, resolveFtFund } from "./funds/ft.js";
 import { coinbaseHistory, coinbaseQuote, resolveCoinbase } from "./markets/coinbase.js";
 import { krakenHistory, krakenQuote, resolveKraken } from "./markets/kraken.js";
 import { resolveYahoo, yahooHistory, yahooQuote, yahooUnpriced, yahooVenue } from "./markets/yahoo.js";
@@ -48,7 +50,16 @@ export async function resolveSymbol(raw: string): Promise<Resolved> {
   const s = raw.trim().toUpperCase();
   const kind = classifySymbol(s);
   if (typeof kind === "object") throw new ProviderError("router", kind.unsupported);
-  if (kind === "euronext") return { instrument: await resolveEuronext(s), notes: [] };
+  if (kind === "euronext") {
+    if (!ISIN.test(s)) return { instrument: await resolveEuronext(s), notes: [] };
+    try {
+      return { instrument: await resolveEuronext(s), notes: [] };
+    } catch (e) {
+      // Not listed on Euronext: a fund that trades on no exchange (an assurance-vie's OPCVM) — its NAV from the FT.
+      if (!(e instanceof ProviderError) || !/no Euronext listing/.test(e.message)) throw e;
+      return { instrument: await resolveFtFund(s), notes: [`${s} has no Euronext listing: priced as a fund at its daily NAV (FT, unofficial)`] };
+    }
+  }
   if (kind === "europe" || kind === "world") return { instrument: await resolveYahoo(s), notes: [] };
   if (kind === "crypto") return resolveBinance(s);
   return { instrument: await resolveNasdaq(s), notes: [] };
@@ -92,6 +103,11 @@ export async function getHistory(r: Resolved, req: HistoryRequest): Promise<Pric
     );
     return stamp(res.value, res.failures);
   }
+  if (instrument.market === "fund") {
+    if (interval !== "1d") throw new ProviderError("ft", `a fund has one price a day: only daily bars for ${instrument.symbol}`);
+    const series = await ftFundHistory(instrument, req.from, req.to);
+    return { ...series, notes: [...r.notes, ...series.notes] };
+  }
   if (interval !== "1d") throw new ProviderError(instrument.market, `only daily bars for ${instrument.symbol} (intraday comes from crypto venues)`);
   const primary =
     instrument.market === "euronext"
@@ -122,6 +138,21 @@ export async function getQuote(r: Resolved, now = clockNow()): Promise<QuoteResu
     return stamp(res.value, res.failures);
   }
   if (viaYahoo(instrument)) return yahooQuote(instrument, now);
+  if (instrument.market === "fund") {
+    const series = await ftFundHistory(instrument, new Date(now.getTime() - 21 * 86400_000), now);
+    const last = series.bars[series.bars.length - 1]!;
+    const prev = series.bars[series.bars.length - 2];
+    return {
+      instrument,
+      price: last.close,
+      previousClose: prev?.close,
+      change: prev ? Number((last.close - prev.close).toFixed(6)) : undefined,
+      changePct: prev ? Number(((last.close / prev.close - 1) * 100).toFixed(4)) : undefined,
+      at: last.date,
+      provenance: series.provenance,
+      notes: [...r.notes, "the fund's last published net asset value (one price a day)"],
+    };
+  }
   if (instrument.market === "us") {
     const res = await firstAnswer<QuoteResult>([
       { source: "nasdaq", run: () => nasdaqQuote(instrument) },

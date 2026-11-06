@@ -13192,9 +13192,150 @@ async function euronextHistory(instrument, from, to) {
   };
 }
 
+// src/providers/funds/ft.ts
+var SOURCE3 = "ft";
+var BASE3 = "https://markets.ft.com/data";
+var ISIN = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
+async function resolveFtFund(isin) {
+  const id = isin.trim().toUpperCase();
+  if (!ISIN.test(id)) throw new ProviderError(SOURCE3, `${isin} is not an ISIN`);
+  const url = `${BASE3}/searchapi/searchsecurities?query=${encodeURIComponent(id)}`;
+  const res = await fetchJson(url);
+  if (!res.ok) throw new ProviderError(SOURCE3, `fund search unavailable (HTTP ${res.status})`, res.status);
+  const hits = (res.data?.data?.security ?? []).filter((s) => s.assetClass === "Funds" && s.symbol?.toUpperCase().startsWith(`${id}:`) && s.xid);
+  const pick3 = hits.find((s) => s.isPrimary) ?? hits[0];
+  if (!pick3) throw new ProviderError(SOURCE3, `no fund priced by the FT for ${id}`);
+  return {
+    symbol: id,
+    market: "fund",
+    kind: "fund",
+    name: pick3.name ? decodeEntities(pick3.name) : void 0,
+    isin: id,
+    currency: pick3.symbol.split(":")[1] ?? "EUR",
+    venueId: pick3.xid
+  };
+}
+var cellText = (html) => decodeEntities(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+function parseFtTearsheet(html) {
+  const rows = /* @__PURE__ */ new Map();
+  for (const m of html.matchAll(/<th[^>]*>([^<]{2,60})<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/g)) {
+    const label2 = cellText(m[1]);
+    if (label2 && !rows.has(label2)) rows.set(label2, cellText(m[2]));
+  }
+  return rows;
+}
+function percentOf(s) {
+  const m = /^(-?\d+(?:\.\d+)?)\s*%$/.exec(s?.trim() ?? "");
+  return m ? Number(m[1]) : void 0;
+}
+var CHARGES = [
+  ["Ongoing charge", "ongoingCharge", "ongoing charge (KID, yearly, taken from the NAV)"],
+  ["Max annual charge", "maxAnnualCharge", "maximum annual management charge"],
+  ["Initial charge", "initialCharge", "maximum entry charge"],
+  ["Exit charge", "exitCharge", "maximum exit charge"]
+];
+var FACTS = [
+  ["Fund type", "type"],
+  ["Morningstar category", "category"],
+  ["Investment style (stocks)", "style.stocks"],
+  ["Investment style (bonds)", "style.bonds"],
+  ["Income treatment", "income"],
+  ["Domicile", "domicile"],
+  ["Launch date", "launch"],
+  ["Pricing frequency", "pricing"],
+  ["Fund size", "size.fund"],
+  ["Share class size", "size.class"],
+  ["Manager & start date", "manager"]
+];
+async function ftFundProfile(isin, opts = {}) {
+  const inst = await resolveFtFund(isin);
+  const url = `${BASE3}/funds/tearsheet/summary?s=${encodeURIComponent(`${inst.isin}:${inst.currency}`)}`;
+  const res = await fetchText(url, { accept: "text/html" });
+  if (!res.ok) throw new ProviderError(SOURCE3, `tearsheet unavailable (HTTP ${res.status})`, res.status);
+  const rows = parseFtTearsheet(res.body);
+  if (!rows.size) throw new ProviderError(SOURCE3, `no fund data on the FT tearsheet for ${inst.isin}`);
+  const id = inst.isin;
+  const points = [];
+  if (inst.name) points.push({ key: `${id}.fund.name`, label: `${id} fund name`, value: inst.name, untrusted: true });
+  points.push({ key: `${id}.fund.currency`, label: `${id} price currency`, value: inst.currency });
+  for (const [label2, key, desc] of CHARGES) {
+    const v = percentOf(rows.get(label2));
+    if (v !== void 0) points.push({ key: `${id}.fund.${key}`, label: `${id} ${desc}`, value: v, unit: "%" });
+  }
+  for (const [label2, key] of FACTS) {
+    const v = rows.get(label2);
+    if (v && v !== "--") points.push({ key: `${id}.fund.${key}`, label: `${id} ${label2.toLowerCase()}`, value: v, untrusted: true });
+  }
+  const notes = ["FT fund pages are unofficial: the KID (DIC) on the manager's site is the reference for the charges."];
+  const ongoing = percentOf(rows.get("Ongoing charge"));
+  if (opts.wrapperFeePct !== void 0) {
+    points.push({ key: `${id}.fund.wrapperFee`, label: `${id} contract fee on unit-linked funds (given)`, value: opts.wrapperFeePct, unit: "%" });
+    if (ongoing !== void 0)
+      points.push({
+        key: `${id}.fund.totalYearlyCost`,
+        label: `${id} total yearly cost in the contract (ongoing charge + contract fee)`,
+        value: Number((ongoing + opts.wrapperFeePct).toFixed(4)),
+        unit: "%",
+        formula: `${id}.fund.ongoingCharge + ${id}.fund.wrapperFee`
+      });
+    notes.push("Entry and exit charges are the prospectus maxima; inside an assurance-vie the insurer's own terms apply (usually none on switches).");
+  }
+  return {
+    kind: "fund",
+    title: `${inst.name ?? id} \u2014 charges and profile (FT)`,
+    subject: id,
+    points,
+    provenance: { source: SOURCE3, url: res.url, fetchedAt: res.fetchedAt, official: false },
+    notes
+  };
+}
+var MONTHS = {
+  Jan: "01",
+  Feb: "02",
+  Mar: "03",
+  Apr: "04",
+  May: "05",
+  Jun: "06",
+  Jul: "07",
+  Aug: "08",
+  Sep: "09",
+  Oct: "10",
+  Nov: "11",
+  Dec: "12"
+};
+function parseFtHistory(html) {
+  const bars = /* @__PURE__ */ new Map();
+  for (const row of html.split(/<tr[^>]*>/).slice(1)) {
+    const d = /\b[A-Z][a-z]{2}, ([A-Z][a-z]{2}) (\d{2}), (\d{4})</.exec(row);
+    const cells = [...row.matchAll(/<td[^>]*>([^<]*)<\/td>/g)].map((c) => Number(c[1].replace(/,/g, "")));
+    const month = d ? MONTHS[d[1]] : void 0;
+    if (!d || !month || cells.length < 4 || !cells.slice(0, 4).every((n2) => Number.isFinite(n2) && n2 > 0)) continue;
+    const [open2, high, low, close] = cells;
+    const date = `${d[3]}-${month}-${d[2]}`;
+    bars.set(date, { date, open: open2, high, low, close });
+  }
+  return [...bars.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+var ftDay = (d) => d.toISOString().slice(0, 10).replace(/-/g, "/");
+async function ftFundHistory(instrument, from, to) {
+  const url = `${BASE3}/equities/ajax/get-historical-prices?startDate=${encodeURIComponent(ftDay(from))}&endDate=${encodeURIComponent(ftDay(to))}&symbol=${encodeURIComponent(instrument.venueId)}`;
+  const res = await fetchJson(url);
+  if (!res.ok) throw new ProviderError(SOURCE3, `historical prices unavailable (HTTP ${res.status})`, res.status);
+  const bars = parseFtHistory(res.data?.html ?? "");
+  if (!bars.length) throw new ProviderError(SOURCE3, `no NAV for ${instrument.symbol} between ${ftDay(from)} and ${ftDay(to)}`);
+  return {
+    instrument,
+    interval: "1d",
+    bars,
+    adjusted: false,
+    provenance: { source: SOURCE3, url: res.url, fetchedAt: res.fetchedAt, delay: "eod", official: false },
+    notes: ["a fund's net asset value, one price a day (open = high = low = close); income is reinvested in accumulating share classes"]
+  };
+}
+
 // src/providers/markets/coinbase.ts
-var BASE3 = "https://api.exchange.coinbase.com";
-var SOURCE3 = "coinbase";
+var BASE4 = "https://api.exchange.coinbase.com";
+var SOURCE4 = "coinbase";
 var PACE = { hostIntervalMs: 150 };
 var GRANULARITY = { "15m": 900, "1h": 3600, "1d": 86400 };
 var QUOTES2 = ["USDT", "USDC", "FDUSD", "EUR", "USD", "GBP", "BTC", "ETH", "DAI"];
@@ -13207,7 +13348,7 @@ function splitCryptoPair(symbol) {
 }
 function resolveCoinbase(symbol) {
   const p = splitCryptoPair(symbol);
-  if (!p) throw new ProviderError(SOURCE3, `${symbol} is not a crypto pair (write BASE-QUOTE, e.g. BTC-EUR)`, 400);
+  if (!p) throw new ProviderError(SOURCE4, `${symbol} is not a crypto pair (write BASE-QUOTE, e.g. BTC-EUR)`, 400);
   const id = `${p.base}-${p.quote}`;
   return { symbol: id, market: "crypto", kind: "crypto", name: `${p.base}/${p.quote}`, currency: p.quote, venueId: id };
 }
@@ -13219,19 +13360,19 @@ function parseCoinbaseCandles(rows, interval) {
 }
 function failure(status, product2, body, error) {
   if (status === 404 || status === 400)
-    return new ProviderError(SOURCE3, `${product2} is not a Coinbase product${body?.message ? ` (${body.message})` : ""}`, status);
-  return new ProviderError(SOURCE3, `request for ${product2} failed (${status}${error ? `, ${error}` : ""})`, status);
+    return new ProviderError(SOURCE4, `${product2} is not a Coinbase product${body?.message ? ` (${body.message})` : ""}`, status);
+  return new ProviderError(SOURCE4, `request for ${product2} failed (${status}${error ? `, ${error}` : ""})`, status);
 }
 async function coinbaseHistory(instrument, interval, from, to, notes = []) {
   const g = GRANULARITY[interval];
-  if (!g) throw new ProviderError(SOURCE3, `Coinbase has no ${interval} candles (1m, 5m, 15m, 1h, 6h, 1d only)`, 400);
+  if (!g) throw new ProviderError(SOURCE4, `Coinbase has no ${interval} candles (1m, 5m, 15m, 1h, 6h, 1d only)`, 400);
   const bars = /* @__PURE__ */ new Map();
   let firstUrl = "";
   let fetchedAt = "";
   const end = to.getTime();
   for (let start = from.getTime(), page = 0; start <= end && page < 60; page++) {
     const stop = Math.min(end, start + (300 - 1) * g * 1e3);
-    const url = `${BASE3}/products/${instrument.venueId}/candles?granularity=${g}&start=${new Date(start).toISOString()}&end=${new Date(stop).toISOString()}`;
+    const url = `${BASE4}/products/${instrument.venueId}/candles?granularity=${g}&start=${new Date(start).toISOString()}&end=${new Date(stop).toISOString()}`;
     const res = await fetchJson(url, PACE);
     if (!res.ok || !Array.isArray(res.data)) throw failure(res.status, instrument.venueId, res.data, res.error);
     if (!firstUrl) {
@@ -13243,20 +13384,20 @@ async function coinbaseHistory(instrument, interval, from, to, notes = []) {
     for (const b of parseCoinbaseCandles(closed, interval)) bars.set(b.date, b);
     start = stop + g * 1e3;
   }
-  if (!bars.size) throw new ProviderError(SOURCE3, `no closed ${interval} candles for ${instrument.venueId} in the window`);
+  if (!bars.size) throw new ProviderError(SOURCE4, `no closed ${interval} candles for ${instrument.venueId} in the window`);
   return {
     instrument,
     interval,
     bars: [...bars.values()].sort((a, b) => a.date.localeCompare(b.date)),
     adjusted: false,
-    provenance: { source: SOURCE3, url: firstUrl, fetchedAt, delay: "realtime", official: true },
+    provenance: { source: SOURCE4, url: firstUrl, fetchedAt, delay: "realtime", official: true },
     notes
   };
 }
 async function coinbaseQuote(instrument, notes = []) {
-  const t = await fetchJson(`${BASE3}/products/${instrument.venueId}/ticker`, PACE);
+  const t = await fetchJson(`${BASE4}/products/${instrument.venueId}/ticker`, PACE);
   if (!t.ok || !t.data?.price) throw failure(t.status, instrument.venueId, t.data, t.error);
-  const s = await fetchJson(`${BASE3}/products/${instrument.venueId}/stats`, PACE);
+  const s = await fetchJson(`${BASE4}/products/${instrument.venueId}/stats`, PACE);
   const price = Number(t.data.price);
   const open2 = s.ok && s.data?.open ? Number(s.data.open) : void 0;
   return {
@@ -13264,7 +13405,7 @@ async function coinbaseQuote(instrument, notes = []) {
     price,
     ...open2 ? { previousClose: open2, change: price - open2, changePct: (price - open2) / open2 * 100 } : {},
     at: t.data.time,
-    provenance: { source: SOURCE3, url: t.url, fetchedAt: t.fetchedAt, delay: "realtime", official: true },
+    provenance: { source: SOURCE4, url: t.url, fetchedAt: t.fetchedAt, delay: "realtime", official: true },
     notes: [
       ...notes,
       open2 ? "24h rolling change against the price 24 hours earlier (crypto has no session close)" : "24h stats unavailable: no change reported"
@@ -13273,26 +13414,26 @@ async function coinbaseQuote(instrument, notes = []) {
 }
 
 // src/providers/markets/kraken.ts
-var BASE4 = "https://api.kraken.com/0/public";
-var SOURCE4 = "kraken";
+var BASE5 = "https://api.kraken.com/0/public";
+var SOURCE5 = "kraken";
 var PACE2 = { hostIntervalMs: 1e3 };
 var MINUTES = { "15m": 15, "1h": 60, "4h": 240, "1d": 1440, "1w": 10080 };
 function krakenFailure(status, errors, what) {
   const e = errors?.join("; ") ?? "";
-  if (/Unknown asset pair|Invalid arguments/i.test(e)) return new ProviderError(SOURCE4, `${what} is not a Kraken pair (${e})`, 404);
-  if (/Too many requests|Rate limit/i.test(e)) return new ProviderError(SOURCE4, `Kraken throttled the request for ${what} (${e})`, 429);
-  if (/EService/i.test(e)) return new ProviderError(SOURCE4, `Kraken is unavailable (${e})`, 503);
-  return new ProviderError(SOURCE4, `request for ${what} failed (${status}${e ? `, ${e}` : ""})`, status === 200 ? 502 : status);
+  if (/Unknown asset pair|Invalid arguments/i.test(e)) return new ProviderError(SOURCE5, `${what} is not a Kraken pair (${e})`, 404);
+  if (/Too many requests|Rate limit/i.test(e)) return new ProviderError(SOURCE5, `Kraken throttled the request for ${what} (${e})`, 429);
+  if (/EService/i.test(e)) return new ProviderError(SOURCE5, `Kraken is unavailable (${e})`, 503);
+  return new ProviderError(SOURCE5, `request for ${what} failed (${status}${e ? `, ${e}` : ""})`, status === 200 ? 502 : status);
 }
 async function call(path2, what) {
-  const res = await fetchJson(`${BASE4}${path2}`, PACE2);
+  const res = await fetchJson(`${BASE5}${path2}`, PACE2);
   if (!res.ok || !res.data?.result || res.data.error?.length) throw krakenFailure(res.status, res.data?.error ?? (res.error ? [res.error] : void 0), what);
   return { result: res.data.result, url: res.url, fetchedAt: res.fetchedAt };
 }
 var display = (asset) => asset === "XBT" ? "BTC" : asset === "XDG" ? "DOGE" : asset;
 async function resolveKraken(symbol) {
   const p = splitCryptoPair(symbol);
-  if (!p) throw new ProviderError(SOURCE4, `${symbol} is not a crypto pair (write BASE-QUOTE, e.g. BTC-EUR)`, 400);
+  if (!p) throw new ProviderError(SOURCE5, `${symbol} is not a crypto pair (write BASE-QUOTE, e.g. BTC-EUR)`, 400);
   const query2 = `${p.base}${p.quote}`;
   const found = await cachedJson(`kraken:pair:${query2}`, TTL.reference, async () => {
     const { result } = await call(
@@ -13300,7 +13441,7 @@ async function resolveKraken(symbol) {
       symbol
     );
     const [id, info2] = Object.entries(result)[0] ?? [];
-    if (!id || !info2) throw new ProviderError(SOURCE4, `${symbol} is not a Kraken pair`, 404);
+    if (!id || !info2) throw new ProviderError(SOURCE5, `${symbol} is not a Kraken pair`, 404);
     return { id, wsname: info2.wsname ?? info2.altname, status: info2.status };
   });
   const [b, q] = found.wsname.includes("/") ? found.wsname.split("/") : [p.base, p.quote];
@@ -13336,7 +13477,7 @@ async function krakenHistory(instrument, interval, from, to, notes = []) {
   const hi = to.getTime() / 1e3;
   const kept = (rows ?? []).filter((r3) => r3[0] + step <= readAt && r3[0] + step > lo && r3[0] <= hi);
   const bars = parseKrakenOhlc(kept, interval);
-  if (!bars.length) throw new ProviderError(SOURCE4, `no closed ${interval} bars for ${instrument.venueId} in the window (Kraken keeps the last 720)`);
+  if (!bars.length) throw new ProviderError(SOURCE5, `no closed ${interval} bars for ${instrument.venueId} in the window (Kraken keeps the last 720)`);
   const out5 = [...notes];
   const first = rows?.[0]?.[0];
   if (first !== void 0 && first > lo + step) out5.push(`Kraken serves the 720 most recent ${interval} bars only: history starts ${bars[0].date}`);
@@ -13345,14 +13486,14 @@ async function krakenHistory(instrument, interval, from, to, notes = []) {
     interval,
     bars,
     adjusted: false,
-    provenance: { source: SOURCE4, url: res.url, fetchedAt: res.fetchedAt, delay: "realtime", official: true },
+    provenance: { source: SOURCE5, url: res.url, fetchedAt: res.fetchedAt, delay: "realtime", official: true },
     notes: out5
   };
 }
 async function krakenQuote(instrument, notes = []) {
   const res = await call(`/Ticker?pair=${instrument.venueId}`, instrument.venueId);
   const t = Object.values(res.result)[0];
-  if (!t) throw new ProviderError(SOURCE4, `no ticker for ${instrument.venueId}`, 404);
+  if (!t) throw new ProviderError(SOURCE5, `no ticker for ${instrument.venueId}`, 404);
   const price = Number(t.c[0]);
   const open2 = Number(t.o);
   return {
@@ -13360,14 +13501,14 @@ async function krakenQuote(instrument, notes = []) {
     price,
     ...open2 > 0 ? { previousClose: open2, change: price - open2, changePct: (price - open2) / open2 * 100 } : {},
     at: res.fetchedAt,
-    provenance: { source: SOURCE4, url: res.url, fetchedAt: res.fetchedAt, delay: "realtime", official: true },
+    provenance: { source: SOURCE5, url: res.url, fetchedAt: res.fetchedAt, delay: "realtime", official: true },
     notes: [...notes, "change against today's open at 00:00 UTC (crypto has no session close); time is the read time, Kraken's ticker carries none"]
   };
 }
 
 // src/providers/markets/yahoo.ts
 var HOSTS2 = ["https://query1.finance.yahoo.com", "https://query2.finance.yahoo.com"];
-var SOURCE5 = "yahoo";
+var SOURCE6 = "yahoo";
 var DELAY_QUOTE = "delayed (15\u201320 min on most venues)";
 var YAHOO_VENUES = {
   DE: { mic: "XETR", name: "Xetra", country: "DE", currency: "EUR", tradingview: "XETR", market: "europe", timeZone: "Europe/Berlin" },
@@ -13530,9 +13671,9 @@ function yahooInstrument(symbol, meta2) {
 function yahooFailure(status, symbol, body, error) {
   const why2 = body?.chart?.error?.description;
   if (status === 404 || body?.chart?.error?.code === "Not Found")
-    return new ProviderError(SOURCE5, `no Yahoo listing for ${symbol}${why2 ? ` (${why2})` : ""}`, 404);
-  if (status === 429) return new ProviderError(SOURCE5, `Yahoo throttled the request for ${symbol} (HTTP 429) \u2014 retry later`, 429);
-  return new ProviderError(SOURCE5, `chart request for ${symbol} failed (${status}${error ? `, ${error}` : ""})`, status);
+    return new ProviderError(SOURCE6, `no Yahoo listing for ${symbol}${why2 ? ` (${why2})` : ""}`, 404);
+  if (status === 429) return new ProviderError(SOURCE6, `Yahoo throttled the request for ${symbol} (HTTP 429) \u2014 retry later`, 429);
+  return new ProviderError(SOURCE6, `chart request for ${symbol} failed (${status}${error ? `, ${error}` : ""})`, status);
 }
 async function chart(symbol, query2) {
   let last2;
@@ -13552,15 +13693,15 @@ async function resolveYahoo(symbol) {
 var YAHOO_INTERVAL = { "1d": "1d", "1w": "1wk", "1h": "60m", "15m": "15m" };
 async function yahooChart(instrument, from, to, interval = "1d") {
   const yi = YAHOO_INTERVAL[interval];
-  if (!yi) throw new ProviderError(SOURCE5, `Yahoo has no ${interval} bars`, 400);
+  if (!yi) throw new ProviderError(SOURCE6, `Yahoo has no ${interval} bars`, 400);
   const p1 = Math.floor(from.getTime() / 1e3);
   const p2 = Math.floor(to.getTime() / 1e3);
   const res = await chart(instrument.venueId, `period1=${p1}&period2=${p2}&interval=${yi}&events=div,split`);
   const parsed = parseYahooChart(res.body, interval, Math.floor(Date.parse(res.fetchedAt) / 1e3));
-  if (!parsed?.bars.length) throw new ProviderError(SOURCE5, `no closed ${interval} bars for ${instrument.venueId} in the window`);
+  if (!parsed?.bars.length) throw new ProviderError(SOURCE6, `no closed ${interval} bars for ${instrument.venueId} in the window`);
   const quoteOnly = yahooVenue(instrument.venueId)?.quoteOnly;
-  if (quoteOnly && parsed.bars.length < 2 && to.getTime() - from.getTime() > 7 * 864e5) throw new ProviderError(SOURCE5, quoteOnly, 404);
-  const provenance = { source: SOURCE5, url: res.url, fetchedAt: res.fetchedAt, delay: "eod", official: false };
+  if (quoteOnly && parsed.bars.length < 2 && to.getTime() - from.getTime() > 7 * 864e5) throw new ProviderError(SOURCE6, quoteOnly, 404);
+  const provenance = { source: SOURCE6, url: res.url, fetchedAt: res.fetchedAt, delay: "eod", official: false };
   const series = {
     instrument,
     interval,
@@ -13600,7 +13741,7 @@ async function yahooQuote(instrument, now = clockNow()) {
   const res = await chart(instrument.venueId, "range=1d&interval=1d");
   const parsed = parseYahooChart(res.body);
   const meta2 = res.body.chart.result[0].meta;
-  if (!parsed || meta2.regularMarketPrice === void 0) throw new ProviderError(SOURCE5, `no price for ${instrument.venueId}`);
+  if (!parsed || meta2.regularMarketPrice === void 0) throw new ProviderError(SOURCE6, `no price for ${instrument.venueId}`);
   const price = meta2.regularMarketPrice / parsed.divisor;
   const prevRaw = meta2.previousClose ?? meta2.chartPreviousClose;
   const previousClose = prevRaw === void 0 ? void 0 : prevRaw / parsed.divisor;
@@ -13610,7 +13751,7 @@ async function yahooQuote(instrument, now = clockNow()) {
     price,
     ...previousClose !== void 0 ? { previousClose, change: price - previousClose, changePct: (price - previousClose) / previousClose * 100 } : {},
     at,
-    provenance: { source: SOURCE5, url: res.url, fetchedAt: res.fetchedAt, delay: DELAY_QUOTE, official: false },
+    provenance: { source: SOURCE6, url: res.url, fetchedAt: res.fetchedAt, delay: DELAY_QUOTE, official: false },
     notes: parsed.notes
   };
 }
@@ -13624,7 +13765,7 @@ async function yahooFxRates(base2, currencies) {
     try {
       const res = await chart(`${b}${c}=X`, "range=5d&interval=1d");
       const meta2 = res.body.chart.result[0].meta;
-      if (meta2.regularMarketPrice === void 0 || !(meta2.regularMarketPrice > 0)) throw new ProviderError(SOURCE5, "no rate");
+      if (meta2.regularMarketPrice === void 0 || !(meta2.regularMarketPrice > 0)) throw new ProviderError(SOURCE6, "no rate");
       url ||= res.url;
       fetchedAt = res.fetchedAt;
       points.push({
@@ -13644,18 +13785,18 @@ async function yahooFxRates(base2, currencies) {
     title: `${b} cross rates \u2014 Yahoo (unofficial)`,
     subject: b,
     points,
-    provenance: { source: SOURCE5, url: url || `${HOSTS2[0]}/v8/finance/chart/${b}`, fetchedAt, delay: DELAY_QUOTE, official: false },
+    provenance: { source: SOURCE6, url: url || `${HOSTS2[0]}/v8/finance/chart/${b}`, fetchedAt, delay: DELAY_QUOTE, official: false },
     notes
   };
 }
 
 // src/providers/nasdaq.ts
-var BASE5 = "https://api.nasdaq.com/api";
-var SOURCE6 = "nasdaq";
+var BASE6 = "https://api.nasdaq.com/api";
+var SOURCE7 = "nasdaq";
 var ASSET_CLASSES = ["stocks", "etf", "index"];
 var KIND = { stocks: "equity", etf: "etf", index: "index" };
 async function info(symbol, assetClass) {
-  const url = `${BASE5}/quote/${encodeURIComponent(symbol)}/info?assetclass=${assetClass}`;
+  const url = `${BASE6}/quote/${encodeURIComponent(symbol)}/info?assetclass=${assetClass}`;
   const res = await fetchJson(url, { headers: { referer: "https://www.nasdaq.com/" } });
   return { res, data: res.data?.data ?? void 0 };
 }
@@ -13668,7 +13809,7 @@ async function resolveNasdaq(symbol) {
     }
     return void 0;
   });
-  if (!found) throw new ProviderError(SOURCE6, `no US listing for ${sym3}`);
+  if (!found) throw new ProviderError(SOURCE7, `no US listing for ${sym3}`);
   return {
     symbol: sym3,
     market: "us",
@@ -13699,29 +13840,29 @@ function parseNasdaqHistory(rows) {
   return bars.sort((a, b) => a.date.localeCompare(b.date));
 }
 var isoDay2 = (d) => d.toISOString().slice(0, 10);
-var MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+var MONTHS2 = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 function monthDayYear(s) {
   const m = /^([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),\s*(\d{4})/.exec(s.trim());
-  const month = m ? MONTHS.indexOf(m[1].toLowerCase()) : -1;
+  const month = m ? MONTHS2.indexOf(m[1].toLowerCase()) : -1;
   return m && month >= 0 ? `${m[3]}-${String(month + 1).padStart(2, "0")}-${m[2].padStart(2, "0")}` : void 0;
 }
 async function nasdaqHistory(instrument, from, to) {
   const sym3 = instrument.venueId.split("|")[0];
-  const url = `${BASE5}/quote/${encodeURIComponent(sym3)}/historical?assetclass=${assetClassOf(instrument)}&fromdate=${isoDay2(from)}&todate=${isoDay2(to)}&limit=9999`;
+  const url = `${BASE6}/quote/${encodeURIComponent(sym3)}/historical?assetclass=${assetClassOf(instrument)}&fromdate=${isoDay2(from)}&todate=${isoDay2(to)}&limit=9999`;
   const res = await fetchJson(url, {
     headers: { referer: "https://www.nasdaq.com/" }
   });
   const rows = res.data?.data?.tradesTable?.rows;
   if (!res.ok || !Array.isArray(rows))
-    throw new ProviderError(SOURCE6, `historical prices unavailable for ${sym3} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+    throw new ProviderError(SOURCE7, `historical prices unavailable for ${sym3} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   const bars = parseNasdaqHistory(rows);
-  if (!bars.length) throw new ProviderError(SOURCE6, `no bars for ${sym3} between ${isoDay2(from)} and ${isoDay2(to)}`);
+  if (!bars.length) throw new ProviderError(SOURCE7, `no bars for ${sym3} between ${isoDay2(from)} and ${isoDay2(to)}`);
   return {
     instrument,
     interval: "1d",
     bars,
     adjusted: true,
-    provenance: { source: SOURCE6, url: res.url, fetchedAt: res.fetchedAt, delay: "eod", official: false },
+    provenance: { source: SOURCE7, url: res.url, fetchedAt: res.fetchedAt, delay: "eod", official: false },
     notes: []
   };
 }
@@ -13730,7 +13871,7 @@ async function nasdaqQuote(instrument) {
   const { res, data } = await info(sym3, assetClassOf(instrument));
   const p = data?.primaryData;
   const price = parseLooseNumber(p?.lastSalePrice);
-  if (!data || price === void 0) throw new ProviderError(SOURCE6, `no quote for ${sym3} (${res.status})`, res.status);
+  if (!data || price === void 0) throw new ProviderError(SOURCE7, `no quote for ${sym3} (${res.status})`, res.status);
   const change = parseLooseNumber(p?.netChange);
   const changePct = parseLooseNumber(p?.percentageChange);
   return {
@@ -13740,16 +13881,16 @@ async function nasdaqQuote(instrument) {
     changePct,
     previousClose: change !== void 0 ? Number((price - change).toFixed(6)) : void 0,
     at: monthDayYear(p?.lastTradeTimestamp ?? "") ?? res.fetchedAt.slice(0, 10),
-    provenance: { source: SOURCE6, url: res.url, fetchedAt: res.fetchedAt, delay: p?.isRealTime ? "realtime-nls" : "delayed", official: false },
+    provenance: { source: SOURCE7, url: res.url, fetchedAt: res.fetchedAt, delay: p?.isRealTime ? "realtime-nls" : "delayed", official: false },
     notes: []
   };
 }
 
 // src/providers/router.ts
-var ISIN = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
+var ISIN2 = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
 function classifySymbol(raw) {
   const s = raw.trim().toUpperCase();
-  if (ISIN.test(s)) return s.startsWith("US") ? { unsupported: `${s} is a US ISIN \u2014 use the ticker (\`resolve\` finds it)` } : "euronext";
+  if (ISIN2.test(s)) return s.startsWith("US") ? { unsupported: `${s} is a US ISIN \u2014 use the ticker (\`resolve\` finds it)` } : "euronext";
   const suffix = /\.([A-Z]{1,3})$/.exec(s)?.[1];
   if (suffix && suffix in SUFFIX_MICS) return "euronext";
   const venue = suffix ? yahooVenue(s) : void 0;
@@ -13766,7 +13907,15 @@ async function resolveSymbol(raw) {
   const s = raw.trim().toUpperCase();
   const kind = classifySymbol(s);
   if (typeof kind === "object") throw new ProviderError("router", kind.unsupported);
-  if (kind === "euronext") return { instrument: await resolveEuronext(s), notes: [] };
+  if (kind === "euronext") {
+    if (!ISIN2.test(s)) return { instrument: await resolveEuronext(s), notes: [] };
+    try {
+      return { instrument: await resolveEuronext(s), notes: [] };
+    } catch (e) {
+      if (!(e instanceof ProviderError) || !/no Euronext listing/.test(e.message)) throw e;
+      return { instrument: await resolveFtFund(s), notes: [`${s} has no Euronext listing: priced as a fund at its daily NAV (FT, unofficial)`] };
+    }
+  }
   if (kind === "europe" || kind === "world") return { instrument: await resolveYahoo(s), notes: [] };
   if (kind === "crypto") return resolveBinance(s);
   return { instrument: await resolveNasdaq(s), notes: [] };
@@ -13795,6 +13944,11 @@ async function getHistory(r3, req) {
     );
     return stamp(res2.value, res2.failures);
   }
+  if (instrument.market === "fund") {
+    if (interval !== "1d") throw new ProviderError("ft", `a fund has one price a day: only daily bars for ${instrument.symbol}`);
+    const series = await ftFundHistory(instrument, req.from, req.to);
+    return { ...series, notes: [...r3.notes, ...series.notes] };
+  }
   if (interval !== "1d") throw new ProviderError(instrument.market, `only daily bars for ${instrument.symbol} (intraday comes from crypto venues)`);
   const primary = instrument.market === "euronext" ? { source: "euronext", run: () => euronextHistory(instrument, req.from, req.to) } : instrument.market === "us" ? { source: "nasdaq", run: () => nasdaqHistory(instrument, req.from, req.to) } : void 0;
   const yahoo = {
@@ -13818,6 +13972,21 @@ async function getQuote(r3, now = clockNow()) {
     return stamp(res2.value, res2.failures);
   }
   if (viaYahoo(instrument)) return yahooQuote(instrument, now);
+  if (instrument.market === "fund") {
+    const series = await ftFundHistory(instrument, new Date(now.getTime() - 21 * 864e5), now);
+    const last2 = series.bars[series.bars.length - 1];
+    const prev = series.bars[series.bars.length - 2];
+    return {
+      instrument,
+      price: last2.close,
+      previousClose: prev?.close,
+      change: prev ? Number((last2.close - prev.close).toFixed(6)) : void 0,
+      changePct: prev ? Number(((last2.close / prev.close - 1) * 100).toFixed(4)) : void 0,
+      at: last2.date,
+      provenance: series.provenance,
+      notes: [...r3.notes, "the fund's last published net asset value (one price a day)"]
+    };
+  }
   if (instrument.market === "us") {
     const res2 = await firstAnswer([
       { source: "nasdaq", run: () => nasdaqQuote(instrument) },
@@ -14101,7 +14270,7 @@ function emitDatasets(args, datasets, asJson) {
 import { spawn as spawn4 } from "child_process";
 import { existsSync as existsSync11, readFileSync as readFileSync14, realpathSync as realpathSync3 } from "fs";
 import { delimiter, join as join14 } from "path";
-var SOURCE7 = "crible";
+var SOURCE8 = "crible";
 var CRIBLE_TAG = "v0.17.0";
 var REPO = "https://github.com/maxgfr/crible";
 var NOT_RUNNABLE = `crible cannot run here: install it with \`brew install maxgfr/tap/crible\` (${CRIBLE_TAG.slice(1)}), or install uv (https://docs.astral.sh/uv/) so uvx runs the pinned tag`;
@@ -14160,10 +14329,10 @@ async function run(sub, timeoutMs = 12e4) {
   return recordedCall("crible", ["cli", ...sub], () => runLive(sub, timeoutMs));
 }
 async function runLive(sub, timeoutMs) {
-  if (!cribleAvailable()) throw new ProviderError(SOURCE7, NOT_RUNNABLE, 0);
+  if (!cribleAvailable()) throw new ProviderError(SOURCE8, NOT_RUNNABLE, 0);
   const { cmd, args } = cribleInvocation();
   const r3 = await shAsync(cmd, [...args, "--data-dir", cribleDataDir(), ...sub], { timeoutMs });
-  if (!r3.ok) throw new ProviderError(SOURCE7, `crible ${sub[0]} failed: ${(r3.stderr || r3.stdout).trim().split("\n").slice(-3).join(" ").slice(0, 400)}`, 0);
+  if (!r3.ok) throw new ProviderError(SOURCE8, `crible ${sub[0]} failed: ${(r3.stderr || r3.stdout).trim().split("\n").slice(-3).join(" ").slice(0, 400)}`, 0);
   return r3.stdout;
 }
 async function cribleBootstrap(force = false) {
@@ -14226,7 +14395,7 @@ async function cribleStaleWarning() {
 async function cribleScreen(query2, opts = {}) {
   if (!cribleBootstrapped())
     throw new ProviderError(
-      SOURCE7,
+      SOURCE8,
       `crible has no dataset in ${cribleDataDir()} \u2014 run \`ultrastock screen --engine crible --bootstrap\` once (about a minute)`,
       400
     );
@@ -14237,7 +14406,7 @@ async function cribleScreen(query2, opts = {}) {
     const parsed = JSON.parse(out5.slice(out5.indexOf("{")));
     return parsed;
   } catch {
-    throw new ProviderError(SOURCE7, `crible screen did not return JSON: ${out5.slice(0, 200)}`, 0);
+    throw new ProviderError(SOURCE8, `crible screen did not return JSON: ${out5.slice(0, 200)}`, 0);
   }
 }
 async function cribleFields() {
@@ -14247,7 +14416,7 @@ async function cribleMcpCall(tool, toolArgs, timeoutMs = 12e4) {
   return recordedCall("crible", ["mcp", tool, toolArgs], () => cribleMcpLive(tool, toolArgs, timeoutMs));
 }
 async function cribleMcpLive(tool, toolArgs, timeoutMs) {
-  if (!cribleAvailable()) throw new ProviderError(SOURCE7, NOT_RUNNABLE, 0);
+  if (!cribleAvailable()) throw new ProviderError(SOURCE8, NOT_RUNNABLE, 0);
   const { cmd, args } = cribleInvocation();
   const child = spawn4(cmd, [...args, "--data-dir", cribleDataDir(), "mcp"], { stdio: ["pipe", "pipe", "pipe"] });
   const send = (msg) => child.stdin.write(`${JSON.stringify(msg)}
@@ -14255,7 +14424,7 @@ async function cribleMcpLive(tool, toolArgs, timeoutMs) {
   return new Promise((resolve20, reject) => {
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      reject(new ProviderError(SOURCE7, `crible mcp did not answer ${tool} within ${timeoutMs} ms`, 0));
+      reject(new ProviderError(SOURCE8, `crible mcp did not answer ${tool} within ${timeoutMs} ms`, 0));
     }, timeoutMs);
     let buf = "";
     child.stdout.on("data", (chunk) => {
@@ -14272,9 +14441,9 @@ async function cribleMcpLive(tool, toolArgs, timeoutMs) {
         } else if (msg.id === 2) {
           clearTimeout(timer);
           child.kill();
-          if (msg.error) return reject(new ProviderError(SOURCE7, `crible ${tool}: ${msg.error.message}`, 400));
+          if (msg.error) return reject(new ProviderError(SOURCE8, `crible ${tool}: ${msg.error.message}`, 400));
           const r3 = msg.result ?? {};
-          if (r3.isError) return reject(new ProviderError(SOURCE7, `crible ${tool}: ${r3.content?.[0]?.text ?? "error"}`, 400));
+          if (r3.isError) return reject(new ProviderError(SOURCE8, `crible ${tool}: ${r3.content?.[0]?.text ?? "error"}`, 400));
           if (r3.structuredContent !== void 0) return resolve20(r3.structuredContent.result ?? r3.structuredContent);
           const text = r3.content?.[0]?.text;
           resolve20(text === void 0 ? null : JSON.parse(text));
@@ -14283,7 +14452,7 @@ async function cribleMcpLive(tool, toolArgs, timeoutMs) {
     });
     child.on("error", (e) => {
       clearTimeout(timer);
-      reject(new ProviderError(SOURCE7, `cannot start crible: ${e.message}`, 0));
+      reject(new ProviderError(SOURCE8, `cannot start crible: ${e.message}`, 0));
     });
     send({
       jsonrpc: "2.0",
@@ -14355,7 +14524,7 @@ async function fetchBinary(url, opts = {}) {
 
 // src/providers/fundamentals/amf.ts
 var AMF_SOURCE = "amf-bdif";
-var BASE6 = "https://bdif.amf-france.org/back/api/v1";
+var BASE7 = "https://bdif.amf-france.org/back/api/v1";
 function parseBdifSearch(json2) {
   return (json2.result ?? []).flatMap((r3) => {
     if (!r3.numero) return [];
@@ -14367,7 +14536,7 @@ function parseBdifSearch(json2) {
         published: (r3.datePublication ?? "").slice(0, 10),
         issuers: (r3.societes ?? []).map((s) => s.raisonSociale ?? "").filter(Boolean),
         issuerIds: (r3.societes ?? []).map((s) => s.jeton ?? "").filter(Boolean),
-        ...doc?.path ? { pdfUrl: `${BASE6}/documents/${doc.path}` } : {}
+        ...doc?.path ? { pdfUrl: `${BASE7}/documents/${doc.path}` } : {}
       }
     ];
   }).sort((a, b) => b.date.localeCompare(a.date) || b.numero.localeCompare(a.numero));
@@ -14457,7 +14626,7 @@ async function amfInsiderDeclarations(issuer, opts = {}) {
   const q = issuer.trim();
   const size = Math.min(Math.max(opts.limit ?? 5, 1), 50);
   const by = /^RS\d+$/i.test(q) ? `Jetons=${encodeURIComponent(q.toUpperCase())}` : `RechercheTexte=${encodeURIComponent(q)}`;
-  const url = `${BASE6}/informations?${by}&TypesInformation=DD&From=0&Size=${size}`;
+  const url = `${BASE7}/informations?${by}&TypesInformation=DD&From=0&Size=${size}`;
   const res = await fetchJson(url, { headers: { referer: "https://bdif.amf-france.org/" } });
   if (!res.ok || !res.data) throw new ProviderError(AMF_SOURCE, `search failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   const refs = parseBdifSearch(res.data);
@@ -14549,7 +14718,7 @@ async function amfInsiderDeclarations(issuer, opts = {}) {
 
 // src/providers/fundamentals/gleif.ts
 var GLEIF_SOURCE = "gleif";
-var BASE7 = "https://api.gleif.org/api/v1/lei-records";
+var BASE8 = "https://api.gleif.org/api/v1/lei-records";
 function parseLeiRecords(json2) {
   return (json2.data ?? []).flatMap((d) => {
     const a = d.attributes;
@@ -14577,7 +14746,7 @@ async function leiForIsin(isin) {
   const v = isin.trim().toUpperCase();
   if (!isIsin(v)) throw new ProviderError(GLEIF_SOURCE, `"${isin}" is not an ISIN`, 400);
   const got = await cachedJson(`gleif:isin:${v}`, TTL.reference, async () => {
-    const r3 = await query(`${BASE7}?filter[isin]=${v}`);
+    const r3 = await query(`${BASE8}?filter[isin]=${v}`);
     return r3.records[0] ? { record: r3.records[0], url: r3.url, fetchedAt: r3.fetchedAt } : void 0;
   });
   if (!got) throw new ProviderError(GLEIF_SOURCE, `no LEI linked to ISIN ${v}`, 404);
@@ -14609,7 +14778,7 @@ async function gleifByIsin(isin) {
 }
 async function gleifSearch(name, opts = {}) {
   const limit = Math.min(Math.max(opts.limit ?? 5, 1), 50);
-  const r3 = await query(`${BASE7}?filter[entity.legalName]=${encodeURIComponent(name.trim())}&page[size]=${limit}`);
+  const r3 = await query(`${BASE8}?filter[entity.legalName]=${encodeURIComponent(name.trim())}&page[size]=${limit}`);
   if (!r3.records.length) throw new ProviderError(GLEIF_SOURCE, `no LEI record whose legal name contains "${name}"`, 404);
   const sorted = [...r3.records].sort((a, b) => Number(b.registrationStatus === "ISSUED") - Number(a.registrationStatus === "ISSUED"));
   return {
@@ -14640,10 +14809,10 @@ function mdyToIso(s) {
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s ?? "").trim());
   return m ? `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}` : void 0;
 }
-var MONTHS2 = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+var MONTHS3 = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 function monthYearToIso(s) {
   const m = /^([A-Za-z]{3})[a-z]*\.?\s+(\d{4})$/.exec((s ?? "").trim());
-  const month = m ? MONTHS2.indexOf(m[1].toLowerCase()) : -1;
+  const month = m ? MONTHS3.indexOf(m[1].toLowerCase()) : -1;
   return m && month >= 0 ? `${m[2]}-${String(month + 1).padStart(2, "0")}` : void 0;
 }
 function finiteNumber(v) {
@@ -14653,7 +14822,7 @@ function finiteNumber(v) {
 
 // src/providers/fundamentals/esef.ts
 var ESEF_SOURCE = "esef";
-var BASE8 = "https://filings.xbrl.org";
+var BASE9 = "https://filings.xbrl.org";
 function parseEsefFilings(json2) {
   return (json2.data ?? []).flatMap((d) => {
     const a = d.attributes;
@@ -14665,8 +14834,8 @@ function parseEsefFilings(json2) {
         periodEnd: a.period_end,
         country: a.country ?? "",
         added: (a.date_added ?? "").slice(0, 10),
-        ...a.json_url ? { jsonUrl: `${BASE8}${a.json_url}` } : {},
-        ...a.viewer_url ? { viewerUrl: `${BASE8}${a.viewer_url}` } : {},
+        ...a.json_url ? { jsonUrl: `${BASE9}${a.json_url}` } : {},
+        ...a.viewer_url ? { viewerUrl: `${BASE9}${a.viewer_url}` } : {},
         errors: a.error_count ?? 0
       }
     ];
@@ -14834,7 +15003,7 @@ function esefPoints(metrics, subject, filing) {
   );
 }
 async function filingsOf(lei) {
-  const url = `${BASE8}/api/filings?filter[entity.identifier]=${lei}&sort=-period_end&page[size]=20`;
+  const url = `${BASE9}/api/filings?filter[entity.identifier]=${lei}&sort=-period_end&page[size]=20`;
   const res = await fetchJson(url, { accept: "application/vnd.api+json, application/json" });
   if (!res.ok || !res.data) throw new ProviderError(ESEF_SOURCE, `filings index failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   return { filings: parseEsefFilings(res.data), url, fetchedAt: res.fetchedAt };
@@ -15072,7 +15241,7 @@ function zipRead(buf, entry2) {
 
 // src/providers/fundamentals/house.ts
 var HOUSE_SOURCE = "house-clerk";
-var BASE9 = "https://disclosures-clerk.house.gov/public_disc";
+var BASE10 = "https://disclosures-clerk.house.gov/public_disc";
 function parseHouseIndex(xml) {
   return xmlBlocks(xml, "Member").flatMap((m) => {
     const docId = xmlValue(m, "DocID");
@@ -15082,7 +15251,7 @@ function parseHouseIndex(xml) {
     if (!docId || !date || !Number.isFinite(year)) return [];
     const name = [xmlValue(m, "Prefix"), xmlValue(m, "First"), xmlValue(m, "Last"), xmlValue(m, "Suffix")].filter(Boolean).join(" ");
     const folder = filingType === "P" ? "ptr-pdfs" : "financial-pdfs";
-    return [{ docId, member: name, stateDistrict: xmlValue(m, "StateDst") ?? "", filingType, date, year, pdfUrl: `${BASE9}/${folder}/${year}/${docId}.pdf` }];
+    return [{ docId, member: name, stateDistrict: xmlValue(m, "StateDst") ?? "", filingType, date, year, pdfUrl: `${BASE10}/${folder}/${year}/${docId}.pdf` }];
   }).sort((a, b) => b.date.localeCompare(a.date) || b.docId.localeCompare(a.docId));
 }
 function houseIndexXml(zip) {
@@ -15092,7 +15261,7 @@ function houseIndexXml(zip) {
 }
 async function housePtrFilings(opts = {}) {
   const year = opts.year ?? (opts.now ?? clockNow()).getUTCFullYear();
-  const url = `${BASE9}/financial-pdfs/${year}FD.zip`;
+  const url = `${BASE10}/financial-pdfs/${year}FD.zip`;
   const res = await fetchBinary(url, { accept: "application/zip,*/*" });
   if (!res.ok) throw new ProviderError(HOUSE_SOURCE, `${url} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   let filings;
@@ -15153,7 +15322,7 @@ async function housePtrTransactions(docId, opts = {}) {
   const id = docId.trim();
   if (!/^\d{4,12}$/.test(id)) throw new ProviderError(HOUSE_SOURCE, `"${docId}" is not a House DocID`, 400);
   const year = opts.year ?? (opts.now ?? clockNow()).getUTCFullYear();
-  const url = `${BASE9}/ptr-pdfs/${year}/${id}.pdf`;
+  const url = `${BASE10}/ptr-pdfs/${year}/${id}.pdf`;
   const res = await fetchBinary(url, { accept: "application/pdf,*/*" });
   if (!res.ok) throw new ProviderError(HOUSE_SOURCE, `${url} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   const text = await extractPdf(res.bytes);
@@ -15183,10 +15352,10 @@ async function housePtrTransactions(docId, opts = {}) {
 
 // src/providers/fundamentals/nasdaq-analyst.ts
 var NASDAQ_ANALYST_SOURCE = "nasdaq";
-var BASE10 = "https://api.nasdaq.com/api";
+var BASE11 = "https://api.nasdaq.com/api";
 var num2 = (v) => typeof v === "string" ? parseLooseNumber(v) : finiteNumber(v);
 async function get(path2) {
-  const url = `${BASE10}/${path2}`;
+  const url = `${BASE11}/${path2}`;
   const res = await fetchJson(url, { headers: { referer: "https://www.nasdaq.com/" } });
   return { url, res, data: res.ok ? res.data?.data ?? void 0 : void 0 };
 }
@@ -16482,7 +16651,7 @@ var CRIBLE_FIELDS = [
 async function cribleFundamentals(symbol, currency) {
   const r3 = await cribleScreen(`symbol = '${symbol.replace(/'/g, "")}'`, { limit: 1 });
   const row = r3.rows[0];
-  if (!row) throw new ProviderError(SOURCE7, `crible does not cover ${symbol}`, 404);
+  if (!row) throw new ProviderError(SOURCE8, `crible does not cover ${symbol}`, 404);
   const period2 = String(row.period ?? "");
   const points = CRIBLE_FIELDS.filter(([f3]) => typeof row[f3] === "number").map(([f3, label2, unit]) => ({
     key: `${symbol}.fund.${f3}.${period2 || "latest"}`,
@@ -16497,7 +16666,7 @@ async function cribleFundamentals(symbol, currency) {
     title: `${symbol} fundamentals \u2014 latest period (crible)`,
     subject: symbol,
     points,
-    provenance: { source: SOURCE7, fetchedAt: clockNow().toISOString(), official: false, delay: "filing", asOf: period2 || void 0 },
+    provenance: { source: SOURCE8, fetchedAt: clockNow().toISOString(), official: false, delay: "filing", asOf: period2 || void 0 },
     notes: [
       "crible aggregates audited filings (SEC, ESEF, registers) and market data; check a figure that matters against the filing",
       ...stale ? [stale] : []
@@ -16919,8 +17088,8 @@ function upsertEnvelope(p, env2, now = /* @__PURE__ */ new Date()) {
 }
 
 // src/providers/crypto/binance-futures.ts
-var BASE11 = "https://fapi.binance.com";
-var SOURCE8 = "binance-futures";
+var BASE12 = "https://fapi.binance.com";
+var SOURCE9 = "binance-futures";
 var PACE3 = { hostIntervalMs: 250 };
 function perpSymbol(symbol) {
   const s = symbol.toUpperCase().replace(/[-/_]/g, "");
@@ -16931,15 +17100,15 @@ var baseOf = (pair) => pair.replace(/(USDT|USDC)$/, "");
 function futuresFailure(status, pair, path2, error) {
   if (status === 451)
     return new ProviderError(
-      SOURCE8,
+      SOURCE9,
       `Binance refuses requests from this location (HTTP 451) for ${pair}: futures data is unavailable in this jurisdiction from here \u2014 not circumvented`,
       451
     );
-  if (status === 400) return new ProviderError(SOURCE8, `${pair} is not a Binance USDT-M perpetual`, 400);
-  return new ProviderError(SOURCE8, `${path2} for ${pair} failed (${status}${error ? `, ${error}` : ""})`, status);
+  if (status === 400) return new ProviderError(SOURCE9, `${pair} is not a Binance USDT-M perpetual`, 400);
+  return new ProviderError(SOURCE9, `${path2} for ${pair} failed (${status}${error ? `, ${error}` : ""})`, status);
 }
 async function get2(path2, pair) {
-  const res = await fetchJson(`${BASE11}${path2}`, PACE3);
+  const res = await fetchJson(`${BASE12}${path2}`, PACE3);
   if (!res.ok || res.data === void 0) throw futuresFailure(res.status, pair, path2.split("?")[0], res.error);
   return { data: res.data, url: res.url, fetchedAt: res.fetchedAt };
 }
@@ -16983,7 +17152,7 @@ async function binanceFuturesPositioning(symbol, opts = {}) {
   const period2 = opts.period ?? "1d";
   const days = Math.min(30, opts.days ?? 30);
   const prov5 = (r3, asOf) => ({
-    source: SOURCE8,
+    source: SOURCE9,
     url: r3.url,
     fetchedAt: r3.fetchedAt,
     delay: "realtime",
@@ -17084,8 +17253,8 @@ async function binanceFuturesPositioning(symbol, opts = {}) {
 }
 
 // src/providers/crypto/coingecko.ts
-var BASE12 = "https://api.coingecko.com/api/v3";
-var SOURCE9 = "coingecko";
+var BASE13 = "https://api.coingecko.com/api/v3";
+var SOURCE10 = "coingecko";
 function cgOptions() {
   const key = process.env.ULTRASTOCK_COINGECKO_API_KEY;
   return { hostIntervalMs: 2500, ...key ? { headers: { "x-cg-demo-api-key": key } } : {} };
@@ -17094,10 +17263,10 @@ function keyNote() {
   return process.env.ULTRASTOCK_COINGECKO_API_KEY ? ["read with a CoinGecko demo API key (ULTRASTOCK_COINGECKO_API_KEY)"] : [];
 }
 async function get3(path2, what) {
-  const res = await fetchJson(`${BASE12}${path2}`, cgOptions());
-  if (res.status === 404) throw new ProviderError(SOURCE9, `${what}: not found`, 404);
-  if (res.status === 429) throw new ProviderError(SOURCE9, `${what}: rate limited (429) \u2014 the keyless tier allows a few calls a minute`, 429);
-  if (!res.ok || res.data === void 0) throw new ProviderError(SOURCE9, `${what} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+  const res = await fetchJson(`${BASE13}${path2}`, cgOptions());
+  if (res.status === 404) throw new ProviderError(SOURCE10, `${what}: not found`, 404);
+  if (res.status === 429) throw new ProviderError(SOURCE10, `${what}: rate limited (429) \u2014 the keyless tier allows a few calls a minute`, 429);
+  if (!res.ok || res.data === void 0) throw new ProviderError(SOURCE10, `${what} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   return { data: res.data, url: res.url, fetchedAt: res.fetchedAt };
 }
 var isoDay4 = (ms) => new Date(ms).toISOString().slice(0, 10);
@@ -17128,13 +17297,13 @@ async function coingeckoGlobal(vs = "usd") {
   const r3 = await get3("/global", "global market data");
   const g = r3.data.data;
   const points = globalPoints(g, vs.toLowerCase());
-  if (!points.length) throw new ProviderError(SOURCE9, `no global figures in ${vs}`);
+  if (!points.length) throw new ProviderError(SOURCE10, `no global figures in ${vs}`);
   return {
     kind: "crypto-market",
     title: "Crypto market totals and dominance",
     subject: "CRYPTO",
     points,
-    provenance: { source: SOURCE9, url: r3.url, fetchedAt: r3.fetchedAt, delay: "~1-5min", official: false, asOf: points[0].asOf },
+    provenance: { source: SOURCE10, url: r3.url, fetchedAt: r3.fetchedAt, delay: "~1-5min", official: false, asOf: points[0].asOf },
     notes: ["CoinGecko aggregates many exchanges; totals depend on which coins it tracks", ...keyNote()]
   };
 }
@@ -17170,13 +17339,13 @@ async function coingeckoMarkets(opts = {}) {
   const vs = (opts.vs ?? "usd").toLowerCase();
   const path2 = `/coins/markets?vs_currency=${encodeURIComponent(vs)}&order=market_cap_desc&per_page=${limit}&page=${opts.page ?? 1}&price_change_percentage=24h,7d,30d`;
   const r3 = await get3(path2, "coin markets");
-  if (!Array.isArray(r3.data) || !r3.data.length) throw new ProviderError(SOURCE9, `no coins returned in ${vs}`);
+  if (!Array.isArray(r3.data) || !r3.data.length) throw new ProviderError(SOURCE10, `no coins returned in ${vs}`);
   return {
     kind: "crypto-market",
     title: `Top ${r3.data.length} coins by market cap (${vs.toUpperCase()})`,
     subject: "CRYPTO",
     points: marketPoints(r3.data, vs),
-    provenance: { source: SOURCE9, url: r3.url, fetchedAt: r3.fetchedAt, delay: "~1-5min", official: false, asOf: r3.fetchedAt.slice(0, 10) },
+    provenance: { source: SOURCE10, url: r3.url, fetchedAt: r3.fetchedAt, delay: "~1-5min", official: false, asOf: r3.fetchedAt.slice(0, 10) },
     notes: ["market cap = price \xD7 circulating supply as CoinGecko counts it; FDV uses the max (or total) supply", ...keyNote()]
   };
 }
@@ -17222,7 +17391,7 @@ function coinPoints(c, vs = "usd") {
   return out5;
 }
 async function coingeckoCoin(id, vs = "usd") {
-  if (!/^[a-z0-9-]{1,80}$/i.test(id)) throw new ProviderError(SOURCE9, `"${id}" is not a CoinGecko coin id (use coingeckoSearch to find one)`, 400);
+  if (!/^[a-z0-9-]{1,80}$/i.test(id)) throw new ProviderError(SOURCE10, `"${id}" is not a CoinGecko coin id (use coingeckoSearch to find one)`, 400);
   const path2 = `/coins/${id.toLowerCase()}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`;
   const r3 = await get3(path2, `coin ${id}`);
   const points = coinPoints(r3.data, vs.toLowerCase());
@@ -17232,7 +17401,7 @@ async function coingeckoCoin(id, vs = "usd") {
     title: `${s} supply, valuation and profile`,
     subject: s,
     points,
-    provenance: { source: SOURCE9, url: r3.url, fetchedAt: r3.fetchedAt, delay: "~1-5min", official: false, asOf: r3.data.market_data?.last_updated?.slice(0, 10) },
+    provenance: { source: SOURCE10, url: r3.url, fetchedAt: r3.fetchedAt, delay: "~1-5min", official: false, asOf: r3.data.market_data?.last_updated?.slice(0, 10) },
     notes: [
       "supply figures are CoinGecko's count; unlocks and treasury holdings can move circulating supply",
       "description, categories and links are the project's own claims",
@@ -17246,7 +17415,7 @@ function parseCoinSearch(body) {
 async function coingeckoSearch(query2, limit = 10) {
   const r3 = await get3(`/search?query=${encodeURIComponent(query2)}`, "coin search");
   const hits = parseCoinSearch(r3.data).slice(0, limit);
-  if (!hits.length) throw new ProviderError(SOURCE9, "no coin matches the query", 404);
+  if (!hits.length) throw new ProviderError(SOURCE10, "no coin matches the query", 404);
   const points = [];
   hits.forEach((h, i) => {
     const n2 = i + 1;
@@ -17258,14 +17427,14 @@ async function coingeckoSearch(query2, limit = 10) {
     kind: "crypto-search",
     title: "CoinGecko coin search",
     points,
-    provenance: { source: SOURCE9, url: r3.url, fetchedAt: r3.fetchedAt, official: false },
+    provenance: { source: SOURCE10, url: r3.url, fetchedAt: r3.fetchedAt, official: false },
     notes: ["a ticker is not unique: check the id and rank before using a hit", ...keyNote()]
   };
 }
 
 // src/providers/crypto/coinmetrics.ts
-var BASE13 = "https://community-api.coinmetrics.io/v4";
-var SOURCE10 = "coinmetrics";
+var BASE14 = "https://community-api.coinmetrics.io/v4";
+var SOURCE11 = "coinmetrics";
 var CM_METRICS = {
   PriceUSD: { key: "market.price", label: "reference price", unit: () => "USD" },
   CapMrktCurUSD: { key: "market.mcap", label: "market cap", unit: () => "USD" },
@@ -17346,15 +17515,15 @@ function coinmetricsPoints(asset, rows) {
 async function coinmetricsSeries(asset, days = 30) {
   const a = asset.toLowerCase();
   const metrics = COMMUNITY_METRICS[a];
-  if (!metrics) throw new ProviderError(SOURCE10, `${asset}: no community-tier metrics verified for this asset (btc, eth are)`, 403);
+  if (!metrics) throw new ProviderError(SOURCE11, `${asset}: no community-tier metrics verified for this asset (btc, eth are)`, 403);
   const n2 = Math.min(Math.max(Math.round(days), 2), 1e3);
-  const url = `${BASE13}/timeseries/asset-metrics?assets=${a}&metrics=${metrics.join(",")}&frequency=1d&page_size=${n2}&paging_from=end`;
+  const url = `${BASE14}/timeseries/asset-metrics?assets=${a}&metrics=${metrics.join(",")}&frequency=1d&page_size=${n2}&paging_from=end`;
   const res = await fetchJson(url, { hostIntervalMs: 700 });
-  if (res.status === 403) throw new ProviderError(SOURCE10, `${asset}: a requested metric is not on the community tier (403)`, 403);
+  if (res.status === 403) throw new ProviderError(SOURCE11, `${asset}: a requested metric is not on the community tier (403)`, 403);
   if (!res.ok || !Array.isArray(res.data?.data))
-    throw new ProviderError(SOURCE10, `asset metrics for ${asset} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+    throw new ProviderError(SOURCE11, `asset metrics for ${asset} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   const rows = parseCoinmetricsRows(res.data.data);
-  if (!rows.length) throw new ProviderError(SOURCE10, `no rows for ${asset}`, 404);
+  if (!rows.length) throw new ProviderError(SOURCE11, `no rows for ${asset}`, 404);
   return { asset: a, rows, url: res.url, fetchedAt: res.fetchedAt };
 }
 function coinmetricsToDataset(s) {
@@ -17363,7 +17532,7 @@ function coinmetricsToDataset(s) {
     title: `${s.asset.toUpperCase()} on-chain metrics (Coin Metrics, daily)`,
     subject: s.asset.toUpperCase(),
     points: coinmetricsPoints(s.asset, s.rows),
-    provenance: { source: SOURCE10, url: s.url, fetchedAt: s.fetchedAt, delay: "daily", official: false, asOf: s.rows[s.rows.length - 1]?.date },
+    provenance: { source: SOURCE11, url: s.url, fetchedAt: s.fetchedAt, delay: "daily", official: false, asOf: s.rows[s.rows.length - 1]?.date },
     notes: [
       "daily values, stamped at the start of the UTC day they cover",
       "NVT is not computed: the community tier does not serve adjusted transfer value (TxTfrValAdjUSD)",
@@ -17376,7 +17545,7 @@ async function coinmetricsAssetMetrics(asset, days = 30) {
 }
 
 // src/providers/crypto/defillama.ts
-var SOURCE11 = "defillama";
+var SOURCE12 = "defillama";
 var API2 = "https://api.llama.fi";
 var BIG = { maxBytes: 96 * 1024 * 1024, timeoutMs: 6e4 };
 var finite2 = (v) => typeof v === "number" && Number.isFinite(v);
@@ -17389,12 +17558,12 @@ function llamaText(raw) {
 }
 async function get4(url, what, opts = {}) {
   const res = await fetchJson(url, opts);
-  if (res.status === 400 || res.status === 404) throw new ProviderError(SOURCE11, `${what}: not found`, 404);
-  if (!res.ok || res.data === void 0) throw new ProviderError(SOURCE11, `${what} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+  if (res.status === 400 || res.status === 404) throw new ProviderError(SOURCE12, `${what}: not found`, 404);
+  if (!res.ok || res.data === void 0) throw new ProviderError(SOURCE12, `${what} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   return { data: res.data, url: res.url, fetchedAt: res.fetchedAt };
 }
 var prov = (r3) => ({
-  source: SOURCE11,
+  source: SOURCE12,
   url: r3.url,
   fetchedAt: r3.fetchedAt,
   delay: "~1h",
@@ -17410,7 +17579,7 @@ function chainPoints(rows, limit = 20) {
 }
 async function llamaChains(limit = 20) {
   const r3 = await get4(`${API2}/v2/chains`, "chain TVL");
-  if (!Array.isArray(r3.data) || !r3.data.length) throw new ProviderError(SOURCE11, "no chains returned");
+  if (!Array.isArray(r3.data) || !r3.data.length) throw new ProviderError(SOURCE12, "no chains returned");
   return {
     kind: "defi",
     title: "DeFi TVL by chain",
@@ -17479,7 +17648,7 @@ async function llamaProtocol(slug) {
   const id = llamaId(slug.toLowerCase());
   const r3 = await get4(`${API2}/protocol/${encodeURIComponent(slug.toLowerCase())}`, `protocol ${id}`, BIG);
   const points = protocolSummaryPoints(id, r3.data);
-  if (!points.some((p) => p.key === `${id}.defi.tvl`)) throw new ProviderError(SOURCE11, `protocol ${id} has no TVL history`, 404);
+  if (!points.some((p) => p.key === `${id}.defi.tvl`)) throw new ProviderError(SOURCE12, `protocol ${id} has no TVL history`, 404);
   return {
     kind: "defi",
     title: `${id} TVL history summary`,
@@ -17536,7 +17705,7 @@ function stablecoinPoints(rows, limit = 15) {
 async function llamaStablecoins(limit = 15) {
   const r3 = await get4("https://stablecoins.llama.fi/stablecoins?includePrices=true", "stablecoins", BIG);
   const rows = r3.data.peggedAssets ?? [];
-  if (!rows.length) throw new ProviderError(SOURCE11, "no stablecoins returned");
+  if (!rows.length) throw new ProviderError(SOURCE12, "no stablecoins returned");
   return {
     kind: "defi",
     title: "Stablecoin supply",
@@ -17586,7 +17755,7 @@ function poolPoints(rows) {
 async function llamaYields(f3 = {}) {
   const all = await cachedJson("defillama:pools", TTL.intraday * 12, async () => {
     const r3 = await get4("https://yields.llama.fi/pools", "yield pools", BIG);
-    if (!Array.isArray(r3.data.data)) throw new ProviderError(SOURCE11, "yield pools: no data array");
+    if (!Array.isArray(r3.data.data)) throw new ProviderError(SOURCE12, "yield pools: no data array");
     const rows2 = r3.data.data.map((p) => ({
       pool: p.pool,
       chain: p.chain,
@@ -17603,9 +17772,9 @@ async function llamaYields(f3 = {}) {
     }));
     return { rows: rows2, url: r3.url, fetchedAt: r3.fetchedAt };
   });
-  if (!all) throw new ProviderError(SOURCE11, "yield pools unavailable (offline, nothing cached)", 0);
+  if (!all) throw new ProviderError(SOURCE12, "yield pools unavailable (offline, nothing cached)", 0);
   const rows = filterPools(all.rows, f3);
-  if (!rows.length) throw new ProviderError(SOURCE11, "no yield pool matches the filter", 404);
+  if (!rows.length) throw new ProviderError(SOURCE12, "no yield pool matches the filter", 404);
   const shares = rows.map((p) => rewardShare(p.apyBase, p.apyReward)).filter((x) => x !== void 0);
   const notes = ["APY is variable and backward-looking; reward APY is paid in the protocol's token at its current price"];
   const heavy = shares.filter((x) => x >= 50).length;
@@ -17644,7 +17813,7 @@ async function llamaFees(opts = {}) {
   const r3 = await get4(`${API2}${path2}?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true`, "fees overview", BIG);
   const scope = opts.chain ? llamaText(opts.chain) : "DeFi";
   const points = feesPoints(r3.data, scope, opts.limit ?? 15);
-  if (!points.length) throw new ProviderError(SOURCE11, `no fee figures for ${scope}`, 404);
+  if (!points.length) throw new ProviderError(SOURCE12, `no fee figures for ${scope}`, 404);
   return {
     kind: "defi",
     title: `Protocol fees (${scope})`,
@@ -17656,13 +17825,13 @@ async function llamaFees(opts = {}) {
 }
 
 // src/providers/crypto/mempool.ts
-var BASE14 = "https://mempool.space/api/v1";
-var SOURCE12 = "mempool.space";
+var BASE15 = "https://mempool.space/api/v1";
+var SOURCE13 = "mempool.space";
 var PACE4 = { hostIntervalMs: 300 };
 var isoDay6 = (ms) => new Date(ms).toISOString().slice(0, 10);
 async function get5(path2) {
-  const res = await fetchJson(`${BASE14}${path2}`, PACE4);
-  if (!res.ok || res.data === void 0) throw new ProviderError(SOURCE12, `${path2} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+  const res = await fetchJson(`${BASE15}${path2}`, PACE4);
+  if (!res.ok || res.data === void 0) throw new ProviderError(SOURCE13, `${path2} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   return { data: res.data, url: res.url, fetchedAt: res.fetchedAt };
 }
 function feePoints(f3, asOf) {
@@ -17706,7 +17875,7 @@ async function mempoolNetwork() {
   const fees = await get5("/fees/recommended");
   const hash = await get5("/mining/hashrate/3d");
   const diff = await get5("/difficulty-adjustment");
-  const prov5 = (r3) => ({ source: SOURCE12, url: r3.url, fetchedAt: r3.fetchedAt, delay: "realtime", official: false });
+  const prov5 = (r3) => ({ source: SOURCE13, url: r3.url, fetchedAt: r3.fetchedAt, delay: "realtime", official: false });
   const day4 = fees.fetchedAt.slice(0, 10);
   return [
     {
@@ -17832,8 +18001,8 @@ function chainDataset(chain2, source2, now, maxExpiries = 12) {
 }
 
 // src/providers/options/cboe.ts
-var BASE15 = "https://cdn.cboe.com/api/global/delayed_quotes/options";
-var SOURCE13 = "cboe";
+var BASE16 = "https://cdn.cboe.com/api/global/delayed_quotes/options";
+var SOURCE14 = "cboe";
 var INDEX_ROOTS = /* @__PURE__ */ new Set(["SPX", "XSP", "NDX", "RUT", "VIX", "DJX", "OEX", "XEO", "MXEA", "MXEF"]);
 function cboeSymbol(symbol) {
   const s = symbol.toUpperCase().trim().replace(/^[\^$]/, "");
@@ -17873,16 +18042,16 @@ function parseCboeOptions(options) {
 }
 async function cboeChain(symbol) {
   const file = cboeSymbol(symbol);
-  const url = `${BASE15}/${file}.json`;
+  const url = `${BASE16}/${file}.json`;
   const res = await fetchJson(url, { maxBytes: 64 * 1024 * 1024, timeoutMs: 6e4 });
   if (!res.ok || !res.data?.data) {
-    if (res.status === 403 || res.status === 404) throw new ProviderError(SOURCE13, `CBOE lists no options on ${symbol} (${file})`, 404);
-    throw new ProviderError(SOURCE13, `option chain for ${file} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+    if (res.status === 403 || res.status === 404) throw new ProviderError(SOURCE14, `CBOE lists no options on ${symbol} (${file})`, 404);
+    throw new ProviderError(SOURCE14, `option chain for ${file} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   }
   const d = res.data.data;
   const contracts = parseCboeOptions(d.options ?? []);
   const price = num4(d.current_price) ?? num4(d.close);
-  if (!contracts.length || price === void 0) throw new ProviderError(SOURCE13, `CBOE's file for ${file} holds no contracts`, 404);
+  if (!contracts.length || price === void 0) throw new ProviderError(SOURCE14, `CBOE's file for ${file} holds no contracts`, 404);
   const underlying = file.replace(/^_/, "");
   const session = d.last_trade_time?.slice(0, 10) ?? res.fetchedAt.slice(0, 10);
   return {
@@ -17893,7 +18062,7 @@ async function cboeChain(symbol) {
     asOf: session,
     contracts,
     ...pos(d.iv30) !== void 0 ? { iv30: d.iv30 } : {},
-    provenance: { source: SOURCE13, url: res.url, fetchedAt: res.fetchedAt, delay: "15min", official: true, asOf: session },
+    provenance: { source: SOURCE14, url: res.url, fetchedAt: res.fetchedAt, delay: "15min", official: true, asOf: session },
     notes: [
       `CBOE delayed quotes (15 minutes); file stamped ${res.data.timestamp ?? "without a time"} (US Eastern, as published)`,
       "premiums per share; one contract is usually 100 shares"
@@ -17902,7 +18071,7 @@ async function cboeChain(symbol) {
 }
 async function cboeOptions(symbol, opts = {}) {
   const chain2 = await cboeChain(symbol);
-  const dataset3 = chainDataset(chain2, SOURCE13, opts.now ?? clockNow(), opts.maxExpiries);
+  const dataset3 = chainDataset(chain2, SOURCE14, opts.now ?? clockNow(), opts.maxExpiries);
   if (chain2.iv30 !== void 0)
     dataset3.points.splice(1, 0, {
       key: `${chain2.underlying}.opt.iv30`,
@@ -17915,10 +18084,10 @@ async function cboeOptions(symbol, opts = {}) {
 }
 
 // src/providers/options/deribit.ts
-var BASE16 = "https://www.deribit.com/api/v2/public";
-var SOURCE14 = "deribit";
+var BASE17 = "https://www.deribit.com/api/v2/public";
+var SOURCE15 = "deribit";
 var PACE5 = { hostIntervalMs: 100 };
-var MONTHS3 = {
+var MONTHS4 = {
   JAN: "01",
   FEB: "02",
   MAR: "03",
@@ -17934,7 +18103,7 @@ var MONTHS3 = {
 };
 function parseDeribitInstrument(name) {
   const m = /^([A-Z0-9_]+)-(\d{1,2})([A-Z]{3})(\d{2})-([0-9d.]+)-([CP])$/.exec(name);
-  const month = m ? MONTHS3[m[3]] : void 0;
+  const month = m ? MONTHS4[m[3]] : void 0;
   if (!m || !month) return void 0;
   return { root: m[1], expiry: `20${m[4]}-${month}-${m[2].padStart(2, "0")}`, strike: Number(m[5].replace("d", ".")), right: m[6] === "C" ? "call" : "put" };
 }
@@ -17956,11 +18125,11 @@ function parseDeribitBook(rows) {
   return out5;
 }
 async function rpc(path2, what) {
-  const url = `${BASE16}${path2}`;
+  const url = `${BASE17}${path2}`;
   const res = await fetchJson(url, PACE5);
   if (res.ok && res.data?.result !== void 0) return { result: res.data.result, url: res.url, fetchedAt: res.fetchedAt };
-  if (res.status === 400) throw new ProviderError(SOURCE14, `Deribit refused ${what} (invalid parameters)`, 400);
-  throw new ProviderError(SOURCE14, `${what} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+  if (res.status === 400) throw new ProviderError(SOURCE15, `Deribit refused ${what} (invalid parameters)`, 400);
+  throw new ProviderError(SOURCE15, `${what} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
 }
 async function deribitChain(currency, base2) {
   const cur = currency.toUpperCase();
@@ -17968,7 +18137,7 @@ async function deribitChain(currency, base2) {
   const r3 = await rpc(`/get_book_summary_by_currency?currency=${encodeURIComponent(cur)}&kind=option`, `the ${cur} option book`);
   const rows = r3.result.filter((x) => (x.base_currency ?? cur) === und);
   const contracts = parseDeribitBook(rows);
-  if (!contracts.length) throw new ProviderError(SOURCE14, `Deribit lists no ${und} options settled in ${cur}`, 404);
+  if (!contracts.length) throw new ProviderError(SOURCE15, `Deribit lists no ${und} options settled in ${cur}`, 404);
   const spot = rows.find((x) => val(x.estimated_delivery_price) !== void 0)?.estimated_delivery_price ?? contracts[0].underlyingPrice ?? 0;
   const premium = rows[0]?.quote_currency ?? cur;
   return {
@@ -17978,7 +18147,7 @@ async function deribitChain(currency, base2) {
     premiumCurrency: premium,
     asOf: r3.fetchedAt,
     contracts,
-    provenance: { source: SOURCE14, url: r3.url, fetchedAt: r3.fetchedAt, delay: "realtime", official: true, asOf: r3.fetchedAt.slice(0, 10) },
+    provenance: { source: SOURCE15, url: r3.url, fetchedAt: r3.fetchedAt, delay: "realtime", official: true, asOf: r3.fetchedAt.slice(0, 10) },
     notes: [
       premium === und ? `premiums quoted in ${und} (inverse options), strikes in USD; one contract = 1 ${und}` : `premiums and strikes in ${premium}`,
       "each expiry prices off its own future: ATM is the strike nearest that expiry's underlying",
@@ -17988,7 +18157,7 @@ async function deribitChain(currency, base2) {
 }
 async function deribitOptions(currency, opts = {}) {
   const chain2 = await deribitChain(currency, opts.base);
-  return { dataset: chainDataset(chain2, SOURCE14, opts.now ?? clockNow(), opts.maxExpiries), chain: chain2 };
+  return { dataset: chainDataset(chain2, SOURCE15, opts.now ?? clockNow(), opts.maxExpiries), chain: chain2 };
 }
 function parseDvol(rows) {
   return rows.map(([t, open2, high, low, close]) => ({ date: new Date(t).toISOString().slice(0, 10), open: open2, high, low, close })).sort((a, b) => a.date.localeCompare(b.date));
@@ -18021,7 +18190,7 @@ async function deribitDvol(currency, days = 90, now = clockNow()) {
     `DVOL for ${cur}`
   );
   const candles = parseDvol(r3.result.data ?? []);
-  if (!candles.length) throw new ProviderError(SOURCE14, `no DVOL candles for ${cur}`, 404);
+  if (!candles.length) throw new ProviderError(SOURCE15, `no DVOL candles for ${cur}`, 404);
   return {
     candles,
     dataset: {
@@ -18029,7 +18198,7 @@ async function deribitDvol(currency, days = 90, now = clockNow()) {
       title: `${cur} DVOL (Deribit)`,
       subject: cur,
       points: dvolPoints(cur, candles),
-      provenance: { source: SOURCE14, url: r3.url, fetchedAt: r3.fetchedAt, delay: "realtime", official: true, asOf: candles[candles.length - 1].date },
+      provenance: { source: SOURCE15, url: r3.url, fetchedAt: r3.fetchedAt, delay: "realtime", official: true, asOf: candles[candles.length - 1].date },
       notes: ["DVOL is Deribit's 30-day forward implied volatility index, annualised (a VIX-style measure); the latest candle may still be forming"]
     }
   };
@@ -18099,8 +18268,8 @@ function bookPoints(prefix, subject, book2, currency, levels = 10) {
 }
 
 // src/providers/prediction/kalshi.ts
-var BASE17 = "https://api.elections.kalshi.com/trade-api/v2";
-var SOURCE15 = "kalshi";
+var BASE18 = "https://api.elections.kalshi.com/trade-api/v2";
+var SOURCE16 = "kalshi";
 var PACE6 = { hostIntervalMs: 120 };
 var NOTE_UNITS = "prices in USD per contract paying 1 USD on YES (price \xD7 100 = implied probability %); volume and open interest in contracts";
 function parseKalshiMarket(r3) {
@@ -18173,11 +18342,11 @@ function parseKalshiOrderbook(raw) {
   return sortBook(levels(raw.orderbook_fp?.yes_dollars, false), levels(raw.orderbook_fp?.no_dollars, true));
 }
 function failure2(status, what, error) {
-  if (status === 404) return new ProviderError(SOURCE15, `${what}: not found`, 404);
-  return new ProviderError(SOURCE15, `${what} failed (${status}${error ? `, ${error}` : ""})`, status);
+  if (status === 404) return new ProviderError(SOURCE16, `${what}: not found`, 404);
+  return new ProviderError(SOURCE16, `${what} failed (${status}${error ? `, ${error}` : ""})`, status);
 }
 var prov2 = (res) => ({
-  source: SOURCE15,
+  source: SOURCE16,
   url: res.url,
   fetchedAt: res.fetchedAt,
   delay: "realtime",
@@ -18189,11 +18358,11 @@ async function kalshiMarkets(q = {}) {
   if (q.seriesTicker) params.set("series_ticker", q.seriesTicker.toUpperCase());
   if (q.eventTicker) params.set("event_ticker", q.eventTicker.toUpperCase());
   if (!q.includeMultivariate) params.set("mve_filter", "exclude");
-  const res = await fetchJson(`${BASE17}/markets?${params}`, PACE6);
+  const res = await fetchJson(`${BASE18}/markets?${params}`, PACE6);
   if (!res.ok || !Array.isArray(res.data?.markets)) throw failure2(res.status, "market list", res.error);
   const markets = res.data.markets.map(parseKalshiMarket);
   const scope = q.eventTicker ?? q.seriesTicker;
-  if (!markets.length) throw new ProviderError(SOURCE15, `no ${q.status ?? "open"} markets${scope ? ` for ${scope.toUpperCase()}` : ""}`, 404);
+  if (!markets.length) throw new ProviderError(SOURCE16, `no ${q.status ?? "open"} markets${scope ? ` for ${scope.toUpperCase()}` : ""}`, 404);
   const notes = [NOTE_UNITS];
   if (res.data.cursor) notes.push(`first ${markets.length} markets only: more are available (raise the limit or narrow the series)`);
   return {
@@ -18207,7 +18376,7 @@ async function kalshiMarkets(q = {}) {
 }
 async function kalshiMarket(ticker) {
   const t = ticker.toUpperCase();
-  const res = await fetchJson(`${BASE17}/markets/${encodeURIComponent(t)}`, PACE6);
+  const res = await fetchJson(`${BASE18}/markets/${encodeURIComponent(t)}`, PACE6);
   if (!res.ok || !res.data?.market) throw failure2(res.status, `market ${t}`, res.error);
   return {
     kind: "prediction",
@@ -18220,10 +18389,10 @@ async function kalshiMarket(ticker) {
 }
 async function kalshiOrderbook(ticker, levels = 10) {
   const t = ticker.toUpperCase();
-  const res = await fetchJson(`${BASE17}/markets/${encodeURIComponent(t)}/orderbook`, PACE6);
+  const res = await fetchJson(`${BASE18}/markets/${encodeURIComponent(t)}/orderbook`, PACE6);
   if (!res.ok || !res.data) throw failure2(res.status, `orderbook ${t}`, res.error);
   const book2 = parseKalshiOrderbook(res.data);
-  if (!book2.bids.length && !book2.asks.length) throw new ProviderError(SOURCE15, `orderbook ${t} is empty (unknown ticker, or no resting orders)`, 404);
+  if (!book2.bids.length && !book2.asks.length) throw new ProviderError(SOURCE16, `orderbook ${t} is empty (unknown ticker, or no resting orders)`, 404);
   return {
     book: book2,
     dataset: {
@@ -18251,10 +18420,10 @@ function kalshiEventPoints(e) {
 async function kalshiEvents(q = {}) {
   const params = new URLSearchParams({ status: q.status ?? "open", limit: String(Math.min(Math.max(q.limit ?? 20, 1), 200)) });
   if (q.seriesTicker) params.set("series_ticker", q.seriesTicker.toUpperCase());
-  const res = await fetchJson(`${BASE17}/events?${params}`, PACE6);
+  const res = await fetchJson(`${BASE18}/events?${params}`, PACE6);
   if (!res.ok || !Array.isArray(res.data?.events)) throw failure2(res.status, "event list", res.error);
   const events = res.data.events;
-  if (!events.length) throw new ProviderError(SOURCE15, `no ${q.status ?? "open"} events${q.seriesTicker ? ` for ${q.seriesTicker.toUpperCase()}` : ""}`, 404);
+  if (!events.length) throw new ProviderError(SOURCE16, `no ${q.status ?? "open"} events${q.seriesTicker ? ` for ${q.seriesTicker.toUpperCase()}` : ""}`, 404);
   const notes = [];
   if (res.data.cursor) notes.push(`first ${events.length} events only: more are available`);
   return {
@@ -18268,8 +18437,8 @@ async function kalshiEvents(q = {}) {
 }
 
 // src/providers/prediction/manifold.ts
-var BASE18 = "https://api.manifold.markets/v0";
-var SOURCE16 = "manifold";
+var BASE19 = "https://api.manifold.markets/v0";
+var SOURCE17 = "manifold";
 var PACE7 = { hostIntervalMs: 150 };
 var PLAY_MONEY_NOTE = "play money (MANA, not redeemable) \u2014 a signal, not a market";
 var isoDay7 = (ms) => new Date(ms).toISOString().slice(0, 10);
@@ -18304,11 +18473,11 @@ function manifoldMarketPoints(m) {
   return out5;
 }
 function failure3(status, what, error) {
-  if (status === 404) return new ProviderError(SOURCE16, `${what}: not found`, 404);
-  return new ProviderError(SOURCE16, `${what} failed (${status}${error ? `, ${error}` : ""})`, status);
+  if (status === 404) return new ProviderError(SOURCE17, `${what}: not found`, 404);
+  return new ProviderError(SOURCE17, `${what} failed (${status}${error ? `, ${error}` : ""})`, status);
 }
 var prov3 = (res) => ({
-  source: SOURCE16,
+  source: SOURCE17,
   url: res.url,
   fetchedAt: res.fetchedAt,
   delay: "realtime",
@@ -18318,9 +18487,9 @@ var prov3 = (res) => ({
 async function manifoldSearch(term, opts = {}) {
   const params = new URLSearchParams({ term, limit: String(Math.min(Math.max(opts.limit ?? 10, 1), 100)) });
   if (opts.filter) params.set("filter", opts.filter);
-  const res = await fetchJson(`${BASE18}/search-markets?${params}`, PACE7);
+  const res = await fetchJson(`${BASE19}/search-markets?${params}`, PACE7);
   if (!res.ok || !Array.isArray(res.data)) throw failure3(res.status, "market search", res.error);
-  if (!res.data.length) throw new ProviderError(SOURCE16, "no market matches the search", 404);
+  if (!res.data.length) throw new ProviderError(SOURCE17, "no market matches the search", 404);
   const notes = [PLAY_MONEY_NOTE];
   if (res.data.some((m) => m.outcomeType && m.outcomeType !== "BINARY"))
     notes.push("non-binary markets carry no single probability in search results: read them one by one for their answers");
@@ -18333,7 +18502,7 @@ async function manifoldSearch(term, opts = {}) {
   };
 }
 async function manifoldMarket(id) {
-  const res = await fetchJson(`${BASE18}/market/${encodeURIComponent(id)}`, PACE7);
+  const res = await fetchJson(`${BASE19}/market/${encodeURIComponent(id)}`, PACE7);
   if (!res.ok || !res.data?.id) throw failure3(res.status, `market ${id}`, res.error);
   return {
     kind: "prediction",
@@ -20900,9 +21069,9 @@ var SCALES = [
   [/^(?:Md|Mds|md|mds|bn|Bn|B|billion|billions|milliard|milliards)$/, 1e9],
   [/^(?:T|tn|trillion|trillions)$/, 1e12]
 ];
-var MONTHS4 = "jan|janv|feb|f\xE9vr|fev|mar|mars|apr|avr|may|mai|jun|juin|jul|juil|aug|ao\xFBt|aout|sep|sept|oct|nov|dec|d\xE9c";
+var MONTHS5 = "jan|janv|feb|f\xE9vr|fev|mar|mars|apr|avr|may|mai|jun|juin|jul|juil|aug|ao\xFBt|aout|sep|sept|oct|nov|dec|d\xE9c";
 function stripNonFigures(text) {
-  return text.replace(/`[^`]*`/g, " ").replace(/\]\([^)]*\)/g, "] ").replace(/\[[^\]]*\]/g, " ").replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ").replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ").replace(new RegExp(`\\b\\d{1,2}(?:er)?\\s+(?:${MONTHS4})[a-z\xE9\xFB]*\\.?(?:\\s+\\d{4})?`, "gi"), " ").replace(new RegExp(`\\b(?:${MONTHS4})[a-z\xE9\xFB]*\\.?\\s+\\d{1,2}(?:,\\s*\\d{4})?`, "gi"), " ").replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ").replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ").replace(/\b(?:SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA)\s?\d+\b/gi, " ").replace(/(?:S&P|\b(?:CAC|SBF|STOXX|Stoxx|Nasdaq|NASDAQ|Russell|DAX|MDAX|FTSE|AEX|BEL|IBEX|MIB|PSI|OBX|ISEQ|Nikkei|Top|top|Dow Jones))\s?\d+\b/g, " ");
+  return text.replace(/`[^`]*`/g, " ").replace(/\]\([^)]*\)/g, "] ").replace(/\[[^\]]*\]/g, " ").replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ").replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ").replace(new RegExp(`\\b\\d{1,2}(?:er)?\\s+(?:${MONTHS5})[a-z\xE9\xFB]*\\.?(?:\\s+\\d{4})?`, "gi"), " ").replace(new RegExp(`\\b(?:${MONTHS5})[a-z\xE9\xFB]*\\.?\\s+\\d{1,2}(?:,\\s*\\d{4})?`, "gi"), " ").replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ").replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ").replace(/\b(?:SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA)\s?\d+\b/gi, " ").replace(/(?:S&P|\b(?:CAC|SBF|STOXX|Stoxx|Nasdaq|NASDAQ|Russell|DAX|MDAX|FTSE|AEX|BEL|IBEX|MIB|PSI|OBX|ISEQ|Nikkei|Top|top|Dow Jones))\s?\d+\b/g, " ");
 }
 var FIGURE_RE = /(?<![\p{L}\p{N}_.,])([+\-−–]?)\s?([$€£]\s?)?(\d{1,3}(?:[ ,.  ']\d{3})+(?!\d)(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(\s?(?:%|pts?|bps|x|×)|\s?(?:k|K|M|m|mn|Mn|mio|Md|Mds|md|mds|bn|Bn|B|T|tn|million|millions|milliard|milliards|billion|billions|trillion|trillions|mille)\b)?(\s?(?:[$€£]|EUR|USD|USDT|USDC|GBP|CHF|NOK|BTC|ETH)\b|\s?[$€£])?/gu;
 var PARAMETER_AFTER = /^[-\s]?(?:days?|d|jours?|j|weeks?|wks?|w|semaines?|months?|mo|mois|years?|yrs?|y|ans?|années?|bars?|séances?|sessions?|hours?|h|heures?|min|minutes?|périodes?|periods?|ème|e|er|re|st|nd|rd|th)\b/iu;
@@ -23417,7 +23586,7 @@ var ISHARES_PRODUCTS = {
   IE00B53SZB19: { id: "253741", name: "iShares NASDAQ 100 UCITS ETF (CNDX)" },
   IE00B4K48X80: { id: "251861", name: "iShares Core MSCI Europe UCITS ETF (SMEA)" }
 };
-var MONTHS5 = {
+var MONTHS6 = {
   jan: "01",
   feb: "02",
   mar: "03",
@@ -23434,7 +23603,7 @@ var MONTHS5 = {
 };
 function isharesDate(s) {
   const m = /^(\d{1,2})\/([A-Za-z]{3,4})\/(\d{4})$/.exec((s ?? "").trim());
-  const mm = m ? MONTHS5[m[2].toLowerCase()] : void 0;
+  const mm = m ? MONTHS6[m[2].toLowerCase()] : void 0;
   return m && mm ? `${m[3]}-${mm}-${m[1].padStart(2, "0")}` : void 0;
 }
 function parseIsharesHoldings(csv) {
@@ -23554,8 +23723,8 @@ async function nportHoldings(ticker) {
 }
 
 // src/providers/markets/tradingview.ts
-var BASE19 = "https://scanner.tradingview.com";
-var SOURCE17 = "tradingview";
+var BASE20 = "https://scanner.tradingview.com";
+var SOURCE18 = "tradingview";
 var NOTE = "unofficial endpoint (TradingView's screener backend); delayed snapshot";
 var TV_SNAPSHOT_COLUMNS = [
   "description",
@@ -23757,22 +23926,22 @@ function tvRowPoints(row, columns, asOf) {
   return out5;
 }
 async function scan(market, body) {
-  if (!/^[a-z0-9_]+$/.test(market)) throw new ProviderError(SOURCE17, `"${market}" is not a TradingView scanner market (germany, france, america, global\u2026)`, 400);
-  const url = `${BASE19}/${market}/scan`;
+  if (!/^[a-z0-9_]+$/.test(market)) throw new ProviderError(SOURCE18, `"${market}" is not a TradingView scanner market (germany, france, america, global\u2026)`, 400);
+  const url = `${BASE20}/${market}/scan`;
   const res = await fetchJson(url, { method: "POST", json: body, userAgent: "browser", hostIntervalMs: 1e3 });
   if (!res.ok || !res.data || !Array.isArray(res.data.data)) {
-    if (res.status === 404) throw new ProviderError(SOURCE17, `TradingView has no scanner market "${market}"`, 404);
-    throw new ProviderError(SOURCE17, `scan on ${market} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+    if (res.status === 404) throw new ProviderError(SOURCE18, `TradingView has no scanner market "${market}"`, 404);
+    throw new ProviderError(SOURCE18, `scan on ${market} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   }
   return { data: res.data, url, fetchedAt: res.fetchedAt };
 }
 async function tradingviewSnapshot(symbol, opts = {}) {
   const ticker = toTradingViewTicker(symbol);
-  if (!ticker) throw new ProviderError(SOURCE17, `cannot map ${symbol} to a TradingView ticker \u2014 pass EXCHANGE:TICKER (e.g. NASDAQ:AAPL)`, 400);
+  if (!ticker) throw new ProviderError(SOURCE18, `cannot map ${symbol} to a TradingView ticker \u2014 pass EXCHANGE:TICKER (e.g. NASDAQ:AAPL)`, 400);
   const columns = opts.columns ?? TV_SNAPSHOT_COLUMNS;
   const res = await scan(opts.market ?? "global", { symbols: { tickers: [ticker] }, columns });
   const row = res.data.data.find((r3) => r3.s === ticker) ?? res.data.data[0];
-  if (!row) throw new ProviderError(SOURCE17, `TradingView knows no ${ticker}`, 404);
+  if (!row) throw new ProviderError(SOURCE18, `TradingView knows no ${ticker}`, 404);
   const day4 = res.fetchedAt.slice(0, 10);
   const notes = [NOTE];
   const cur = row.d[columns.indexOf("currency")];
@@ -23783,7 +23952,7 @@ async function tradingviewSnapshot(symbol, opts = {}) {
     title: `${ticker} TradingView snapshot`,
     subject: symbol.toUpperCase(),
     points: tvRowPoints(row, columns, day4),
-    provenance: { source: SOURCE17, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day4 },
+    provenance: { source: SOURCE18, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day4 },
     notes
   };
 }
@@ -23806,7 +23975,7 @@ async function tradingviewScan(market, opts = {}) {
     title: `TradingView ${market} screener`,
     subject: market,
     points,
-    provenance: { source: SOURCE17, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day4 },
+    provenance: { source: SOURCE18, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day4 },
     notes
   };
 }
@@ -23851,8 +24020,8 @@ function sortObservations(obs) {
 }
 
 // src/providers/macro/ecb.ts
-var SOURCE18 = "ecb";
-var BASE20 = "https://data-api.ecb.europa.eu/service/data";
+var SOURCE19 = "ecb";
+var BASE21 = "https://data-api.ecb.europa.eu/service/data";
 function parseSdmxCsv(text) {
   const byKey = /* @__PURE__ */ new Map();
   for (const r3 of csvRecords(text)) {
@@ -23865,14 +24034,14 @@ function parseSdmxCsv(text) {
   }
   return [...byKey.entries()].map(([key, obs]) => ({ key, obs: sortObservations(obs) })).sort((a, b) => a.key.localeCompare(b.key));
 }
-var ecbUrl = (flow, key, n2) => `${BASE20}/${encodeURIComponent(flow)}/${key.split(".").map(encodeURIComponent).join(".").replace(/%2B/g, "+")}?lastNObservations=${n2}&format=csvdata&detail=dataonly`;
+var ecbUrl = (flow, key, n2) => `${BASE21}/${encodeURIComponent(flow)}/${key.split(".").map(encodeURIComponent).join(".").replace(/%2B/g, "+")}?lastNObservations=${n2}&format=csvdata&detail=dataonly`;
 async function fetchEcb(flow, key, n2 = 12) {
   const url = ecbUrl(flow, key, n2);
   const res = await fetchText(url, { accept: "text/csv" });
-  if (res.status === 404) throw new ProviderError(SOURCE18, `no series ${flow}.${key}`, 404);
-  requireOk(SOURCE18, res, `series ${flow}.${key}`);
+  if (res.status === 404) throw new ProviderError(SOURCE19, `no series ${flow}.${key}`, 404);
+  requireOk(SOURCE19, res, `series ${flow}.${key}`);
   const series = parseSdmxCsv(res.body);
-  if (!series.length) throw new ProviderError(SOURCE18, `series ${flow}.${key} returned no observations`);
+  if (!series.length) throw new ProviderError(SOURCE19, `series ${flow}.${key} returned no observations`);
   return { series, url: res.url, fetchedAt: res.fetchedAt };
 }
 async function ecbSeries(flow, key, n2 = 12, opts = {}) {
@@ -23887,7 +24056,7 @@ async function ecbSeries(flow, key, n2 = 12, opts = {}) {
     title: opts.label ?? `ECB ${flow}.${key}`,
     subject: opts.subject ?? "EA",
     points,
-    provenance: { source: SOURCE18, url, fetchedAt, official: true, asOf: series[0].obs[series[0].obs.length - 1]?.date },
+    provenance: { source: SOURCE19, url, fetchedAt, official: true, asOf: series[0].obs[series[0].obs.length - 1]?.date },
     notes: []
   };
 }
@@ -23921,7 +24090,7 @@ async function ecbPolicyRates() {
     title: "ECB key interest rates",
     subject: "EA",
     points,
-    provenance: { source: SOURCE18, url, fetchedAt, official: true },
+    provenance: { source: SOURCE19, url, fetchedAt, official: true },
     notes: ["Dates are the dates the current rates took effect; the change is versus the previous decision."]
   };
 }
@@ -23955,7 +24124,7 @@ async function ecbYieldCurve(tenors = EA_TENORS) {
     title: "Euro area AAA government yield curve (ECB)",
     subject: "EA",
     points,
-    provenance: { source: SOURCE18, url, fetchedAt, delay: "eod", official: true, asOf: y10?.date },
+    provenance: { source: SOURCE19, url, fetchedAt, delay: "eod", official: true, asOf: y10?.date },
     notes: ["Spot rates fitted by the ECB on AAA-rated euro area central government bonds (Svensson model)."]
   };
 }
@@ -23972,7 +24141,7 @@ async function ecbFx(currencies = ["USD", "GBP", "JPY", "CHF"], n2 = 5) {
     title: "ECB euro foreign exchange reference rates",
     subject: "EUR",
     points,
-    provenance: { source: SOURCE18, url, fetchedAt, delay: "eod", official: true },
+    provenance: { source: SOURCE19, url, fetchedAt, delay: "eod", official: true },
     notes: [
       "Reference rates set around 14:15 CET each TARGET business day \u2014 for information, not a transaction rate.",
       ...missing.length ? [`no ECB reference rate for: ${missing.join(", ")}`] : []
@@ -27293,7 +27462,7 @@ function cryptoRegime(c) {
 }
 
 // src/providers/macro/fred.ts
-var SOURCE19 = "fred";
+var SOURCE20 = "fred";
 var FRED_PRESETS = {
   DGS10: { label: "US 10-year Treasury constant-maturity yield", unit: "%", freq: "d" },
   DGS2: { label: "US 2-year Treasury constant-maturity yield", unit: "%", freq: "d" },
@@ -27334,7 +27503,7 @@ async function fredSeries(id, opts = {}) {
   if (key) {
     const apiUrl = `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(sid)}&api_key=${encodeURIComponent(key)}&file_type=json&observation_start=${start}`;
     const res = await fetchJson(apiUrl, { userAgent: politeUa() });
-    if (!res.ok || !res.data) throw new ProviderError(SOURCE19, `${sid}: API answered HTTP ${res.status}`, res.status);
+    if (!res.ok || !res.data) throw new ProviderError(SOURCE20, `${sid}: API answered HTTP ${res.status}`, res.status);
     obs = parseFredJson(res.data);
     url = `https://fred.stlouisfed.org/series/${sid}`;
     fetchedAt = res.fetchedAt;
@@ -27342,20 +27511,20 @@ async function fredSeries(id, opts = {}) {
     const csvUrl = `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(sid)}&cosd=${start}`;
     const res = await fetchText(csvUrl, { accept: "text/csv", userAgent: politeUa() });
     if (res.status === 404 || res.ok && !/observation_date|DATE/.test(res.body.slice(0, 80)))
-      throw new ProviderError(SOURCE19, `no FRED series ${sid}`, res.status === 404 ? 404 : 400);
-    if (!res.ok) throw new ProviderError(SOURCE19, `${sid}: keyless CSV export refused (HTTP ${res.status}) \u2014 set FRED_API_KEY (free)`, res.status);
+      throw new ProviderError(SOURCE20, `no FRED series ${sid}`, res.status === 404 ? 404 : 400);
+    if (!res.ok) throw new ProviderError(SOURCE20, `${sid}: keyless CSV export refused (HTTP ${res.status}) \u2014 set FRED_API_KEY (free)`, res.status);
     obs = parseFredCsv(res.body, sid);
     url = res.url;
     fetchedAt = res.fetchedAt;
     notes.push("read keyless from FRED's graph CSV export; set FRED_API_KEY (free) to use the documented API");
   }
-  if (!obs.length) throw new ProviderError(SOURCE19, `${sid}: no observations since ${start}`);
+  if (!obs.length) throw new ProviderError(SOURCE20, `${sid}: no observations since ${start}`);
   return {
     kind: "macro",
     title: preset ? `${preset.label} (FRED ${sid})` : `FRED series ${sid}`,
     subject: "US",
     points: seriesPoints(`US.fred.${sid}`, preset?.label ?? `FRED series ${sid}`, preset?.unit, obs, { history: opts.history ?? true }),
-    provenance: { source: SOURCE19, url, fetchedAt, official: true, asOf: obs[obs.length - 1].date },
+    provenance: { source: SOURCE20, url, fetchedAt, official: true, asOf: obs[obs.length - 1].date },
     notes
   };
 }
@@ -28731,7 +28900,7 @@ function cribleRowsToDataset(r3, opts) {
     title: `Screen \u2014 crible ${pid ? `preset ${pid}` : "DSL query"}`,
     subject: pid ?? "crible",
     points,
-    provenance: { source: SOURCE7, url: CRIBLE_REPO_URL, fetchedAt, official: false, delay: "filing", ...latest ? { asOf: latest } : {} },
+    provenance: { source: SOURCE8, url: CRIBLE_REPO_URL, fetchedAt, official: false, delay: "filing", ...latest ? { asOf: latest } : {} },
     notes
   };
 }
@@ -30131,7 +30300,7 @@ var period = (name, def2, description) => ({
   min: 1
 });
 var real = (name, def2, description) => ({ name, kind: "number", default: def2, description, min: 0 });
-var SOURCE20 = { name: "source", kind: "string", default: "close", description: "Price series read", choices: PRICE_SOURCES };
+var SOURCE21 = { name: "source", kind: "string", default: "close", description: "Price series read", choices: PRICE_SOURCES };
 var BENCHMARK2 = { name: "benchmark", kind: "bars", description: "Benchmark bars (as-of joined by date)" };
 var num8 = (p, k) => p[k];
 var str4 = (p, k) => p[k];
@@ -30142,18 +30311,18 @@ function def(name, group, description, params, outputs, run3) {
 }
 var V = ["value"];
 var BAND = ["upper", "middle", "lower"];
-def("sma", "averages", "Simple moving average", [period("period", 20, "Window"), SOURCE20], V, (b, p) => sma(src(b, p), num8(p, "period")));
-def("ema", "averages", "Exponential moving average, SMA-seeded", [period("period", 20, "Window"), SOURCE20], V, (b, p) => ema(src(b, p), num8(p, "period")));
-def("wma", "averages", "Linearly weighted moving average", [period("period", 20, "Window"), SOURCE20], V, (b, p) => wma(src(b, p), num8(p, "period")));
-def("rma", "averages", "Wilder's smoothing (RMA/SMMA)", [period("period", 14, "Window"), SOURCE20], V, (b, p) => rma(src(b, p), num8(p, "period")));
-def("dema", "averages", "Mulloy's double EMA", [period("period", 20, "Window"), SOURCE20], V, (b, p) => dema(src(b, p), num8(p, "period")));
-def("tema", "averages", "Mulloy's triple EMA", [period("period", 20, "Window"), SOURCE20], V, (b, p) => tema(src(b, p), num8(p, "period")));
-def("hma", "averages", "Hull moving average", [period("period", 16, "Window"), SOURCE20], V, (b, p) => hma(src(b, p), num8(p, "period")));
+def("sma", "averages", "Simple moving average", [period("period", 20, "Window"), SOURCE21], V, (b, p) => sma(src(b, p), num8(p, "period")));
+def("ema", "averages", "Exponential moving average, SMA-seeded", [period("period", 20, "Window"), SOURCE21], V, (b, p) => ema(src(b, p), num8(p, "period")));
+def("wma", "averages", "Linearly weighted moving average", [period("period", 20, "Window"), SOURCE21], V, (b, p) => wma(src(b, p), num8(p, "period")));
+def("rma", "averages", "Wilder's smoothing (RMA/SMMA)", [period("period", 14, "Window"), SOURCE21], V, (b, p) => rma(src(b, p), num8(p, "period")));
+def("dema", "averages", "Mulloy's double EMA", [period("period", 20, "Window"), SOURCE21], V, (b, p) => dema(src(b, p), num8(p, "period")));
+def("tema", "averages", "Mulloy's triple EMA", [period("period", 20, "Window"), SOURCE21], V, (b, p) => tema(src(b, p), num8(p, "period")));
+def("hma", "averages", "Hull moving average", [period("period", 16, "Window"), SOURCE21], V, (b, p) => hma(src(b, p), num8(p, "period")));
 def(
   "kama",
   "averages",
   "Kaufman adaptive moving average",
-  [period("period", 10, "Efficiency-ratio window"), period("fast", 2, "Fast EMA period"), period("slow", 30, "Slow EMA period"), SOURCE20],
+  [period("period", 10, "Efficiency-ratio window"), period("fast", 2, "Fast EMA period"), period("slow", 30, "Slow EMA period"), SOURCE21],
   V,
   (b, p) => kama(src(b, p), num8(p, "period"), num8(p, "fast"), num8(p, "slow"))
 );
@@ -30161,7 +30330,7 @@ def(
   "mcginleyDynamic",
   "averages",
   "McGinley Dynamic",
-  [period("period", 14, "Window"), { ...real("k", 1, "McGinley's constant (he suggested 0.6)"), min: 0.01 }, SOURCE20],
+  [period("period", 14, "Window"), { ...real("k", 1, "McGinley's constant (he suggested 0.6)"), min: 0.01 }, SOURCE21],
   V,
   (b, p) => mcginleyDynamic(src(b, p), num8(p, "period"), num8(p, "k"))
 );
@@ -30170,7 +30339,7 @@ def(
   "movingAverage",
   "averages",
   "Moving average of a chosen type",
-  [period("period", 20, "Window"), { name: "type", kind: "string", default: "ema", description: "Average type", choices: MA_TYPES }, SOURCE20],
+  [period("period", 20, "Window"), { name: "type", kind: "string", default: "ema", description: "Average type", choices: MA_TYPES }, SOURCE21],
   V,
   (b, p) => movingAverage(src(b, p), num8(p, "period"), str4(p, "type"))
 );
@@ -30230,7 +30399,7 @@ def(
   "ravi",
   "trend",
   "Chande's Range Action Verification Index (%)",
-  [period("shortPeriod", 7, "Short SMA"), period("longPeriod", 65, "Long SMA"), SOURCE20],
+  [period("shortPeriod", 7, "Short SMA"), period("longPeriod", 65, "Long SMA"), SOURCE21],
   V,
   (b, p) => ravi(src(b, p), num8(p, "shortPeriod"), num8(p, "longPeriod"))
 );
@@ -30238,21 +30407,21 @@ def(
   "linearRegressionSlope",
   "trend",
   "Least-squares slope per bar",
-  [period("period", 14, "Window"), SOURCE20],
+  [period("period", 14, "Window"), SOURCE21],
   V,
   (b, p) => linearRegressionSlope(src(b, p), num8(p, "period"))
 );
-def("rsi", "momentum", "Wilder's RSI", [period("period", 14, "Window"), SOURCE20], V, (b, p) => rsi(src(b, p), num8(p, "period")));
+def("rsi", "momentum", "Wilder's RSI", [period("period", 14, "Window"), SOURCE21], V, (b, p) => rsi(src(b, p), num8(p, "period")));
 def(
   "macd",
   "momentum",
   "Appel's MACD",
-  [period("fast", 12, "Fast EMA"), period("slow", 26, "Slow EMA"), period("signal", 9, "Signal EMA"), SOURCE20],
+  [period("fast", 12, "Fast EMA"), period("slow", 26, "Slow EMA"), period("signal", 9, "Signal EMA"), SOURCE21],
   ["macd", "signal", "histogram"],
   (b, p) => macd(src(b, p), num8(p, "fast"), num8(p, "slow"), num8(p, "signal"))
 );
-def("roc", "momentum", "Rate of change (%)", [period("period", 12, "Lookback"), SOURCE20], V, (b, p) => roc(src(b, p), num8(p, "period")));
-def("momentum", "momentum", "Momentum (price difference)", [period("period", 10, "Lookback"), SOURCE20], V, (b, p) => momentum(src(b, p), num8(p, "period")));
+def("roc", "momentum", "Rate of change (%)", [period("period", 12, "Lookback"), SOURCE21], V, (b, p) => roc(src(b, p), num8(p, "period")));
+def("momentum", "momentum", "Momentum (price difference)", [period("period", 10, "Lookback"), SOURCE21], V, (b, p) => momentum(src(b, p), num8(p, "period")));
 def(
   "stochastic",
   "momentum",
@@ -30287,7 +30456,7 @@ def(
     period("stochasticPeriod", 14, "Stochastic window"),
     period("kPeriod", 3, "%K smoothing"),
     period("dPeriod", 3, "%D smoothing"),
-    SOURCE20
+    SOURCE21
   ],
   ["stochRsi", "k", "d"],
   (b, p) => stochRsi(src(b, p), num8(p, "rsiPeriod"), num8(p, "stochasticPeriod"), num8(p, "kPeriod"), num8(p, "dPeriod"))
@@ -30316,12 +30485,12 @@ def(
   V,
   (b, p) => awesomeOscillator(b, num8(p, "fastPeriod"), num8(p, "slowPeriod"))
 );
-def("trix", "momentum", "Hutson's TRIX (%)", [period("period", 14, "EMA window"), SOURCE20], V, (b, p) => trix(src(b, p), num8(p, "period")));
+def("trix", "momentum", "Hutson's TRIX (%)", [period("period", 14, "EMA window"), SOURCE21], V, (b, p) => trix(src(b, p), num8(p, "period")));
 def(
   "pmo",
   "momentum",
   "DecisionPoint Price Momentum Oscillator",
-  [period("smooth1Period", 35, "First smoothing"), period("smooth2Period", 20, "Second smoothing"), period("signalPeriod", 10, "Signal EMA"), SOURCE20],
+  [period("smooth1Period", 35, "First smoothing"), period("smooth2Period", 20, "Second smoothing"), period("signalPeriod", 10, "Signal EMA"), SOURCE21],
   ["pmo", "signal"],
   (b, p) => pmo(src(b, p), num8(p, "smooth1Period"), num8(p, "smooth2Period"), num8(p, "signalPeriod"))
 );
@@ -30329,7 +30498,7 @@ def(
   "kst",
   "momentum",
   "Pring's Know Sure Thing (daily)",
-  [period("signalPeriod", 9, "Signal SMA"), SOURCE20],
+  [period("signalPeriod", 9, "Signal SMA"), SOURCE21],
   ["kst", "signal"],
   (b, p) => kst(src(b, p), num8(p, "signalPeriod"))
 );
@@ -30337,7 +30506,7 @@ def(
   "pringSpecialK",
   "momentum",
   "Pring's Special K (daily)",
-  [period("signalPeriod", 10, "Signal SMA"), SOURCE20],
+  [period("signalPeriod", 10, "Signal SMA"), SOURCE21],
   ["specialK", "signal"],
   (b, p) => pringSpecialK(src(b, p), num8(p, "signalPeriod"))
 );
@@ -30345,7 +30514,7 @@ def(
   "coppockCurve",
   "momentum",
   "Coppock curve",
-  [period("rocPeriod1", 14, "Long ROC"), period("rocPeriod2", 11, "Short ROC"), period("wmaPeriod", 10, "WMA window"), SOURCE20],
+  [period("rocPeriod1", 14, "Long ROC"), period("rocPeriod2", 11, "Short ROC"), period("wmaPeriod", 10, "WMA window"), SOURCE21],
   V,
   (b, p) => coppockCurve(src(b, p), num8(p, "rocPeriod1"), num8(p, "rocPeriod2"), num8(p, "wmaPeriod"))
 );
@@ -30353,7 +30522,7 @@ def(
   "dpo",
   "momentum",
   "Detrended Price Oscillator (not displaced)",
-  [period("period", 20, "SMA window"), SOURCE20],
+  [period("period", 20, "SMA window"), SOURCE21],
   V,
   (b, p) => dpo(src(b, p), num8(p, "period"))
 );
@@ -30396,7 +30565,7 @@ def(
     return a.map((x, i) => x === void 0 || m[i] === void 0 || m[i] === 0 ? void 0 : x / m[i]);
   }
 );
-def("stdev", "volatility", "Rolling standard deviation", [period("period", 20, "Window"), SOURCE20], V, (b, p) => rollingStdev(src(b, p), num8(p, "period")));
+def("stdev", "volatility", "Rolling standard deviation", [period("period", 20, "Window"), SOURCE21], V, (b, p) => rollingStdev(src(b, p), num8(p, "period")));
 def("choppinessIndex", "volatility", "Dreiss' Choppiness Index", [period("period", 14, "Window")], V, (b, p) => choppinessIndex(b, num8(p, "period")));
 def(
   "massIndex",
@@ -30449,7 +30618,7 @@ def(
   "bollinger",
   "bands",
   "Bollinger bands",
-  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE20],
+  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE21],
   BAND,
   (b, p) => bollinger(src(b, p), num8(p, "period"), num8(p, "stdDev"))
 );
@@ -30457,7 +30626,7 @@ def(
   "bollingerPercentB",
   "bands",
   "Bollinger %B",
-  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE20],
+  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE21],
   V,
   (b, p) => bollingerPercentB(src(b, p), num8(p, "period"), num8(p, "stdDev"))
 );
@@ -30465,7 +30634,7 @@ def(
   "bollingerBandwidth",
   "bands",
   "Bollinger bandwidth",
-  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE20],
+  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE21],
   V,
   (b, p) => bollingerBandwidth(src(b, p), num8(p, "period"), num8(p, "stdDev"))
 );
@@ -30494,7 +30663,7 @@ def(
     period("period", 20, "Window"),
     real("percentage", 2.5, "Envelope %"),
     { name: "type", kind: "string", default: "sma", description: "Average type", choices: ["sma", "ema"] },
-    SOURCE20
+    SOURCE21
   ],
   BAND,
   (b, p) => movingAverageEnvelope(src(b, p), num8(p, "period"), num8(p, "percentage"), str4(p, "type"))
@@ -30539,16 +30708,16 @@ def(
 );
 def("rollingVwap", "volume", "Rolling VWAP", [period("period", 20, "Window")], V, (b, p) => rollingVwap(b, num8(p, "period")));
 def("volumeSma", "volume", "SMA of volume", [period("period", 20, "Window")], V, (b, p) => sma(priceSource(b, "volume"), num8(p, "period")));
-def("rollingMax", "stats", "Rolling maximum", [period("period", 20, "Window"), SOURCE20], V, (b, p) => rollingMax(src(b, p), num8(p, "period")));
-def("rollingMin", "stats", "Rolling minimum", [period("period", 20, "Window"), SOURCE20], V, (b, p) => rollingMin(src(b, p), num8(p, "period")));
+def("rollingMax", "stats", "Rolling maximum", [period("period", 20, "Window"), SOURCE21], V, (b, p) => rollingMax(src(b, p), num8(p, "period")));
+def("rollingMin", "stats", "Rolling minimum", [period("period", 20, "Window"), SOURCE21], V, (b, p) => rollingMin(src(b, p), num8(p, "period")));
 def("highestHigh", "stats", "Highest high", [period("period", 14, "Window")], V, (b, p) => highestHigh(b, num8(p, "period")));
 def("lowestLow", "stats", "Lowest low", [period("period", 14, "Window")], V, (b, p) => lowestLow(b, num8(p, "period")));
-def("zScore", "stats", "Z-score against the rolling mean/stdev", [period("period", 20, "Window"), SOURCE20], V, (b, p) => zScore(src(b, p), num8(p, "period")));
+def("zScore", "stats", "Z-score against the rolling mean/stdev", [period("period", 20, "Window"), SOURCE21], V, (b, p) => zScore(src(b, p), num8(p, "period")));
 def(
   "percentRank",
   "stats",
   "Percent of the previous n values \u2264 the current one",
-  [period("period", 252, "Window"), SOURCE20],
+  [period("period", 252, "Window"), SOURCE21],
   V,
   (b, p) => percentRank(src(b, p), num8(p, "period"))
 );
@@ -32055,9 +32224,9 @@ function growthOf(periods, field2, years = 3) {
 }
 
 // src/providers/macro/treasury.ts
-var SOURCE21 = "us-treasury";
-var BASE21 = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv";
-var treasuryCsvUrl = (year) => `${BASE21}/${year}/all?type=daily_treasury_yield_curve&field_tdr_date_value=${year}&page&_format=csv`;
+var SOURCE22 = "us-treasury";
+var BASE22 = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv";
+var treasuryCsvUrl = (year) => `${BASE22}/${year}/all?type=daily_treasury_yield_curve&field_tdr_date_value=${year}&page&_format=csv`;
 function tenorOf(header2) {
   const m = /^([\d.]+)\s*(mo|month|months|yr|year|years)$/i.exec(header2.trim());
   return m ? `${m[1]}${m[2].toLowerCase().startsWith("m") ? "M" : "Y"}` : void 0;
@@ -32079,7 +32248,7 @@ function parseTreasuryCsv(text) {
 }
 async function readYear(year) {
   const res = await fetchText(treasuryCsvUrl(year), { accept: "text/csv" });
-  requireOk(SOURCE21, res, `the ${year} par yield curve`);
+  requireOk(SOURCE22, res, `the ${year} par yield curve`);
   return { rows: parseTreasuryCsv(res.body), url: res.url, fetchedAt: res.fetchedAt };
 }
 async function treasuryRows(days, now = clockNow()) {
@@ -32089,7 +32258,7 @@ async function treasuryRows(days, now = clockNow()) {
   let rows = cur.rows;
   if (from.slice(0, 4) < String(year) || !rows.length) rows = [...(await readYear(year - 1)).rows, ...rows];
   rows = rows.filter((r3) => r3.date >= from);
-  if (!rows.length) throw new ProviderError(SOURCE21, `no par yield curve published since ${from}`);
+  if (!rows.length) throw new ProviderError(SOURCE22, `no par yield curve published since ${from}`);
   return { rows, url: cur.url, fetchedAt: cur.fetchedAt };
 }
 var spread = (key, label2, long, short, row) => {
@@ -32132,20 +32301,20 @@ async function treasuryCurve(now = clockNow()) {
     title: `US Treasury par yield curve \u2014 ${last2.date}`,
     subject: "US",
     points,
-    provenance: { source: SOURCE21, url, fetchedAt, delay: "eod", official: true, asOf: last2.date },
+    provenance: { source: SOURCE22, url, fetchedAt, delay: "eod", official: true, asOf: last2.date },
     notes: ["Par yields (bond-equivalent, %), published by the US Treasury each business day after the close."]
   };
 }
 
 // src/providers/macro/frankfurter.ts
-var SOURCE22 = "frankfurter";
-var BASE22 = "https://api.frankfurter.dev/v1";
+var SOURCE23 = "frankfurter";
+var BASE23 = "https://api.frankfurter.dev/v1";
 var sym = (symbols) => symbols?.length ? `&symbols=${symbols.map((s) => s.toUpperCase()).join(",")}` : "";
 async function frankfurterLatest(base2 = "EUR", symbols) {
   const b = base2.toUpperCase();
-  const res = await fetchJson(`${BASE22}/latest?base=${b}${sym(symbols)}`);
-  if (res.status === 404 || res.status === 422) throw new ProviderError(SOURCE22, `unknown currency in ${b}${sym(symbols)}`, res.status);
-  requireOk(SOURCE22, res, `latest rates for ${b}`);
+  const res = await fetchJson(`${BASE23}/latest?base=${b}${sym(symbols)}`);
+  if (res.status === 404 || res.status === 422) throw new ProviderError(SOURCE23, `unknown currency in ${b}${sym(symbols)}`, res.status);
+  requireOk(SOURCE23, res, `latest rates for ${b}`);
   const d = res.data;
   const points = Object.entries(d.rates).map(([ccy, v]) => ({
     key: `${b}.fx.${ccy}`,
@@ -32159,7 +32328,7 @@ async function frankfurterLatest(base2 = "EUR", symbols) {
     title: `Euro reference rates via Frankfurter \u2014 ${d.date}`,
     subject: b,
     points,
-    provenance: { source: SOURCE22, url: res.url, fetchedAt: res.fetchedAt, delay: "eod", official: false, asOf: d.date },
+    provenance: { source: SOURCE23, url: res.url, fetchedAt: res.fetchedAt, delay: "eod", official: false, asOf: d.date },
     notes: ["ECB reference rates relayed by frankfurter.dev; cross rates for a non-EUR base are derived from the euro rates."]
   };
 }
@@ -33890,8 +34059,8 @@ async function reportCommand(args, asJson) {
 import { join as join35 } from "path";
 
 // src/providers/macro/elections.ts
-var SOURCE23 = "wikipedia-elections";
-var MONTHS6 = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+var SOURCE24 = "wikipedia-elections";
+var MONTHS7 = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 var ALIASES = {
   "czech republic": "CZ",
   "bosnia and herzegovina": "BA",
@@ -33965,10 +34134,10 @@ function parseDay(text, month, year) {
   const m = /^(\d{1,2})(?:\s*[–-]\s*(\d{1,2}))?\s+([A-Za-z]+)(?:\s*[–-]\s*(\d{1,2})\s+([A-Za-z]+))?/.exec(text.trim());
   if (!m) return void 0;
   const iso5 = (d, mo2) => `${year}-${String(mo2 + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  const mo = MONTHS6.indexOf(m[3].toLowerCase());
+  const mo = MONTHS7.indexOf(m[3].toLowerCase());
   const start = mo >= 0 ? mo : month;
   if (m[4] && m[5]) {
-    const mo2 = MONTHS6.indexOf(m[5].toLowerCase());
+    const mo2 = MONTHS7.indexOf(m[5].toLowerCase());
     return { date: iso5(Number(m[1]), start), endDate: iso5(Number(m[4]), mo2 >= 0 ? mo2 : start) };
   }
   return { date: iso5(Number(m[1]), start), ...m[2] ? { endDate: iso5(Number(m[2]), start) } : {} };
@@ -33996,7 +34165,7 @@ function parseElectionCalendar(wikitext, year) {
   for (const line of text.split("\n")) {
     const h = /^==\s*([A-Za-z]+)\s*==\s*$/.exec(line.trim());
     if (h) {
-      month = MONTHS6.indexOf(h[1].toLowerCase());
+      month = MONTHS7.indexOf(h[1].toLowerCase());
       current2 = void 0;
       continue;
     }
@@ -34026,12 +34195,12 @@ async function electionCalendar(year) {
   const url = `https://en.wikipedia.org/w/api.php?action=parse&page=${page}&prop=wikitext&format=json&formatversion=2`;
   const res = await fetchJson(url, { userAgent: politeUa(), hostIntervalMs: 500 });
   const wikitext = res.data?.parse?.wikitext;
-  if (!res.ok || !wikitext) throw new ProviderError(SOURCE23, `no electoral calendar for ${year} (${res.data?.error?.info ?? res.status})`, res.status);
+  if (!res.ok || !wikitext) throw new ProviderError(SOURCE24, `no electoral calendar for ${year} (${res.data?.error?.info ?? res.status})`, res.status);
   return { events: parseElectionCalendar(wikitext, year), url: `https://en.wikipedia.org/wiki/${page}`, fetchedAt: res.fetchedAt };
 }
 
 // src/providers/macro/central-banks.ts
-var MONTHS7 = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+var MONTHS8 = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 var iso2 = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 var FOMC_URL = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm";
 var ECB_URL = "https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html";
@@ -34043,7 +34212,7 @@ function parseFomc(html) {
     const chunk = html.slice(y.index, years[i + 1]?.index ?? html.length);
     const re = /fomc-meeting__month[^>]*>(?:<strong>)?\s*([A-Za-z/]+)[\s\S]*?fomc-meeting__date[^>]*>\s*([0-9]{1,2})(?:-([0-9]{1,2}))?(\*)?/g;
     for (const m of chunk.matchAll(re)) {
-      const monthOf2 = (t) => MONTHS7.findIndex((x) => x.startsWith(t.slice(0, 3)));
+      const monthOf2 = (t) => MONTHS8.findIndex((x) => x.startsWith(t.slice(0, 3)));
       const months = m[1].toLowerCase().split("/");
       const first = monthOf2(months[0]);
       if (first < 0) continue;
@@ -35196,8 +35365,8 @@ run: ${dir2}
 }
 
 // src/providers/macro/bls.ts
-var SOURCE24 = "bls";
-var BASE23 = "https://api.bls.gov/publicAPI/v1/timeseries/data/";
+var SOURCE25 = "bls";
+var BASE24 = "https://api.bls.gov/publicAPI/v1/timeseries/data/";
 function parseBls(answer) {
   const out5 = /* @__PURE__ */ new Map();
   for (const s of answer.Results?.series ?? []) {
@@ -35232,14 +35401,14 @@ var BLS_SERIES = {
 };
 async function fetchBls(ids) {
   const opts = { userAgent: politeUa(process.env.ULTRASTOCK_SEC_CONTACT), retries: 1 };
-  const res = ids.length === 1 ? await fetchJson(`${BASE23}${encodeURIComponent(ids[0])}`, opts) : await fetchJson(BASE23, { ...opts, method: "POST", json: { seriesid: ids } });
+  const res = ids.length === 1 ? await fetchJson(`${BASE24}${encodeURIComponent(ids[0])}`, opts) : await fetchJson(BASE24, { ...opts, method: "POST", json: { seriesid: ids } });
   if (!res.ok || !res.data) {
     const hint = res.status === 403 || res.status === 503 ? " \u2014 BLS's edge refuses this network; FRED republishes these series (CPIAUCSL, CPILFESL, UNRATE, PAYEMS)" : "";
-    throw new ProviderError(SOURCE24, `API unavailable (HTTP ${res.status})${hint}`, res.status);
+    throw new ProviderError(SOURCE25, `API unavailable (HTTP ${res.status})${hint}`, res.status);
   }
   if (res.data.status !== "REQUEST_SUCCEEDED") {
     const msg = (res.data.message ?? []).join("; ").slice(0, 200);
-    throw new ProviderError(SOURCE24, `request not served: ${msg || res.data.status}`, /threshold|daily/i.test(msg) ? 429 : 400);
+    throw new ProviderError(SOURCE25, `request not served: ${msg || res.data.status}`, /threshold|daily/i.test(msg) ? 429 : 400);
   }
   return { series: parseBls(res.data), url: res.url, fetchedAt: res.fetchedAt };
 }
@@ -35279,13 +35448,13 @@ async function blsHeadlines(which = ["cpi", "coreCpi", "unemployment", "payrolls
       points.push(...seriesPoints(p.key, `${p.label}, employees`, "count", persons));
     } else points.push(...seriesPoints(p.key, p.label, "%", obs));
   }
-  if (!points.length) throw new ProviderError(SOURCE24, `no observations for ${presets.map((p) => p.id).join(", ")}`);
+  if (!points.length) throw new ProviderError(SOURCE25, `no observations for ${presets.map((p) => p.id).join(", ")}`);
   return {
     kind: "macro",
     title: "US labour and price statistics (BLS)",
     subject: "US",
     points,
-    provenance: { source: SOURCE24, url, fetchedAt, official: true },
+    provenance: { source: SOURCE25, url, fetchedAt, official: true },
     notes: [
       ...notes,
       "Monthly data; the latest month is the last release (no revisions history). Payroll changes are the first-difference of the published level."
@@ -35294,8 +35463,8 @@ async function blsHeadlines(which = ["cpi", "coreCpi", "unemployment", "payrolls
 }
 
 // src/providers/macro/cftc.ts
-var SOURCE25 = "cftc";
-var BASE24 = "https://publicreporting.cftc.gov/resource";
+var SOURCE26 = "cftc";
+var BASE25 = "https://publicreporting.cftc.gov/resource";
 var DATASETS = { legacy: "6dca-aqww", tff: "gpe5-46if" };
 var COT_MARKETS = {
   ES: { code: "13874A", name: "E-mini S&P 500" },
@@ -35382,7 +35551,7 @@ function cotIndex(values, window) {
   const hi = Math.max(...w);
   return hi === lo ? 50 : Number(((last2 - lo) / (hi - lo) * 100).toFixed(1));
 }
-var soql = (dataset3, params) => `${BASE24}/${dataset3}.json?${new URLSearchParams(params).toString()}`;
+var soql = (dataset3, params) => `${BASE25}/${dataset3}.json?${new URLSearchParams(params).toString()}`;
 async function findCotMarket(name, kind = "legacy") {
   const q = name.trim().toUpperCase().replace(/'/g, "''");
   const res = await fetchJson(
@@ -35393,12 +35562,12 @@ async function findCotMarket(name, kind = "legacy") {
       $limit: "50"
     })
   );
-  requireOk(SOURCE25, res, `market search "${name}"`);
+  requireOk(SOURCE26, res, `market search "${name}"`);
   const rows = res.data ?? [];
   const latest = rows[0]?.report_date_as_yyyy_mm_dd;
   const current2 = rows.filter((r3) => r3.report_date_as_yyyy_mm_dd === latest);
   const exact = current2.find((r3) => (r3.market_and_exchange_names ?? "").toUpperCase().startsWith(`${q} -`)) ?? current2[0];
-  if (!exact?.cftc_contract_market_code) throw new ProviderError(SOURCE25, `no COT market matching "${name}"`);
+  if (!exact?.cftc_contract_market_code) throw new ProviderError(SOURCE26, `no COT market matching "${name}"`);
   return { code: exact.cftc_contract_market_code, name: exact.market_and_exchange_names ?? name };
 }
 async function cotReport(market, opts = {}) {
@@ -35417,12 +35586,12 @@ async function cotReport(market, opts = {}) {
       $limit: String(weeks)
     })
   );
-  requireOk(SOURCE25, res, `COT ${kind} for ${target.code}`);
+  requireOk(SOURCE26, res, `COT ${kind} for ${target.code}`);
   const rows = res.data ?? [];
   const hist = parseCotRows(rows, kind);
   const last2 = hist[hist.length - 1];
   if (!last2)
-    throw new ProviderError(SOURCE25, `no ${kind} COT report for contract ${target.code}${kind === "tff" ? " (TFF covers financial futures only)" : ""}`);
+    throw new ProviderError(SOURCE26, `no ${kind} COT report for contract ${target.code}${kind === "tff" ? " (TFF covers financial futures only)" : ""}`);
   const prev = hist[hist.length - 2];
   const points = [];
   for (const g of Object.keys(GROUPS[kind])) {
@@ -35474,7 +35643,7 @@ async function cotReport(market, opts = {}) {
     subject,
     points,
     provenance: {
-      source: SOURCE25,
+      source: SOURCE26,
       url: res.url,
       fetchedAt: res.fetchedAt,
       delay: "weekly (Tuesday positions, published Friday)",
@@ -35488,8 +35657,8 @@ async function cotReport(market, opts = {}) {
 }
 
 // src/providers/macro/eurostat.ts
-var SOURCE26 = "eurostat";
-var BASE25 = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data";
+var SOURCE27 = "eurostat";
+var BASE26 = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data";
 var indexOf = (cat) => Array.isArray(cat.index) ? cat.index.map((c, i) => [c, i]) : Object.entries(cat.index);
 function parseJsonStat(js, timeDim = "time") {
   const { id, size } = js;
@@ -35501,7 +35670,7 @@ function parseJsonStat(js, timeDim = "time") {
     return out5;
   });
   const t = id.indexOf(timeDim);
-  if (t < 0) throw new ProviderError(SOURCE26, `JSON-stat answer has no "${timeDim}" dimension`);
+  if (t < 0) throw new ProviderError(SOURCE27, `JSON-stat answer has no "${timeDim}" dimension`);
   const series = /* @__PURE__ */ new Map();
   const entries = Array.isArray(js.value) ? js.value.map((v, i) => [i, v]) : Object.entries(js.value).map(([k, v]) => [Number(k), v]);
   for (const [flat, v] of entries) {
@@ -35523,11 +35692,11 @@ async function eurostatQuery(dataset3, filters, lastTimePeriod = 13) {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(filters)) for (const code of typeof v === "string" ? [v] : v) qs.append(k, code);
   qs.set("lastTimePeriod", String(lastTimePeriod));
-  const url = `${BASE25}/${encodeURIComponent(dataset3)}?${qs}`;
+  const url = `${BASE26}/${encodeURIComponent(dataset3)}?${qs}`;
   const res = await fetchJson(url);
-  if (res.status === 400 || res.status === 404) throw new ProviderError(SOURCE26, `no data for ${dataset3} with ${qs}`, res.status);
-  requireOk(SOURCE26, res, `dataset ${dataset3}`);
-  if (!res.data?.id) throw new ProviderError(SOURCE26, `dataset ${dataset3}: not a JSON-stat answer`);
+  if (res.status === 400 || res.status === 404) throw new ProviderError(SOURCE27, `no data for ${dataset3} with ${qs}`, res.status);
+  requireOk(SOURCE27, res, `dataset ${dataset3}`);
+  if (!res.data?.id) throw new ProviderError(SOURCE27, `dataset ${dataset3}: not a JSON-stat answer`);
   return { series: parseJsonStat(res.data), updated: res.data.updated, url: res.url, fetchedAt: res.fetchedAt };
 }
 var EUROSTAT_INDICATORS = {
@@ -35556,24 +35725,24 @@ var EUROSTAT_INDICATORS = {
 };
 async function eurostatIndicator(name, geo = "FR", n2 = 13) {
   const ind = EUROSTAT_INDICATORS[name];
-  if (!ind) throw new ProviderError(SOURCE26, `unknown indicator ${name}`);
+  if (!ind) throw new ProviderError(SOURCE27, `unknown indicator ${name}`);
   const g = geo.toUpperCase();
   const { series, updated, url, fetchedAt } = await eurostatQuery(ind.dataset, { ...ind.filters, geo: g }, n2);
   const obs = series.find((s) => s.dims.geo === g)?.obs ?? [];
-  if (!obs.length) throw new ProviderError(SOURCE26, `${ind.dataset}: no observation for ${g}`);
+  if (!obs.length) throw new ProviderError(SOURCE27, `${ind.dataset}: no observation for ${g}`);
   return {
     kind: "macro",
     title: `${g} ${ind.label} (Eurostat ${ind.dataset})`,
     subject: g,
     points: seriesPoints(`${g}.${ind.key}`, `${g} ${ind.label}`, ind.unit, obs, { history: true }),
-    provenance: { source: SOURCE26, url, fetchedAt, official: true, asOf: obs[obs.length - 1].date },
+    provenance: { source: SOURCE27, url, fetchedAt, official: true, asOf: obs[obs.length - 1].date },
     notes: updated ? [`dataset last updated ${updated.slice(0, 10)}`] : []
   };
 }
 
 // src/providers/macro/insee.ts
-var SOURCE27 = "insee";
-var BASE26 = "https://bdm.insee.fr/series/sdmx/data/SERIES_BDM";
+var SOURCE28 = "insee";
+var BASE27 = "https://bdm.insee.fr/series/sdmx/data/SERIES_BDM";
 function attrs(tag) {
   const out5 = {};
   for (const m of tag.matchAll(/([A-Za-z_][\w-]*)="([^"]*)"/g)) out5[m[1]] = m[2];
@@ -35598,12 +35767,12 @@ function parseInseeSdmx(xml) {
   return out5;
 }
 async function fetchInsee(idbanks, n2 = 13) {
-  const url = `${BASE26}/${idbanks.map(encodeURIComponent).join("+")}?lastNObservations=${n2}`;
+  const url = `${BASE27}/${idbanks.map(encodeURIComponent).join("+")}?lastNObservations=${n2}`;
   const res = await fetchText(url, { accept: "application/xml" });
-  if (res.status === 404) throw new ProviderError(SOURCE27, `no BDM series ${idbanks.join(", ")}`, 404);
-  requireOk(SOURCE27, res, `BDM series ${idbanks.join(", ")}`);
+  if (res.status === 404) throw new ProviderError(SOURCE28, `no BDM series ${idbanks.join(", ")}`, 404);
+  requireOk(SOURCE28, res, `BDM series ${idbanks.join(", ")}`);
   const series = parseInseeSdmx(res.body);
-  if (!series.some((s) => s.obs.length)) throw new ProviderError(SOURCE27, `BDM series ${idbanks.join(", ")} returned no observations`);
+  if (!series.some((s) => s.obs.length)) throw new ProviderError(SOURCE28, `BDM series ${idbanks.join(", ")} returned no observations`);
   return { series, url: res.url, fetchedAt: res.fetchedAt };
 }
 var INSEE_PRESETS = {
@@ -35615,7 +35784,7 @@ async function inseeSeries(idbankOrPreset, n2 = 13) {
   const preset = INSEE_PRESETS[idbankOrPreset];
   const idbank = preset?.idbank ?? idbankOrPreset;
   if (!/^\d{9}$/.test(idbank))
-    throw new ProviderError(SOURCE27, `"${idbankOrPreset}" is neither a preset (${Object.keys(INSEE_PRESETS).join(", ")}) nor a 9-digit idbank`);
+    throw new ProviderError(SOURCE28, `"${idbankOrPreset}" is neither a preset (${Object.keys(INSEE_PRESETS).join(", ")}) nor a 9-digit idbank`);
   const { series, url, fetchedAt } = await fetchInsee([idbank], n2);
   const s = series.find((x) => x.idbank === idbank) ?? series[0];
   const key = preset?.key ?? `FR.insee.${idbank}`;
@@ -35629,13 +35798,13 @@ async function inseeSeries(idbankOrPreset, n2 = 13) {
     title: label2,
     subject: "FR",
     points,
-    provenance: { source: SOURCE27, url, fetchedAt, official: true, asOf: last2?.date },
+    provenance: { source: SOURCE28, url, fetchedAt, official: true, asOf: last2?.date },
     notes: s.lastUpdate ? [`series last updated ${s.lastUpdate}`] : []
   };
 }
 
 // src/providers/macro/universe.ts
-var SOURCE28 = "wikipedia";
+var SOURCE29 = "wikipedia";
 var INDICES = {
   SPX: {
     name: "S&P 500",
@@ -35806,15 +35975,15 @@ function parseNamesList(wikitext) {
 async function fetchConstituents(index) {
   const id = indexId(index);
   const spec = id ? INDICES[id] : void 0;
-  if (!id || !spec) throw new ProviderError(SOURCE28, `unknown index "${index}" (known: ${Object.keys(INDICES).join(", ")})`);
+  if (!id || !spec) throw new ProviderError(SOURCE29, `unknown index "${index}" (known: ${Object.keys(INDICES).join(", ")})`);
   const list = await cachedJson(`wikipedia:constituents:${id}`, TTL.reference, async () => {
     const api = `https://${spec.wiki}.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(spec.page)}&prop=wikitext&format=json&formatversion=2&redirects=1${spec.section !== void 0 ? `&section=${spec.section}` : ""}`;
     const res = await fetchJson(api, { userAgent: politeUa() });
-    if (!res.ok) throw new ProviderError(SOURCE28, `page ${spec.page} unavailable (HTTP ${res.status})`, res.status);
+    if (!res.ok) throw new ProviderError(SOURCE29, `page ${spec.page} unavailable (HTTP ${res.status})`, res.status);
     const text = res.data?.parse?.wikitext;
-    if (!text) throw new ProviderError(SOURCE28, `page ${spec.page}: ${res.data?.error?.info ?? "no wikitext"}`, 404);
+    if (!text) throw new ProviderError(SOURCE29, `page ${spec.page}: ${res.data?.error?.info ?? "no wikitext"}`, 404);
     const constituents = spec.shape === "table" ? parseConstituentTable(text) : spec.shape === "names-table" ? parseNamesTable(text) : parseNamesList(text);
-    if (!constituents.length) throw new ProviderError(SOURCE28, `no constituents table found on ${spec.page} \u2014 the page layout changed`);
+    if (!constituents.length) throw new ProviderError(SOURCE29, `no constituents table found on ${spec.page} \u2014 the page layout changed`);
     const notes = [
       "SURVIVORSHIP: current members only \u2014 a backtest over this list ignores every company that left the index, and is biased upward.",
       "Community-edited (Wikipedia), not the index provider's licensed list; check a recent membership change against the provider."
@@ -35832,7 +36001,7 @@ async function fetchConstituents(index) {
       notes
     };
   });
-  if (!list) throw new ProviderError(SOURCE28, `constituents of ${id} unavailable offline`);
+  if (!list) throw new ProviderError(SOURCE29, `constituents of ${id} unavailable offline`);
   return list;
 }
 function constituentsToDataset(list) {
@@ -35850,7 +36019,7 @@ function constituentsToDataset(list) {
     title: `${list.name} constituents (Wikipedia)`,
     subject: list.index,
     points,
-    provenance: { source: SOURCE28, url: list.url, fetchedAt: list.fetchedAt, official: false, asOf: list.fetchedAt.slice(0, 10) },
+    provenance: { source: SOURCE29, url: list.url, fetchedAt: list.fetchedAt, official: false, asOf: list.fetchedAt.slice(0, 10) },
     notes: list.notes
   };
 }
@@ -35859,8 +36028,8 @@ async function indexUniverse(index) {
 }
 
 // src/providers/macro/worldbank.ts
-var SOURCE29 = "worldbank";
-var BASE27 = "https://api.worldbank.org/v2/country";
+var SOURCE30 = "worldbank";
+var BASE28 = "https://api.worldbank.org/v2/country";
 var WB_INDICATORS = {
   gdpGrowth: { code: "NY.GDP.MKTP.KD.ZG", key: "macro.gdp.growth", label: "real GDP growth (annual)", unit: "%" },
   gdp: { code: "NY.GDP.MKTP.CD", key: "macro.gdp.usd", label: "GDP (current US$)", unit: "USD" },
@@ -35884,11 +36053,11 @@ function parseWorldBank(answer) {
 async function worldBankIndicators(iso5, which = ["gdpGrowth", "inflation", "debt"], n2 = 3) {
   const c = iso5.toUpperCase();
   const defs2 = which.map((w) => WB_INDICATORS[w]);
-  const url = `${BASE27}/${encodeURIComponent(c)}/indicator/${defs2.map((d) => d.code).join(";")}?format=json&mrnev=${n2}&source=2&per_page=500`;
+  const url = `${BASE28}/${encodeURIComponent(c)}/indicator/${defs2.map((d) => d.code).join(";")}?format=json&mrnev=${n2}&source=2&per_page=500`;
   const res = await fetchJson(url);
-  requireOk(SOURCE29, res, `indicators for ${c}`);
+  requireOk(SOURCE30, res, `indicators for ${c}`);
   const msg = res.data?.[0]?.message?.[0]?.value;
-  if (msg) throw new ProviderError(SOURCE29, `${c}: ${msg.slice(0, 160)}`, 400);
+  if (msg) throw new ProviderError(SOURCE30, `${c}: ${msg.slice(0, 160)}`, 400);
   const series = parseWorldBank(res.data);
   const points = [];
   const missing = [];
@@ -35897,13 +36066,13 @@ async function worldBankIndicators(iso5, which = ["gdpGrowth", "inflation", "deb
     if (obs?.length) points.push(...seriesPoints(`${c}.${d.key}`, `${c} ${d.label}`, d.unit, obs, { history: true }));
     else missing.push(d.code);
   }
-  if (!points.length) throw new ProviderError(SOURCE29, `no data for ${c} (${defs2.map((d) => d.code).join(", ")}) \u2014 check the country code`);
+  if (!points.length) throw new ProviderError(SOURCE30, `no data for ${c} (${defs2.map((d) => d.code).join(", ")}) \u2014 check the country code`);
   return {
     kind: "macro",
     title: `${c} World Development Indicators (World Bank)`,
     subject: c,
     points,
-    provenance: { source: SOURCE29, url: res.url, fetchedAt: res.fetchedAt, official: true },
+    provenance: { source: SOURCE30, url: res.url, fetchedAt: res.fetchedAt, official: true },
     notes: [
       "Annual data compiled by the World Bank from national sources; usually a year or more behind national releases.",
       ...missing.length ? [`not reported for ${c}: ${missing.join(", ")}`] : []
@@ -36108,8 +36277,8 @@ ${list.map((h) => `  ${h.date}  ${h.kind === "closed" ? "closed     " : `closes 
 }
 
 // src/providers/crypto/dexscreener.ts
-var BASE28 = "https://api.dexscreener.com";
-var SOURCE30 = "dexscreener";
+var BASE29 = "https://api.dexscreener.com";
+var SOURCE31 = "dexscreener";
 var PACE8 = { hostIntervalMs: 250 };
 var LOW_LIQUIDITY_USD = 1e5;
 var YOUNG_PAIR_DAYS = 7;
@@ -36191,23 +36360,23 @@ function toDataset(pairs, title, res, extra) {
     kind: "crypto-dex",
     title,
     points: dexPairPoints(pairs, asOf),
-    provenance: { source: SOURCE30, url: res.url, fetchedAt: res.fetchedAt, delay: "~1min", official: false, asOf },
+    provenance: { source: SOURCE31, url: res.url, fetchedAt: res.fetchedAt, delay: "~1min", official: false, asOf },
     notes: [...extra, ...dexRiskNotes(pairs), "anyone can deploy a token with any name: match the contract address, not the symbol"]
   };
 }
 async function dexSearchPairs(query2, opts = {}) {
   const now = opts.now ?? clockNow();
-  const res = await fetchJson(`${BASE28}/latest/dex/search?q=${encodeURIComponent(query2)}`, PACE8);
-  if (!res.ok || !res.data) throw new ProviderError(SOURCE30, `search failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+  const res = await fetchJson(`${BASE29}/latest/dex/search?q=${encodeURIComponent(query2)}`, PACE8);
+  if (!res.ok || !res.data) throw new ProviderError(SOURCE31, `search failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   const pairs = parseDexPairs(res.data.pairs ?? [], now).sort((a, b) => (b.liquidityUsd ?? 0) - (a.liquidityUsd ?? 0)).slice(0, opts.limit ?? 10);
-  if (!pairs.length) throw new ProviderError(SOURCE30, "no DEX pair matches the query", 404);
+  if (!pairs.length) throw new ProviderError(SOURCE31, "no DEX pair matches the query", 404);
   return toDataset(pairs, `DEX pairs matching a search (top ${pairs.length} by liquidity)`, res, [
     "search results can mix unrelated tokens that share a ticker"
   ]);
 }
 
 // src/providers/crypto/solana.ts
-var SOURCE31 = "solana-rpc";
+var SOURCE32 = "solana-rpc";
 var PUBLIC_RPC = "https://api.mainnet-beta.solana.com";
 function rpcUrl() {
   const env2 = process.env.ULTRASTOCK_SOLANA_RPC;
@@ -36233,9 +36402,9 @@ function holderConcentration(largest, supply, n2 = 10) {
 function rpcResult(method, status, body) {
   const code = body?.error?.code;
   if (status === 429 || code === 429)
-    throw new ProviderError(SOURCE31, `${method}: the RPC throttles this call (429) \u2014 set ULTRASTOCK_SOLANA_RPC to your own RPC URL`, 429);
-  if (body?.error) throw new ProviderError(SOURCE31, `${method}: RPC error ${code ?? "?"}`, code !== void 0 && code <= -32e3 && code > -32100 ? 503 : 400);
-  if (status >= 400 || status === 0 || body?.result === void 0) throw new ProviderError(SOURCE31, `${method} failed (${status})`, status || 0);
+    throw new ProviderError(SOURCE32, `${method}: the RPC throttles this call (429) \u2014 set ULTRASTOCK_SOLANA_RPC to your own RPC URL`, 429);
+  if (body?.error) throw new ProviderError(SOURCE32, `${method}: RPC error ${code ?? "?"}`, code !== void 0 && code <= -32e3 && code > -32100 ? 503 : 400);
+  if (status >= 400 || status === 0 || body?.result === void 0) throw new ProviderError(SOURCE32, `${method} failed (${status})`, status || 0);
   return body.result;
 }
 async function rpc2(method, params) {
@@ -36278,11 +36447,11 @@ function concentrationPoints(mint, c, asOf) {
   ];
 }
 async function solanaTokenConcentration(mint, n2 = 10) {
-  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) throw new ProviderError(SOURCE31, "not a base58 Solana mint address", 400);
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) throw new ProviderError(SOURCE32, "not a base58 Solana mint address", 400);
   const supply = await rpc2("getTokenSupply", [mint]);
   const largest = await rpc2("getTokenLargestAccounts", [mint]);
   const c = holderConcentration(largest.result.value, supply.result.value, n2);
-  if (!c) throw new ProviderError(SOURCE31, `mint ${mint} reports no supply`, 404);
+  if (!c) throw new ProviderError(SOURCE32, `mint ${mint} reports no supply`, 404);
   const asOf = largest.fetchedAt.slice(0, 10);
   const notes = [
     "largest token ACCOUNTS, not owners: exchange wallets, liquidity pools, vesting and burn accounts each count as one holder",
@@ -36294,7 +36463,7 @@ async function solanaTokenConcentration(mint, n2 = 10) {
     title: `SPL token ${mint.slice(0, 8)}\u2026 holder concentration`,
     subject: mint,
     points: concentrationPoints(mint, c, asOf),
-    provenance: { source: SOURCE31, url: largest.url, fetchedAt: largest.fetchedAt, delay: "realtime", official: false, asOf },
+    provenance: { source: SOURCE32, url: largest.url, fetchedAt: largest.fetchedAt, delay: "realtime", official: false, asOf },
     notes
   };
 }
@@ -36302,7 +36471,7 @@ async function solanaTokenConcentration(mint, n2 = 10) {
 // src/providers/prediction/polymarket.ts
 var GAMMA = "https://gamma-api.polymarket.com";
 var CLOB = "https://clob.polymarket.com";
-var SOURCE32 = "polymarket";
+var SOURCE33 = "polymarket";
 var PACE9 = { hostIntervalMs: 200 };
 var NOTE_UNITS2 = "prices in USDC per outcome token paying 1 USDC (price \xD7 100 = implied probability %); volume and liquidity in USDC";
 function gammaList(v) {
@@ -36379,17 +36548,17 @@ function parseClobBook(raw) {
 function polymarketFailure(res, what) {
   if (res.status === 0)
     return new ProviderError(
-      SOURCE32,
+      SOURCE33,
       `${what}: Polymarket unreachable (${res.error ?? "no answer"}) \u2014 its domains are DNS-blocked in some jurisdictions (e.g. France, by ANJ order); not circumvented`,
       0
     );
   if (res.status === 403 || res.status === 451)
-    return new ProviderError(SOURCE32, `${what}: Polymarket refuses requests from this location (HTTP ${res.status}) \u2014 not circumvented`, res.status);
-  if (res.status === 404) return new ProviderError(SOURCE32, `${what}: not found`, 404);
-  return new ProviderError(SOURCE32, `${what} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+    return new ProviderError(SOURCE33, `${what}: Polymarket refuses requests from this location (HTTP ${res.status}) \u2014 not circumvented`, res.status);
+  if (res.status === 404) return new ProviderError(SOURCE33, `${what}: not found`, 404);
+  return new ProviderError(SOURCE33, `${what} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
 }
 var prov4 = (res) => ({
-  source: SOURCE32,
+  source: SOURCE33,
   url: res.url,
   fetchedAt: res.fetchedAt,
   delay: "realtime",
@@ -36411,7 +36580,7 @@ async function polymarketMarkets(q = {}) {
   const res = await fetchJson(`${GAMMA}/markets?${gammaParams(q)}`, PACE9);
   if (!res.ok || !Array.isArray(res.data)) throw polymarketFailure(res, "market list");
   const markets = res.data.map(parseGammaMarket);
-  if (!markets.length) throw new ProviderError(SOURCE32, "no market matches the query", 404);
+  if (!markets.length) throw new ProviderError(SOURCE33, "no market matches the query", 404);
   return {
     markets,
     dataset: {
@@ -36424,11 +36593,11 @@ async function polymarketMarkets(q = {}) {
   };
 }
 async function polymarketBook(tokenId, levels = 10) {
-  if (!/^\d+$/.test(tokenId)) throw new ProviderError(SOURCE32, "a CLOB token id is a decimal number (see clobTokenIds on the market)", 400);
+  if (!/^\d+$/.test(tokenId)) throw new ProviderError(SOURCE33, "a CLOB token id is a decimal number (see clobTokenIds on the market)", 400);
   const res = await fetchJson(`${CLOB}/book?token_id=${tokenId}`, PACE9);
   if (!res.ok || !res.data) throw polymarketFailure(res, "order book");
   const book2 = parseClobBook(res.data);
-  if (!book2.bids.length && !book2.asks.length) throw new ProviderError(SOURCE32, "order book is empty", 404);
+  if (!book2.bids.length && !book2.asks.length) throw new ProviderError(SOURCE33, "order book is empty", 404);
   const ts = num5(res.data.timestamp);
   const short = `${tokenId.slice(0, 8)}\u2026`;
   return {
@@ -36798,6 +36967,17 @@ async function snapshotCommand(args, asJson) {
   const sym3 = args.positional[0];
   if (!sym3) throw new UsageError("usage: ultrastock snapshot <symbol> \u2014 a TradingView snapshot (unofficial): ratios, performance, ratings");
   emitDatasets(args, [await tradingviewSnapshot(sym3, { market: argValue(args, "market") })], asJson);
+}
+async function fundCommand(args, asJson) {
+  const usage2 = "usage: ultrastock fund <ISIN>[,<ISIN>\u2026] [--wrapper-fee <% a year, e.g. 0.96>] [--out <dir>] \u2014 a fund's charges and profile (FT, unofficial)";
+  const isins = args.positional.flatMap((p) => p.split(",")).map((s) => s.trim().toUpperCase()).filter(Boolean);
+  if (!isins.length || !isins.every((s) => /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(s))) throw new UsageError(usage2);
+  const raw = argValue(args, "wrapper-fee");
+  const wrapperFeePct = raw === void 0 ? void 0 : Number(raw);
+  if (wrapperFeePct !== void 0 && !(wrapperFeePct >= 0 && wrapperFeePct < 10)) throw new UsageError(usage2);
+  const datasets = [];
+  for (const isin of isins) datasets.push(await ftFundProfile(isin, { wrapperFeePct }));
+  emitDatasets(args, datasets, asJson);
 }
 async function predictOrder(args, asJson) {
   const [, venue, ticker, outcome, side2 = "buy"] = args.positional;
@@ -39400,7 +39580,7 @@ import { join as join42 } from "path";
 import { mkdtempSync as mkdtempSync4, readdirSync as readdirSync11, readFileSync as readFileSync34, rmSync as rmSync7 } from "fs";
 import { tmpdir as tmpdir5 } from "os";
 import { join as join41 } from "path";
-var SOURCE33 = "binance-historical";
+var SOURCE34 = "binance-historical";
 function binanceHistoricalInfo() {
   if (!have("binance-historical")) return { installed: false, compatible: false };
   const r3 = sh("binance-historical", ["describe", "--json"], { timeoutMs: 15e3 });
@@ -39422,12 +39602,12 @@ async function bulkKlines(req) {
   const info2 = binanceHistoricalInfo();
   if (!info2.installed)
     throw new ProviderError(
-      SOURCE33,
+      SOURCE34,
       "binance-historical is not installed \u2014 npm install -g binance-historical, or brew install maxgfr/tap/binance-historical",
       0
     );
   if (!info2.compatible)
-    throw new ProviderError(SOURCE33, `binance-historical ${info2.version ?? "?"} does not speak the expected describe contract (schemaVersion 1)`, 0);
+    throw new ProviderError(SOURCE34, `binance-historical ${info2.version ?? "?"} does not speak the expected describe contract (schemaVersion 1)`, 0);
   const out5 = mkdtempSync4(join41(tmpdir5(), "ultrastock-bh-"));
   try {
     const args = [
@@ -39455,12 +39635,12 @@ async function bulkKlines(req) {
     try {
       report2 = JSON.parse(r3.stdout);
     } catch {
-      throw new ProviderError(SOURCE33, `no report from binance-historical: ${(r3.stderr || r3.stdout).slice(0, 300)}`, 0);
+      throw new ProviderError(SOURCE34, `no report from binance-historical: ${(r3.stderr || r3.stdout).slice(0, 300)}`, 0);
     }
     const res = report2.results?.[0];
     if (!res || res.status === "failed" || res.error) {
       const e = res?.error;
-      throw new ProviderError(SOURCE33, `${req.pair}: ${e?.code ?? "FAILED"} ${e?.message ?? ""}`.trim(), e?.httpStatus ?? 0);
+      throw new ProviderError(SOURCE34, `${req.pair}: ${e?.code ?? "FAILED"} ${e?.message ?? ""}`.trim(), e?.httpStatus ?? 0);
     }
     const file = res.outputPath ?? join41(out5, readdirSync11(out5).find((f3) => f3.endsWith(".jsonl")) ?? "");
     const bars = readFileSync34(file, "utf8").split("\n").filter(Boolean).map((line) => {
@@ -44072,6 +44252,16 @@ var TOOLS = [
     }
   },
   {
+    name: "fund",
+    description: "A fund's charges (ongoing, entry, exit, max annual) and profile (category, style, domicile, size) from the FT's fund pages (unofficial) \u2014 the OPCVM of an assurance-vie too. wrapper-fee adds the contract's yearly fee on unit-linked funds and the total yearly cost.",
+    command: ["fund"],
+    params: {
+      isins: { kind: "string", description: "one ISIN or several, comma-separated", positional: 0, required: true },
+      "wrapper-fee": { kind: "number", description: "the contract's yearly fee on unit-linked funds, in % (e.g. 0.96)" },
+      out: OUT
+    }
+  },
+  {
     name: "etf",
     description: "ETFs as funds: compare (2\u20136 funds: TER, AUM, NAV, flows, distribution, domicile, UCITS, replication, PEA, holdings, correlation, overlap), overlap (2 funds: \u03A3 min weights and common lines), find (funds on an index or a theme; with no target, browse the catalogue by asset class, focus and exposure), propose (a few ETFs for a goal, an envelope and a risk score from a stated allocation convention: PROPOSAL.md and TARGETS.json in the run \u2014 nothing is ordered).",
     command: ["etf"],
@@ -48372,7 +48562,7 @@ var IBKR_EXCHANGE_SUFFIX = {
   WSE: "WA"
 };
 var US_EXCHANGES2 = /* @__PURE__ */ new Set(["NYSE", "NASDAQ", "ARCA", "AMEX", "BATS", "IEX", "PINK", "NYSENAT", "ISLAND"]);
-var ISIN2 = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
+var ISIN3 = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
 function ibkrSymbol(raw, warn) {
   const sym3 = (raw.symbol ?? "").trim().toUpperCase();
   const exch = (raw.listingExchange ?? "").trim().toUpperCase();
@@ -48382,7 +48572,7 @@ function ibkrSymbol(raw, warn) {
   const suffix = IBKR_EXCHANGE_SUFFIX[exch];
   if (suffix && sym3) return `${sym3.replace(/\.$/, "").replace(/\s+/g, "-")}.${suffix}`;
   if (sym3 && (US_EXCHANGES2.has(exch) || !exch && (raw.currency ?? "USD") === "USD")) return sym3.replace(/\s+/g, ".");
-  if (ISIN2.test(isin) && !isin.startsWith("US")) {
+  if (ISIN3.test(isin) && !isin.startsWith("US")) {
     warn?.(`${sym3 || isin} listed on "${exch || "?"}" kept as its ISIN ${isin}: no suffix is known for that exchange`);
     return isin;
   }
@@ -52480,7 +52670,7 @@ function listText(engine) {
 }
 async function listCommand(engine, asJson) {
   if (engine === "crible") {
-    if (!cribleAvailable()) throw new ProviderError(SOURCE7, NOT_RUNNABLE, 0);
+    if (!cribleAvailable()) throw new ProviderError(SOURCE8, NOT_RUNNABLE, 0);
     const presets = await criblePresets();
     if (asJson) return void process.stdout.write(jsonLine({ engine: "crible", presets }));
     process.stdout.write(
@@ -52534,11 +52724,11 @@ function universeArg(args) {
   return { symbols: argList(args, "universe") };
 }
 async function cribleRun(query2, args) {
-  if (!cribleAvailable()) throw new ProviderError(SOURCE7, NOT_RUNNABLE, 0);
+  if (!cribleAvailable()) throw new ProviderError(SOURCE8, NOT_RUNNABLE, 0);
   if (!cribleBootstrapped()) {
     if (!argBool(args, "bootstrap"))
       throw new ProviderError(
-        SOURCE7,
+        SOURCE8,
         `crible has no dataset in ${cribleDataDir()} \u2014 rerun with --bootstrap to download it once (about a minute), or set ULTRASTOCK_CRIBLE_DATA_DIR to an existing one`,
         400
       );
@@ -52567,7 +52757,7 @@ async function cribleRun(query2, args) {
   return warn(cribleRowsToDataset({ total: r3.total, rows: rows.slice(0, limit) }, { query: dsl, preset, dsl: run3, dropped }));
 }
 async function cribleRefresh(asJson) {
-  if (!cribleAvailable()) throw new ProviderError(SOURCE7, NOT_RUNNABLE, 0);
+  if (!cribleAvailable()) throw new ProviderError(SOURCE8, NOT_RUNNABLE, 0);
   const existing = cribleBootstrapped();
   process.stderr.write(
     `${existing ? "replacing the local crible dataset with the published one" : "downloading crible's published dataset"} into ${cribleDataDir()} (about a minute)\u2026
@@ -54715,10 +54905,10 @@ async function valueCommand(args, asJson) {
     throw new UsageError(`--research-with is one of ${SEARCH_DELEGATES.join(", ")}, not "${researchWith}"`);
   const researchTop = argInt(args, "research-top", { min: 1, max: 30 });
   if (researchTop !== void 0 && !researchWith) throw new UsageError("--research-top goes with --research-with claude|codex|ccs");
-  if (!cribleAvailable()) throw new ProviderError(SOURCE7, NOT_RUNNABLE, 0);
+  if (!cribleAvailable()) throw new ProviderError(SOURCE8, NOT_RUNNABLE, 0);
   if (!cribleBootstrapped())
     throw new ProviderError(
-      SOURCE7,
+      SOURCE8,
       `crible has no dataset in ${cribleDataDir()} \u2014 run \`ultrastock screen --engine crible --bootstrap\` once (about a minute), or set ULTRASTOCK_CRIBLE_DATA_DIR`,
       400
     );
@@ -54778,6 +54968,7 @@ var MATURITY = {
   crypto: "beta",
   predict: "beta",
   snapshot: "beta",
+  fund: "beta",
   macro: "stable",
   rates: "stable",
   fx: "stable",
@@ -55015,6 +55206,7 @@ USAGE
   ultrastock predict kalshi|manifold|polymarket [<query>] [--limit <n>] [--out <dir>] [--json]
   ultrastock predict order kalshi <TICKER> yes|no [buy|sell] --contracts <n> --price <0-1> [--account <id>] [--json]
   ultrastock snapshot <symbol> [--market <tv-market>] [--out <dir>] [--json]
+  ultrastock fund <ISIN>[,<ISIN>\u2026] [--wrapper-fee <pct>] [--out <dir>] [--json]
   ultrastock searxng up|down|status [--json] \xB7 ultrastock firecrawl up|down|status \xB7 ultrastock stack up|down|status
   ultrastock doctor [--probe] [--json]
   ultrastock version
@@ -55399,6 +55591,12 @@ COMMANDS
             Questions and rules are external text, fenced as untrusted.
   snapshot  A cross-venue snapshot from TradingView's scanner (unofficial):
             price, valuation ratios, performance, technical rating.
+  fund      A fund's charges (ongoing, entry, exit, max annual) and profile
+            (category, style, domicile, size) from the FT's fund pages
+            (unofficial), for the OPCVM of an assurance-vie too. --wrapper-fee
+            adds the contract's yearly fee on unit-linked funds and the total
+            yearly cost. An ISIN Euronext does not list is priced at its daily
+            NAV in quote, history, stats and portfolio.
   searxng   The optional local search stack (Docker), shared with the other
   firecrawl skills on the engine: SearXNG (:8888) makes research --engine-search
   stack     reliable and keyless; Firecrawl (:3002) reads pages through a real
@@ -55517,6 +55715,7 @@ var VALUE_FLAGS = [
   "rate",
   "my-probability",
   "kalshi-fee",
+  "wrapper-fee",
   "contracts",
   "engine",
   "universe",
@@ -55635,6 +55834,7 @@ var COMMANDS = [
   "crypto",
   "predict",
   "snapshot",
+  "fund",
   "macro",
   "rates",
   "fx",
@@ -55853,6 +56053,7 @@ var SPEC = {
     crypto: ["limit", "out", ...NET],
     predict: ["limit", "contracts", "price", "account", "out", ...NET],
     snapshot: ["market", "out", ...NET],
+    fund: ["wrapper-fee", "out", ...NET],
     doctor: ["probe", "json"]
   }
 };
@@ -56078,6 +56279,7 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
   if (cmd === "crypto") return cryptoCommand(args, asJson);
   if (cmd === "predict") return predictCommand(args, asJson);
   if (cmd === "snapshot") return snapshotCommand(args, asJson);
+  if (cmd === "fund") return fundCommand(args, asJson);
   if (cmd === "macro") return macroCommand(args, asJson);
   if (cmd === "rates") return ratesCommand(args, asJson);
   if (cmd === "fx") return fxCommand(args, asJson);

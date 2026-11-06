@@ -42,6 +42,7 @@ export const MATURITY: Record<string, Maturity> = {
   crypto: "beta",
   predict: "beta",
   snapshot: "beta",
+  fund: "beta",
   macro: "stable",
   rates: "stable",
   fx: "stable",

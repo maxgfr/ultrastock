@@ -17,6 +17,17 @@ listing", a jurisdiction block) is reported, never routed around.
 | `AAPL.NE` (Cboe Canada) | Yahoo | quote only: Yahoo keeps no daily history there — use the `.TO` or US line | no |
 | `NVDA`, `QQQ`, `BRK.B` | Nasdaq API → Yahoo | delayed / last sale; 10 years | no |
 | `BTCUSDT`, `ETH-EUR`, `SOL/USDC` | Binance → Kraken → Coinbase | real time, closed bars | yes |
+| an ISIN Euronext does not list (`LU0161305163`, `FR0000989626`): a mutual fund (OPCVM, SICAV, FCP) of an assurance-vie or a bank | FT fund pages | one NAV a day, published the next day; several years of history | no |
+
+- **Funds that trade on no exchange.** An ISIN with no Euronext listing is
+  priced at its net asset value from the FT's fund pages, so `quote`,
+  `history`, `stats` and `portfolio` (show, risk, stress, optimize) work on an
+  assurance-vie's unit-linked funds. A bar's open, high, low and close are the
+  same NAV. `fund <ISIN> --wrapper-fee <pct>` prints the share class's charges
+  (ongoing, max annual, entry, exit), its category, style, domicile and size,
+  and the yearly cost inside the contract (ongoing charge + the insurer's fee
+  on unit-linked funds). The fonds euros has no NAV: book it as cash. The FT is
+  unofficial; the KID (DIC) is the reference for the charges.
 
 - Sub-units are converted and said so: London in pence (GBp → GBP), Johannesburg
   in cents (ZAc → ZAR), Tel Aviv in agorot (ILA → ILS).

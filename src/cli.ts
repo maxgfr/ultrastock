@@ -27,7 +27,7 @@ import {
   shortCommand,
 } from "./commands/fundamentals.js";
 import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentimentCommand, socialCommand, universeCommand } from "./commands/macro.js";
-import { cryptoCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
+import { cryptoCommand, fundCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
 import { backtestCommand, strategyCommand } from "./commands/backtest.js";
 import { brokerCommand } from "./commands/broker.js";
 import { serveMcp } from "./mcp.js";
@@ -160,6 +160,7 @@ USAGE
   ultrastock predict kalshi|manifold|polymarket [<query>] [--limit <n>] [--out <dir>] [--json]
   ultrastock predict order kalshi <TICKER> yes|no [buy|sell] --contracts <n> --price <0-1> [--account <id>] [--json]
   ultrastock snapshot <symbol> [--market <tv-market>] [--out <dir>] [--json]
+  ultrastock fund <ISIN>[,<ISIN>…] [--wrapper-fee <pct>] [--out <dir>] [--json]
   ultrastock searxng up|down|status [--json] · ultrastock firecrawl up|down|status · ultrastock stack up|down|status
   ultrastock doctor [--probe] [--json]
   ultrastock version
@@ -544,6 +545,12 @@ COMMANDS
             Questions and rules are external text, fenced as untrusted.
   snapshot  A cross-venue snapshot from TradingView's scanner (unofficial):
             price, valuation ratios, performance, technical rating.
+  fund      A fund's charges (ongoing, entry, exit, max annual) and profile
+            (category, style, domicile, size) from the FT's fund pages
+            (unofficial), for the OPCVM of an assurance-vie too. --wrapper-fee
+            adds the contract's yearly fee on unit-linked funds and the total
+            yearly cost. An ISIN Euronext does not list is priced at its daily
+            NAV in quote, history, stats and portfolio.
   searxng   The optional local search stack (Docker), shared with the other
   firecrawl skills on the engine: SearXNG (:8888) makes research --engine-search
   stack     reliable and keyless; Firecrawl (:3002) reads pages through a real
@@ -663,6 +670,7 @@ export const VALUE_FLAGS = [
   "rate",
   "my-probability",
   "kalshi-fee",
+  "wrapper-fee",
   "contracts",
   "engine",
   "universe",
@@ -781,6 +789,7 @@ export const COMMANDS = [
   "crypto",
   "predict",
   "snapshot",
+  "fund",
   "macro",
   "rates",
   "fx",
@@ -1000,6 +1009,7 @@ const SPEC: CliSpec = {
     crypto: ["limit", "out", ...NET],
     predict: ["limit", "contracts", "price", "account", "out", ...NET],
     snapshot: ["market", "out", ...NET],
+    fund: ["wrapper-fee", "out", ...NET],
     doctor: ["probe", "json"],
   },
 };
@@ -1244,6 +1254,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "crypto") return cryptoCommand(args, asJson);
   if (cmd === "predict") return predictCommand(args, asJson);
   if (cmd === "snapshot") return snapshotCommand(args, asJson);
+  if (cmd === "fund") return fundCommand(args, asJson);
   if (cmd === "macro") return macroCommand(args, asJson);
   if (cmd === "rates") return ratesCommand(args, asJson);
   if (cmd === "fx") return fxCommand(args, asJson);

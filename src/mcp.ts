@@ -245,6 +245,17 @@ export const TOOLS: Tool[] = [
     },
   },
   {
+    name: "fund",
+    description:
+      "A fund's charges (ongoing, entry, exit, max annual) and profile (category, style, domicile, size) from the FT's fund pages (unofficial) — the OPCVM of an assurance-vie too. wrapper-fee adds the contract's yearly fee on unit-linked funds and the total yearly cost.",
+    command: ["fund"],
+    params: {
+      isins: { kind: "string", description: "one ISIN or several, comma-separated", positional: 0, required: true },
+      "wrapper-fee": { kind: "number", description: "the contract's yearly fee on unit-linked funds, in % (e.g. 0.96)" },
+      out: OUT,
+    },
+  },
+  {
     name: "etf",
     description:
       "ETFs as funds: compare (2–6 funds: TER, AUM, NAV, flows, distribution, domicile, UCITS, replication, PEA, holdings, correlation, overlap), overlap (2 funds: Σ min weights and common lines), find (funds on an index or a theme; with no target, browse the catalogue by asset class, focus and exposure), propose (a few ETFs for a goal, an envelope and a risk score from a stated allocation convention: PROPOSAL.md and TARGETS.json in the run — nothing is ordered).",

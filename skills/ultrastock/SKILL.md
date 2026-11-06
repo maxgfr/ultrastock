@@ -112,6 +112,7 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | crypto market structure, DeFi, on-chain | `crypto global|top|coin|derivatives|defi|yields|stables|fees|onchain|dex|holders` | [options-crypto-prediction](references/options-crypto-prediction.md) |
 | what prediction markets price (Fed, recession, elections) | `predict kalshi|manifold …` (Polymarket only where lawful) | [options-crypto-prediction](references/options-crypto-prediction.md) |
 | a quick cross-market snapshot, the members of an index | `snapshot <symbol>`, `universe CAC40` | [data-sources](references/data-sources.md) |
+| an assurance-vie's funds (OPCVM): their charges, their NAV, the contract's total cost | `fund <ISIN,…> --wrapper-fee <pct>`; the ISIN in `quote`, `history`, `stats`, `portfolio` | [data-sources](references/data-sources.md) |
 | to know why a source failed | the note, then `doctor --probe` | [engine-evidence](references/engine-evidence.md) |
 
 Symbols: `MC.PA`, `ASML.AS`, `CW8.PA` or an EU ISIN (Euronext); `SAP.DE`,
@@ -119,7 +120,8 @@ Symbols: `MC.PA`, `ASML.AS`, `CW8.PA` or an EU ISIN (Euronext); `SAP.DE`,
 `0700.HK`, `005930.KS`, `600519.SS`, `2330.TW`, `RELIANCE.NS`, `BHP.AX`, `NPN.JO`
 (the rest of the world, Yahoo — [data-sources](references/data-sources.md) lists
 every suffix); `NVDA`, `QQQ` (US); `BTCUSDT`, `ETH-EUR` (Binance, then Kraken and
-Coinbase).
+Coinbase); an ISIN Euronext does not list, such as an assurance-vie's OPCVM
+(its daily NAV, FT).
 
 ## Commands
 
@@ -139,7 +141,7 @@ ultrastock profile init|show|suitability|set|envelope [--json]
 ultrastock jurisdiction show|verify [--venues binance,kraken,coinbase] [--out <dir>] [--json]
 ultrastock calendar sessions|holidays|verify|econ|earnings|dividends [--market XPAR|XNYS|XMIL|XOSL|CRYPTO] [--json]
 ultrastock macro us|ea|fr|<country>|fred <ID> · rates [us|ea] · fx [USD,GBP] · cot <market> · sentiment [cnn|crypto|vix|putcall]
-ultrastock news "<query>" [--symbol <SYM>] [--lang fr] [--pulse] · social <sym…> · universe <index> · snapshot <symbol> · resolve "<name|ISIN>"
+ultrastock news "<query>" [--symbol <SYM>] [--lang fr] [--pulse] · social <sym…> · universe <index> · snapshot <symbol> · fund <ISIN,…> [--wrapper-fee <pct>] · resolve "<name|ISIN>"
 ultrastock fundamentals <sym> [--asof <date>] [--source sec|esef|crible] · filings <sym> [--forms 8-K] | --search "<text>"
 ultrastock insiders <sym> · holdings <manager> · analyst|short|dividends <US sym> · congress [--member] [--doc]
 ultrastock options <symbol> · crypto <view> [<target>] · predict kalshi|manifold|polymarket [<query>]

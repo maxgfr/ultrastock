@@ -1,8 +1,11 @@
 // The shapes every price provider returns, whatever it read.
 import type { Provenance } from "../core/evidence.js";
 
-/** "europe": a European venue outside Euronext; "world": any other non-US venue Yahoo prices (São Paulo, Tokyo, Sydney…). */
-export type Market = "euronext" | "us" | "europe" | "world" | "crypto";
+/**
+ * "europe": a European venue outside Euronext; "world": any other non-US venue Yahoo prices (São Paulo, Tokyo, Sydney…);
+ * "fund": a fund that trades on no exchange (an assurance-vie's OPCVM), priced once a day at its NAV.
+ */
+export type Market = "euronext" | "us" | "europe" | "world" | "crypto" | "fund";
 export type AssetKind = "equity" | "etf" | "index" | "crypto" | "fund";
 
 export interface Instrument {

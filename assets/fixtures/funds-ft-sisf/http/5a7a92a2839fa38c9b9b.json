@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://markets.ft.com/data/searchapi/searchsecurities?query=LU0161305163"
+ },
+ "response": {
+  "ok": true,
+  "status": 200,
+  "body": "{\"data\":{\"security\":[{\"url\":\"~/funds/tearsheet/summary?s=LU0161305163:EUR\",\"urlChart\":\"~/funds/tearsheet/charts?s=LU0161305163:EUR\",\"name\":\"Schroder International Selection Fund European Value A Accumulation EUR\",\"symbol\":\"LU0161305163:EUR\",\"xid\":\"11069\",\"isPrimary\":true,\"assetClass\":\"Funds\"}]}}",
+  "url": "https://markets.ft.com/data/searchapi/searchsecurities?query=LU0161305163",
+  "fetchedAt": "2026-11-06T18:29:55.938Z"
+ }
+}
