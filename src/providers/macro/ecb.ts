@@ -156,6 +156,65 @@ export async function ecbYieldCurve(tenors: readonly string[] = EA_TENORS): Prom
   };
 }
 
+const COUNTRY_NAMES: Record<string, string> = {
+  DE: "Germany",
+  FR: "France",
+  IT: "Italy",
+  ES: "Spain",
+  NL: "Netherlands",
+  BE: "Belgium",
+  PT: "Portugal",
+  GR: "Greece",
+  AT: "Austria",
+  IE: "Ireland",
+  FI: "Finland",
+};
+export const SOVEREIGN_COUNTRIES = ["DE", "FR", "IT", "ES", "NL", "BE"] as const;
+
+/**
+ * Each country's 10-year government bond yield (the ECB's Maastricht convergence
+ * series, a monthly average) and its spread over the Bund — the gauge of a
+ * sovereign debt scare (France, Italy…) the AAA curve cannot show.
+ */
+export async function ecbSovereignYields(countries: readonly string[] = SOVEREIGN_COUNTRIES): Promise<Dataset> {
+  const ccs = [...new Set(["DE", ...countries.map((c) => c.toUpperCase())])].filter((c) => /^[A-Z]{2}$/.test(c));
+  const { series, url, fetchedAt } = await fetchEcb("IRS", `M.${ccs.join("+")}.L.L40.CI.0000.EUR.N.Z`, 2);
+  const byCountry = new Map<string, Observation[]>();
+  for (const s of series) {
+    const cc = s.key.split(".")[2];
+    if (cc && s.obs.length) byCountry.set(cc, s.obs);
+  }
+  const name = (cc: string) => COUNTRY_NAMES[cc] ?? cc;
+  const points: Point[] = ccs.flatMap((cc) => {
+    const obs = byCountry.get(cc);
+    return obs ? seriesPoints(`${cc}.rates.gov.10Y`, `${name(cc)} 10-year government bond yield`, "%", obs) : [];
+  });
+  const bund = byCountry.get("DE")?.at(-1);
+  if (bund)
+    for (const cc of ccs) {
+      const o = byCountry.get(cc)?.at(-1);
+      if (cc === "DE" || !o || o.date !== bund.date) continue;
+      points.push({
+        key: `${cc}.rates.gov.spread.10Y.DE`,
+        label: `${name(cc)} − Germany 10-year spread`,
+        value: Number(((o.value - bund.value) * 100).toFixed(2)),
+        unit: "bp",
+        asOf: o.date,
+        formula: `(${cc}.rates.gov.10Y − DE.rates.gov.10Y) × 100`,
+      });
+    }
+  return {
+    kind: "macro",
+    title: "Euro area 10-year sovereign yields and spreads over the Bund (ECB)",
+    subject: "EA",
+    points,
+    provenance: { source: SOURCE, url, fetchedAt, official: true, asOf: bund?.date },
+    notes: [
+      "Monthly averages of secondary-market yields (the ECB's long-term interest rate for convergence purposes), published after the month ends: a trend, not today's price.",
+    ],
+  };
+}
+
 /** ECB euro reference rates (units of each currency per euro) over the last `n` business days. */
 export async function ecbFx(currencies: readonly string[] = ["USD", "GBP", "JPY", "CHF"], n = 5): Promise<Dataset> {
   const ccys = currencies.map((c) => c.toUpperCase());

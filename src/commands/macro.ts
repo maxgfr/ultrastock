@@ -7,7 +7,7 @@ import { resolveSymbol } from "../providers/router.js";
 import { blsHeadlines } from "../providers/macro/bls.js";
 import { dividendsCalendar, earningsCalendar, forexFactoryCalendar, nasdaqEconomicCalendar } from "../providers/macro/calendars.js";
 import { cotReport } from "../providers/macro/cftc.js";
-import { ecbFx, ecbPolicyRates, ecbPreset, ecbYieldCurve } from "../providers/macro/ecb.js";
+import { ecbFx, ecbPolicyRates, ecbPreset, ecbSovereignYields, ecbYieldCurve } from "../providers/macro/ecb.js";
 import { eurostatIndicator } from "../providers/macro/eurostat.js";
 import { frankfurterLatest } from "../providers/macro/frankfurter.js";
 import { fredSeries } from "../providers/macro/fred.js";
@@ -82,6 +82,7 @@ export async function ratesCommand(args: CommandArgs, asJson: boolean): Promise<
     ["ECB policy rates", () => ecbPolicyRates()],
     ["€STR", () => ecbPreset("estr")],
     ["euro AAA curve", () => ecbYieldCurve()],
+    ["euro sovereign spreads", () => ecbSovereignYields()],
   ];
   const tasks = scope === "us" ? us : scope === "ea" ? ea : [...us, ...ea];
   emitDatasets(args, await gather(tasks), asJson);
