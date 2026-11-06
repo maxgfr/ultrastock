@@ -153,7 +153,7 @@ export async function recordCheck(id: string, gate: GateResult, now = new Date()
 /** Why a ticket may not be executed now; undefined when it may. */
 export function executionRefusal(t: Ticket, now = new Date()): string | undefined {
   if (t.status !== "checked") return `ticket ${t.id} is ${t.status}, not checked — run \`ultrastock ticket check ${t.id}\``;
-  if (!t.check || t.check.verdict !== "pass") return "the ticket has no passing risk check";
+  if (t.check?.verdict !== "pass") return "the ticket has no passing risk check";
   if (t.check.fingerprint !== orderFingerprint(t.order) || t.fingerprint !== t.check.fingerprint)
     return "the order changed after its risk check — check it again";
   if (now.getTime() - Date.parse(t.check.at) > CHECK_TTL_MS)

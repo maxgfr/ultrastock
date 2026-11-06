@@ -83,7 +83,7 @@ export async function simulatePredictionFill(
   now: Date,
 ): Promise<{ kind: "fill"; fill: Fill } | { kind: "working"; reason: string }> {
   const p = parsePredictionSymbol(o.symbol);
-  if (!p || p.venue !== "kalshi") return { kind: "working", reason: `${o.symbol}: paper fills exist for Kalshi contracts only` };
+  if (p?.venue !== "kalshi") return { kind: "working", reason: `${o.symbol}: paper fills exist for Kalshi contracts only` };
   const { book } = await kalshiOrderbook(p.ticker);
   const b = outcomeBook(book, p.outcome);
   const limit = o.orderType === "limit" ? o.price : o.side === "buy" ? 1 : 0;

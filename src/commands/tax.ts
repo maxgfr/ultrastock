@@ -41,6 +41,7 @@ async function buildInput(args: CommandArgs, regime: TaxRegime, year: number, op
   const end = opts.asOf ?? (`${year}-12-31` < today ? `${year}-12-31` : today);
   // A ledger that starts after the tax year still needs a valid (non-inverted) range.
   const first = txs.map((t) => day(t.date)).sort()[0] ?? end;
+  // biome-ignore lint/complexity/useMathMinMax: ISO date strings, not numbers
   const from = first < end ? first : end;
   const { fx, notes: fxNotes } = await historicalFx(
     regime.currency,

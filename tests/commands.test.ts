@@ -16,8 +16,14 @@ afterEach(() => {
 async function cli(argv: string[]): Promise<{ out: string; err: string; code?: number }> {
   let out = "";
   let err = "";
-  vi.spyOn(process.stdout, "write").mockImplementation((c: string | Uint8Array) => ((out += String(c)), true));
-  vi.spyOn(process.stderr, "write").mockImplementation((c: string | Uint8Array) => ((err += String(c)), true));
+  vi.spyOn(process.stdout, "write").mockImplementation((c: string | Uint8Array) => {
+    out += String(c);
+    return true;
+  });
+  vi.spyOn(process.stderr, "write").mockImplementation((c: string | Uint8Array) => {
+    err += String(c);
+    return true;
+  });
   vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
     throw Object.assign(new Error("exit"), { exitCode: code });
   }) as never);

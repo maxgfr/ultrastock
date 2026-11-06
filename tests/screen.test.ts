@@ -31,7 +31,10 @@ afterEach(() => {
 /** Run `screen` in-process: stdout, or the error it threw. */
 async function screen(positional: string[], values: Record<string, string> = {}, bools: string[] = [], asJson = false) {
   let out = "";
-  vi.spyOn(process.stdout, "write").mockImplementation((c: string | Uint8Array) => ((out += String(c)), true));
+  vi.spyOn(process.stdout, "write").mockImplementation((c: string | Uint8Array) => {
+    out += String(c);
+    return true;
+  });
   vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   try {
     await screenCommand({ command: "screen", positional, values, bools: new Set(bools) }, asJson);
