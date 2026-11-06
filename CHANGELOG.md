@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.1](https://github.com/maxgfr/ultrastock/compare/v1.12.0...v1.12.1) (2026-11-06)
+
+
+### Bug Fixes
+
+* **kalshi:** flag a mid that rests on an empty book ([e661b84](https://github.com/maxgfr/ultrastock/commit/e661b8414508b05bb028a49c383ae0ca044c725b))
+
 # [1.12.0](https://github.com/maxgfr/ultrastock/compare/v1.11.0...v1.12.0) (2026-11-06)
 
 
