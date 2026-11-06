@@ -11,7 +11,7 @@
 // checked it. The series API exposes `fee_type` and `fee_multiplier` but no formula.
 import { binaryKelly } from "../../analytics/sizing.js";
 import type { Point } from "../../core/datasets.js";
-import { complementArbitrage, type OrderBook, orderbookImbalance } from "../../providers/prediction/common.js";
+import { complementArbitrage, type OrderBook, orderbookImbalance, WIDE_SPREAD } from "../../providers/prediction/common.js";
 import { fmt, type PointList } from "./common.js";
 
 /** Kalshi's quadratic fee for one order: ceil to the cent of coefficient × C × P × (1 − P). */
@@ -21,8 +21,8 @@ export function kalshiFee(contracts: number, price: number, coefficient: number)
   return Math.ceil(raw * 100 - 1e-9) / 100;
 }
 
-/** A YES spread wider than this (USD per 1-USD contract) makes the mid unreliable. */
-export const WIDE_SPREAD = 0.2;
+/** Re-exported: the threshold lives with the venues, which flag a wide quote on their own lists too. */
+export { WIDE_SPREAD };
 
 export interface MarketQuote {
   ticker: string;

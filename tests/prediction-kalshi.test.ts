@@ -4,6 +4,8 @@ import {
   kalshiEvents,
   kalshiMarket,
   kalshiMarketPoints,
+  liquidityNotes,
+  wideQuote,
   kalshiMarkets,
   kalshiOrderbook,
   parseKalshiMarket,
@@ -61,6 +63,16 @@ describe("Kalshi parsers", () => {
     expect(pts.find((p) => p.key === "KALSHI.KXFED-27APR-T6.00.overround")!.value).toBeCloseTo(0.55);
     // No resting bid (0) means no two-sided quote: no mid probability.
     expect(kalshiMarketPoints({ ...m, yesBid: 0 }).some((p) => p.key.endsWith(".prob.mid"))).toBe(false);
+    // A 0.01–0.56 quote has a mid, but it is no probability: the label says so, and the list notes count it.
+    expect(wideQuote(m)).toBe(true);
+    expect(pts.find((p) => p.key.endsWith(".prob.mid"))!.label).toMatch(/midpoint of a 0\.55 USD spread — not a reliable probability/);
+    const tight = { ...m, yesBid: 0.27, yesAsk: 0.3, volume: 0 };
+    expect(wideQuote(tight)).toBe(false);
+    expect(kalshiMarketPoints(tight).find((p) => p.key.endsWith(".prob.mid"))!.label).toBe("Kalshi KXFED-27APR-T6.00 implied YES probability at mid");
+    const notes = liquidityNotes([m, tight]);
+    expect(notes[0]).toMatch(/^1 of 2 markets quote a YES spread wider than 0.2 USD/);
+    expect(notes[1]).toBe("1 of 2 markets have never traded (lifetime volume 0)");
+    expect(liquidityNotes([{ ...tight, volume: 5 }])).toEqual([]);
   });
   it("turns NO bids into YES asks", () => {
     const book = parseKalshiOrderbook({

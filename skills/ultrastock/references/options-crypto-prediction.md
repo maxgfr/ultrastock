@@ -37,6 +37,16 @@ Odds are probabilities priced by participants, with fees, thin books and
 resolution rules that matter: read the rules (external text) before treating
 a price as a probability.
 
+- **A mid is a probability only on a liquid market.** Many Kalshi lines,
+  long-dated ones above all, rest on an almost empty book: a 0.04 / 0.90 quote
+  has a mid of 47 % that nobody priced. A YES spread wider than 0.20 USD is
+  labelled "midpoint … not a reliable probability", and the list's notes count
+  the wide quotes and the markets that never traded. Quote only a tight,
+  traded market; across the strikes of one event the probabilities must also
+  be monotonic, and when they are not, the book is noise.
+- With no series, `predict kalshi` lists the first open markets Kalshi returns
+  (often thin sports lines): pass a series (`KXFED`, `KXCPI`, `KXRECSSNBER`).
+
 ## Analysis on top of the data
 
 ### `options-analysis <symbol>`

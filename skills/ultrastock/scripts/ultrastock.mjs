@@ -18206,6 +18206,7 @@ async function deribitDvol(currency, days = 90, now = clockNow()) {
 
 // src/providers/prediction/common.ts
 var inUnit = (p) => Number.isFinite(p) && p >= 0 && p <= 1;
+var WIDE_SPREAD = 0.2;
 function complementArbitrage(yesAsk, noAsk, feeRate = 0) {
   if (!inUnit(yesAsk) || !inUnit(noAsk)) throw new RangeError(`prices must be between 0 and 1 (got ${yesAsk}, ${noAsk})`);
   if (!Number.isFinite(feeRate) || feeRate < 0) throw new RangeError(`feeRate must be \u2265 0 (got ${feeRate})`);
@@ -18291,6 +18292,20 @@ function parseKalshiMarket(r3) {
     openInterest: num5(r3.open_interest_fp)
   };
 }
+function wideQuote(m) {
+  return m.yesBid !== void 0 && m.yesAsk !== void 0 && m.yesBid > 0 && m.yesAsk < 1 && m.yesAsk - m.yesBid > WIDE_SPREAD;
+}
+function liquidityNotes(markets) {
+  const notes = [];
+  const wide = markets.filter(wideQuote).length;
+  if (wide)
+    notes.push(
+      `${wide} of ${markets.length} markets quote a YES spread wider than ${WIDE_SPREAD} USD: their mid is a midpoint of an empty book, not a probability \u2014 read the liquid ones (tight spread, traded volume)`
+    );
+  const untraded = markets.filter((m) => m.volume === 0).length;
+  if (untraded) notes.push(`${untraded} of ${markets.length} markets have never traded (lifetime volume 0)`);
+  return notes;
+}
 function kalshiMarketPoints(m) {
   const p = `KALSHI.${m.ticker}`;
   const s = `Kalshi ${m.ticker}`;
@@ -18308,7 +18323,7 @@ function kalshiMarketPoints(m) {
   if (m.yesBid !== void 0 && m.yesAsk !== void 0 && m.yesBid > 0 && m.yesAsk < 1 && m.yesAsk >= m.yesBid)
     out5.push({
       key: `${p}.prob.mid`,
-      label: `${s} implied YES probability at mid`,
+      label: wideQuote(m) ? `${s} midpoint of a ${(m.yesAsk - m.yesBid).toFixed(2)} USD spread \u2014 not a reliable probability` : `${s} implied YES probability at mid`,
       value: (m.yesBid + m.yesAsk) / 2 * 100,
       unit: "%",
       formula: "(yes bid + yes ask) / 2 \xD7 100"
@@ -18363,7 +18378,9 @@ async function kalshiMarkets(q = {}) {
   const markets = res.data.markets.map(parseKalshiMarket);
   const scope = q.eventTicker ?? q.seriesTicker;
   if (!markets.length) throw new ProviderError(SOURCE16, `no ${q.status ?? "open"} markets${scope ? ` for ${scope.toUpperCase()}` : ""}`, 404);
-  const notes = [NOTE_UNITS];
+  const notes = [NOTE_UNITS, ...liquidityNotes(markets)];
+  if (!scope)
+    notes.push("no series given: these are the first open markets Kalshi lists, often thin sports lines \u2014 pass a series (KXFED, KXCPI, KXRECSSNBER\u2026)");
   if (res.data.cursor) notes.push(`first ${markets.length} markets only: more are available (raise the limit or narrow the series)`);
   return {
     kind: "prediction",
@@ -18378,13 +18395,14 @@ async function kalshiMarket(ticker) {
   const t = ticker.toUpperCase();
   const res = await fetchJson(`${BASE18}/markets/${encodeURIComponent(t)}`, PACE6);
   if (!res.ok || !res.data?.market) throw failure2(res.status, `market ${t}`, res.error);
+  const market = parseKalshiMarket(res.data.market);
   return {
     kind: "prediction",
     title: `Kalshi market ${t}`,
     subject: t,
-    points: kalshiMarketPoints(parseKalshiMarket(res.data.market)),
+    points: kalshiMarketPoints(market),
     provenance: prov2(res),
-    notes: [NOTE_UNITS]
+    notes: [NOTE_UNITS, ...liquidityNotes([market])]
   };
 }
 async function kalshiOrderbook(ticker, levels = 10) {
@@ -19903,7 +19921,6 @@ function kalshiFee(contracts, price, coefficient) {
   const raw = coefficient * contracts * price * (1 - price);
   return Math.ceil(raw * 100 - 1e-9) / 100;
 }
-var WIDE_SPREAD = 0.2;
 function kalshiQuotesFromPoints(points) {
   const by = /* @__PURE__ */ new Map();
   for (const p of points) {

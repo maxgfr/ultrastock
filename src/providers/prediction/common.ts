@@ -37,6 +37,9 @@ export interface ComplementArbitrage {
 
 const inUnit = (p: number) => Number.isFinite(p) && p >= 0 && p <= 1;
 
+/** A YES spread wider than this (USD per 1-USD contract) makes the mid unreliable: a midpoint, not a probability. */
+export const WIDE_SPREAD = 0.2;
+
 /**
  * Buy one YES at `yesAsk` and one NO at `noAsk` (prices 0–1): exactly one pays 1
  * at resolution. Fees are modelled as `feeRate` × price on each leg (a flat

@@ -17,7 +17,7 @@
 import type { Dataset, Point } from "../../core/datasets.js";
 import { fetchJson } from "../../core/net.js";
 import { ProviderError } from "../types.js";
-import { type BookLevel, bookPoints, num, type OrderBook, sortBook } from "./common.js";
+import { type BookLevel, bookPoints, num, type OrderBook, sortBook, WIDE_SPREAD } from "./common.js";
 
 const BASE = "https://api.elections.kalshi.com/trade-api/v2";
 export const SOURCE = "kalshi";
@@ -82,6 +82,24 @@ export function parseKalshiMarket(r: KalshiMarketRaw): KalshiMarket {
   };
 }
 
+/** A two-sided YES quote wider than WIDE_SPREAD: its mid is a midpoint, not the market's probability. */
+export function wideQuote(m: Pick<KalshiMarket, "yesBid" | "yesAsk">): boolean {
+  return m.yesBid !== undefined && m.yesAsk !== undefined && m.yesBid > 0 && m.yesAsk < 1 && m.yesAsk - m.yesBid > WIDE_SPREAD;
+}
+
+/** What a reader must know before taking a list's mids as probabilities: how many are wide or never traded. */
+export function liquidityNotes(markets: readonly KalshiMarket[]): string[] {
+  const notes: string[] = [];
+  const wide = markets.filter(wideQuote).length;
+  if (wide)
+    notes.push(
+      `${wide} of ${markets.length} markets quote a YES spread wider than ${WIDE_SPREAD} USD: their mid is a midpoint of an empty book, not a probability — read the liquid ones (tight spread, traded volume)`,
+    );
+  const untraded = markets.filter((m) => m.volume === 0).length;
+  if (untraded) notes.push(`${untraded} of ${markets.length} markets have never traded (lifetime volume 0)`);
+  return notes;
+}
+
 /** One market as points under `KALSHI.<ticker>.…`; the title, subtitle and rules are untrusted. */
 export function kalshiMarketPoints(m: KalshiMarket): Point[] {
   const p = `KALSHI.${m.ticker}`;
@@ -98,10 +116,13 @@ export function kalshiMarketPoints(m: KalshiMarket): Point[] {
   price("no.ask", "NO ask", m.noAsk);
   price("last", "last trade price", m.last);
   // A side with no resting order shows 0 (bid) or 1 (ask): no two-sided quote, no mid.
+  // A wide quote still has a mid, but nobody is quoting near fair value: the label says so.
   if (m.yesBid !== undefined && m.yesAsk !== undefined && m.yesBid > 0 && m.yesAsk < 1 && m.yesAsk >= m.yesBid)
     out.push({
       key: `${p}.prob.mid`,
-      label: `${s} implied YES probability at mid`,
+      label: wideQuote(m)
+        ? `${s} midpoint of a ${(m.yesAsk - m.yesBid).toFixed(2)} USD spread — not a reliable probability`
+        : `${s} implied YES probability at mid`,
       value: ((m.yesBid + m.yesAsk) / 2) * 100,
       unit: "%",
       formula: "(yes bid + yes ask) / 2 × 100",
@@ -177,7 +198,9 @@ export async function kalshiMarkets(q: KalshiMarketsQuery = {}): Promise<Dataset
   const markets = res.data.markets.map(parseKalshiMarket);
   const scope = q.eventTicker ?? q.seriesTicker;
   if (!markets.length) throw new ProviderError(SOURCE, `no ${q.status ?? "open"} markets${scope ? ` for ${scope.toUpperCase()}` : ""}`, 404);
-  const notes = [NOTE_UNITS];
+  const notes = [NOTE_UNITS, ...liquidityNotes(markets)];
+  if (!scope)
+    notes.push("no series given: these are the first open markets Kalshi lists, often thin sports lines — pass a series (KXFED, KXCPI, KXRECSSNBER…)");
   if (res.data.cursor) notes.push(`first ${markets.length} markets only: more are available (raise the limit or narrow the series)`);
   return {
     kind: "prediction",
@@ -194,13 +217,14 @@ export async function kalshiMarket(ticker: string): Promise<Dataset> {
   const t = ticker.toUpperCase();
   const res = await fetchJson<{ market?: KalshiMarketRaw }>(`${BASE}/markets/${encodeURIComponent(t)}`, PACE);
   if (!res.ok || !res.data?.market) throw failure(res.status, `market ${t}`, res.error);
+  const market = parseKalshiMarket(res.data.market);
   return {
     kind: "prediction",
     title: `Kalshi market ${t}`,
     subject: t,
-    points: kalshiMarketPoints(parseKalshiMarket(res.data.market)),
+    points: kalshiMarketPoints(market),
     provenance: prov(res),
-    notes: [NOTE_UNITS],
+    notes: [NOTE_UNITS, ...liquidityNotes([market])],
   };
 }
 
