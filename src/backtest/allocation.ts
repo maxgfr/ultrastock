@@ -53,10 +53,21 @@ const periodKey = (date: string, rebalance: "monthly" | "quarterly") => {
   return rebalance === "monthly" ? date.slice(0, 7) : `${date.slice(0, 4)}Q${Math.ceil(m / 3)}`;
 };
 
+/**
+ * `date` minus `months` calendar months: the same day of that month, or its
+ * last day when it is shorter. Left to `Date`, 31 March minus one month is
+ * "31 February", which rolls forward to 3 March — a 28-day lookback.
+ */
+export function monthsBefore(date: string, months: number): string {
+  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+  const first = new Date(Date.UTC(y, m - 1 - months, 1));
+  const lastDay = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), Math.min(d, lastDay))).toISOString().slice(0, 10);
+}
+
 /** The last index at or before `date` minus `months` calendar months. */
 function indexMonthsBefore(dates: readonly string[], t: number, months: number): number {
-  const [y, m, d] = dates[t]!.split("-").map(Number) as [number, number, number];
-  const target = new Date(Date.UTC(y, m - 1 - months, d)).toISOString().slice(0, 10);
+  const target = monthsBefore(dates[t]!, months);
   let i = t;
   while (i > 0 && dates[i]! > target) i--;
   return dates[i]! <= target ? i : -1;

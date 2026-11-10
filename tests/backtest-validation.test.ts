@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignBars, allocationBacktest } from "../src/backtest/allocation.js";
+import { alignBars, allocationBacktest, monthsBefore } from "../src/backtest/allocation.js";
 import { loadStrategy } from "../src/backtest/catalog.js";
 import { decisionQuality, tQuantile, wilsonInterval } from "../src/backtest/decisions.js";
 import { buyAndHold, deflatedSharpeOf, periodsPerYear, residualAlpha, tradeStats } from "../src/backtest/metrics.js";
@@ -206,6 +206,15 @@ describe("allocations", () => {
     expect(bh.rebalances).toHaveLength(1);
     expect(() => allocationBacktest("60-40", [a, b, a], dates, { capital: 1, costs: COSTS })).toThrow(/exactly two/);
     expect(allocationBacktest("60-40", bars, dates, { capital: 10_000, costs: COSTS }).rebalances[0]!.weights).toEqual([0.6, 0.4]);
+  });
+
+  it("looks back whole calendar months, to the month's last day when it is shorter", () => {
+    expect(monthsBefore("2025-03-31", 1)).toBe("2025-02-28"); // "31 February" rolled to 3 March: a 28-day lookback
+    expect(monthsBefore("2024-03-31", 1)).toBe("2024-02-29");
+    expect(monthsBefore("2025-05-31", 6)).toBe("2024-11-30");
+    expect(monthsBefore("2025-02-28", 12)).toBe("2024-02-28");
+    expect(monthsBefore("2024-02-29", 12)).toBe("2023-02-28");
+    expect(monthsBefore("2025-01-15", 3)).toBe("2024-10-15");
   });
 
   it("dual momentum holds the leader while it beats the hurdle, else the safe asset", () => {

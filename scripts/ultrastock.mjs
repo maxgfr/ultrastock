@@ -37462,9 +37462,14 @@ var periodKey = (date, rebalance2) => {
   const m = Number(date.slice(5, 7));
   return rebalance2 === "monthly" ? date.slice(0, 7) : `${date.slice(0, 4)}Q${Math.ceil(m / 3)}`;
 };
+function monthsBefore(date, months) {
+  const [y, m, d] = date.split("-").map(Number);
+  const first = new Date(Date.UTC(y, m - 1 - months, 1));
+  const lastDay = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), Math.min(d, lastDay))).toISOString().slice(0, 10);
+}
 function indexMonthsBefore(dates, t, months) {
-  const [y, m, d] = dates[t].split("-").map(Number);
-  const target = new Date(Date.UTC(y, m - 1 - months, d)).toISOString().slice(0, 10);
+  const target = monthsBefore(dates[t], months);
   let i = t;
   while (i > 0 && dates[i] > target) i--;
   return dates[i] <= target ? i : -1;
