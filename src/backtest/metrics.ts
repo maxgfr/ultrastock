@@ -5,7 +5,7 @@
 import { deflatedSharpe, performanceSummary } from "../analytics/performance.js";
 import { excessKurtosis, mean, ols, skewness, stdev, variance } from "../analytics/stats.js";
 import type { Bar } from "../providers/types.js";
-import type { Costs, SimResult, Trade } from "./simulate.js";
+import type { Costs, SimResult } from "./simulate.js";
 
 export interface TradeStats {
   trades: number;
@@ -166,11 +166,4 @@ export function deflatedSharpeOf(chosen: readonly number[], variantSharpes: read
   const finite = variantSharpes.filter(Number.isFinite);
   const v = finite.length > 1 ? variance(finite) : 0;
   return deflatedSharpe(sr, chosen.length, skewness(chosen), excessKurtosis(chosen), Math.max(1, nTrials), v);
-}
-
-/** The trades' net P&L share of the most profitable one (for the concentration check). */
-export function topTradeShare(trades: readonly Trade[]): number | undefined {
-  const net = trades.reduce((s, t) => s + t.pnl, 0);
-  if (net <= 0 || !trades.length) return undefined;
-  return (Math.max(...trades.map((t) => t.pnl)) / net) * 100;
 }

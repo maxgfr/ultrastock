@@ -164,7 +164,6 @@ export async function valuationRun(raw: string, dir: string, opts: ValuationOpti
       );
   }
   store.save();
-  store.save();
   if (!periods[0]) throw new Error(`no financial statements found for ${sym}`);
 
   // Discount rate: risk-free (10-year government), beta against a benchmark, CAPM.

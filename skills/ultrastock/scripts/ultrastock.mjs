@@ -33006,7 +33006,6 @@ async function valuationRun(raw, dir2, opts = {}) {
       );
   }
   store.save();
-  store.save();
   if (!periods[0]) throw new Error(`no financial statements found for ${sym3}`);
   const erp = opts.erp ?? 0.05;
   const g = opts.terminalGrowth ?? 0.02;
@@ -44026,7 +44025,7 @@ async function preconditions(p) {
   } catch (e) {
     no("VENUE", `${p.venue} could not be read: ${e.message}`);
   }
-  if (!R.length || R.every((r3) => r3.code === "CODE")) {
+  if (!R.length) {
     const v = verifyCode(p.ticket.id, orderFingerprint(o), p.code, now);
     if (!v.ok) no("CODE", v.reason);
   } else if (!p.code) no("CODE", "an out-of-band approval code is needed (`broker code <ticket>`), once the other conditions hold");

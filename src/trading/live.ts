@@ -198,7 +198,8 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
     no("VENUE", `${p.venue} could not be read: ${(e as Error).message}`);
   }
 
-  if (!R.length || R.every((r) => r.code === "CODE")) {
+  // The code is checked last, and only when nothing else stands in the way: a refused order must not use up a try.
+  if (!R.length) {
     const v = verifyCode(p.ticket.id, orderFingerprint(o), p.code, now);
     if (!v.ok) no("CODE", v.reason);
   } else if (!p.code) no("CODE", "an out-of-band approval code is needed (`broker code <ticket>`), once the other conditions hold");
