@@ -44,10 +44,13 @@ plus Node ≥ 22 and a paper record that passes `paper readiness`.
    minutes, and only for that exact order.
 3. `broker preview <id> --venue <v> --env <e>` runs the venue's own dry run
    and lists every ultrastock condition still unmet.
-4. `broker code <id>` sends a 6-digit code, valid 2 minutes, bound to this
-   order's fingerprint. It goes to a desktop notification, a private ntfy
-   topic (with a token) or the user's terminal. **It is never printed to the
-   output you read.**
+4. `broker code <id> --venue <v> --env <e>` sends a 6-digit code, valid 2
+   minutes, bound to this order's fingerprint **and to that venue, that
+   environment and the venue's symbol**: a code read for `--env test` opens
+   nothing live. The message names where the order goes. It reaches a desktop
+   notification, a private ntfy topic (with a token) or the user's terminal.
+   **It is never printed to the output you read.** (`--conid` names an IBKR
+   contract and is refused on every other venue.)
 5. The **user** runs `broker submit <id> --venue <v> --env <e> --code <code>`
    themselves, or approves your call when the harness asks.
 6. If the answer is lost, the order is **unknown**. Nothing is resent until

@@ -19,9 +19,20 @@ import { kalshiAdapter } from "../trading/brokers/kalshi.js";
 import { krakenAdapter } from "../trading/brokers/kraken.js";
 import type { BrokerAdapter, Environment, Venue } from "../trading/brokers/types.js";
 import { currentLimits, effectiveLimits, limitsBinding, type LiveLimits, requestLimits } from "../trading/limits.js";
-import { CRYPTO_VENUES, liveActivity, liveCancel, liveRecordOf, liveSubmit, preconditions, reconcile, VENUES, venueSymbol } from "../trading/live.js";
+import {
+  CRYPTO_VENUES,
+  liveActivity,
+  liveCancel,
+  liveRecordOf,
+  liveSubmit,
+  orderBinding,
+  preconditions,
+  reconcile,
+  VENUES,
+  venueSymbol,
+} from "../trading/live.js";
 import { issueCode, verifyCode } from "../trading/otp.js";
-import { killSwitchPath, orderFingerprint } from "../trading/riskgate.js";
+import { killSwitchPath } from "../trading/riskgate.js";
 import { readCredentials, setupCommands } from "../trading/secrets.js";
 import { audit, listTickets, loadTicket } from "../trading/tickets.js";
 
@@ -146,15 +157,29 @@ export async function brokerCommand(args: CommandArgs, asJson: boolean): Promise
         `approval code sent to ${r.sentTo.join(", ")} (valid until ${r.expiresAt}). Then: ultrastock broker limits set … --code <code> (the same flags).`,
       );
     }
-    if (!id) throw new UsageError("usage: ultrastock broker code <ticket-id> | code limits [--max-order] [--max-daily] [--venues] [--attest]");
+    if (!id)
+      throw new UsageError(
+        "usage: ultrastock broker code <ticket-id> [--env test|live] [--venue <v>] [--conid <id>] | code limits [--max-order] [--max-daily] [--venues] [--attest]",
+      );
     const t = loadTicket(id);
     if (t.status !== "checked") throw new Error(`ticket ${id} is ${t.status}: check it first (\`ultrastock ticket check ${id}\`)`);
     const o = t.order;
-    const r = await issueCode(t.id, orderFingerprint(o), `${o.side} ${o.quantity} ${o.symbol} at ${o.price} ${o.currency} (${o.venue}, ticket ${t.id})`);
+    // The code approves this order where it will go: the venue, the environment and the venue's own symbol are part
+    // of what the user reads and of what the code is bound to. A code read for a testnet run opens nothing live.
+    const venue = venueOf(args, o.venue);
+    const env = envOf(args);
+    const conid = argValue(args, "conid");
+    const sym = venueSymbol(venue, o.symbol, o.currency, conid);
+    const where = env === "live" ? `${venue} LIVE — real money` : `${venue} test`;
+    const r = await issueCode(
+      t.id,
+      orderBinding(o, venue, env, sym),
+      `${o.side} ${o.quantity} ${o.symbol} at ${o.price} ${o.currency} on ${where}${sym !== o.symbol ? `, as ${sym}` : ""} (ticket ${t.id})`,
+    );
     return out(
       asJson,
-      r,
-      `approval code sent to ${r.sentTo.join(", ")} (valid until ${r.expiresAt}). The user types it: ultrastock broker submit ${t.id} --venue ${o.venue} --env <test|live> --code <code>`,
+      { ...r, venue, env, venueSymbol: sym },
+      `approval code sent to ${r.sentTo.join(", ")} (valid until ${r.expiresAt}) for ${where}. The user types it: ultrastock broker submit ${t.id} --venue ${venue} --env ${env}${conid ? ` --conid ${conid}` : ""} --code <code>`,
     );
   }
 

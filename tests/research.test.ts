@@ -7,7 +7,7 @@ import { checkAnswer } from "../src/check.js";
 import { EvidenceStore, readDocText } from "../src/core/evidence.js";
 import { setNetMode } from "../src/core/net.js";
 import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "../src/core/untrusted.js";
-import { contentHash } from "../src/engine.js";
+import { contentHash, resetPdfLadderCache } from "../src/engine.js";
 import { researchAngles, type ResearchSubject } from "../src/research/angles.js";
 import { officialHost } from "../src/research/dossier.js";
 import { fuseHits, notADocument, parseWebResults, readCandidate } from "../src/research/ingest.js";
@@ -335,7 +335,18 @@ describe("discovery and rescue", () => {
       JSON.stringify({ response: { ...response, body: "", bodyBase64: Buffer.from("%PDF-1.4\n%fake\n").toString("base64"), contentType: "application/pdf" } }),
     );
     setNetMode({ kind: "fixture", dir });
-    const r = await readCandidate({ url, score: 1, angles: ["results"] }, { wayback: false });
+    // The built-in extractor only: the other rungs of the ladder install tools over the network, and a test must not wait on that.
+    const engine = process.env.ULTRASTOCK_PDF_ENGINE;
+    process.env.ULTRASTOCK_PDF_ENGINE = "native";
+    resetPdfLadderCache();
+    let r: Awaited<ReturnType<typeof readCandidate>>;
+    try {
+      r = await readCandidate({ url, score: 1, angles: ["results"] }, { wayback: false });
+    } finally {
+      if (engine === undefined) delete process.env.ULTRASTOCK_PDF_ENGINE;
+      else process.env.ULTRASTOCK_PDF_ENGINE = engine;
+      resetPdfLadderCache();
+    }
     // The bytes went down the PDF ladder (this stub holds no text): it is no longer "a near-empty page".
     expect(r.page?.pdf ?? r.dropped?.reason).toMatch(/^PDF without extractable text/);
     // A fixture recorded before the second read exists holds the empty page alone, and replays as before.

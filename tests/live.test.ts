@@ -6,7 +6,7 @@ import { defaultProfile, saveProfile } from "../src/core/profile.js";
 import type { BrokerAdapter, LiveOrder, OrderResult } from "../src/trading/brokers/types.js";
 import { effectiveLimits, isTightening, type LiveLimits, LOOSEN_DELAY_MS, requestLimits, tierFor } from "../src/trading/limits.js";
 import { readLedger } from "../src/portfolio/ledger.js";
-import { clientOrderIdFor, liveCancel, liveSubmit, preconditions, reconcile, venueSymbol } from "../src/trading/live.js";
+import { clientOrderIdFor, liveCancel, liveSubmit, orderBinding, preconditions, reconcile, venueSymbol } from "../src/trading/live.js";
 import { type Channel, issueCode, verifyCode } from "../src/trading/otp.js";
 import { killSwitchPath, type Order, orderFingerprint } from "../src/trading/riskgate.js";
 import { readCredentials, redact, setupCommands } from "../src/trading/secrets.js";
@@ -158,7 +158,7 @@ describe("live preconditions and the single submission", () => {
   it("sends exactly once with a valid code; a timeout is unknown, blocks resending, and reconcile settles it", async () => {
     switchOn();
     const t = await checkedTicket(order());
-    await issueCode(t.id, orderFingerprint(t.order), "order", [["capture", capture]]);
+    await issueCode(t.id, orderBinding(t.order, "kraken", "test", "SOLEUR"), "order", [["capture", capture]]);
     const v = fakeVenue({ submit: () => Promise.reject(new Error("timeout after 10000 ms")) });
     const r = await liveSubmit({ ticket: t, venue: "kraken", env: "test", adapter: v.a, venueSym: "SOLEUR", code: codeFrom(), micaAuthorised: true });
     expect(r.refusals).toEqual([]);
@@ -193,7 +193,7 @@ describe("live preconditions and the single submission", () => {
   async function acceptedTicket() {
     switchOn();
     const t = await checkedTicket(order());
-    await issueCode(t.id, orderFingerprint(t.order), "order", [["capture", capture]]);
+    await issueCode(t.id, orderBinding(t.order, "kraken", "test", "SOLEUR"), "order", [["capture", capture]]);
     const r = await liveSubmit({ ticket: t, venue: "kraken", env: "test", adapter: fakeVenue().a, venueSym: "SOLEUR", code: codeFrom(), micaAuthorised: true });
     expect(r.result?.state).toBe("accepted");
     return t;
@@ -202,7 +202,7 @@ describe("live preconditions and the single submission", () => {
   it("never reconciles or cancels against another environment than the one the order went to", async () => {
     switchOn();
     const t = await checkedTicket(order());
-    await issueCode(t.id, orderFingerprint(t.order), "order", [["capture", capture]]);
+    await issueCode(t.id, orderBinding(t.order, "kraken", "test", "SOLEUR"), "order", [["capture", capture]]);
     const lost = fakeVenue({ submit: () => Promise.reject(new Error("timeout after 10000 ms")) });
     await liveSubmit({ ticket: t, venue: "kraken", env: "test", adapter: lost.a, venueSym: "SOLEUR", code: codeFrom(), micaAuthorised: true });
     // The other environment knows nothing of the order: asking it would read "never placed" and free the ticket for a resend.
@@ -265,6 +265,24 @@ describe("live preconditions and the single submission", () => {
     expect(readLedger("live-test").filter((x) => x.type === "buy")).toHaveLength(1);
   });
 
+  it("binds a code to the environment, the venue and the venue symbol it was read for", async () => {
+    switchOn();
+    let n = 0;
+    const send = async (venue: "kraken" | "binance", env: "test" | "live", sym: string) => {
+      const o = order({ quantity: 1 + ++n / 100 }); // a ticket of its own each time
+      const t = await checkedTicket(o);
+      await issueCode(t.id, orderBinding(o, venue, env, sym), "order", [["capture", capture]]);
+      const v = fakeVenue();
+      const r = await liveSubmit({ ticket: t, venue: "kraken", env: "test", adapter: v.a, venueSym: "SOLEUR", code: codeFrom(), micaAuthorised: true });
+      return { codes: r.refusals.map((x) => x.code), sent: v.calls.submit };
+    };
+    // The same order, approved for the other environment, another venue or another contract: void here.
+    expect(await send("kraken", "live", "SOLEUR")).toEqual({ codes: ["CODE"], sent: 0 });
+    expect(await send("binance", "test", "SOLEUR")).toEqual({ codes: ["CODE"], sent: 0 });
+    expect(await send("kraken", "test", "XBTEUR")).toEqual({ codes: ["CODE"], sent: 0 });
+    expect(await send("kraken", "test", "SOLEUR")).toEqual({ codes: [], sent: 1 });
+  }, 60_000);
+
   it("refuses a code issued for another order, and maps symbols per venue", async () => {
     switchOn();
     const t = await checkedTicket(order());
@@ -277,6 +295,9 @@ describe("live preconditions and the single submission", () => {
     expect(venueSymbol("coinbase", "ETHEUR", "EUR")).toBe("ETH-EUR");
     expect(venueSymbol("binance", "BTCUSDT", "USDT")).toBe("BTCUSDT");
     expect(() => venueSymbol("ibkr", "AAPL", "USD")).toThrow(/conid/);
+    // A contract id names an IBKR contract; nowhere else may anything replace the ticket's own symbol.
+    expect(venueSymbol("ibkr", "AAPL", "USD", "265598")).toBe("265598");
+    expect(() => venueSymbol("kraken", "SOLEUR", "EUR", "XBTEUR")).toThrow(/cannot be replaced/);
     expect(clientOrderIdFor("t-x", 1)).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(clientOrderIdFor("t-x", 2)).not.toBe(clientOrderIdFor("t-x", 1));
   });

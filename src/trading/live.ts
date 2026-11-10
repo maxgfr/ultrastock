@@ -35,7 +35,7 @@ import { fxToBase } from "./context.js";
 import { effectiveLimits } from "./limits.js";
 import { verifyCode } from "./otp.js";
 import { readiness } from "./paper.js";
-import { killSwitchPath, orderFingerprint } from "./riskgate.js";
+import { killSwitchPath, type Order, orderFingerprint } from "./riskgate.js";
 import { audit, executionRefusal, loadTicket, readAudit, type Ticket, transition } from "./tickets.js";
 
 export const VENUES: Venue[] = ["binance", "kraken", "coinbase", "ibkr", "kalshi"];
@@ -47,9 +47,16 @@ export interface Refusal {
   reason: string;
 }
 
-/** The venue's symbol for an order's symbol (an IBKR conid must be given). */
-export function venueSymbol(venue: Venue, symbol: string, currency: string, override?: string): string {
-  if (override) return override;
+/**
+ * The venue's symbol for an order's symbol. An IBKR order names its contract by
+ * an id the user gives (`--conid`); everywhere else the symbol follows from the
+ * ticket and nothing may replace it — the order that goes is the one checked.
+ */
+export function venueSymbol(venue: Venue, symbol: string, currency: string, conid?: string): string {
+  if (conid) {
+    if (venue !== "ibkr") throw new Error(`--conid names an IBKR contract: on ${venue} the symbol comes from the ticket (${symbol}) and cannot be replaced`);
+    return conid;
+  }
   if (venue === "kalshi") {
     const m = /^KALSHI:(.+):(YES|NO)$/i.exec(symbol);
     if (!m) throw new Error(`a Kalshi order needs a contract symbol KALSHI:<TICKER>:YES|NO, not ${symbol}`);
@@ -61,6 +68,16 @@ export function venueSymbol(venue: Venue, symbol: string, currency: string, over
   if (venue === "kraken") return `${base === "BTC" ? "XBT" : base}${q}`;
   if (venue === "coinbase") return `${base}-${q}`;
   throw new Error("IBKR orders need the contract id: pass --conid (from the IBKR gateway's contract search)");
+}
+
+/**
+ * What an approval code approves: this order (every number of it), at this
+ * venue, in this environment, as this venue symbol. A code issued while looking
+ * at a testnet run is void for the real exchange, and so is one issued for
+ * another contract.
+ */
+export function orderBinding(order: Order, venue: Venue, env: Environment, venueSym: string): string {
+  return `${orderFingerprint(order)}|${venue}|${env}|${venueSym}`;
 }
 
 /**
@@ -200,7 +217,7 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
 
   // The code is checked last, and only when nothing else stands in the way: a refused order must not use up a try.
   if (!R.length) {
-    const v = verifyCode(p.ticket.id, orderFingerprint(o), p.code, now);
+    const v = verifyCode(p.ticket.id, orderBinding(o, p.venue, p.env, p.venueSym), p.code, now);
     if (!v.ok) no("CODE", v.reason);
   } else if (!p.code) no("CODE", "an out-of-band approval code is needed (`broker code <ticket>`), once the other conditions hold");
   return { refusals: R, notional, book };

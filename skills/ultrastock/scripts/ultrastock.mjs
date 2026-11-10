@@ -43911,8 +43911,11 @@ function readiness(trades2, equity, firstTrade, now = /* @__PURE__ */ new Date()
 var VENUES = ["binance", "kraken", "coinbase", "ibkr", "kalshi"];
 var CRYPTO_VENUES = ["binance", "kraken", "coinbase"];
 var PRICE_BAND_PCT = 1;
-function venueSymbol(venue, symbol, currency, override) {
-  if (override) return override;
+function venueSymbol(venue, symbol, currency, conid) {
+  if (conid) {
+    if (venue !== "ibkr") throw new Error(`--conid names an IBKR contract: on ${venue} the symbol comes from the ticket (${symbol}) and cannot be replaced`);
+    return conid;
+  }
   if (venue === "kalshi") {
     const m = /^KALSHI:(.+):(YES|NO)$/i.exec(symbol);
     if (!m) throw new Error(`a Kalshi order needs a contract symbol KALSHI:<TICKER>:YES|NO, not ${symbol}`);
@@ -43924,6 +43927,9 @@ function venueSymbol(venue, symbol, currency, override) {
   if (venue === "kraken") return `${base2 === "BTC" ? "XBT" : base2}${q}`;
   if (venue === "coinbase") return `${base2}-${q}`;
   throw new Error("IBKR orders need the contract id: pass --conid (from the IBKR gateway's contract search)");
+}
+function orderBinding(order, venue, env2, venueSym) {
+  return `${orderFingerprint(order)}|${venue}|${env2}|${venueSym}`;
 }
 function clientOrderIdFor(ticketId, attempt2) {
   const h = createHash5("sha256").update(`${ticketId}#${attempt2}`).digest("hex");
@@ -44030,7 +44036,7 @@ async function preconditions(p) {
     no("VENUE", `${p.venue} could not be read: ${e.message}`);
   }
   if (!R.length) {
-    const v = verifyCode(p.ticket.id, orderFingerprint(o), p.code, now);
+    const v = verifyCode(p.ticket.id, orderBinding(o, p.venue, p.env, p.venueSym), p.code, now);
     if (!v.ok) no("CODE", v.reason);
   } else if (!p.code) no("CODE", "an out-of-band approval code is needed (`broker code <ticket>`), once the other conditions hold");
   return { refusals: R, notional, book: book2 };
@@ -44359,15 +44365,27 @@ async function brokerCommand(args, asJson) {
         `approval code sent to ${r4.sentTo.join(", ")} (valid until ${r4.expiresAt}). Then: ultrastock broker limits set \u2026 --code <code> (the same flags).`
       );
     }
-    if (!id) throw new UsageError("usage: ultrastock broker code <ticket-id> | code limits [--max-order] [--max-daily] [--venues] [--attest]");
+    if (!id)
+      throw new UsageError(
+        "usage: ultrastock broker code <ticket-id> [--env test|live] [--venue <v>] [--conid <id>] | code limits [--max-order] [--max-daily] [--venues] [--attest]"
+      );
     const t2 = loadTicket(id);
     if (t2.status !== "checked") throw new Error(`ticket ${id} is ${t2.status}: check it first (\`ultrastock ticket check ${id}\`)`);
     const o = t2.order;
-    const r3 = await issueCode(t2.id, orderFingerprint(o), `${o.side} ${o.quantity} ${o.symbol} at ${o.price} ${o.currency} (${o.venue}, ticket ${t2.id})`);
+    const venue2 = venueOf(args, o.venue);
+    const env3 = envOf(args);
+    const conid = argValue(args, "conid");
+    const sym3 = venueSymbol(venue2, o.symbol, o.currency, conid);
+    const where = env3 === "live" ? `${venue2} LIVE \u2014 real money` : `${venue2} test`;
+    const r3 = await issueCode(
+      t2.id,
+      orderBinding(o, venue2, env3, sym3),
+      `${o.side} ${o.quantity} ${o.symbol} at ${o.price} ${o.currency} on ${where}${sym3 !== o.symbol ? `, as ${sym3}` : ""} (ticket ${t2.id})`
+    );
     return printResult(
       asJson,
-      r3,
-      `approval code sent to ${r3.sentTo.join(", ")} (valid until ${r3.expiresAt}). The user types it: ultrastock broker submit ${t2.id} --venue ${o.venue} --env <test|live> --code <code>`
+      { ...r3, venue: venue2, env: env3, venueSymbol: sym3 },
+      `approval code sent to ${r3.sentTo.join(", ")} (valid until ${r3.expiresAt}) for ${where}. The user types it: ultrastock broker submit ${t2.id} --venue ${venue2} --env ${env3}${conid ? ` --conid ${conid}` : ""} --code <code>`
     );
   }
   if (sub === "panic") {
