@@ -36866,6 +36866,12 @@ async function fxToBase(currencies, base2) {
   for (const c of want) if (!rates[c]) notes.push(`no ${c}\u2192${base2} rate`);
   return { rates, notes };
 }
+var bookOf = (venue) => venue === "paper" ? "paper" : "real";
+function pendingBuys(tickets, book2, ticketId) {
+  return tickets.filter(
+    (t) => t.id !== ticketId && t.order.side === "buy" && bookOf(t.order.venue) === book2 && (t.status === "working" || t.status === "checked" || t.status === "submitted" && t.live?.env !== "test")
+  );
+}
 async function gateContextFor(order, opts = {}) {
   const now = opts.now ?? clockNow();
   const bookName = opts.book ?? (order.venue === "paper" ? "paper" : "real");
@@ -36904,9 +36910,7 @@ async function gateContextFor(order, opts = {}) {
   recordEquity(bookName, valued2.totalBase, now);
   const rate2 = fx.rates[order.currency] ?? (order.currency === profile.baseCurrency ? 1 : Number.NaN);
   if (!Number.isFinite(rate2)) throw new Error(`no ${order.currency}\u2192${profile.baseCurrency} rate: cannot size the order`);
-  const pending = listTickets(
-    (t) => t.id !== opts.ticketId && (t.status === "working" || t.status === "checked") && t.order.side === "buy" && t.order.venue === order.venue
-  );
+  const pending = pendingBuys(listTickets(), bookName, opts.ticketId);
   const pendingBuysBase = {};
   for (const t of pending)
     pendingBuysBase[t.order.symbol] = (pendingBuysBase[t.order.symbol] ?? 0) + t.order.quantity * t.order.price * (fx.rates[t.order.currency] ?? 1);
@@ -51986,7 +51990,7 @@ var num12 = (v, flag) => {
   if (!Number.isFinite(n2)) throw new UsageError(`--${flag} takes a number, not "${v}"`);
   return n2;
 };
-var bookOf = (args) => {
+var bookOf2 = (args) => {
   const b = argValue(args, "book") ?? "real";
   if (b !== "real" && b !== "paper") throw new UsageError("--book is real or paper");
   return b;
@@ -52022,7 +52026,7 @@ async function markBook(book2) {
 }
 async function portfolioCommand(args, asJson) {
   const [sub = "show", ...rest] = args.positional;
-  const book2 = bookOf(args);
+  const book2 = bookOf2(args);
   if (sub === "import") return importCommand(args, asJson);
   if (PORTFOLIO_STORE_ACTIONS.includes(sub)) return portfolioStoreCommand(args, asJson, markBook);
   if (PORTFOLIO_ANALYTICS_ACTIONS.includes(sub)) return portfolioAnalyticsCommand(args, asJson);

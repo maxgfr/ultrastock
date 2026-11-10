@@ -13,7 +13,7 @@ import type { QuoteResult } from "../providers/types.js";
 import { parsePredictionSymbol, predictionQuote } from "./prediction.js";
 import { breakerState, closedTradeResults, readEquity, recordEquity } from "./breaker.js";
 import type { GateContext, Order } from "./riskgate.js";
-import { listTickets, readAudit } from "./tickets.js";
+import { listTickets, readAudit, type Ticket } from "./tickets.js";
 
 /** Stablecoins are priced as their dollar: said in the notes. */
 const AS_USD = new Set(["USDT", "USDC", "FDUSD"]);
@@ -34,6 +34,25 @@ export async function fxToBase(currencies: readonly string[], base: string): Pro
   for (const c of currencies) if (AS_USD.has(c) && rates.USD) rates[c] = rates.USD;
   for (const c of want) if (!rates[c]) notes.push(`no ${c}→${base} rate`);
   return { rates, notes };
+}
+
+/** The book an order's venue settles in: paper orders in "paper", every live venue in the one "real" book. */
+const bookOf = (venue: string): string => (venue === "paper" ? "paper" : "real");
+
+/**
+ * The buys that will still draw on `book`: checked and not yet sent, working on
+ * paper, or sent to a venue and not yet filled. Every live venue settles in the
+ * same book, so an order waiting at one venue counts against the next order at
+ * another; a testnet or validate-only order moves no money and is left out.
+ */
+export function pendingBuys(tickets: readonly Ticket[], book: string, ticketId?: string): Ticket[] {
+  return tickets.filter(
+    (t) =>
+      t.id !== ticketId &&
+      t.order.side === "buy" &&
+      bookOf(t.order.venue) === book &&
+      (t.status === "working" || t.status === "checked" || (t.status === "submitted" && (t as { live?: { env?: string } }).live?.env !== "test")),
+  );
 }
 
 export interface BuiltContext {
@@ -86,9 +105,7 @@ export async function gateContextFor(order: Order, opts: { book?: string; now?: 
   recordEquity(bookName, valued.totalBase, now);
   const rate = fx.rates[order.currency] ?? (order.currency === profile.baseCurrency ? 1 : Number.NaN);
   if (!Number.isFinite(rate)) throw new Error(`no ${order.currency}→${profile.baseCurrency} rate: cannot size the order`);
-  const pending = listTickets(
-    (t) => t.id !== opts.ticketId && (t.status === "working" || t.status === "checked") && t.order.side === "buy" && t.order.venue === order.venue,
-  );
+  const pending = pendingBuys(listTickets(), bookName, opts.ticketId);
   const pendingBuysBase: Record<string, number> = {};
   for (const t of pending)
     pendingBuysBase[t.order.symbol] = (pendingBuysBase[t.order.symbol] ?? 0) + t.order.quantity * t.order.price * (fx.rates[t.order.currency] ?? 1);

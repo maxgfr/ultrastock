@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { defaultProfile } from "../src/core/profile.js";
 import { appendTransactions, buildBook, readLedger, type Transaction, transactionId, valueBook, xirr } from "../src/portfolio/ledger.js";
 import { breakerState, closedTradeResults } from "../src/trading/breaker.js";
+import { pendingBuys } from "../src/trading/context.js";
+import type { Ticket } from "../src/trading/tickets.js";
 import { type GateContext, killSwitchPath, type Order, orderFingerprint, riskGate } from "../src/trading/riskgate.js";
 
 const tx = (t: Omit<Transaction, "id" | "origin" | "currency"> & { currency?: string }): Transaction =>
@@ -126,6 +128,22 @@ describe("risk gate", () => {
     writeFileSync(killSwitchPath(), "");
     expect(riskGate(order(), ctx()).verdict).toBe("block");
     expect(riskGate(sell, ctx({ heldQuantity: 10 })).verdict).toBe("pass");
+  });
+  it("counts every buy still to be paid from the same book as pending, whatever the venue", () => {
+    const ticket = (id: string, status: Ticket["status"], venue: string, extra: Record<string, unknown> = {}) =>
+      ({ id, status, order: order({ venue }), ...extra }) as unknown as Ticket;
+    const all = [
+      ticket("checked-kraken", "checked", "kraken"),
+      // Accepted by a venue and not filled yet: its cash is spoken for, at whichever venue the next order goes.
+      ticket("sent-binance", "submitted", "binance", { live: { env: "live" } }),
+      ticket("sent-testnet", "submitted", "binance", { live: { env: "test" } }),
+      ticket("working-paper", "working", "paper"),
+      ticket("filled-kraken", "filled", "kraken"),
+      { ...ticket("sell-kraken", "checked", "kraken"), order: order({ venue: "kraken", side: "sell" }) } as Ticket,
+    ];
+    expect(pendingBuys(all, "real").map((t) => t.id)).toEqual(["checked-kraken", "sent-binance"]);
+    expect(pendingBuys(all, "real", "checked-kraken").map((t) => t.id)).toEqual(["sent-binance"]);
+    expect(pendingBuys(all, "paper").map((t) => t.id)).toEqual(["working-paper"]);
   });
   it("shrinks the allowed risk in a drawdown", () => {
     const r = riskGate(order({ quantity: 12, stop: 360 }), ctx({ breaker: { tripped: false, sizeMultiplier: 0.5 } }));
