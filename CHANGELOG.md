@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.14](https://github.com/maxgfr/ultrastock/compare/v1.12.13...v1.12.14) (2026-11-10)
+
+
+### Bug Fixes
+
+* **net:** a response cut at the size cap is a failed read, not an answer ([d962113](https://github.com/maxgfr/ultrastock/commit/d962113d4c71c3c19f5428bea5df377bf587db1c))
+
 ## [1.12.13](https://github.com/maxgfr/ultrastock/compare/v1.12.12...v1.12.13) (2026-11-10)
 
 
