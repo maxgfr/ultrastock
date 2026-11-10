@@ -161,6 +161,13 @@ describe("metrics", () => {
     expect(buyAndHold(bars, COSTS).totalReturn).toBeCloseTo((1 - 0.001) ** 2 / (1.0005 / 0.9995) - 1, 9);
     expect(periodsPerYear(randomWalk(10), true)).toBe(365);
     expect(periodsPerYear(randomWalk(10), false)).toBe(252);
+    // Hourly bars of a listed share, seven a session: 1 764 a year, not 252 — or a year of them reads as seven.
+    const hourly: Bar[] = [];
+    for (let d = 0; d < 20; d++)
+      for (let h = 0; h < 7; h++) hourly.push(bar(`2026-03-${String(2 + d + 2 * Math.floor(d / 5)).padStart(2, "0")}T${14 + h}:30:00.000Z`, 100, 101, 99, 100));
+    expect(periodsPerYear(hourly, false)).toBe(252 * 7);
+    const weekly = Array.from({ length: 10 }, (_, i) => bar(day(i * 7), 100, 100, 100, 100));
+    expect(periodsPerYear(weekly, false)).toBe(52);
     expect(stressCosts(COSTS)).toEqual({ makerPct: 0.2, takerPct: 0.2, slippagePct: 0.1 });
   });
 

@@ -76,12 +76,20 @@ export function tradeStats(sim: SimResult): TradeStats {
   };
 }
 
-/** Periods per year for an interval: 252 sessions for listed securities, 365 days × bars per day for crypto. */
+/**
+ * Periods per year for an interval: 365 days × bars per day for crypto; for
+ * listed securities 252 sessions × the bars a session holds (1 for daily bars,
+ * about 7 for hourly ones — counted on the series itself, since venues differ),
+ * 52 for weekly bars.
+ */
 export function periodsPerYear(bars: readonly Bar[], crypto: boolean): number {
   const t = (b: Bar) => Date.parse(b.date.length === 10 ? `${b.date}T00:00:00Z` : b.date);
   const ms = bars.length > 1 ? (t(bars[bars.length - 1]!) - t(bars[0]!)) / (bars.length - 1) : 86_400_000;
   if (crypto) return Math.round((365 * 86_400_000) / Math.max(ms, 60_000));
   if (ms >= 5 * 86_400_000) return 52;
+  // Intraday bars carry a time: annualising them as if each were a session would call 7 hourly bars 7 days.
+  const sessions = new Set(bars.map((b) => b.date.slice(0, 10))).size;
+  if (bars.length > sessions && bars[0]!.date.length > 10) return Math.round((252 * bars.length) / sessions);
   return 252;
 }
 

@@ -40014,6 +40014,8 @@ function periodsPerYear(bars, crypto) {
   const ms = bars.length > 1 ? (t(bars[bars.length - 1]) - t(bars[0])) / (bars.length - 1) : 864e5;
   if (crypto) return Math.round(365 * 864e5 / Math.max(ms, 6e4));
   if (ms >= 5 * 864e5) return 52;
+  const sessions = new Set(bars.map((b) => b.date.slice(0, 10))).size;
+  if (bars.length > sessions && bars[0].date.length > 10) return Math.round(252 * bars.length / sessions);
   return 252;
 }
 function summarize(sim, ppy, capital) {
