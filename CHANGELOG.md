@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.27](https://github.com/maxgfr/ultrastock/compare/v1.12.26...v1.12.27) (2026-11-10)
+
+
+### Bug Fixes
+
+* **events:** end an election span that crosses New Year in the next year ([de6ef98](https://github.com/maxgfr/ultrastock/commit/de6ef981f8b7e5785d354a647b4ed1f5f7493e76))
+
 ## [1.12.26](https://github.com/maxgfr/ultrastock/compare/v1.12.25...v1.12.26) (2026-11-10)
 
 
