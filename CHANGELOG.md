@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.32](https://github.com/maxgfr/ultrastock/compare/v1.12.31...v1.12.32) (2026-11-10)
+
+
+### Performance Improvements
+
+* **net:** send the same GET once per command ([ce42157](https://github.com/maxgfr/ultrastock/commit/ce421575d085ce934dbd5551bdae20868ee61495))
+
 ## [1.12.31](https://github.com/maxgfr/ultrastock/compare/v1.12.30...v1.12.31) (2026-11-10)
 
 
