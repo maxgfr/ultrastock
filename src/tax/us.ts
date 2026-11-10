@@ -273,11 +273,17 @@ export class UsRegime extends TaxRegime {
           notes,
         });
       } else if (t.type === "tax" && t.symbol && inYear(t)) {
+        // A tax row is the cash it moved: negative when withheld, positive when the broker hands it back.
+        const withheld = round2(-this.toBase(t, t.amount ?? 0, input));
         events.push({
           ...base,
           kind: "withholding",
-          amount: round2(Math.abs(this.toBase(t, t.amount ?? 0, input))),
-          notes: ["foreign tax withheld: a foreign tax credit (Form 1116, or directly on Schedule 3 up to $300 / $600 joint)"],
+          amount: withheld,
+          notes: [
+            withheld < 0
+              ? "refund of foreign tax withheld earlier (a reversal on the statement): it comes off the tax paid"
+              : "foreign tax withheld: a foreign tax credit (Form 1116, or directly on Schedule 3 up to $300 / $600 joint)",
+          ],
         });
       }
     }
@@ -404,7 +410,7 @@ export class UsRegime extends TaxRegime {
       ev.filter((e) => e.kind === "withholding"),
       (e) => e.amount,
     );
-    if (wh)
+    if (wh > 0)
       forms.push({
         form: wh <= (status === "joint" ? 600 : 300) ? "Schedule 3" : "1116",
         box: "foreign tax credit",

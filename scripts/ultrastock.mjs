@@ -46909,11 +46909,12 @@ var FranceRegime = class extends TaxRegime {
           }
         });
       } else if (t.type === "tax" && t.symbol && inYear(t)) {
+        const withheld = round22(-this.toBase(t, t.amount ?? 0, input));
         st.events.push({
           ...base2,
           kind: "withholding",
-          amount: round22(Math.abs(this.toBase(t, t.amount ?? 0, input))),
-          notes: isFrenchSecurity(t) ? ["French withholding (PFNL / social levies) \u2014 credited on the return as 2CK / already paid"] : ["foreign withholding: a credit (2AB) up to the French income tax on that dividend"],
+          amount: withheld,
+          notes: withheld < 0 ? ["refund of tax withheld earlier (a reversal on the statement): it comes off the tax paid"] : isFrenchSecurity(t) ? ["French withholding (PFNL / social levies) \u2014 credited on the return as 2CK / already paid"] : ["foreign withholding: a credit (2AB) up to the French income tax on that dividend"],
           lines: { foreignSource: String(!isFrenchSecurity(t)) }
         });
       }
@@ -47157,7 +47158,7 @@ var FranceRegime = class extends TaxRegime {
       (e) => e.amount
     );
     const credit = round22(Math.min(foreignWh, foreignIncome * pfuIr));
-    if (foreignWh) {
+    if (foreignWh > 0) {
       fig("withholding.foreign", "foreign tax withheld on dividends", foreignWh);
       fig(
         "withholding.credit",
@@ -47596,11 +47597,14 @@ var UsRegime = class extends TaxRegime {
           notes
         });
       } else if (t.type === "tax" && t.symbol && inYear(t)) {
+        const withheld = round22(-this.toBase(t, t.amount ?? 0, input));
         events.push({
           ...base2,
           kind: "withholding",
-          amount: round22(Math.abs(this.toBase(t, t.amount ?? 0, input))),
-          notes: ["foreign tax withheld: a foreign tax credit (Form 1116, or directly on Schedule 3 up to $300 / $600 joint)"]
+          amount: withheld,
+          notes: [
+            withheld < 0 ? "refund of foreign tax withheld earlier (a reversal on the statement): it comes off the tax paid" : "foreign tax withheld: a foreign tax credit (Form 1116, or directly on Schedule 3 up to $300 / $600 joint)"
+          ]
         });
       }
     }
@@ -47720,7 +47724,7 @@ var UsRegime = class extends TaxRegime {
       ev.filter((e) => e.kind === "withholding"),
       (e) => e.amount
     );
-    if (wh)
+    if (wh > 0)
       forms.push({
         form: wh <= (status === "joint" ? 600 : 300) ? "Schedule 3" : "1116",
         box: "foreign tax credit",

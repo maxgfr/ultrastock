@@ -176,6 +176,23 @@ describe("France", () => {
     expect(fr.withholdingRules()[0]).toMatch(/15 %/);
   });
 
+  it("a withholding reversed and taken again on the statement counts once", () => {
+    const ko = { account: "ibkr", symbol: "KO", isin: "US1912161007", currency: "USD" };
+    const txs = [
+      tx({ date: "2025-03-14", type: "dividend", ...ko, amount: 100 }),
+      // The broker withholds, reverses its own entry, and withholds again: 15 was withheld, not 45.
+      tx({ date: "2025-03-14", type: "tax", ...ko, amount: -15 }),
+      tx({ date: "2025-03-20", type: "tax", ...ko, amount: 15 }),
+      tx({ date: "2025-03-21", type: "tax", ...ko, amount: -15 }),
+    ];
+    const s = new FranceRegime(2025).annualSummary({ ...input(txs, [IBKR]), fx: fx({ USD: 0.9 }) });
+    expect(fig(s, "withholding.foreign")).toBe(13.5);
+    // 13.5 € on 90 € of income is the 15 % treaty rate: no call to file a W-8BEN and claim an excess.
+    expect(s.warnings.join(" ")).not.toMatch(/above the 15 % treaty rate/);
+    const us = new UsRegime(2025).annualSummary({ ...input(txs, [{ id: "ibkr", type: "TAXABLE", broker: "Interactive Brokers", currency: "USD" }]) });
+    expect(us.forms.find((f) => f.box === "foreign tax credit")).toMatchObject({ value: 15 });
+  });
+
   it("harvest: positions under the PMP offset the year's gains", () => {
     const txs = [
       tx({ date: "2025-01-10", type: "buy", account: "cto", symbol: "AAA.PA", quantity: 10, price: 100 }),

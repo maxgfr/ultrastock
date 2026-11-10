@@ -198,13 +198,18 @@ export class FranceRegime extends TaxRegime {
           },
         });
       } else if (t.type === "tax" && t.symbol && inYear(t)) {
+        // A tax row is the cash it moved: negative when withheld, positive when the broker hands it back.
+        const withheld = round2(-this.toBase(t, t.amount ?? 0, input));
         st.events.push({
           ...base,
           kind: "withholding",
-          amount: round2(Math.abs(this.toBase(t, t.amount ?? 0, input))),
-          notes: isFrenchSecurity(t)
-            ? ["French withholding (PFNL / social levies) — credited on the return as 2CK / already paid"]
-            : ["foreign withholding: a credit (2AB) up to the French income tax on that dividend"],
+          amount: withheld,
+          notes:
+            withheld < 0
+              ? ["refund of tax withheld earlier (a reversal on the statement): it comes off the tax paid"]
+              : isFrenchSecurity(t)
+                ? ["French withholding (PFNL / social levies) — credited on the return as 2CK / already paid"]
+                : ["foreign withholding: a credit (2AB) up to the French income tax on that dividend"],
           lines: { foreignSource: String(!isFrenchSecurity(t)) },
         });
       }
@@ -470,7 +475,7 @@ export class FranceRegime extends TaxRegime {
       (e) => e.amount,
     );
     const credit = round2(Math.min(foreignWh, foreignIncome * pfuIr));
-    if (foreignWh) {
+    if (foreignWh > 0) {
       fig("withholding.foreign", "foreign tax withheld on dividends", foreignWh);
       fig(
         "withholding.credit",
