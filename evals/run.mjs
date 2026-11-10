@@ -20,7 +20,7 @@
 // network  runs `analyze` live and asserts the same evidence keys exist and
 //          that every source still answers in the shape the parsers expect.
 //          Report-only: upstreams change and throttle; never gates a PR.
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -200,6 +200,33 @@ if (suite === "offline") {
   ok(tighten.status === 0 && tighten.json?.applied === true, "tightening the live limits applies at once");
   const code = cli(["broker", "code", "limits", "--max-order", "500"]);
   ok(!JSON.stringify(code.json ?? {}).match(/\b\d{6}\b/) && !/\b\d{6}\b/.test(code.stderr ?? ""), "an approval code never appears in the command's output");
+
+  // An agent calls tools in parallel: eight `calc` on one run at once must each get an id of their own, and keep it.
+  console.log("concurrency — one run, several writers");
+  const shared = mkdtempSync(join(scratch, "shared-"));
+  cli(["analyze", "BTCUSDT", "--fixture", join(root, "assets", "fixtures", "btcusdt"), "--out", shared]);
+  const before = (cli(["evidence", shared]).json?.items ?? []).length;
+  const calcs = await Promise.all(
+    Array.from(
+      { length: 8 },
+      (_, k) =>
+        new Promise((done) =>
+          execFile(process.execPath, [bundle, "calc", shared, `E1 * ${k + 2}`, "--label", `times ${k + 2}`, "--json"], { env }, (err, stdout) => {
+            try {
+              done(err ? {} : JSON.parse(stdout));
+            } catch {
+              done({});
+            }
+          }),
+        ),
+    ),
+  );
+  const items = cli(["evidence", shared]).json?.items ?? [];
+  const kept = calcs.filter((c, k) => items.some((i) => i.id === c.id && i.formula === `E1 * ${k + 2}`)).length;
+  ok(
+    new Set(calcs.map((c) => c.id)).size === 8 && items.length === before + 8 && kept === 8,
+    `8 parallel calc on one run: 8 ids of their own, each still holding its figure (${new Set(calcs.map((c) => c.id)).size} ids, ${items.length - before} items, ${kept} kept)`,
+  );
 }
 
 if (suite === "network") {

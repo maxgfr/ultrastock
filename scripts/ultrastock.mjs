@@ -6,7 +6,7 @@ import { resolve as resolve19 } from "path";
 import { pathToFileURL } from "url";
 
 // src/analyze/pack.ts
-import { mkdirSync as mkdirSync7, readFileSync as readFileSync13 } from "fs";
+import { mkdirSync as mkdirSync8, readFileSync as readFileSync14 } from "fs";
 import { join as join13 } from "path";
 
 // src/vendor/webindex-engine.mjs
@@ -2410,7 +2410,7 @@ async function downloadSubtitle(info2, lang, auto, run3 = defaultVideoRunner, si
 }
 async function downloadMedia(args, dir2, stem, opts) {
   let stderr = "";
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt2 = 0; attempt2 < 2; attempt2++) {
     const timeoutMs = typeof opts.timeoutMs === "function" ? opts.timeoutMs() : opts.timeoutMs;
     const r3 = await runYtdlp([...args, "--no-warnings", "-o", join3(dir2, `${stem}.%(ext)s`)], {
       run: opts.run,
@@ -7902,7 +7902,7 @@ async function httpGet(url, opts = {}) {
   let last2 = { ok: false, status: 0, body: "", contentType: "", url };
   const timeoutMs = opts.timeoutMs ?? defaultTimeoutMs2();
   const cancelled = () => ({ ok: false, status: 0, body: "", contentType: "", url, error: "cancelled" });
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  for (let attempt2 = 0; attempt2 < attempts; attempt2++) {
     if (opts.signal?.aborted) return cancelled();
     const ctrl = new AbortController();
     const onCancel = () => ctrl.abort();
@@ -7965,7 +7965,7 @@ async function httpGet(url, opts = {}) {
         ctrl.abort();
         return { ok: false, status: res.status, body: "", bytesRead: 0, truncated: true, ...meta2, error: `response too large: ${declared} bytes > ${max} cap` };
       }
-      const wait = RETRY_STATUS.has(res.status) && attempt < attempts - 1 ? retryDelayMs(meta2.retryAfterMs) : void 0;
+      const wait = RETRY_STATUS.has(res.status) && attempt2 < attempts - 1 ? retryDelayMs(meta2.retryAfterMs) : void 0;
       if (wait !== void 0) {
         await res.body?.cancel();
         last2 = { ok: false, status: res.status, body: "", bytesRead: 0, truncated: false, ...meta2 };
@@ -8010,7 +8010,7 @@ async function httpGet(url, opts = {}) {
         ...!timedOut && /redirect count exceeded/i.test(error) ? { redirectFailed: true } : {}
       };
       if (timedOut || isPermanentFailure(e)) break;
-      if (attempt < attempts - 1) await sleepUnlessAborted(defaultRetryMs(), opts.signal);
+      if (attempt2 < attempts - 1) await sleepUnlessAborted(defaultRetryMs(), opts.signal);
     } finally {
       clearTimeout(t);
       opts.signal?.removeEventListener("abort", onCancel);
@@ -8023,7 +8023,7 @@ async function httpJson(method, url, body, opts = {}) {
   let last2 = { ok: false, status: 0, data: void 0 };
   const timeoutMs = opts.timeoutMs ?? defaultTimeoutMs2();
   const cancelled = { ok: false, status: 0, data: void 0, error: "cancelled" };
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  for (let attempt2 = 0; attempt2 < attempts; attempt2++) {
     if (opts.signal?.aborted) return cancelled;
     const ctrl = new AbortController();
     const onCancel = () => ctrl.abort();
@@ -8047,7 +8047,7 @@ async function httpJson(method, url, body, opts = {}) {
         headers,
         body: body === void 0 ? void 0 : JSON.stringify(body)
       });
-      const wait = RETRY_STATUS.has(res.status) && attempt < attempts - 1 ? retryDelayMs(parseRetryAfter(res.headers, Number.POSITIVE_INFINITY)) : void 0;
+      const wait = RETRY_STATUS.has(res.status) && attempt2 < attempts - 1 ? retryDelayMs(parseRetryAfter(res.headers, Number.POSITIVE_INFINITY)) : void 0;
       if (wait !== void 0) {
         await res.body?.cancel();
         last2 = { ok: false, status: res.status, data: void 0 };
@@ -8073,7 +8073,7 @@ async function httpJson(method, url, body, opts = {}) {
       if (!timedOut && opts.signal?.aborted) return cancelled;
       last2 = timedOut ? { ok: false, status: 0, data: void 0, error: `timed out after ${timeoutMs} ms`, timedOut: true } : { ok: false, status: 0, data: void 0, error: networkFailure(e) };
       if (timedOut || isPermanentFailure(e)) break;
-      if (attempt < attempts - 1) await sleepUnlessAborted(defaultRetryMs(), opts.signal);
+      if (attempt2 < attempts - 1) await sleepUnlessAborted(defaultRetryMs(), opts.signal);
     } finally {
       clearTimeout(t);
       opts.signal?.removeEventListener("abort", onCancel);
@@ -12513,8 +12513,104 @@ function lastValue(xs) {
 }
 
 // src/core/evidence.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync2, readFileSync as readFileSync6 } from "fs";
+import { existsSync as existsSync4, mkdirSync as mkdirSync4, readFileSync as readFileSync9 } from "fs";
 import { isAbsolute as isAbsolute3, join as join5, relative as relative2, resolve } from "path";
+
+// src/core/lock.ts
+import { closeSync as closeSync2, fsyncSync, mkdirSync as mkdirSync2, openSync as openSync2, readFileSync as readFileSync6, rmSync as rmSync3, statSync as statSync6, unlinkSync as unlinkSync3, writeSync as writeSync2 } from "fs";
+import { hostname } from "os";
+import { dirname } from "path";
+var UNWRITTEN_GRACE_MS = 5e3;
+function isStaleLock(path2) {
+  let owner;
+  try {
+    owner = JSON.parse(readFileSync6(path2, "utf8"));
+  } catch {
+    try {
+      return Date.now() - statSync6(path2).mtimeMs > UNWRITTEN_GRACE_MS;
+    } catch {
+      return false;
+    }
+  }
+  if (!Number.isSafeInteger(owner?.pid) || owner.pid <= 0 || owner.hostname !== hostname()) return false;
+  try {
+    process.kill(owner.pid, 0);
+    return false;
+  } catch (e) {
+    return e.code === "ESRCH";
+  }
+}
+function tryAcquire(path2) {
+  let fd;
+  try {
+    fd = openSync2(path2, "wx");
+  } catch (e) {
+    if (e.code === "EEXIST") return false;
+    throw e;
+  }
+  try {
+    writeSync2(fd, JSON.stringify({ pid: process.pid, hostname: hostname(), createdAt: (/* @__PURE__ */ new Date()).toISOString() }));
+    fsyncSync(fd);
+  } finally {
+    closeSync2(fd);
+  }
+  return true;
+}
+async function acquireLock(path2, waitMs = 1e4) {
+  mkdirSync2(dirname(path2), { recursive: true });
+  const deadline = Date.now() + waitMs;
+  for (; ; ) {
+    const got = attempt(path2);
+    if (got === "acquired") return () => rmSync3(path2, { force: true });
+    if (got === "recovered") continue;
+    if (Date.now() >= deadline) throw new Error(LOCKED(path2));
+    await sleep(100);
+  }
+}
+var LOCKED = (path2) => `${path2} is locked by another ultrastock process \u2014 wait for it to finish, or remove the lock if its owner is gone`;
+function attempt(path2) {
+  if (tryAcquire(path2)) return "acquired";
+  if (!isStaleLock(path2)) return "held";
+  const recovery = `${path2}.recovery`;
+  if (tryAcquire(recovery)) {
+    try {
+      if (isStaleLock(path2)) unlinkSync3(path2);
+    } finally {
+      rmSync3(recovery, { force: true });
+    }
+    return "recovered";
+  }
+  if (isStaleLock(recovery)) {
+    rmSync3(recovery, { force: true });
+    return "recovered";
+  }
+  return "held";
+}
+async function withFileLock(path2, fn, waitMs) {
+  const release = await acquireLock(path2, waitMs);
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+function withFileLockSync(path2, fn, waitMs = 1e4) {
+  mkdirSync2(dirname(path2), { recursive: true });
+  const deadline = Date.now() + waitMs;
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  for (; ; ) {
+    const got = attempt(path2);
+    if (got === "acquired") break;
+    if (got === "recovered") continue;
+    if (Date.now() >= deadline) throw new Error(LOCKED(path2));
+    Atomics.wait(pause, 0, 0, 20);
+  }
+  try {
+    return fn();
+  } finally {
+    rmSync3(path2, { force: true });
+  }
+}
 
 // src/core/untrusted.ts
 var UNTRUSTED_OPEN = "<<<UNTRUSTED_DATA";
@@ -12552,7 +12648,7 @@ var EvidenceStore = class _EvidenceStore {
   static open(dir2, init = {}) {
     const path2 = join5(dir2, EVIDENCE_FILE);
     if (existsSync4(path2)) {
-      const data = JSON.parse(readFileSync6(path2, "utf8"));
+      const data = JSON.parse(readFileSync9(path2, "utf8"));
       if (data.schema !== EVIDENCE_SCHEMA || !Array.isArray(data.items))
         throw new Error(`${path2} is not an ultrastock evidence file (schema ${EVIDENCE_SCHEMA})`);
       return new _EvidenceStore(dir2, data);
@@ -12568,6 +12664,23 @@ var EvidenceStore = class _EvidenceStore {
   /** Read a run's register; undefined when the directory holds none. */
   static load(dir2) {
     return existsSync4(join5(dir2, EVIDENCE_FILE)) ? _EvidenceStore.open(dir2) : void 0;
+  }
+  /**
+   * Read the register, change it and write it back as one step, under a lock on
+   * the run. An id is the register's length when the item is added: two commands
+   * writing the same run at once (an agent's parallel `calc` calls) would
+   * otherwise both read N items, both hand out E(N+1), and the second save
+   * would replace the first — the [E#] one of them was given then holds another
+   * figure. Use it for every short write; a store kept open across a long run
+   * still saves what it read at its start.
+   */
+  static update(dir2, change, init = {}) {
+    return withFileLockSync(join5(dir2, `${EVIDENCE_FILE}.lock`), () => {
+      const store = _EvidenceStore.open(dir2, init);
+      const result = change(store);
+      store.save();
+      return result;
+    });
   }
   get items() {
     return this.data.items;
@@ -12617,7 +12730,7 @@ var EvidenceStore = class _EvidenceStore {
     });
   }
   save() {
-    mkdirSync2(this.dir, { recursive: true });
+    mkdirSync4(this.dir, { recursive: true });
     const path2 = join5(this.dir, EVIDENCE_FILE);
     writeFileAtomic(path2, `${JSON.stringify(this.data, null, 2)}
 `);
@@ -12649,7 +12762,7 @@ function readDocText(dir2, item) {
   const rel = relative2(root, path2);
   if (!rel || rel.startsWith("..") || isAbsolute3(rel)) return void 0;
   if (!existsSync4(path2)) return void 0;
-  const raw = readFileSync6(path2, "utf8");
+  const raw = readFileSync9(path2, "utf8");
   const open2 = raw.indexOf(UNTRUSTED_OPEN);
   const close = raw.lastIndexOf(UNTRUSTED_CLOSE);
   if (open2 < 0 || close < open2) return raw;
@@ -12657,7 +12770,7 @@ function readDocText(dir2, item) {
 }
 
 // src/core/net.ts
-import { existsSync as existsSync8, mkdirSync as mkdirSync4, readFileSync as readFileSync9 } from "fs";
+import { existsSync as existsSync8, mkdirSync as mkdirSync5, readFileSync as readFileSync11 } from "fs";
 import { join as join6 } from "path";
 var CONTACT_URL = "https://github.com/maxgfr/ultrastock";
 var BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
@@ -12668,7 +12781,7 @@ var mode2 = { kind: "live" };
 function setNetMode(next2) {
   mode2 = next2;
   if (next2.kind === "record") {
-    mkdirSync4(next2.dir, { recursive: true });
+    mkdirSync5(next2.dir, { recursive: true });
     const meta2 = join6(next2.dir, "fixture.json");
     if (!existsSync8(meta2)) writeFileAtomic(meta2, `${JSON.stringify({ recordedAt: (/* @__PURE__ */ new Date()).toISOString(), tool: `ultrastock ${VERSION}` }, null, 2)}
 `);
@@ -12678,7 +12791,7 @@ function clockNow() {
   if (mode2.kind !== "live") {
     const meta2 = join6(mode2.dir, "fixture.json");
     if (existsSync8(meta2)) {
-      const at = JSON.parse(readFileSync9(meta2, "utf8")).recordedAt;
+      const at = JSON.parse(readFileSync11(meta2, "utf8")).recordedAt;
       if (at && !Number.isNaN(Date.parse(at))) return new Date(at);
     }
   }
@@ -12708,7 +12821,7 @@ async function fetchText(url, opts = {}) {
     const path2 = fixturePath(mode2.dir, key);
     if (!existsSync8(path2))
       throw new FixtureMiss(`fixture ${mode2.dir} has no recorded answer for ${opts.method ?? "GET"} ${shown} \u2014 re-record it with --record`);
-    const rec = JSON.parse(readFileSync9(path2, "utf8"));
+    const rec = JSON.parse(readFileSync11(path2, "utf8"));
     return { ...rec.response, replayed: true };
   }
   if (opts.hostIntervalMs) await awaitHostSlot(url, opts.hostIntervalMs);
@@ -12738,7 +12851,7 @@ async function fetchText(url, opts = {}) {
     res = { ok: r3.ok, status: r3.status, body: r3.data === void 0 ? "" : JSON.stringify(r3.data), url, fetchedAt, error: r3.error };
   }
   if (mode2.kind === "record" && res.ok) {
-    mkdirSync4(join6(mode2.dir, "http"), { recursive: true });
+    mkdirSync5(join6(mode2.dir, "http"), { recursive: true });
     writeFileAtomic(
       fixturePath(mode2.dir, key),
       `${JSON.stringify(
@@ -12768,7 +12881,7 @@ async function fetchBytes(url, opts = {}) {
   if (mode2.kind === "fixture") {
     const path2 = fixturePath(mode2.dir, key);
     if (!existsSync8(path2)) throw new FixtureMiss(`fixture ${mode2.dir} has no recorded bytes for GET ${url} \u2014 re-record it with --record`);
-    const rec = JSON.parse(readFileSync9(path2, "utf8"));
+    const rec = JSON.parse(readFileSync11(path2, "utf8"));
     const { bodyBase64, contentType, ...response } = rec.response;
     return { ...response, bytes: Buffer.from(bodyBase64 ?? "", "base64"), contentType: contentType ?? "", replayed: true };
   }
@@ -12797,7 +12910,7 @@ async function fetchBytes(url, opts = {}) {
     contentType: r3.contentType ?? ""
   };
   if (mode2.kind === "record" && res.ok) {
-    mkdirSync4(join6(mode2.dir, "http"), { recursive: true });
+    mkdirSync5(join6(mode2.dir, "http"), { recursive: true });
     const { bytes: _bytes, ...rest } = res;
     writeFileAtomic(
       fixturePath(mode2.dir, key),
@@ -12813,11 +12926,11 @@ async function recordedCall(kind, call2, live, keep = () => true) {
     const path2 = join6(mode2.dir, kind, `${key}.json`);
     if (!existsSync8(path2))
       throw new FixtureMiss(`fixture ${mode2.dir} has no recorded ${kind} call ${JSON.stringify(call2).slice(0, 160)} \u2014 re-record it with --record`);
-    return JSON.parse(readFileSync9(path2, "utf8")).value;
+    return JSON.parse(readFileSync11(path2, "utf8")).value;
   }
   const value = await live();
   if (mode2.kind === "record" && keep(value)) {
-    mkdirSync4(join6(mode2.dir, kind), { recursive: true });
+    mkdirSync5(join6(mode2.dir, kind), { recursive: true });
     writeFileAtomic(join6(mode2.dir, kind, `${key}.json`), `${JSON.stringify({ call: call2, value }, null, 1)}
 `);
   }
@@ -12974,7 +13087,7 @@ async function binanceQuote(instrument, notes = []) {
 }
 
 // src/core/cache.ts
-import { existsSync as existsSync9, mkdirSync as mkdirSync5, readFileSync as readFileSync11 } from "fs";
+import { existsSync as existsSync9, mkdirSync as mkdirSync7, readFileSync as readFileSync13 } from "fs";
 import { join as join12 } from "path";
 
 // src/core/paths.ts
@@ -13008,7 +13121,7 @@ function peekCache(key) {
   const path2 = pathFor(key);
   if (!existsSync9(path2)) return void 0;
   try {
-    const e = JSON.parse(readFileSync11(path2, "utf8"));
+    const e = JSON.parse(readFileSync13(path2, "utf8"));
     return e.key === key ? { value: e.value, ageMs: Date.now() - e.storedAt } : void 0;
   } catch {
     return void 0;
@@ -13024,7 +13137,7 @@ async function cachedJson(key, ttlMs, produce) {
   if (mode3.offline) return void 0;
   const value = await produce();
   if (value !== void 0) {
-    mkdirSync5(join12(dataCacheDir(), "datasets"), { recursive: true });
+    mkdirSync7(join12(dataCacheDir(), "datasets"), { recursive: true });
     writeFileAtomic(pathFor(key), JSON.stringify({ storedAt: Date.now(), key, value }));
   }
   return value;
@@ -14152,7 +14265,7 @@ async function analyzeSymbol(raw, dir2, opts = {}) {
     });
     add2("maxDrawdown1y.window", "maximum drawdown window", `${dd.peak} \u2192 ${dd.trough}`, void 0, derived(last2.date));
   }
-  mkdirSync7(dir2, { recursive: true });
+  mkdirSync8(dir2, { recursive: true });
   store.save();
   const notes = [...series.notes, ...quote2.notes.filter((n2) => !series.notes.includes(n2))];
   writeArtifact(join13(dir2, "BRIEF.md"), briefMarkdown(store, instrument.symbol, instrument.name, series, quote2, notes));
@@ -14213,7 +14326,7 @@ function runbookMarkdown(dir2, symbol) {
 `;
 }
 function readBrief(dir2) {
-  return readFileSync13(join13(dir2, "BRIEF.md"), "utf8");
+  return readFileSync14(join13(dir2, "BRIEF.md"), "utf8");
 }
 
 // src/analyze/full.ts
@@ -14227,7 +14340,12 @@ import { resolve as resolve4 } from "path";
 // src/core/datasets.ts
 var round2 = (v) => Number.isInteger(v) ? v : Number(v.toPrecision(12));
 function registerDatasets(target, datasets) {
-  const store = typeof target === "string" ? EvidenceStore.open(target, { subject: datasets[0]?.subject }) : target;
+  if (typeof target === "string") return EvidenceStore.update(target, (store) => registerInto(store, datasets), { subject: datasets[0]?.subject });
+  const out5 = registerInto(target, datasets);
+  target?.save();
+  return out5;
+}
+function registerInto(store, datasets) {
   const out5 = [];
   for (const ds of datasets) {
     const items = [];
@@ -14252,7 +14370,6 @@ function registerDatasets(target, datasets) {
     }
     out5.push({ dataset: ds, ids, items });
   }
-  store?.save();
   return out5;
 }
 function formatDatasets(results) {
@@ -14310,7 +14427,7 @@ function emitDatasets(args, datasets, asJson) {
 
 // src/providers/external/crible.ts
 import { spawn as spawn4 } from "child_process";
-import { existsSync as existsSync11, readFileSync as readFileSync14, realpathSync as realpathSync3 } from "fs";
+import { existsSync as existsSync11, readFileSync as readFileSync15, realpathSync as realpathSync3 } from "fs";
 import { delimiter, join as join14 } from "path";
 var SOURCE8 = "crible";
 var CRIBLE_TAG = "v0.17.0";
@@ -14391,7 +14508,7 @@ function cribleLocalBuiltAt(dir2 = cribleDataDir()) {
     ["status.json", "ts"]
   ]) {
     try {
-      const v = JSON.parse(readFileSync14(join14(dir2, file), "utf8"))[field2];
+      const v = JSON.parse(readFileSync15(join14(dir2, file), "utf8"))[field2];
       if (typeof v === "number" && Number.isFinite(v) && v > 0) return new Date(v * 1e3);
     } catch {
     }
@@ -14539,7 +14656,7 @@ async function cribleStats(fields, opts = {}) {
 }
 
 // src/providers/fundamentals/binary.ts
-import { existsSync as existsSync13, mkdirSync as mkdirSync8, readFileSync as readFileSync15 } from "fs";
+import { existsSync as existsSync13, mkdirSync as mkdirSync9, readFileSync as readFileSync16 } from "fs";
 import { join as join16 } from "path";
 var keyOf = (url) => contentHash(`GET-BYTES ${url}`).slice(0, 20);
 async function fetchBinary(url, opts = {}) {
@@ -14547,7 +14664,7 @@ async function fetchBinary(url, opts = {}) {
   const path2 = mode3.kind === "live" ? "" : join16(mode3.dir, "http", `${keyOf(url)}.json`);
   if (mode3.kind === "fixture") {
     if (!existsSync13(path2)) throw new FixtureMiss(`fixture ${mode3.dir} has no recorded answer for GET ${url} (binary) \u2014 re-record it with --record`);
-    const rec = JSON.parse(readFileSync15(path2, "utf8")).response;
+    const rec = JSON.parse(readFileSync16(path2, "utf8")).response;
     return {
       ok: rec.ok,
       status: rec.status,
@@ -14581,7 +14698,7 @@ async function fetchBinary(url, opts = {}) {
     error: r3.truncated ? "response over the size cap" : r3.error
   };
   if (mode3.kind === "record" && ok) {
-    mkdirSync8(join16(mode3.dir, "http"), { recursive: true });
+    mkdirSync9(join16(mode3.dir, "http"), { recursive: true });
     const response = { ok, status: r3.status, url: res.url, contentType: r3.contentType, fetchedAt, bodyBase64: bytes.toString("base64") };
     writeFileAtomic(path2, `${JSON.stringify({ request: { method: "GET", url, binary: true }, response }, null, 1)}
 `);
@@ -17037,8 +17154,8 @@ function verifyChecklist(code) {
 }
 
 // src/core/profile.ts
-import { existsSync as existsSync14, mkdirSync as mkdirSync9, readFileSync as readFileSync16 } from "fs";
-import { dirname, join as join17 } from "path";
+import { existsSync as existsSync14, mkdirSync as mkdirSync10, readFileSync as readFileSync17 } from "fs";
+import { dirname as dirname4, join as join17 } from "path";
 var PROFILE_SCHEMA = 1;
 function defaultProfile(jurisdiction = "FR", currency = "EUR", now = /* @__PURE__ */ new Date()) {
   return {
@@ -17072,13 +17189,13 @@ function profilePath() {
 function loadProfile() {
   const path2 = profilePath();
   if (!existsSync14(path2)) return void 0;
-  const p = JSON.parse(readFileSync16(path2, "utf8"));
+  const p = JSON.parse(readFileSync17(path2, "utf8"));
   if (p.schema !== PROFILE_SCHEMA) throw new Error(`${path2} has profile schema ${p.schema}; this ultrastock reads schema ${PROFILE_SCHEMA}`);
   return p;
 }
 function saveProfile(p) {
   const path2 = profilePath();
-  mkdirSync9(dirname(path2), { recursive: true });
+  mkdirSync10(dirname4(path2), { recursive: true });
   writeFileAtomic(path2, `${JSON.stringify(p, null, 2)}
 `, 384);
   return path2;
@@ -19362,7 +19479,7 @@ function yieldSustainability(p) {
 }
 
 // src/analyze/quant/options.ts
-import { existsSync as existsSync15, mkdirSync as mkdirSync10, readFileSync as readFileSync17 } from "fs";
+import { existsSync as existsSync15, mkdirSync as mkdirSync11, readFileSync as readFileSync18 } from "fs";
 import { join as join18 } from "path";
 
 // src/analytics/options.ts
@@ -19766,13 +19883,13 @@ function recordIv(symbol, date, iv) {
   let h = { symbol, series: {} };
   if (existsSync15(path2)) {
     try {
-      const raw = JSON.parse(readFileSync17(path2, "utf8"));
+      const raw = JSON.parse(readFileSync18(path2, "utf8"));
       if (raw && typeof raw.series === "object") h = { symbol, series: raw.series };
     } catch {
     }
   }
   h.series[date] = Number(iv.toFixed(4));
-  mkdirSync10(join18(homeDir(), "state", "iv-history"), { recursive: true });
+  mkdirSync11(join18(homeDir(), "state", "iv-history"), { recursive: true });
   writeFileAtomic(path2, `${JSON.stringify(h, null, 2)}
 `);
   return h;
@@ -20767,7 +20884,7 @@ async function predictAnalysisCommand(args, asJson) {
 }
 
 // src/research/run.ts
-import { existsSync as existsSync17, readFileSync as readFileSync20 } from "fs";
+import { existsSync as existsSync17, readFileSync as readFileSync21 } from "fs";
 import { join as join22 } from "path";
 
 // src/research/angles.ts
@@ -20904,7 +21021,7 @@ function followUpAngles(s, under, opts = {}) {
 }
 
 // src/research/delegate.ts
-import { mkdtempSync as mkdtempSync3, readFileSync as readFileSync18, rmSync as rmSync3, writeFileSync as writeFileSync7 } from "fs";
+import { mkdtempSync as mkdtempSync3, readFileSync as readFileSync19, rmSync as rmSync6, writeFileSync as writeFileSync7 } from "fs";
 import { tmpdir as tmpdir4 } from "os";
 import { join as join20 } from "path";
 var SEARCH_DELEGATES = ["claude", "codex", "ccs"];
@@ -21026,13 +21143,13 @@ async function runBatch(who, batch, model) {
     if (!r3.ok) throw new Error(`${who} exited with an error: ${(r3.stderr || r3.stdout).trim().split("\n").slice(-2).join(" ").slice(0, 240)}`);
     let last2;
     try {
-      last2 = readFileSync18(outFile, "utf8");
+      last2 = readFileSync19(outFile, "utf8");
     } catch {
       last2 = void 0;
     }
     return parseDelegateAnswer(who, r3.stdout, last2);
   } finally {
-    rmSync3(work, { recursive: true, force: true });
+    rmSync6(work, { recursive: true, force: true });
   }
 }
 async function delegatedSearch(who, queries, opts = {}) {
@@ -21073,7 +21190,7 @@ async function delegatedSearch(who, queries, opts = {}) {
 }
 
 // src/research/dossier.ts
-import { existsSync as existsSync16, mkdirSync as mkdirSync11, readdirSync as readdirSync4, readFileSync as readFileSync19 } from "fs";
+import { existsSync as existsSync16, mkdirSync as mkdirSync12, readdirSync as readdirSync4, readFileSync as readFileSync20 } from "fs";
 import { join as join21 } from "path";
 
 // src/core/dates.ts
@@ -21412,12 +21529,12 @@ function researchTags(dir2) {
 function readTodo(dir2, tag) {
   const path2 = join21(dir2, researchFiles(tag).todo);
   if (!existsSync16(path2)) return void 0;
-  const t = JSON.parse(readFileSync19(path2, "utf8"));
+  const t = JSON.parse(readFileSync20(path2, "utf8"));
   if (t.schema !== 1 || !Array.isArray(t.angles)) throw new Error(`${path2} is not an ultrastock research worklist`);
   return t;
 }
 function writeTodo(dir2, todo) {
-  mkdirSync11(dir2, { recursive: true });
+  mkdirSync12(dir2, { recursive: true });
   const path2 = join21(dir2, researchFiles(todo.tag).todo);
   writeFileAtomic(path2, `${JSON.stringify(todo, null, 2)}
 `);
@@ -21441,7 +21558,7 @@ var isoDate = (s) => {
 };
 function registerDocuments(dir2, subject, pages) {
   const store = EvidenceStore.open(dir2, { subject: subject.symbol ?? subject.subject });
-  mkdirSync11(join21(dir2, "sources"), { recursive: true });
+  mkdirSync12(join21(dir2, "sources"), { recursive: true });
   const out5 = [];
   for (const page of pages) {
     const host = domainOf(page.finalUrl) ?? domainOf(page.url) ?? "web";
@@ -22094,7 +22211,7 @@ function previousDocs(dir2, tag) {
   const store = EvidenceStore.load(dir2);
   if (!store) return [];
   const out5 = [];
-  for (const e of JSON.parse(readFileSync20(path2, "utf8"))) {
+  for (const e of JSON.parse(readFileSync21(path2, "utf8"))) {
     const item = store.get(e.id);
     const text = item ? readDocText(dir2, item) : void 0;
     if (!item || text === void 0) continue;
@@ -22211,7 +22328,7 @@ import { appendFileSync as appendFileSync3, existsSync as existsSync21, mkdirSyn
 import { join as join26 } from "path";
 
 // src/analyze/decision.ts
-import { appendFileSync as appendFileSync2, existsSync as existsSync18, mkdirSync as mkdirSync12, readFileSync as readFileSync21 } from "fs";
+import { appendFileSync as appendFileSync2, existsSync as existsSync18, mkdirSync as mkdirSync13, readFileSync as readFileSync22 } from "fs";
 import { join as join23 } from "path";
 var RATINGS = ["buy", "overweight", "hold", "underweight", "sell"];
 var HORIZONS = ["days", "weeks", "months", "years"];
@@ -22265,7 +22382,7 @@ function recordDecision(input, runDir2) {
   writeFileAtomic(file, `${JSON.stringify(d, null, 2)}
 `);
   const dir2 = journalDir();
-  mkdirSync12(dir2, { recursive: true });
+  mkdirSync13(dir2, { recursive: true });
   appendFileSync2(join23(dir2, "decisions.jsonl"), `${JSON.stringify({ ...d, status: "pending" })}
 `, { mode: 384 });
   const md = join23(dir2, "decisions.md");
@@ -22287,86 +22404,12 @@ function recordDecision(input, runDir2) {
 function pastDecisions(symbol, limit = 5) {
   const f3 = join23(journalDir(), "decisions.jsonl");
   if (!existsSync18(f3)) return [];
-  return readFileSync21(f3, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((d) => d.symbol === symbol).reverse().slice(0, limit);
+  return readFileSync22(f3, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((d) => d.symbol === symbol).reverse().slice(0, limit);
 }
 
 // src/trading/tickets.ts
 import { closeSync as closeSync3, existsSync as existsSync20, fsyncSync as fsyncSync2, mkdirSync as mkdirSync14, openSync as openSync3, readdirSync as readdirSync6, readFileSync as readFileSync23, writeSync as writeSync3 } from "fs";
 import { join as join25 } from "path";
-
-// src/core/lock.ts
-import { closeSync as closeSync2, fsyncSync, mkdirSync as mkdirSync13, openSync as openSync2, readFileSync as readFileSync22, rmSync as rmSync6, statSync as statSync6, unlinkSync as unlinkSync3, writeSync as writeSync2 } from "fs";
-import { hostname } from "os";
-import { dirname as dirname4 } from "path";
-var UNWRITTEN_GRACE_MS = 5e3;
-function isStaleLock(path2) {
-  let owner;
-  try {
-    owner = JSON.parse(readFileSync22(path2, "utf8"));
-  } catch {
-    try {
-      return Date.now() - statSync6(path2).mtimeMs > UNWRITTEN_GRACE_MS;
-    } catch {
-      return false;
-    }
-  }
-  if (!Number.isSafeInteger(owner?.pid) || owner.pid <= 0 || owner.hostname !== hostname()) return false;
-  try {
-    process.kill(owner.pid, 0);
-    return false;
-  } catch (e) {
-    return e.code === "ESRCH";
-  }
-}
-function tryAcquire(path2) {
-  let fd;
-  try {
-    fd = openSync2(path2, "wx");
-  } catch (e) {
-    if (e.code === "EEXIST") return false;
-    throw e;
-  }
-  try {
-    writeSync2(fd, JSON.stringify({ pid: process.pid, hostname: hostname(), createdAt: (/* @__PURE__ */ new Date()).toISOString() }));
-    fsyncSync(fd);
-  } finally {
-    closeSync2(fd);
-  }
-  return true;
-}
-async function acquireLock(path2, waitMs = 1e4) {
-  mkdirSync13(dirname4(path2), { recursive: true });
-  const deadline = Date.now() + waitMs;
-  for (; ; ) {
-    if (tryAcquire(path2)) return () => rmSync6(path2, { force: true });
-    if (isStaleLock(path2)) {
-      const recovery = `${path2}.recovery`;
-      if (tryAcquire(recovery)) {
-        try {
-          if (isStaleLock(path2)) unlinkSync3(path2);
-        } finally {
-          rmSync6(recovery, { force: true });
-        }
-        continue;
-      }
-      if (isStaleLock(recovery)) {
-        rmSync6(recovery, { force: true });
-        continue;
-      }
-    }
-    if (Date.now() >= deadline)
-      throw new Error(`${path2} is locked by another ultrastock process \u2014 wait for it to finish, or remove the lock if its owner is gone`);
-    await sleep(100);
-  }
-}
-async function withFileLock(path2, fn, waitMs) {
-  const release = await acquireLock(path2, waitMs);
-  try {
-    return await fn();
-  } finally {
-    release();
-  }
-}
 
 // src/trading/riskgate.ts
 import { existsSync as existsSync19 } from "fs";
@@ -32131,15 +32174,15 @@ function piotroski(cur, prev) {
       at === void 0 || atPrev === void 0 ? "revenue or assets missing" : `asset turnover ${f2(atPrev)} \u2192 ${f2(at)}`
     )
   ];
-  const computed = components.filter((x) => x.pass !== void 0);
-  const value = computed.filter((x) => x.pass).length;
+  const computed2 = components.filter((x) => x.pass !== void 0);
+  const value = computed2.filter((x) => x.pass).length;
   return {
     name: "Piotroski F-score",
     value,
-    max: computed.length,
-    computed: computed.length,
+    max: computed2.length,
+    computed: computed2.length,
     components,
-    verdict: computed.length < 7 ? "incomplete \u2014 too few criteria computable" : value >= 8 ? "strong" : value >= 5 ? "average" : value >= 3 ? "weak" : "very weak"
+    verdict: computed2.length < 7 ? "incomplete \u2014 too few criteria computable" : value >= 8 ? "strong" : value >= 5 ? "average" : value >= 3 ? "weak" : "very weak"
   };
 }
 function altmanZ(p, marketCap, model = "non-manufacturer") {
@@ -34069,8 +34112,10 @@ function exprVariables(node) {
 
 // src/calc.ts
 function calcEvidence(dir2, formula, opts) {
-  const store = EvidenceStore.load(dir2);
-  if (!store) throw new Error(`${dir2} holds no evidence.json \u2014 gather evidence first (analyze, quote, history with --out)`);
+  if (!EvidenceStore.load(dir2)) throw new Error(`${dir2} holds no evidence.json \u2014 gather evidence first (analyze, quote, history with --out)`);
+  return EvidenceStore.update(dir2, (store) => computed(store, formula, opts));
+}
+function computed(store, formula, opts) {
   const ast = compileExpr(formula);
   const vars = exprVariables(ast);
   const inputs = [];
@@ -34098,7 +34143,6 @@ function calcEvidence(dir2, formula, opts) {
     derivedFrom: inputs.map((i) => i.id),
     formula
   });
-  store.save();
   return { id, value, item: store.get(id) };
 }
 var CURRENCY_MARKS = [
@@ -34108,8 +34152,10 @@ var CURRENCY_MARKS = [
   [/\bCHF\b/, "CHF"]
 ];
 function calcFromDocument(dir2, docId, written, opts) {
-  const store = EvidenceStore.load(dir2);
-  if (!store) throw new Error(`${dir2} holds no evidence.json \u2014 run \`ultrastock research\` with --out ${dir2} first`);
+  if (!EvidenceStore.load(dir2)) throw new Error(`${dir2} holds no evidence.json \u2014 run \`ultrastock research\` with --out ${dir2} first`);
+  return EvidenceStore.update(dir2, (store) => promoted(store, dir2, docId, written, opts));
+}
+function promoted(store, dir2, docId, written, opts) {
   const doc = store.get(docId);
   if (!doc) throw new Error(`${docId} is not in this run's evidence`);
   if (!doc.doc) throw new Error(`${docId} (${doc.label}) is not a document \u2014 --from reads a figure out of a document [E#]`);
@@ -34135,7 +34181,6 @@ function calcFromDocument(dir2, docId, written, opts) {
     derivedFrom: [docId],
     formula: `read from ${docId}: "${f3.raw}"`
   });
-  store.save();
   return { id, value, item: store.get(id) };
 }
 
@@ -43798,8 +43843,8 @@ function venueSymbol(venue, symbol, currency, override) {
   if (venue === "coinbase") return `${base2}-${q}`;
   throw new Error("IBKR orders need the contract id: pass --conid (from the IBKR gateway's contract search)");
 }
-function clientOrderIdFor(ticketId, attempt) {
-  const h = createHash5("sha256").update(`${ticketId}#${attempt}`).digest("hex");
+function clientOrderIdFor(ticketId, attempt2) {
+  const h = createHash5("sha256").update(`${ticketId}#${attempt2}`).digest("hex");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-${(Number.parseInt(h[16], 16) & 3 | 8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 function liveActivity(now = /* @__PURE__ */ new Date()) {
@@ -43974,13 +44019,13 @@ async function liveSubmit(p) {
       audit({ event: "live-refused", ticket: t.id, venue: p.venue, env: p.env, refusals });
       return { ticket: t, refusals };
     }
-    const attempt = (prev?.attempt ?? 0) + 1;
+    const attempt2 = (prev?.attempt ?? 0) + 1;
     const order = {
       symbol: p.venueSym,
       side: t.order.side,
       quantity: t.order.quantity,
       limitPrice: t.order.price,
-      clientOrderId: clientOrderIdFor(t.id, attempt),
+      clientOrderId: clientOrderIdFor(t.id, attempt2),
       timeInForce: "GTC"
     };
     const rec = {
@@ -43988,7 +44033,7 @@ async function liveSubmit(p) {
       env: p.env,
       clientOrderId: order.clientOrderId,
       venueSymbol: p.venueSym,
-      attempt,
+      attempt: attempt2,
       state: "unknown",
       at: now.toISOString()
     };

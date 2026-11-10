@@ -10,6 +10,7 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { writeFileAtomic } from "../engine.js";
+import { withFileLockSync } from "./lock.js";
 import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "./untrusted.js";
 
 export const EVIDENCE_FILE = "evidence.json";
@@ -105,6 +106,24 @@ export class EvidenceStore {
   /** Read a run's register; undefined when the directory holds none. */
   static load(dir: string): EvidenceStore | undefined {
     return existsSync(join(dir, EVIDENCE_FILE)) ? EvidenceStore.open(dir) : undefined;
+  }
+
+  /**
+   * Read the register, change it and write it back as one step, under a lock on
+   * the run. An id is the register's length when the item is added: two commands
+   * writing the same run at once (an agent's parallel `calc` calls) would
+   * otherwise both read N items, both hand out E(N+1), and the second save
+   * would replace the first — the [E#] one of them was given then holds another
+   * figure. Use it for every short write; a store kept open across a long run
+   * still saves what it read at its start.
+   */
+  static update<T>(dir: string, change: (store: EvidenceStore) => T, init: { run?: string; subject?: string; createdAt?: string } = {}): T {
+    return withFileLockSync(join(dir, `${EVIDENCE_FILE}.lock`), () => {
+      const store = EvidenceStore.open(dir, init);
+      const result = change(store);
+      store.save();
+      return result;
+    });
   }
 
   get items(): readonly EvidenceItem[] {

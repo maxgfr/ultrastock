@@ -42,7 +42,14 @@ const round = (v: number) => (Number.isInteger(v) ? v : Number(v.toPrecision(12)
 
 /** Register datasets in the run at `dir` — or in an open store — and return their ids. */
 export function registerDatasets(target: string | EvidenceStore | undefined, datasets: readonly Dataset[]): Registered[] {
-  const store = typeof target === "string" ? EvidenceStore.open(target, { subject: datasets[0]?.subject }) : target;
+  // A run directory: read, number and write under the run's lock, so two data commands writing one run keep their ids apart.
+  if (typeof target === "string") return EvidenceStore.update(target, (store) => registerInto(store, datasets), { subject: datasets[0]?.subject });
+  const out = registerInto(target, datasets);
+  target?.save();
+  return out;
+}
+
+function registerInto(store: EvidenceStore | undefined, datasets: readonly Dataset[]): Registered[] {
   const out: Registered[] = [];
   for (const ds of datasets) {
     const items: EvidenceItem[] = [];
@@ -67,7 +74,6 @@ export function registerDatasets(target: string | EvidenceStore | undefined, dat
     }
     out.push({ dataset: ds, ids, items });
   }
-  store?.save();
   return out;
 }
 

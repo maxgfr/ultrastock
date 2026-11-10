@@ -21,8 +21,12 @@ export interface CalcResult {
 }
 
 export function calcEvidence(dir: string, formula: string, opts: { label: string; unit?: string; key?: string }): CalcResult {
-  const store = EvidenceStore.load(dir);
-  if (!store) throw new Error(`${dir} holds no evidence.json — gather evidence first (analyze, quote, history with --out)`);
+  if (!EvidenceStore.load(dir)) throw new Error(`${dir} holds no evidence.json — gather evidence first (analyze, quote, history with --out)`);
+  // Read, number and write as one step: two calcs on the same run at once would both take the next id.
+  return EvidenceStore.update(dir, (store) => computed(store, formula, opts));
+}
+
+function computed(store: EvidenceStore, formula: string, opts: { label: string; unit?: string; key?: string }): CalcResult {
   const ast = compileExpr(formula);
   const vars = exprVariables(ast);
   const inputs: EvidenceItem[] = [];
@@ -54,7 +58,6 @@ export function calcEvidence(dir: string, formula: string, opts: { label: string
     derivedFrom: inputs.map((i) => i.id),
     formula,
   });
-  store.save();
   return { id, value, item: store.get(id)! };
 }
 
@@ -67,8 +70,11 @@ const CURRENCY_MARKS: Array<[RegExp, string]> = [
 
 /** Register a figure read in a document [E#] as a number of its own, refused when the document does not state it. */
 export function calcFromDocument(dir: string, docId: string, written: string, opts: { label: string; unit?: string; key?: string }): CalcResult {
-  const store = EvidenceStore.load(dir);
-  if (!store) throw new Error(`${dir} holds no evidence.json — run \`ultrastock research\` with --out ${dir} first`);
+  if (!EvidenceStore.load(dir)) throw new Error(`${dir} holds no evidence.json — run \`ultrastock research\` with --out ${dir} first`);
+  return EvidenceStore.update(dir, (store) => promoted(store, dir, docId, written, opts));
+}
+
+function promoted(store: EvidenceStore, dir: string, docId: string, written: string, opts: { label: string; unit?: string; key?: string }): CalcResult {
   const doc = store.get(docId);
   if (!doc) throw new Error(`${docId} is not in this run's evidence`);
   if (!doc.doc) throw new Error(`${docId} (${doc.label}) is not a document — --from reads a figure out of a document [E#]`);
@@ -94,6 +100,5 @@ export function calcFromDocument(dir: string, docId: string, written: string, op
     derivedFrom: [docId],
     formula: `read from ${docId}: "${f.raw}"`,
   });
-  store.save();
   return { id, value, item: store.get(id)! };
 }
