@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.33](https://github.com/maxgfr/ultrastock/compare/v1.12.32...v1.12.33) (2026-11-10)
+
+
+### Performance Improvements
+
+* **backtest:** compute each indicator once per series across a sweep's variants ([48f7ff0](https://github.com/maxgfr/ultrastock/commit/48f7ff0b517fbcac6057578bdd691e420fff6535))
+
 ## [1.12.32](https://github.com/maxgfr/ultrastock/compare/v1.12.31...v1.12.32) (2026-11-10)
 
 
