@@ -39,6 +39,22 @@ describe("fills: the source's biases, fixed", () => {
     // The source would book 90 (the stop) less slippage; the market only offered 80.
     expect(t.exitPrice).toBeCloseTo(80 * 0.999, 9);
     expect(t.exitPrice).toBeLessThan(90 * 0.999);
+    // The worst the trade saw is its exit, not the −1 % of the quiet bars before the gap.
+    expect(t.maePct).toBeCloseTo((t.exitPrice / t.entryPrice - 1) * 100, 9);
+    expect(t.maePct).toBeLessThan(-19);
+  });
+
+  it("counts the exit in the excursions: a stop in the adverse one, a target in the favourable one", () => {
+    const down = flatBars(12);
+    down[7] = bar(day(7), 99, 100, 88, 95);
+    const stopped = simulate(down, sig(12, { buy: [2] }), { capital: 10_000, costs: NO_COST, risk: { stopLossPct: 10 } }).trades[0]!;
+    expect(stopped.exitReason).toBe("stop");
+    expect(stopped.maePct).toBeCloseTo(-10, 9);
+    const up = flatBars(12);
+    up[7] = bar(day(7), 101, 130, 100, 125);
+    const won = simulate(up, sig(12, { buy: [2] }), { capital: 10_000, costs: NO_COST, risk: { stopLossPct: 10, takeProfitPct: 20 } }).trades[0]!;
+    expect(won.exitReason).toBe("target");
+    expect(won.mfePct).toBeCloseTo(20, 9);
   });
 
   it("fills an intrabar stop at the stop less slippage, a short's gap at the open", () => {

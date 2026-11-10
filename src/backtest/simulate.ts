@@ -182,6 +182,12 @@ export function simulate(bars: readonly Bar[], signals: Signals, cfg: SimConfig)
     const fees = p.fees + exitFee;
     const pnl = gross - exitFee - p.fees - p.funding;
     const bar = bars[t]!;
+    const exitPrice = reason === "liquidation" ? rawPrice : fill;
+    // The excursions run to the exit itself. The range of the bar a stop or a target is hit in is not tracked (the
+    // position is gone before the bar ends), so without the exit price a trade stopped at −10 % would report the
+    // −1 % it had seen until the bar before.
+    const low = Math.min(p.low, exitPrice);
+    const high = Math.max(p.high, exitPrice);
     trades.push({
       side: p.side === 1 ? "long" : "short",
       signalIndex: p.signalIndex,
@@ -191,7 +197,7 @@ export function simulate(bars: readonly Bar[], signals: Signals, cfg: SimConfig)
       entryOrder: p.entryOrder,
       exitIndex: t,
       exitDate: bar.date,
-      exitPrice: reason === "liquidation" ? rawPrice : fill,
+      exitPrice,
       exitReason: reason,
       qty: p.qty,
       notional: p.notional,
@@ -202,8 +208,8 @@ export function simulate(bars: readonly Bar[], signals: Signals, cfg: SimConfig)
       returnPct: (pnl / p.equityAtEntry) * 100,
       r: p.initialRisk ? pnl / p.initialRisk : undefined,
       bars: t - p.entryIndex,
-      maePct: (p.side === 1 ? p.low / p.entryPrice - 1 : 1 - p.high / p.entryPrice) * 100,
-      mfePct: (p.side === 1 ? p.high / p.entryPrice - 1 : 1 - p.low / p.entryPrice) * 100,
+      maePct: (p.side === 1 ? low / p.entryPrice - 1 : 1 - high / p.entryPrice) * 100,
+      mfePct: (p.side === 1 ? high / p.entryPrice - 1 : 1 - low / p.entryPrice) * 100,
     });
     if (reason === "liquidation") liquidations++;
     pos = undefined;
