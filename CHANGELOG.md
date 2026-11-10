@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.30](https://github.com/maxgfr/ultrastock/compare/v1.12.29...v1.12.30) (2026-11-10)
+
+
+### Bug Fixes
+
+* **crypto:** keep the funding when a Binance statistics endpoint refuses ([c995c9c](https://github.com/maxgfr/ultrastock/commit/c995c9c7b7ab096f702edad242756c9dcf5b606a))
+
 ## [1.12.29](https://github.com/maxgfr/ultrastock/compare/v1.12.28...v1.12.29) (2026-11-10)
 
 
