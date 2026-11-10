@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.6](https://github.com/maxgfr/ultrastock/compare/v1.12.5...v1.12.6) (2026-11-10)
+
+
+### Bug Fixes
+
+* **alerts:** match a webhook to its allowlist entry by origin and path ([8b15d73](https://github.com/maxgfr/ultrastock/commit/8b15d73f6ab995708b5a32e2ab8eb4e7eae0e92f))
+
 ## [1.12.5](https://github.com/maxgfr/ultrastock/compare/v1.12.4...v1.12.5) (2026-11-10)
 
 
