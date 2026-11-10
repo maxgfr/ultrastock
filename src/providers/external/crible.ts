@@ -14,7 +14,7 @@
 // (`<dir>/crible/<hash of the arguments>.json`) and replayed with `--fixture`:
 // a replay never starts uvx, never needs a dataset, and a call it did not
 // record fails instead of going live.
-import { spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { env, have, shAsync } from "../../engine.js";
@@ -262,13 +262,49 @@ export async function cribleMcpCall(tool: string, toolArgs: Record<string, unkno
 async function cribleMcpLive(tool: string, toolArgs: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
   if (!cribleAvailable()) throw new ProviderError(SOURCE, NOT_RUNNABLE, 0);
   const { cmd, args } = cribleInvocation();
-  const child = spawn(cmd, [...args, "--data-dir", cribleDataDir(), "mcp"], { stdio: ["pipe", "pipe", "pipe"] });
-  const send = (msg: unknown) => child.stdin.write(`${JSON.stringify(msg)}\n`);
+  return mcpToolCall(spawn(cmd, [...args, "--data-dir", cribleDataDir(), "mcp"], { stdio: ["pipe", "pipe", "pipe"] }), tool, toolArgs, timeoutMs);
+}
+
+/**
+ * One `tools/call` against an MCP server speaking JSON-RPC over stdio:
+ * initialize, call, read the answer, stop the server. Whatever the server does
+ * — an unreadable line, an early exit, silence — ends in a rejected promise
+ * that says so: a throw inside a stream listener would be an uncaught
+ * exception and take the whole command down with it.
+ */
+export function mcpToolCall(child: ChildProcessWithoutNullStreams, tool: string, toolArgs: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
+  const send = (msg: unknown) => {
+    if (child.stdin.writable) child.stdin.write(`${JSON.stringify(msg)}\n`);
+  };
   return new Promise((resolve, reject) => {
+    let settled = false;
+    let errors = "";
+    const finish = (settle: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill();
+      settle();
+    };
+    const fail = (message: string, status = 0) => finish(() => reject(new ProviderError(SOURCE, message, status)));
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      reject(new ProviderError(SOURCE, `crible mcp did not answer ${tool} within ${timeoutMs} ms`, 0));
+      fail(`crible mcp did not answer ${tool} within ${timeoutMs} ms`);
     }, timeoutMs);
+    const answer = (line: string) => {
+      const msg = JSON.parse(line) as { id?: number; result?: any; error?: { message: string } };
+      if (msg.id === 1) {
+        send({ jsonrpc: "2.0", method: "notifications/initialized" });
+        send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: tool, arguments: toolArgs } });
+      } else if (msg.id === 2) {
+        if (msg.error) return fail(`crible ${tool}: ${msg.error.message}`, 400);
+        const r = msg.result ?? {};
+        if (r.isError) return fail(`crible ${tool}: ${r.content?.[0]?.text ?? "error"}`, 400);
+        const text = r.content?.[0]?.text;
+        const value = r.structuredContent !== undefined ? (r.structuredContent.result ?? r.structuredContent) : text === undefined ? null : JSON.parse(text);
+        finish(() => resolve(value));
+      }
+    };
     let buf = "";
     child.stdout.on("data", (chunk: Buffer) => {
       buf += chunk.toString("utf8");
@@ -277,25 +313,23 @@ async function cribleMcpLive(tool: string, toolArgs: Record<string, unknown>, ti
         const line = buf.slice(0, nl).trim();
         buf = buf.slice(nl + 1);
         if (!line.startsWith("{")) continue;
-        const msg = JSON.parse(line) as { id?: number; result?: any; error?: { message: string } };
-        if (msg.id === 1) {
-          send({ jsonrpc: "2.0", method: "notifications/initialized" });
-          send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: tool, arguments: toolArgs } });
-        } else if (msg.id === 2) {
-          clearTimeout(timer);
-          child.kill();
-          if (msg.error) return reject(new ProviderError(SOURCE, `crible ${tool}: ${msg.error.message}`, 400));
-          const r = msg.result ?? {};
-          if (r.isError) return reject(new ProviderError(SOURCE, `crible ${tool}: ${r.content?.[0]?.text ?? "error"}`, 400));
-          if (r.structuredContent !== undefined) return resolve(r.structuredContent.result ?? r.structuredContent);
-          const text = r.content?.[0]?.text;
-          resolve(text === undefined ? null : JSON.parse(text));
+        try {
+          answer(line);
+        } catch {
+          fail(`crible mcp sent an answer to ${tool} that is not JSON: ${line.slice(0, 120)}`);
         }
       }
     });
-    child.on("error", (e) => {
-      clearTimeout(timer);
-      reject(new ProviderError(SOURCE, `cannot start crible: ${e.message}`, 0));
+    // Read, so a talkative server never blocks on a full pipe; its last line explains an early exit.
+    child.stderr.on("data", (chunk: Buffer) => {
+      errors = (errors + chunk.toString("utf8")).slice(-2000);
+    });
+    // A server that died closed its end: the exit below reports it, the write error must not be thrown.
+    child.stdin.on("error", () => {});
+    child.on("error", (e) => fail(`cannot start crible: ${e.message}`));
+    child.on("exit", (code, signal) => {
+      const last = errors.trim().split("\n").at(-1)?.slice(0, 200);
+      fail(`crible mcp stopped before answering ${tool} (${signal ?? `exit ${code}`})${last ? `: ${last}` : ""}`);
     });
     send({
       jsonrpc: "2.0",

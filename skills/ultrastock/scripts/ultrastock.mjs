@@ -14460,14 +14460,42 @@ async function cribleMcpCall(tool, toolArgs, timeoutMs = 12e4) {
 async function cribleMcpLive(tool, toolArgs, timeoutMs) {
   if (!cribleAvailable()) throw new ProviderError(SOURCE8, NOT_RUNNABLE, 0);
   const { cmd, args } = cribleInvocation();
-  const child = spawn4(cmd, [...args, "--data-dir", cribleDataDir(), "mcp"], { stdio: ["pipe", "pipe", "pipe"] });
-  const send = (msg) => child.stdin.write(`${JSON.stringify(msg)}
+  return mcpToolCall(spawn4(cmd, [...args, "--data-dir", cribleDataDir(), "mcp"], { stdio: ["pipe", "pipe", "pipe"] }), tool, toolArgs, timeoutMs);
+}
+function mcpToolCall(child, tool, toolArgs, timeoutMs) {
+  const send = (msg) => {
+    if (child.stdin.writable) child.stdin.write(`${JSON.stringify(msg)}
 `);
+  };
   return new Promise((resolve20, reject) => {
+    let settled = false;
+    let errors = "";
+    const finish2 = (settle3) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill();
+      settle3();
+    };
+    const fail2 = (message, status = 0) => finish2(() => reject(new ProviderError(SOURCE8, message, status)));
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      reject(new ProviderError(SOURCE8, `crible mcp did not answer ${tool} within ${timeoutMs} ms`, 0));
+      fail2(`crible mcp did not answer ${tool} within ${timeoutMs} ms`);
     }, timeoutMs);
+    const answer = (line) => {
+      const msg = JSON.parse(line);
+      if (msg.id === 1) {
+        send({ jsonrpc: "2.0", method: "notifications/initialized" });
+        send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: tool, arguments: toolArgs } });
+      } else if (msg.id === 2) {
+        if (msg.error) return fail2(`crible ${tool}: ${msg.error.message}`, 400);
+        const r3 = msg.result ?? {};
+        if (r3.isError) return fail2(`crible ${tool}: ${r3.content?.[0]?.text ?? "error"}`, 400);
+        const text = r3.content?.[0]?.text;
+        const value = r3.structuredContent !== void 0 ? r3.structuredContent.result ?? r3.structuredContent : text === void 0 ? null : JSON.parse(text);
+        finish2(() => resolve20(value));
+      }
+    };
     let buf = "";
     child.stdout.on("data", (chunk) => {
       buf += chunk.toString("utf8");
@@ -14476,25 +14504,22 @@ async function cribleMcpLive(tool, toolArgs, timeoutMs) {
         const line = buf.slice(0, nl).trim();
         buf = buf.slice(nl + 1);
         if (!line.startsWith("{")) continue;
-        const msg = JSON.parse(line);
-        if (msg.id === 1) {
-          send({ jsonrpc: "2.0", method: "notifications/initialized" });
-          send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: tool, arguments: toolArgs } });
-        } else if (msg.id === 2) {
-          clearTimeout(timer);
-          child.kill();
-          if (msg.error) return reject(new ProviderError(SOURCE8, `crible ${tool}: ${msg.error.message}`, 400));
-          const r3 = msg.result ?? {};
-          if (r3.isError) return reject(new ProviderError(SOURCE8, `crible ${tool}: ${r3.content?.[0]?.text ?? "error"}`, 400));
-          if (r3.structuredContent !== void 0) return resolve20(r3.structuredContent.result ?? r3.structuredContent);
-          const text = r3.content?.[0]?.text;
-          resolve20(text === void 0 ? null : JSON.parse(text));
+        try {
+          answer(line);
+        } catch {
+          fail2(`crible mcp sent an answer to ${tool} that is not JSON: ${line.slice(0, 120)}`);
         }
       }
     });
-    child.on("error", (e) => {
-      clearTimeout(timer);
-      reject(new ProviderError(SOURCE8, `cannot start crible: ${e.message}`, 0));
+    child.stderr.on("data", (chunk) => {
+      errors = (errors + chunk.toString("utf8")).slice(-2e3);
+    });
+    child.stdin.on("error", () => {
+    });
+    child.on("error", (e) => fail2(`cannot start crible: ${e.message}`));
+    child.on("exit", (code, signal) => {
+      const last2 = errors.trim().split("\n").at(-1)?.slice(0, 200);
+      fail2(`crible mcp stopped before answering ${tool} (${signal ?? `exit ${code}`})${last2 ? `: ${last2}` : ""}`);
     });
     send({
       jsonrpc: "2.0",
