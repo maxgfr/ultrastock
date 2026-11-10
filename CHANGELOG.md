@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.5](https://github.com/maxgfr/ultrastock/compare/v1.12.4...v1.12.5) (2026-11-10)
+
+
+### Bug Fixes
+
+* **breaker:** read a venue fill's date as UTC, and keep realised results finite ([8026289](https://github.com/maxgfr/ultrastock/commit/8026289dc9baa5f1ffc3ba96f16d4fba167ab11a))
+
 ## [1.12.4](https://github.com/maxgfr/ultrastock/compare/v1.12.3...v1.12.4) (2026-11-10)
 
 
