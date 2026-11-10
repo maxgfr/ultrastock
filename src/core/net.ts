@@ -66,7 +66,16 @@ export interface FetchOptions {
   maxBytes?: number;
   /** Minimum gap between two calls to the same host, for APIs with a published pace (GDELT: 5 s). */
   hostIntervalMs?: number;
+  /**
+   * Approves the URL and every redirect before it is requested (GET only): a
+   * link that did not come from ultrastock's own code is fetched with
+   * `isPublicUrl`. A refusal answers `ok: false` with "URL not authorized".
+   */
+  authorizeUrl?: (url: string) => Promise<boolean>;
 }
+
+/** Was the request refused by its `authorizeUrl`, before any byte left? */
+export const refusedUrl = (res: Pick<NetResponse, "error">): boolean => /^URL (?:not authorized|authorization failed)/.test(res.error ?? "");
 
 export interface NetResponse {
   ok: boolean;
@@ -112,6 +121,7 @@ export async function fetchText(url: string, opts: FetchOptions = {}): Promise<N
       timeoutMs: opts.timeoutMs,
       retries: opts.retries,
       maxBytes: opts.maxBytes ?? 32 * 1024 * 1024,
+      authorizeUrl: opts.authorizeUrl,
     });
     res = { ok: r.ok, status: r.status, body: r.body, url: r.url || url, fetchedAt, rateLimited: r.rateLimited, error: r.error };
   } else {
@@ -177,6 +187,7 @@ export async function fetchBytes(url: string, opts: FetchOptions = {}): Promise<
     retries: opts.retries,
     maxBytes: opts.maxBytes ?? 32 * 1024 * 1024,
     binary: true,
+    authorizeUrl: opts.authorizeUrl,
   });
   const bytes = r.bytes ?? Buffer.from(r.body ?? "", "utf8");
   const res: BytesResponse = {

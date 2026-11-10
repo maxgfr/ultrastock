@@ -12687,6 +12687,7 @@ function clockNow() {
 function netMode() {
   return mode2;
 }
+var refusedUrl = (res) => /^URL (?:not authorized|authorization failed)/.test(res.error ?? "");
 var FixtureMiss = class extends Error {
 };
 function requestKey(url, opts, binary = false) {
@@ -12715,7 +12716,8 @@ async function fetchText(url, opts = {}) {
       accept: opts.accept,
       timeoutMs: opts.timeoutMs,
       retries: opts.retries,
-      maxBytes: opts.maxBytes ?? 32 * 1024 * 1024
+      maxBytes: opts.maxBytes ?? 32 * 1024 * 1024,
+      authorizeUrl: opts.authorizeUrl
     });
     res = { ok: r3.ok, status: r3.status, body: r3.body, url: r3.url || url, fetchedAt, rateLimited: r3.rateLimited, error: r3.error };
   } else {
@@ -12767,7 +12769,8 @@ async function fetchBytes(url, opts = {}) {
     timeoutMs: opts.timeoutMs,
     retries: opts.retries,
     maxBytes: opts.maxBytes ?? 32 * 1024 * 1024,
-    binary: true
+    binary: true,
+    authorizeUrl: opts.authorizeUrl
   });
   const bytes = r3.bytes ?? Buffer.from(r3.body ?? "", "utf8");
   const res = {
@@ -21585,6 +21588,58 @@ function documentCoverage(docs, terms) {
   return { coverage, under: docs.length ? underCovered(coverage) : [] };
 }
 
+// src/core/public-url.ts
+import { lookup as lookup2 } from "dns/promises";
+import { isIP } from "net";
+function publicV4(ip) {
+  const [a, b] = ip.split(".").map(Number);
+  if (a === 0 || a === 10 || a === 127 || a >= 224) return false;
+  if (a === 100 && b >= 64 && b <= 127) return false;
+  if (a === 169 && b === 254) return false;
+  if (a === 172 && b >= 16 && b <= 31) return false;
+  if (a === 192 && b === 168) return false;
+  if (a === 198 && (b === 18 || b === 19)) return false;
+  return true;
+}
+function mappedV4(ip) {
+  const m = /^::ffff:(?:(\d+\.\d+\.\d+\.\d+)|([0-9a-f]{1,4}):([0-9a-f]{1,4}))$/i.exec(ip);
+  if (!m) return void 0;
+  if (m[1]) return m[1];
+  const hi = Number.parseInt(m[2], 16);
+  const lo = Number.parseInt(m[3], 16);
+  return `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+}
+function isPublicAddress(ip) {
+  const kind = isIP(ip);
+  if (kind === 4) return publicV4(ip);
+  if (kind !== 6) return false;
+  const v4 = mappedV4(ip);
+  if (v4) return publicV4(v4);
+  if (ip.startsWith("::")) return false;
+  const first = Number.parseInt(ip.split(":")[0], 16);
+  if ((first & 65024) === 64512) return false;
+  if ((first & 65472) === 65152) return false;
+  if ((first & 65280) === 65280) return false;
+  return true;
+}
+async function isPublicUrl(url) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+  const host = u.hostname.replace(/^\[|\]$/g, "");
+  if (isIP(host)) return isPublicAddress(host);
+  try {
+    const addresses = await lookup2(host, { all: true });
+    return addresses.length > 0 && addresses.every((a) => isPublicAddress(a.address));
+  } catch {
+    return false;
+  }
+}
+
 // src/research/ingest.ts
 var str2 = (v) => typeof v === "string" && v.trim() ? v.trim() : void 0;
 function toHit(raw, angle2, query2) {
@@ -21685,6 +21740,7 @@ async function engineSearch(queries, opts = {}) {
   return { lists, notes: [...new Set(notes)].slice(0, 12) };
 }
 var PAGE_TIMEOUT_MS = 2e4;
+var PRIVATE_ADDRESS = "not a public web address: a link is never followed into a private network";
 async function readCandidate(c, opts = {}) {
   const first = await readPlain(c);
   if (first.page || !first.dropped || !rescuable(first.dropped.reason)) return first;
@@ -21769,7 +21825,15 @@ async function readPlain(c) {
     let fetchedAt;
     let html;
     if (looksLikePdfUrl(c.url)) {
-      const r3 = await fetchBytes(c.url, { userAgent: "browser", timeoutMs: PAGE_TIMEOUT_MS, retries: 1, maxBytes: 40 * 1024 * 1024, hostIntervalMs: 1e3 });
+      const r3 = await fetchBytes(c.url, {
+        userAgent: "browser",
+        timeoutMs: PAGE_TIMEOUT_MS,
+        retries: 1,
+        maxBytes: 40 * 1024 * 1024,
+        hostIntervalMs: 1e3,
+        authorizeUrl: isPublicUrl
+      });
+      if (refusedUrl(r3)) return drop(PRIVATE_ADDRESS);
       if (!r3.ok) return drop(`HTTP ${r3.status}${r3.error ? ` (${r3.error})` : ""}`);
       ({ fetchedAt } = r3);
       finalUrl = r3.url;
@@ -21782,13 +21846,22 @@ async function readPlain(c) {
         timeoutMs: PAGE_TIMEOUT_MS,
         retries: 1,
         maxBytes: 16 * 1024 * 1024,
-        hostIntervalMs: 1e3
+        hostIntervalMs: 1e3,
+        authorizeUrl: isPublicUrl
       });
+      if (refusedUrl(r3)) return drop(PRIVATE_ADDRESS);
       if (!r3.ok) return drop(`HTTP ${r3.status}${r3.error ? ` (${r3.error})` : ""}`);
       ({ fetchedAt } = r3);
       finalUrl = r3.url;
       if (r3.body.startsWith("%PDF-")) {
-        const b = await fetchBytes(c.url, { userAgent: "browser", timeoutMs: PAGE_TIMEOUT_MS, retries: 1, maxBytes: 40 * 1024 * 1024, hostIntervalMs: 1e3 });
+        const b = await fetchBytes(c.url, {
+          userAgent: "browser",
+          timeoutMs: PAGE_TIMEOUT_MS,
+          retries: 1,
+          maxBytes: 40 * 1024 * 1024,
+          hostIntervalMs: 1e3,
+          authorizeUrl: isPublicUrl
+        });
         if (!b.ok) return drop(`HTTP ${b.status} on the PDF`);
         pdfBytes = b.bytes;
       } else html = r3.body;

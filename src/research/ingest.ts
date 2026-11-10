@@ -35,7 +35,8 @@ import {
   search as engineSearchCascade,
   sniffDocument,
 } from "../engine.js";
-import { FixtureMiss, fetchBytes, fetchText, recordedCall } from "../core/net.js";
+import { FixtureMiss, fetchBytes, fetchText, recordedCall, refusedUrl } from "../core/net.js";
+import { isPublicUrl } from "../core/public-url.js";
 import { officialHost } from "./dossier.js";
 
 /** One search hit, as the agent's web search (or an engine) returned it. */
@@ -212,6 +213,13 @@ export async function engineSearch(
 
 const PAGE_TIMEOUT_MS = 20_000;
 
+/**
+ * A hit's URL comes from a search engine, an agent or a page: it is read only
+ * at a public address, redirects included. Said as a reason no rescue applies
+ * to — a private address is not rendered in a browser either.
+ */
+const PRIVATE_ADDRESS = "not a public web address: a link is never followed into a private network";
+
 /** Read one candidate in full: its text, title and publication date — or why it is no document, after the rescue ladder. */
 export async function readCandidate(c: Candidate, opts: ReadOptions = {}): Promise<{ page?: ReadPage; dropped?: Dropped }> {
   const first = await readPlain(c);
@@ -306,7 +314,15 @@ async function readPlain(c: Candidate): Promise<{ page?: ReadPage; dropped?: Dro
     let fetchedAt: string;
     let html: string | undefined;
     if (looksLikePdfUrl(c.url)) {
-      const r = await fetchBytes(c.url, { userAgent: "browser", timeoutMs: PAGE_TIMEOUT_MS, retries: 1, maxBytes: 40 * 1024 * 1024, hostIntervalMs: 1000 });
+      const r = await fetchBytes(c.url, {
+        userAgent: "browser",
+        timeoutMs: PAGE_TIMEOUT_MS,
+        retries: 1,
+        maxBytes: 40 * 1024 * 1024,
+        hostIntervalMs: 1000,
+        authorizeUrl: isPublicUrl,
+      });
+      if (refusedUrl(r)) return drop(PRIVATE_ADDRESS);
       if (!r.ok) return drop(`HTTP ${r.status}${r.error ? ` (${r.error})` : ""}`);
       ({ fetchedAt } = r);
       finalUrl = r.url;
@@ -320,12 +336,21 @@ async function readPlain(c: Candidate): Promise<{ page?: ReadPage; dropped?: Dro
         retries: 1,
         maxBytes: 16 * 1024 * 1024,
         hostIntervalMs: 1000,
+        authorizeUrl: isPublicUrl,
       });
+      if (refusedUrl(r)) return drop(PRIVATE_ADDRESS);
       if (!r.ok) return drop(`HTTP ${r.status}${r.error ? ` (${r.error})` : ""}`);
       ({ fetchedAt } = r);
       finalUrl = r.url;
       if (r.body.startsWith("%PDF-")) {
-        const b = await fetchBytes(c.url, { userAgent: "browser", timeoutMs: PAGE_TIMEOUT_MS, retries: 1, maxBytes: 40 * 1024 * 1024, hostIntervalMs: 1000 });
+        const b = await fetchBytes(c.url, {
+          userAgent: "browser",
+          timeoutMs: PAGE_TIMEOUT_MS,
+          retries: 1,
+          maxBytes: 40 * 1024 * 1024,
+          hostIntervalMs: 1000,
+          authorizeUrl: isPublicUrl,
+        });
         if (!b.ok) return drop(`HTTP ${b.status} on the PDF`);
         pdfBytes = b.bytes;
       } else html = r.body;
