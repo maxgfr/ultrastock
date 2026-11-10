@@ -4,8 +4,10 @@
 //
 // It lives in ULTRASTOCK_HOME/profile.json, never in the skill directory, and
 // every change is appended to its history. Limits are where the risk gate
-// reads its rules: changing one is recorded; loosening one will require an
-// out-of-band confirmation and a cooling-off delay once live trading exists.
+// reads its rules: changing one is recorded, and that is all — a profile limit
+// or the jurisdiction can be loosened at once, with no out-of-band
+// confirmation and no cooling-off delay. Only the live limits (per order, per
+// day, venues: trading/limits.ts) ratchet that way.
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { writeFileAtomic } from "../engine.js";

@@ -388,7 +388,7 @@ export function valueBook(
 
 /**
  * Money-weighted return (XIRR) of dated cash flows, + into the investor's pocket.
- * Newton's method with bisection fallback; undefined when there is no sign change.
+ * Found by bisection between −99.99 % and +1 000 % a year; undefined when the flows do not change sign over that range.
  */
 export function xirr(flows: ReadonlyArray<{ date: string; amount: number }>): number | undefined {
   if (flows.length < 2 || !flows.some((f) => f.amount > 0) || !flows.some((f) => f.amount < 0)) return undefined;

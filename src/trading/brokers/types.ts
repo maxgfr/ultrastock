@@ -2,14 +2,14 @@
 // sign and send one request and parse one answer. Everything that decides
 // WHETHER an order may go — the risk gate, the out-of-band code, the limits,
 // the jurisdiction, the kill switch, the lock, the audit — lives in
-// trading/live.ts and trading/transport.ts, never in an adapter.
+// trading/live.ts, never in an adapter.
 //
 // Rules for adapters:
 // - Spot / cash only, LIMIT orders only, no margin, no short, no withdrawal or
 //   transfer endpoint is ever implemented.
 // - `submit` sends exactly one request with retries: 0. A timeout or a network
-//   error is reported as `{ state: "unknown" }`, never retried here: the
-//   transport reconciles by clientOrderId before anything else is sent.
+//   error is reported as `{ state: "unknown" }`, never retried here:
+//   trading/live.ts reconciles by clientOrderId before anything else is sent.
 // - Every adapter has a native dry run (`preview`): Binance order/test (and the
 //   testnet), Kraken validate=true, Coinbase orders/preview, IBKR whatif.
 // - Credentials come in as an argument (from trading/secrets.ts) and never
