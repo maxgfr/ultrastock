@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.16](https://github.com/maxgfr/ultrastock/compare/v1.12.15...v1.12.16) (2026-11-10)
+
+
+### Bug Fixes
+
+* **sizing:** do not drop a lot the limits allow to a binary rounding error ([727fed6](https://github.com/maxgfr/ultrastock/commit/727fed6b5d2ab4a41996cfe4af8517b8c3700c35))
+
 ## [1.12.15](https://github.com/maxgfr/ultrastock/compare/v1.12.14...v1.12.15) (2026-11-10)
 
 
