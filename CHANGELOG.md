@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.3](https://github.com/maxgfr/ultrastock/compare/v1.12.2...v1.12.3) (2026-11-10)
+
+
+### Bug Fixes
+
+* **paper:** one paper execution at a time, so a ticket cannot fill twice ([d7fb944](https://github.com/maxgfr/ultrastock/commit/d7fb94491f20cddeb0b8d181bf086aa0a236c679))
+
 ## [1.12.2](https://github.com/maxgfr/ultrastock/compare/v1.12.1...v1.12.2) (2026-11-10)
 
 
