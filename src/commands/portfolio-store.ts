@@ -10,7 +10,8 @@ import { EvidenceStore } from "../core/evidence.js";
 import { clockNow } from "../core/net.js";
 import { loadProfile } from "../core/profile.js";
 import { untrustedBlock } from "../core/untrusted.js";
-import { argValue, type CommandArgs, jsonLine, UsageError } from "../engine.js";
+import { argValue, type CommandArgs, UsageError } from "../engine.js";
+import { printResult as say } from "./emit.js";
 import { buildBook, readLedger } from "../portfolio/ledger.js";
 import { exportStore, initStore, storeOff, storeStatus } from "../portfolio/store.js";
 import { listNews, markNewsSeen, publishedFromLabel, readHistory, snapshotRows, splitHeadline, storeNews, writeSnapshots } from "../portfolio/tracking.js";
@@ -21,9 +22,6 @@ import type { markBook } from "./trading.js";
 
 export const PORTFOLIO_STORE_ACTIONS = ["db", "track", "history", "news"] as const;
 
-const say = (asJson: boolean, value: unknown, text: string): void => {
-  process.stdout.write(asJson ? jsonLine(value) : text.endsWith("\n") ? text : `${text}\n`);
-};
 const bookArg = (args: CommandArgs) => {
   const b = argValue(args, "book") ?? "real";
   if (b !== "real" && b !== "paper") throw new UsageError("--book is real or paper");

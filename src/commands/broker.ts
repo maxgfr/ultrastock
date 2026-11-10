@@ -10,7 +10,8 @@ import { dirname } from "node:path";
 import { checkMica } from "../core/jurisdiction.js";
 import { clockNow } from "../core/net.js";
 import { loadProfile } from "../core/profile.js";
-import { argList, argValue, type CommandArgs, jsonLine, UsageError } from "../engine.js";
+import { argList, argValue, type CommandArgs, UsageError } from "../engine.js";
+import { printResult as out } from "./emit.js";
 import { binanceAdapter } from "../trading/brokers/binance.js";
 import { coinbaseAdapter } from "../trading/brokers/coinbase.js";
 import { ibkrAdapter } from "../trading/brokers/ibkr.js";
@@ -26,10 +27,6 @@ import { audit, listTickets, loadTicket } from "../trading/tickets.js";
 
 const USAGE =
   "usage: ultrastock broker status|setup <venue>|balances|preview <ticket>|code <ticket>|submit <ticket>|reconcile <ticket>|cancel <ticket>|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr|kalshi] [--env test|live] [--code <6 digits>] [--conid <id>] [--json]";
-
-const out = (asJson: boolean, value: unknown, text: string): void => {
-  process.stdout.write(asJson ? jsonLine(value) : text.endsWith("\n") ? text : `${text}\n`);
-};
 
 function venueOf(args: CommandArgs, fallback?: string): Venue {
   const v = (argValue(args, "venue") ?? fallback ?? "").toLowerCase();

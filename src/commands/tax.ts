@@ -5,13 +5,13 @@ import { join, resolve } from "node:path";
 import type { Dataset, Point } from "../core/datasets.js";
 import { clockNow } from "../core/net.js";
 import { loadProfile } from "../core/profile.js";
-import { argList, argValue, type CommandArgs, jsonLine, UsageError } from "../engine.js";
+import { argList, argValue, type CommandArgs, UsageError } from "../engine.js";
 import { buildBook, readLedger, type Transaction } from "../portfolio/ledger.js";
 import { EXPORT_FORMATS, type ExportFormat, export2074, export2086, export8949, exportKoinly } from "../tax/export.js";
 import { regimeFor } from "../tax/index.js";
 import { cryptoValuer, currentPrices, historicalFx } from "../tax/inputs.js";
 import { day, envelopeOf, isFiat, type TaxInput, type TaxRegime, type TaxSummary, yearOf } from "../tax/regime.js";
-import { emitDatasets } from "./emit.js";
+import { emitDatasets, printResult as print } from "./emit.js";
 
 const USAGE =
   "usage: ultrastock tax report|lots|harvest|rules|verify|export [--regime fr|us] [--year YYYY] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,… | short=…,long=…] [--envelope-value <account>:<YYYY-MM-DD>=<value>,…] [--lot-method fifo|hifo|lifo] [--household single|couple] [--format 8949|2086|2074|koinly] [--out <dir>] [--json]";
@@ -147,10 +147,6 @@ function summaryDatasets(s: TaxSummary, regime: TaxRegime, notes: string[]): Dat
     },
   ];
 }
-
-const print = (asJson: boolean, value: unknown, text: string): void => {
-  process.stdout.write(asJson ? jsonLine(value) : text.endsWith("\n") ? text : `${text}\n`);
-};
 
 export async function taxCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const [sub = "report"] = args.positional;

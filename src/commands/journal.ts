@@ -4,7 +4,8 @@ import { basename, resolve } from "node:path";
 import { recordDecision, validateDecision } from "../analyze/decision.js";
 import { runAlerts, addRule, loadRules, notify, removeRule, type RuleKind } from "../alerts/alerts.js";
 import { clockNow } from "../core/net.js";
-import { argInt, argList, argValue, type CommandArgs, jsonLine, UsageError } from "../engine.js";
+import { argInt, argList, argValue, type CommandArgs, UsageError } from "../engine.js";
+import { printResult as out } from "./emit.js";
 import {
   addLesson,
   addThesis,
@@ -25,10 +26,6 @@ import { hitRates, readSettlements, settleDecisions } from "../journal/settle.js
 import { readLedger } from "../portfolio/ledger.js";
 import { addToWatchlist, loadWatchlist, removeFromWatchlist } from "../portfolio/watchlist.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
-
-const out = (asJson: boolean, value: unknown, text: string): void => {
-  process.stdout.write(asJson ? jsonLine(value) : text.endsWith("\n") ? text : `${text}\n`);
-};
 
 export async function decideCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const [run, file] = args.positional;

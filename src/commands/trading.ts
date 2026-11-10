@@ -7,7 +7,8 @@ import { resolve } from "node:path";
 import { EvidenceStore } from "../core/evidence.js";
 import { clockNow } from "../core/net.js";
 import { loadProfile } from "../core/profile.js";
-import { argList, argValue, type CommandArgs, jsonLine, mapLimit, UsageError } from "../engine.js";
+import { argList, argValue, type CommandArgs, mapLimit, UsageError } from "../engine.js";
+import { printResult as out } from "./emit.js";
 import { appendTransactions, buildBook, readLedger, type TxType, valueBook, xirr } from "../portfolio/ledger.js";
 import { getQuote, resolveSymbol } from "../providers/router.js";
 import { breakerState, closedTradeResults, readEquity, recordEquity } from "../trading/breaker.js";
@@ -17,9 +18,6 @@ import { planTrade, tradeContextMarkdown } from "../trading/plan.js";
 import { riskGate } from "../trading/riskgate.js";
 import { createTicket, listTickets, loadTicket, recordCheck, transition } from "../trading/tickets.js";
 
-const out = (asJson: boolean, value: unknown, text: string): void => {
-  process.stdout.write(asJson ? jsonLine(value) : text.endsWith("\n") ? text : `${text}\n`);
-};
 const num = (v: string | undefined, flag: string) => {
   if (v === undefined) return undefined;
   const n = Number(v);

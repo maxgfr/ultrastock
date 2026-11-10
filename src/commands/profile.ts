@@ -6,13 +6,10 @@ import { checkDnsBlock, checkMica, rulesFor, verifyChecklist } from "../core/jur
 import { defaultProfile, type EnvelopeType, loadProfile, profilePath, saveProfile, setProfileField, SETTABLE_PATHS, upsertEnvelope } from "../core/profile.js";
 import { applySuitability, QUESTIONS, scoreSuitability } from "../core/suitability.js";
 import { clockNow } from "../core/net.js";
-import { argValue, type CommandArgs, jsonLine, UsageError } from "../engine.js";
+import { argValue, type CommandArgs, UsageError } from "../engine.js";
+import { printResult as out } from "./emit.js";
 
 const ENVELOPES: EnvelopeType[] = ["PEA", "PEA-PME", "CTO", "AV", "PER", "CRYPTO", "TAXABLE", "IRA", "ROTH-IRA", "401K", "OTHER"];
-
-function out(asJson: boolean, value: unknown, text: string): void {
-  process.stdout.write(asJson ? jsonLine(value) : text.endsWith("\n") ? text : `${text}\n`);
-}
 
 function requireProfile() {
   const p = loadProfile();

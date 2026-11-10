@@ -24,6 +24,11 @@ export function commandArgs(command: string, positional: string[], values: Recor
   return { command, positional, values, bools: new Set(bools) };
 }
 
+/** How a command that returns no dataset answers: its value as one JSON line with --json, else its text, ended by a line break. */
+export function printResult(asJson: boolean, value: unknown, text: string): void {
+  process.stdout.write(asJson ? jsonLine(value) : text.endsWith("\n") ? text : `${text}\n`);
+}
+
 export function emitDatasets(args: CommandArgs, datasets: readonly Dataset[], asJson: boolean): void {
   const sink = capture.getStore();
   if (sink) {
