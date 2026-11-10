@@ -39689,6 +39689,23 @@ function scaleParams(info2, params, base2, run3) {
   }
   return out5;
 }
+var INDICATOR_ROWS = /* @__PURE__ */ new WeakMap();
+var INDICATOR_ROWS_MAX = 256;
+function indicatorRows(bars, name, params) {
+  let held = INDICATOR_ROWS.get(bars);
+  if (!held || held.length !== bars.length) {
+    held = { length: bars.length, rows: /* @__PURE__ */ new Map() };
+    INDICATOR_ROWS.set(bars, held);
+  }
+  const key = `${name}|${JSON.stringify(params)}`;
+  let rows = held.rows.get(key);
+  if (!rows) {
+    rows = computeIndicator(name, bars, params).values;
+    if (held.rows.size >= INDICATOR_ROWS_MAX) held.rows.delete(held.rows.keys().next().value);
+    held.rows.set(key, rows);
+  }
+  return rows;
+}
 function compileStrategy(def2, bars, interval = "1d") {
   const v = validateStrategy(def2);
   if (!v.valid) throw new Error(`strategy ${def2.name}: ${v.errors.join("; ")}`);
@@ -39697,9 +39714,9 @@ function compileStrategy(def2, bars, interval = "1d") {
   for (const [alias, raw] of Object.entries(def2.indicators)) {
     const ind = resolveIndicator(alias, raw);
     const p = scaleParams(ind.info, ind.params, def2.baseInterval, interval);
-    let rows = computeIndicator(ind.info.name, bars, p).values;
+    let rows = indicatorRows(bars, ind.info.name, p);
     if (ind.name === "bollingerBands") {
-      const pb = computeIndicator("bollingerPercentB", bars, p).values;
+      const pb = indicatorRows(bars, "bollingerPercentB", p);
       rows = rows.map((r3, i) => r3 && pb[i] ? { ...r3, bbr: pb[i].value } : void 0);
     }
     columns.set(alias, { rows, ind });
@@ -40520,7 +40537,7 @@ function prepareVariant(bt, def2, params = {}) {
   for (const [k, v] of Object.entries(params)) d = withParam(d, k, v);
   const signals = compileStrategy(d, bt.bars, bt.interval);
   const atrRule = { ...d.risk ?? {}, ...bt.riskOverride ?? {} }.atrStop;
-  const atr2 = atrRule ? computeIndicator("atr", bt.bars, { period: atrRule.period }).values.map((r3) => r3?.value) : void 0;
+  const atr2 = atrRule ? indicatorRows(bt.bars, "atr", { period: atrRule.period }).map((r3) => r3?.value) : void 0;
   return { params, def: d, signals, atr: atr2 };
 }
 function runVariant(bt, v, range = {}, costs) {

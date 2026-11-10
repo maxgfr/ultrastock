@@ -411,17 +411,44 @@ type Getter = (i: number) => number | undefined;
  * only (the registry's contract: an indicator value at i is known at bar i's
  * close), so the simulator may act on it at bar i + 1 and never earlier.
  */
+// A sweep compiles one strategy hundreds of times on the same bars, and its
+// variants share most of their indicators: a grid over the stop or the target
+// changes none of them, a grid over two periods reuses each value of one for
+// every value of the other. Each (indicator, parameters) is computed once per
+// series and read, never written, by every variant that uses it.
+const INDICATOR_ROWS = new WeakMap<readonly Bar[], { length: number; rows: Map<string, Array<IndicatorRow | undefined>> }>();
+/** Indicator columns kept per series; past it the oldest goes (a grid rarely holds more distinct ones). */
+const INDICATOR_ROWS_MAX = 256;
+
+/** The rows of an indicator on `bars`, computed once per series and parameter set. The array is shared: do not write to it. */
+export function indicatorRows(bars: readonly Bar[], name: string, params: IndicatorParams): ReadonlyArray<IndicatorRow | undefined> {
+  let held = INDICATOR_ROWS.get(bars);
+  // The same array with another length is another series (bars were appended): nothing computed on it holds.
+  if (!held || held.length !== bars.length) {
+    held = { length: bars.length, rows: new Map() };
+    INDICATOR_ROWS.set(bars, held);
+  }
+  const key = `${name}|${JSON.stringify(params)}`;
+  let rows = held.rows.get(key);
+  if (!rows) {
+    rows = computeIndicator(name, bars, params).values;
+    if (held.rows.size >= INDICATOR_ROWS_MAX) held.rows.delete(held.rows.keys().next().value as string);
+    held.rows.set(key, rows);
+  }
+  return rows;
+}
+
 export function compileStrategy(def: StrategyDef, bars: readonly Bar[], interval: Interval = "1d"): Signals {
   const v = validateStrategy(def);
   if (!v.valid) throw new Error(`strategy ${def.name}: ${v.errors.join("; ")}`);
-  const columns = new Map<string, { rows: Array<IndicatorRow | undefined>; ind: ResolvedIndicator }>();
+  const columns = new Map<string, { rows: ReadonlyArray<IndicatorRow | undefined>; ind: ResolvedIndicator }>();
   const params: Signals["params"] = {};
   for (const [alias, raw] of Object.entries(def.indicators)) {
     const ind = resolveIndicator(alias, raw) as ResolvedIndicator;
     const p = scaleParams(ind.info, ind.params, def.baseInterval, interval);
-    let rows = computeIndicator(ind.info.name, bars, p).values;
+    let rows = indicatorRows(bars, ind.info.name, p);
     if (ind.name === "bollingerBands") {
-      const pb = computeIndicator("bollingerPercentB", bars, p).values;
+      const pb = indicatorRows(bars, "bollingerPercentB", p);
       rows = rows.map((r, i) => (r && pb[i] ? { ...r, bbr: pb[i]!.value! } : undefined));
     }
     columns.set(alias, { rows, ind });

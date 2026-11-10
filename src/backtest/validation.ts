@@ -14,12 +14,11 @@
 //     cost stress (×2 fees and slippage).
 // Signals are computed once per variant on the full series — indicator values
 // at bar i use bars ≤ i only — and simulations then run on index ranges.
-import { computeIndicator } from "../analytics/indicators/index.js";
 import { cagr, calmar, drawdowns, equityCurve, seededRandom, sharpe, sortino } from "../analytics/performance.js";
 import { mean, quantile } from "../analytics/stats.js";
 import type { Bar, Interval } from "../providers/types.js";
 import { type Costs, type SimConfig, type SimResult, simulate } from "./simulate.js";
-import { compileStrategy, paramValue, tunableParams, type Signals, type StrategyDef, withParam } from "./strategy.js";
+import { compileStrategy, indicatorRows, paramValue, tunableParams, type Signals, type StrategyDef, withParam } from "./strategy.js";
 
 /** At most this many variants per sweep (and per walk-forward, CPCV or PBO grid). */
 export const MAX_RUNS = 500;
@@ -47,7 +46,7 @@ export function prepareVariant(bt: Backtester, def: StrategyDef, params: Record<
   for (const [k, v] of Object.entries(params)) d = withParam(d, k, v);
   const signals = compileStrategy(d, bt.bars, bt.interval);
   const atrRule = { ...(d.risk ?? {}), ...(bt.riskOverride ?? {}) }.atrStop;
-  const atr = atrRule ? computeIndicator("atr", bt.bars, { period: atrRule.period }).values.map((r) => r?.value) : undefined;
+  const atr = atrRule ? indicatorRows(bt.bars, "atr", { period: atrRule.period }).map((r) => r?.value) : undefined;
   return { params, def: d, signals, atr };
 }
 

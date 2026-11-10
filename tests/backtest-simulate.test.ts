@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { BUILTIN_STRATEGIES } from "../src/backtest/catalog.js";
 import { type Costs, simulate } from "../src/backtest/simulate.js";
-import { compileStrategy, type Signals, type StrategyDef } from "../src/backtest/strategy.js";
+import { computeIndicator } from "../src/analytics/indicators/index.js";
+import { compileStrategy, indicatorRows, type Signals, type StrategyDef } from "../src/backtest/strategy.js";
 import type { Bar } from "../src/providers/types.js";
 import { bar, day, randomWalk } from "./helpers/series.js";
 
@@ -13,6 +14,41 @@ function sig(n: number, at: { buy?: number[]; sell?: number[]; short?: number[];
   const arr = (xs: number[] = []) => Array.from({ length: n }, (_, i) => xs.includes(i));
   return { buy: arr(at.buy), sell: arr(at.sell), short: arr(at.short), cover: arr(at.cover), params: {} };
 }
+
+describe("indicator columns shared between a sweep's variants", () => {
+  it("computes an indicator once per series and parameter set, and again when the series changes", () => {
+    const bars = randomWalk(300, 7);
+    const sma = indicatorRows(bars, "sma", { period: 20 });
+    expect(sma).toEqual(computeIndicator("sma", bars, { period: 20 }).values);
+    // The same column for the same question, another for another period or another series.
+    expect(indicatorRows(bars, "sma", { period: 20 })).toBe(sma);
+    expect(indicatorRows(bars, "sma", { period: 50 })).not.toBe(sma);
+    const other = randomWalk(300, 8);
+    expect(indicatorRows(other, "sma", { period: 20 })).toEqual(computeIndicator("sma", other, { period: 20 }).values);
+    // Bars appended to the same array make it another series: nothing computed before holds.
+    bars.push(...randomWalk(10, 9));
+    const longer = indicatorRows(bars, "sma", { period: 20 });
+    expect(longer).toHaveLength(310);
+    expect(longer).toEqual(computeIndicator("sma", bars, { period: 20 }).values);
+  });
+
+  it("gives every variant of a grid the signals it had when compiled alone", () => {
+    const bars = randomWalk(600, 11);
+    const def = BUILTIN_STRATEGIES.find((s) => (s as StrategyDef).name === "sma-cross") as StrategyDef;
+    for (const [fast, slow] of [
+      [10, 50],
+      [20, 50],
+      [10, 100],
+      [10, 50],
+    ] as const) {
+      const d: StrategyDef = { ...def, indicators: { fast: { _type: "sma", period: fast }, slow: { _type: "sma", period: slow } } };
+      const shared = compileStrategy(d, bars);
+      const alone = compileStrategy(d, [...bars]); // a copy: a series nothing was computed on
+      expect(shared.buy).toEqual(alone.buy);
+      expect(shared.sell).toEqual(alone.sell);
+    }
+  });
+});
 
 describe("fills: the source's biases, fixed", () => {
   it("fills a signal at the NEXT bar's open, not the signal bar's close", () => {
