@@ -293,6 +293,25 @@ export async function runAlerts(now = clockNow()): Promise<{ events: AlertEvent[
   return { events, errors };
 }
 
+/**
+ * Is the webhook under an allowlist entry? Same origin, and the entry's path a
+ * whole-segment prefix of the hook's. A plain string prefix would let
+ * "https://hooks.example.com" admit "https://hooks.example.com.evil.net/".
+ */
+export function webhookAllowed(hook: string, entry: string): boolean {
+  let h: URL;
+  let a: URL;
+  try {
+    h = new URL(hook);
+    a = new URL(entry);
+  } catch {
+    return false;
+  }
+  if (h.origin !== a.origin || h.username || h.password) return false;
+  const base = a.pathname.endsWith("/") ? a.pathname : `${a.pathname}/`;
+  return h.pathname === a.pathname || h.pathname.startsWith(base);
+}
+
 /** Configured notification channels: an ntfy topic URL (with a token for a private topic) and allowlisted webhooks. */
 export function channels(): { ntfy?: { url: string; token?: string }; webhooks: string[]; warnings: string[] } {
   const warnings: string[] = [];
@@ -311,7 +330,7 @@ export function channels(): { ntfy?: { url: string; token?: string }; webhooks: 
     .map((s) => s.trim())
     .filter(Boolean);
   const webhooks = hooks.filter((h) => {
-    const ok = /^https:\/\//.test(h) && allow.some((a) => h.startsWith(a));
+    const ok = /^https:\/\//.test(h) && allow.some((a) => webhookAllowed(h, a));
     if (!ok) warnings.push(`webhook ${h} is not https or not on ULTRASTOCK_WEBHOOK_ALLOWLIST: not used`);
     return ok;
   });

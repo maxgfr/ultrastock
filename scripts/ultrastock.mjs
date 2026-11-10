@@ -44864,6 +44864,19 @@ async function runAlerts(now = clockNow()) {
   saveRules(rules);
   return { events, errors };
 }
+function webhookAllowed(hook, entry2) {
+  let h;
+  let a;
+  try {
+    h = new URL(hook);
+    a = new URL(entry2);
+  } catch {
+    return false;
+  }
+  if (h.origin !== a.origin || h.username || h.password) return false;
+  const base2 = a.pathname.endsWith("/") ? a.pathname : `${a.pathname}/`;
+  return h.pathname === a.pathname || h.pathname.startsWith(base2);
+}
 function channels() {
   const warnings = [];
   const ntfyUrl = env("NTFY_URL");
@@ -44875,7 +44888,7 @@ function channels() {
   const allow = (env("WEBHOOK_ALLOWLIST") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   const hooks = (env("WEBHOOK_URLS") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   const webhooks = hooks.filter((h) => {
-    const ok = /^https:\/\//.test(h) && allow.some((a) => h.startsWith(a));
+    const ok = /^https:\/\//.test(h) && allow.some((a) => webhookAllowed(h, a));
     if (!ok) warnings.push(`webhook ${h} is not https or not on ULTRASTOCK_WEBHOOK_ALLOWLIST: not used`);
     return ok;
   });

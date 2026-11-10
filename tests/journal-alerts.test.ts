@@ -146,4 +146,21 @@ describe("alerts", () => {
     delete process.env.ULTRASTOCK_WEBHOOK_URLS;
     delete process.env.ULTRASTOCK_WEBHOOK_ALLOWLIST;
   });
+  it("matches a webhook to its allowlist entry by origin and path, not by string prefix", () => {
+    // An entry without a trailing slash must not admit a longer host or a sibling path.
+    process.env.ULTRASTOCK_WEBHOOK_ALLOWLIST = "https://hooks.example.com,https://api.example.org/hooks/team";
+    process.env.ULTRASTOCK_WEBHOOK_URLS = [
+      "https://hooks.example.com/x",
+      "https://hooks.example.com.evil.net/x",
+      "https://hooks.example.com@evil.net/x",
+      "https://api.example.org/hooks/team/alerts",
+      "https://api.example.org/hooks/team-other",
+    ].join(",");
+    try {
+      expect(channels().webhooks).toEqual(["https://hooks.example.com/x", "https://api.example.org/hooks/team/alerts"]);
+    } finally {
+      delete process.env.ULTRASTOCK_WEBHOOK_URLS;
+      delete process.env.ULTRASTOCK_WEBHOOK_ALLOWLIST;
+    }
+  });
 });
