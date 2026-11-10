@@ -26460,12 +26460,26 @@ function calendarFor(i) {
   if (i.market === "euronext") return marketForMic(i.mic);
   return void 0;
 }
+var YEARS = /* @__PURE__ */ new Map();
+function yearOf(market, year) {
+  const key = `${market}:${year}`;
+  let y = YEARS.get(key);
+  if (!y) {
+    const list = holidays(market, year);
+    y = {
+      closed: new Set(list.filter((h) => h.kind === "closed").map((h) => h.date)),
+      early: new Map(list.filter((h) => h.kind === "early-close").map((h) => [h.date, h]))
+    };
+    YEARS.set(key, y);
+  }
+  return y;
+}
 function isTradingDay(market, date) {
   if (market === "CRYPTO") return true;
   const d = /* @__PURE__ */ new Date(`${date}T00:00:00Z`);
   if ([0, 6].includes(d.getUTCDay())) return false;
   if (!market) return true;
-  return !holidays(market, d.getUTCFullYear()).some((h) => h.date === date && h.kind === "closed");
+  return !yearOf(market, d.getUTCFullYear()).closed.has(date);
 }
 function nextSessions(market, from, n2) {
   const out5 = [];
@@ -26473,7 +26487,7 @@ function nextSessions(market, from, n2) {
   for (let guard = 0; out5.length < n2 && guard < 400; guard++, d = addDays(d, 1)) {
     const day4 = fmt2(d);
     if (!isTradingDay(market, day4)) continue;
-    const e = holidays(market, d.getUTCFullYear()).find((h) => h.date === day4 && h.kind === "early-close");
+    const e = yearOf(market, d.getUTCFullYear()).early.get(day4);
     out5.push({ date: day4, closeAt: e?.closeAt ?? MARKETS[market].close, early: !!e });
   }
   return out5;
@@ -43531,7 +43545,7 @@ function envelopeOf2(account, envelopes, symbol) {
   return { type: "CTO", guessed: true };
 }
 var round22 = (v) => Math.round(v * 100) / 100;
-var yearOf = (d) => Number(d.slice(0, 4));
+var yearOf2 = (d) => Number(d.slice(0, 4));
 var day3 = (d) => d.slice(0, 10);
 function yearsBetween(from, to) {
   const [fy, fm, fd] = from.slice(0, 10).split("-").map(Number);
@@ -43571,7 +43585,7 @@ var TaxRegime = class {
   }
   /** Transactions up to the end of the year, oldest first. */
   history(input) {
-    return chronological(input.transactions.filter((t) => yearOf(t.date) <= input.year));
+    return chronological(input.transactions.filter((t) => yearOf2(t.date) <= input.year));
   }
 };
 function chronological(txs) {
@@ -46952,7 +46966,7 @@ var FranceRegime = class extends TaxRegime {
       warnings: []
     };
     const guessed = /* @__PURE__ */ new Set();
-    const inYear = (t) => yearOf(t.date) === input.year;
+    const inYear = (t) => yearOf2(t.date) === input.year;
     const pfuIr = this.param("pfu.ir");
     const ps = this.param("ps.capital");
     for (const t of this.history(input)) {
@@ -47456,7 +47470,7 @@ var FranceRegime = class extends TaxRegime {
       total,
       `income tax ${round22(incomeTax)} + social levies ${psTax} + envelopes ${round22(envelopeTax)}`
     );
-    const accounts = [...new Set(input.transactions.filter((t) => yearOf(t.date) <= input.year).map((t) => t.account))];
+    const accounts = [...new Set(input.transactions.filter((t) => yearOf2(t.date) <= input.year).map((t) => t.account))];
     for (const a of accounts) {
       const env2 = envelopeOf2(a, input.envelopes);
       const foreign = brokerIsForeign(env2.envelope?.broker ?? a);
@@ -47617,7 +47631,7 @@ var UsRegime = class extends TaxRegime {
     const method = input.lotMethod ?? "fifo";
     const washCrypto = this.param("washSale.crypto") !== "not applied";
     const window = this.param("washSale.windowDays");
-    const inYear = (t) => yearOf(t.date) === input.year;
+    const inYear = (t) => yearOf2(t.date) === input.year;
     let stableNoted = false;
     for (const t of history) {
       const env2 = envelopeOf2(t.account, input.envelopes, t.symbol);
@@ -47898,7 +47912,7 @@ var UsRegime = class extends TaxRegime {
         label: "foreign tax paid on dividends",
         value: wh
       });
-    const accounts = [...new Set(input.transactions.filter((t) => yearOf(t.date) <= input.year).map((t) => t.account))];
+    const accounts = [...new Set(input.transactions.filter((t) => yearOf2(t.date) <= input.year).map((t) => t.account))];
     const foreign = accounts.filter((a) => {
       const e = envelopeOf2(a, input.envelopes);
       return ["PEA", "PEA-PME", "AV", "PER"].includes(e.type) || e.type !== "CRYPTO" && NON_US_BROKERS.test(e.envelope?.broker ?? "");
@@ -48184,7 +48198,7 @@ async function buildInput(args, regime, year, opts = {}) {
   }
   if (regime.id === "fr") {
     const isCrypto = (t) => envelopeOf2(t.account, envelopes, t.symbol).type === "CRYPTO";
-    const dates = txs.filter((t) => isCrypto(t) && t.type === "sell" && isFiat(t.currency) && yearOf(t.date) === year).map((t) => day3(t.date));
+    const dates = txs.filter((t) => isCrypto(t) && t.type === "sell" && isFiat(t.currency) && yearOf2(t.date) === year).map((t) => day3(t.date));
     if (opts.asOf && txs.some(isCrypto)) dates.push(opts.asOf);
     if (dates.length) {
       const v = await cryptoValuer(txs, envelopes, dates, fx);
@@ -48356,7 +48370,7 @@ ${pn.join("\n")}` : ""}`
     const { input } = await buildInput(args, regime, year);
     const events = format === "koinly" ? [] : regime.realize(input);
     const csv = format === "8949" ? export8949(events) : format === "2086" ? export2086(events) : format === "2074" ? export2074(events) : exportKoinly(
-      input.transactions.filter((t) => yearOf(t.date) === year),
+      input.transactions.filter((t) => yearOf2(t.date) === year),
       (t) => envelopeOf2(t.account, input.envelopes, t.symbol).type === "CRYPTO"
     );
     const out5 = argValue(args, "out");

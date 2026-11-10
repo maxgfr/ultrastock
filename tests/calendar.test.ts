@@ -63,4 +63,23 @@ describe("calendar", () => {
     expect(marketForMic("MTAA")).toBe("XMIL");
     expect(marketForMic("NASDAQ-GS")).toBe("XNYS");
   });
+  it("answers every day of several years as the year's holiday list says, asked once or many times", () => {
+    for (const market of ["XNYS", "XPAR", "XMIL", "XOSL"] as const)
+      for (const year of [2024, 2025, 2026, 2027]) {
+        const list = holidays(market, year);
+        const shut = new Set(list.filter((h) => h.kind === "closed").map((h) => h.date));
+        const early = new Map(list.filter((h) => h.kind === "early-close").map((h) => [h.date, h.closeAt]));
+        for (let d = Date.UTC(year, 0, 1); d < Date.UTC(year + 1, 0, 1); d += 86_400_000) {
+          const day = new Date(d).toISOString().slice(0, 10);
+          const weekend = [0, 6].includes(new Date(d).getUTCDay());
+          // Twice: the second answer comes from what the first worked out.
+          for (let pass = 0; pass < 2; pass++) expect(isTradingDay(market, day), `${market} ${day}`).toBe(!weekend && !shut.has(day));
+          if (!weekend && !shut.has(day)) expect(nextSessions(market, day, 1)[0], `${market} ${day}`).toMatchObject({ date: day, early: early.has(day) });
+        }
+      }
+    // A caller that edits the list it was given changes nothing for the next one.
+    holidays("XNYS", 2026).length = 0;
+    expect(isTradingDay("XNYS", "2026-12-25")).toBe(false);
+    expect(holidays("XNYS", 2026).length).toBeGreaterThan(8);
+  });
 });

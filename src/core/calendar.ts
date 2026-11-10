@@ -179,13 +179,33 @@ export function calendarFor(i: Pick<Instrument, "market" | "mic">): CalendarMark
   return undefined;
 }
 
+// Counting sessions asks "is this day a session?" for every day it steps over,
+// and the answer came from rebuilding the whole year's holidays — Easter
+// included — each time: sixty sessions ahead rebuilt the list some ninety times.
+// A year's closed days and early closes are worked out once per market.
+const YEARS = new Map<string, { closed: ReadonlySet<string>; early: ReadonlyMap<string, Holiday> }>();
+
+function yearOf(market: CalendarMarket, year: number): { closed: ReadonlySet<string>; early: ReadonlyMap<string, Holiday> } {
+  const key = `${market}:${year}`;
+  let y = YEARS.get(key);
+  if (!y) {
+    const list = holidays(market, year);
+    y = {
+      closed: new Set(list.filter((h) => h.kind === "closed").map((h) => h.date)),
+      early: new Map(list.filter((h) => h.kind === "early-close").map((h) => [h.date, h])),
+    };
+    YEARS.set(key, y);
+  }
+  return y;
+}
+
 /** A session day; with no calendar (undefined), any weekday — holidays unknown, never guessed. */
 export function isTradingDay(market: CalendarMarket | undefined, date: string): boolean {
   if (market === "CRYPTO") return true;
   const d = new Date(`${date}T00:00:00Z`);
   if ([0, 6].includes(d.getUTCDay())) return false;
   if (!market) return true;
-  return !holidays(market, d.getUTCFullYear()).some((h) => h.date === date && h.kind === "closed");
+  return !yearOf(market, d.getUTCFullYear()).closed.has(date);
 }
 
 /** The next `n` sessions on or after `from` (YYYY-MM-DD), with any early close. */
@@ -195,7 +215,7 @@ export function nextSessions(market: CalendarMarket, from: string, n: number): A
   for (let guard = 0; out.length < n && guard < 400; guard++, d = addDays(d, 1)) {
     const day = fmt(d);
     if (!isTradingDay(market, day)) continue;
-    const e = holidays(market, d.getUTCFullYear()).find((h) => h.date === day && h.kind === "early-close");
+    const e = yearOf(market, d.getUTCFullYear()).early.get(day);
     out.push({ date: day, closeAt: e?.closeAt ?? MARKETS[market].close, early: !!e });
   }
   return out;
