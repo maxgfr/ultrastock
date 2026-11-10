@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.9](https://github.com/maxgfr/ultrastock/compare/v1.12.8...v1.12.9) (2026-11-10)
+
+
+### Bug Fixes
+
+* **report:** link an evidence source only to an http(s) address ([30327a2](https://github.com/maxgfr/ultrastock/commit/30327a20a1f8d00a371daa3ba9672709b758d139))
+
 ## [1.12.8](https://github.com/maxgfr/ultrastock/compare/v1.12.7...v1.12.8) (2026-11-10)
 
 
