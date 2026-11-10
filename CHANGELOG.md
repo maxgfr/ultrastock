@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.38](https://github.com/maxgfr/ultrastock/compare/v1.12.37...v1.12.38) (2026-11-10)
+
+
+### Bug Fixes
+
+* **live:** bind an approval code to the venue, the environment and the venue symbol ([ba0195a](https://github.com/maxgfr/ultrastock/commit/ba0195a426bcb2c225cfeeb7bc0891160c1984da))
+
 ## [1.12.37](https://github.com/maxgfr/ultrastock/compare/v1.12.36...v1.12.37) (2026-11-10)
 
 
