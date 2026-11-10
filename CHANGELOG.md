@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.20](https://github.com/maxgfr/ultrastock/compare/v1.12.19...v1.12.20) (2026-11-10)
+
+
+### Bug Fixes
+
+* **journal:** settle a decision once its last session is over, not on the day it ends ([58098d2](https://github.com/maxgfr/ultrastock/commit/58098d205f7afe92858376c032bf6e93268909a3))
+
 ## [1.12.19](https://github.com/maxgfr/ultrastock/compare/v1.12.18...v1.12.19) (2026-11-10)
 
 
