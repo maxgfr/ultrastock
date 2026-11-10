@@ -9,7 +9,8 @@
 // date, or a date line with nested `**` entries. Dependent territories are in
 // italics and left out. Offices are the page's own words: kept as labels, never
 // as instructions, and classified into a few kinds for the event study.
-import { fetchJson, politeUa } from "../../core/net.js";
+import { cachedJson, TTL } from "../../core/cache.js";
+import { clockNow, fetchJson, politeUa } from "../../core/net.js";
 import { ProviderError } from "../types.js";
 
 export const SOURCE = "wikipedia-elections";
@@ -200,8 +201,29 @@ export function parseElectionCalendar(wikitext: string, year: number): ElectionE
   return out;
 }
 
-/** One year's national elections and referendums. */
-export async function electionCalendar(year: number): Promise<{ events: ElectionEvent[]; url: string; fetchedAt: string }> {
+export interface ElectionYear {
+  events: ElectionEvent[];
+  url: string;
+  fetchedAt: string;
+}
+
+/**
+ * One year's national elections and referendums.
+ *
+ * An event study looks for a country's comparable past elections year by year,
+ * up to 25 pages back, half a second apart. A year that is over no longer
+ * changes: its page is kept for a week (with the time it was read), so the
+ * study after the first reads the current year only. The current year and the
+ * ones ahead are read every time — dates are still being set.
+ */
+export async function electionCalendar(year: number): Promise<ElectionYear> {
+  if (year >= clockNow().getUTCFullYear()) return readElectionCalendar(year);
+  const kept = await cachedJson<ElectionYear>(`elections:calendar:${year}`, TTL.reference, () => readElectionCalendar(year));
+  if (!kept) throw new ProviderError(SOURCE, `no electoral calendar for ${year} (offline, and not read before)`, 0);
+  return kept;
+}
+
+async function readElectionCalendar(year: number): Promise<ElectionYear> {
   const page = `${year}_national_electoral_calendar`;
   const url = `https://en.wikipedia.org/w/api.php?action=parse&page=${page}&prop=wikitext&format=json&formatversion=2`;
   const res = await fetchJson<{ parse?: { wikitext?: string }; error?: { info?: string } }>(url, { userAgent: politeUa(), hostIntervalMs: 500 });

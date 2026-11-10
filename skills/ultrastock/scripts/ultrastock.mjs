@@ -34552,6 +34552,12 @@ function parseElectionCalendar(wikitext, year) {
   return out5;
 }
 async function electionCalendar(year) {
+  if (year >= clockNow().getUTCFullYear()) return readElectionCalendar(year);
+  const kept = await cachedJson(`elections:calendar:${year}`, TTL.reference, () => readElectionCalendar(year));
+  if (!kept) throw new ProviderError(SOURCE24, `no electoral calendar for ${year} (offline, and not read before)`, 0);
+  return kept;
+}
+async function readElectionCalendar(year) {
   const page = `${year}_national_electoral_calendar`;
   const url = `https://en.wikipedia.org/w/api.php?action=parse&page=${page}&prop=wikitext&format=json&formatversion=2`;
   const res = await fetchJson(url, { userAgent: politeUa(), hostIntervalMs: 500 });

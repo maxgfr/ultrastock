@@ -3,7 +3,8 @@ import { eventExposure, type Exposure, type MarketEvent } from "../src/analyze/e
 import { holdingCountry } from "../src/analyze/events/markets.js";
 import { eventReaction, reactionStats } from "../src/analyze/events/study.js";
 import { parseEcbCalendar, parseFomc } from "../src/providers/macro/central-banks.js";
-import { countryIso, electionKind, parseDay, parseElectionCalendar } from "../src/providers/macro/elections.js";
+import { cachedJson, TTL } from "../src/core/cache.js";
+import { countryIso, type ElectionYear, electionCalendar, electionKind, parseDay, parseElectionCalendar } from "../src/providers/macro/elections.js";
 
 const CALENDAR = `Intro text.
 ==October==
@@ -43,6 +44,17 @@ describe("electoral calendar", () => {
     expect(parseDay("30 September – 1 October", 8, 2026)).toEqual({ date: "2026-09-30", endDate: "2026-10-01" });
     // The span ended on 2 January 2026, eleven months before it began.
     expect(parseDay("30 December – 2 January", 11, 2026)).toEqual({ date: "2026-12-30", endDate: "2027-01-02" });
+  });
+  it("keeps a year that is over, and reads it back with the time it was read, without asking again", async () => {
+    // What a first study left behind: 1998's page, as it was read then.
+    const kept: ElectionYear = {
+      events: [{ date: "1998-10-04", country: "Brazil", iso: "BR", office: "President", kind: "presidential" } as ElectionYear["events"][number]],
+      url: "https://en.wikipedia.org/wiki/1998_national_electoral_calendar",
+      fetchedAt: "2026-11-03T08:00:00.000Z",
+    };
+    await cachedJson("elections:calendar:1998", TTL.reference, async () => kept);
+    // Asked again: the kept page answers — a request would bring the live page, its many events and a new read time.
+    expect(await electionCalendar(1998)).toEqual(kept);
   });
   it("maps country names to ISO codes, aliases included", () => {
     expect(countryIso("Brazil")).toBe("BR");
