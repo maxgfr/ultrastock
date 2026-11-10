@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.22](https://github.com/maxgfr/ultrastock/compare/v1.12.21...v1.12.22) (2026-11-10)
+
+
+### Bug Fixes
+
+* **tax:** a refund of tax withheld comes off the withholding, it is not added to it ([f5916ed](https://github.com/maxgfr/ultrastock/commit/f5916ed6d471cf7bac79656d1ee226ebc81ad3d1))
+
 ## [1.12.21](https://github.com/maxgfr/ultrastock/compare/v1.12.20...v1.12.21) (2026-11-10)
 
 
