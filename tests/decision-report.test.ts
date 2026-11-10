@@ -95,4 +95,16 @@ describe("html report", () => {
     expect(page).toContain("<svg");
     expect(priceSvg([])).toBe("");
   });
+  it("links an evidence source only to an http(s) address", () => {
+    const dir = mkdtempSync(join(tmpdir(), "us-dr-"));
+    const s = EvidenceStore.open(dir, { subject: "X" });
+    // A feed item's link is external text: it must not become a script the page runs on a click.
+    s.add({ ...base, key: "news.1", label: "headline", value: "Results beat", source: "feed", url: "javascript:alert(document.cookie)", untrusted: true });
+    s.add({ ...base, key: "news.2", label: "headline", value: "Guidance raised", source: "wire", url: "https://example.org/a?x=1&y=2" });
+    s.save();
+    const page = renderReport(dir, "# X\n\nResults beat [E1], guidance raised [E2].");
+    expect(page).not.toMatch(/href="javascript/i);
+    expect(page).toMatch(/<tr id="E1">.*?<td>feed/);
+    expect(page).toContain('<a href="https://example.org/a?x=1&amp;y=2" rel="noreferrer">wire</a>');
+  });
 });

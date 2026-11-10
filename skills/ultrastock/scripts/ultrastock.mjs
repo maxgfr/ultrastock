@@ -34169,7 +34169,10 @@ function renderReport(runDir2, answerMd, opts = {}) {
   const bars = existsSync25(barsFile) ? JSON.parse(readFileSync28(barsFile, "utf8")) : [];
   const title = opts.title ?? /^#\s+(.+)$/m.exec(answerMd)?.[1] ?? store.subject ?? "ultrastock report";
   const evidenceTable = rows.length ? `<h2>Evidence cited</h2><table><thead><tr><th>Id</th><th>What</th><th>Value</th><th>Source</th><th>As of</th></tr></thead><tbody>${rows.map(
-    (i) => `<tr id="${i.id}"><td>${i.id}</td><td>${esc2(i.label)}${i.formula ? `<br><span class="meta">${esc2(i.formula)}</span>` : ""}</td><td>${esc2(typeof i.value === "number" ? formatNumber(i.value) : String(i.value))}${i.unit ? ` ${esc2(i.unit)}` : ""}</td><td>${i.url ? `<a href="${esc2(i.url)}" rel="noreferrer">${esc2(i.source)}</a>` : esc2(i.source)}${i.official ? "" : " (unofficial)"}${i.delay ? `, ${esc2(i.delay)}` : ""}</td><td>${esc2(i.asOf ?? i.fetchedAt.slice(0, 10))}</td></tr>`
+    (i) => (
+      // A source URL comes from a feed, a filing or a page: it is a link only when it is an http(s) one.
+      `<tr id="${esc2(i.id)}"><td>${esc2(i.id)}</td><td>${esc2(i.label)}${i.formula ? `<br><span class="meta">${esc2(i.formula)}</span>` : ""}</td><td>${esc2(typeof i.value === "number" ? formatNumber(i.value) : String(i.value))}${i.unit ? ` ${esc2(i.unit)}` : ""}</td><td>${i.url && /^https?:\/\//i.test(i.url) ? `<a href="${esc2(i.url)}" rel="noreferrer">${esc2(i.source)}</a>` : esc2(i.source)}${i.official ? "" : " (unofficial)"}${i.delay ? `, ${esc2(i.delay)}` : ""}</td><td>${esc2(i.asOf ?? i.fetchedAt.slice(0, 10))}</td></tr>`
+    )
   ).join("")}</tbody></table>` : "";
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc2(title)}</title><style>${CSS}</style></head>

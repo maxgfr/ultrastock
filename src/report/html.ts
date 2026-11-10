@@ -167,7 +167,8 @@ export function renderReport(runDir: string, answerMd: string, opts: { title?: s
     ? `<h2>Evidence cited</h2><table><thead><tr><th>Id</th><th>What</th><th>Value</th><th>Source</th><th>As of</th></tr></thead><tbody>${rows
         .map(
           (i) =>
-            `<tr id="${i.id}"><td>${i.id}</td><td>${esc(i.label)}${i.formula ? `<br><span class="meta">${esc(i.formula)}</span>` : ""}</td><td>${esc(typeof i.value === "number" ? formatNumber(i.value) : String(i.value))}${i.unit ? ` ${esc(i.unit)}` : ""}</td><td>${i.url ? `<a href="${esc(i.url)}" rel="noreferrer">${esc(i.source)}</a>` : esc(i.source)}${i.official ? "" : " (unofficial)"}${i.delay ? `, ${esc(i.delay)}` : ""}</td><td>${esc(i.asOf ?? i.fetchedAt.slice(0, 10))}</td></tr>`,
+            // A source URL comes from a feed, a filing or a page: it is a link only when it is an http(s) one.
+            `<tr id="${esc(i.id)}"><td>${esc(i.id)}</td><td>${esc(i.label)}${i.formula ? `<br><span class="meta">${esc(i.formula)}</span>` : ""}</td><td>${esc(typeof i.value === "number" ? formatNumber(i.value) : String(i.value))}${i.unit ? ` ${esc(i.unit)}` : ""}</td><td>${i.url && /^https?:\/\//i.test(i.url) ? `<a href="${esc(i.url)}" rel="noreferrer">${esc(i.source)}</a>` : esc(i.source)}${i.official ? "" : " (unofficial)"}${i.delay ? `, ${esc(i.delay)}` : ""}</td><td>${esc(i.asOf ?? i.fetchedAt.slice(0, 10))}</td></tr>`,
         )
         .join("")}</tbody></table>`
     : "";
