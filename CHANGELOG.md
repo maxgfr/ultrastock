@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.25](https://github.com/maxgfr/ultrastock/compare/v1.12.24...v1.12.25) (2026-11-10)
+
+
+### Bug Fixes
+
+* **tax:** flag French crypto gains computed after a disposal of unknown portfolio value ([3f24e98](https://github.com/maxgfr/ultrastock/commit/3f24e98b98cc5380afc65292be061d5bcc916de5))
+
 ## [1.12.24](https://github.com/maxgfr/ultrastock/compare/v1.12.23...v1.12.24) (2026-11-10)
 
 
