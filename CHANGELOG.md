@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.4](https://github.com/maxgfr/ultrastock/compare/v1.12.3...v1.12.4) (2026-11-10)
+
+
+### Bug Fixes
+
+* **gate:** count orders working at a venue, and at other venues, as pending ([69957f6](https://github.com/maxgfr/ultrastock/commit/69957f6617d2b5f8a9173699f68583911980e52c))
+
 ## [1.12.3](https://github.com/maxgfr/ultrastock/compare/v1.12.2...v1.12.3) (2026-11-10)
 
 
