@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.8](https://github.com/maxgfr/ultrastock/compare/v1.12.7...v1.12.8) (2026-11-10)
+
+
+### Bug Fixes
+
+* **record:** keep API keys out of recorded fixtures ([e6fd1d7](https://github.com/maxgfr/ultrastock/commit/e6fd1d7e1556bc7a3f02cccbc023ab8eb748e9d6))
+
 ## [1.12.7](https://github.com/maxgfr/ultrastock/compare/v1.12.6...v1.12.7) (2026-11-10)
 
 
