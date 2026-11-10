@@ -102,6 +102,17 @@ function requestKey(url: string, opts: FetchOptions, binary = false): string {
   return contentHash(`${opts.method ?? "GET"} ${url} ${opts.json === undefined ? "" : JSON.stringify(opts.json)}`).slice(0, 20);
 }
 
+const MAX_BYTES = 32 * 1024 * 1024;
+
+/**
+ * A body cut at the size cap is not the answer: a parser would read half a
+ * CSV, or the first pages of a PDF, as if it were the whole file. It is a
+ * failed read, said so, and never recorded.
+ */
+function whole(r: { ok: boolean; truncated?: boolean; error?: string }, maxBytes = MAX_BYTES): { ok: boolean; error?: string } {
+  return r.ok && r.truncated ? { ok: false, error: `the response is larger than ${maxBytes} bytes: cut short, not used` } : { ok: r.ok, error: r.error };
+}
+
 function fixturePath(dir: string, key: string): string {
   return join(dir, "http", `${key}.json`);
 }
@@ -128,10 +139,10 @@ export async function fetchText(url: string, opts: FetchOptions = {}): Promise<N
       accept: opts.accept,
       timeoutMs: opts.timeoutMs,
       retries: opts.retries,
-      maxBytes: opts.maxBytes ?? 32 * 1024 * 1024,
+      maxBytes: opts.maxBytes ?? MAX_BYTES,
       authorizeUrl: opts.authorizeUrl,
     });
-    res = { ok: r.ok, status: r.status, body: r.body, url: r.url || url, fetchedAt, rateLimited: r.rateLimited, error: r.error };
+    res = { status: r.status, body: r.body, url: r.url || url, fetchedAt, rateLimited: r.rateLimited, ...whole(r, opts.maxBytes) };
   } else {
     const r = await httpJson("POST", url, opts.json, {
       userAgent,
@@ -139,7 +150,7 @@ export async function fetchText(url: string, opts: FetchOptions = {}): Promise<N
       accept: opts.accept,
       timeoutMs: opts.timeoutMs,
       retries: opts.retries,
-      maxBytes: opts.maxBytes ?? 32 * 1024 * 1024,
+      maxBytes: opts.maxBytes ?? MAX_BYTES,
     });
     res = { ok: r.ok, status: r.status, body: r.data === undefined ? "" : JSON.stringify(r.data), url, fetchedAt, error: r.error };
   }
@@ -200,19 +211,18 @@ export async function fetchBytes(url: string, opts: FetchOptions = {}): Promise<
     accept: opts.accept,
     timeoutMs: opts.timeoutMs,
     retries: opts.retries,
-    maxBytes: opts.maxBytes ?? 32 * 1024 * 1024,
+    maxBytes: opts.maxBytes ?? MAX_BYTES,
     binary: true,
     authorizeUrl: opts.authorizeUrl,
   });
   const bytes = r.bytes ?? Buffer.from(r.body ?? "", "utf8");
   const res: BytesResponse = {
-    ok: r.ok,
+    ...whole(r, opts.maxBytes),
     status: r.status,
     body: "",
     url: r.url || url,
     fetchedAt,
     rateLimited: r.rateLimited,
-    error: r.error,
     bytes,
     contentType: r.contentType ?? "",
   };

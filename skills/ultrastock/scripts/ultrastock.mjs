@@ -12694,6 +12694,10 @@ function requestKey(url, opts, binary = false) {
   if (binary) return contentHash(`BYTES ${url}`).slice(0, 20);
   return contentHash(`${opts.method ?? "GET"} ${url} ${opts.json === void 0 ? "" : JSON.stringify(opts.json)}`).slice(0, 20);
 }
+var MAX_BYTES = 32 * 1024 * 1024;
+function whole(r3, maxBytes = MAX_BYTES) {
+  return r3.ok && r3.truncated ? { ok: false, error: `the response is larger than ${maxBytes} bytes: cut short, not used` } : { ok: r3.ok, error: r3.error };
+}
 function fixturePath(dir2, key) {
   return join6(dir2, "http", `${key}.json`);
 }
@@ -12718,10 +12722,10 @@ async function fetchText(url, opts = {}) {
       accept: opts.accept,
       timeoutMs: opts.timeoutMs,
       retries: opts.retries,
-      maxBytes: opts.maxBytes ?? 32 * 1024 * 1024,
+      maxBytes: opts.maxBytes ?? MAX_BYTES,
       authorizeUrl: opts.authorizeUrl
     });
-    res = { ok: r3.ok, status: r3.status, body: r3.body, url: r3.url || url, fetchedAt, rateLimited: r3.rateLimited, error: r3.error };
+    res = { status: r3.status, body: r3.body, url: r3.url || url, fetchedAt, rateLimited: r3.rateLimited, ...whole(r3, opts.maxBytes) };
   } else {
     const r3 = await httpJson("POST", url, opts.json, {
       userAgent,
@@ -12729,7 +12733,7 @@ async function fetchText(url, opts = {}) {
       accept: opts.accept,
       timeoutMs: opts.timeoutMs,
       retries: opts.retries,
-      maxBytes: opts.maxBytes ?? 32 * 1024 * 1024
+      maxBytes: opts.maxBytes ?? MAX_BYTES
     });
     res = { ok: r3.ok, status: r3.status, body: r3.data === void 0 ? "" : JSON.stringify(r3.data), url, fetchedAt, error: r3.error };
   }
@@ -12777,19 +12781,18 @@ async function fetchBytes(url, opts = {}) {
     accept: opts.accept,
     timeoutMs: opts.timeoutMs,
     retries: opts.retries,
-    maxBytes: opts.maxBytes ?? 32 * 1024 * 1024,
+    maxBytes: opts.maxBytes ?? MAX_BYTES,
     binary: true,
     authorizeUrl: opts.authorizeUrl
   });
   const bytes = r3.bytes ?? Buffer.from(r3.body ?? "", "utf8");
   const res = {
-    ok: r3.ok,
+    ...whole(r3, opts.maxBytes),
     status: r3.status,
     body: "",
     url: r3.url || url,
     fetchedAt,
     rateLimited: r3.rateLimited,
-    error: r3.error,
     bytes,
     contentType: r3.contentType ?? ""
   };
@@ -32360,10 +32363,10 @@ function periodsFromCrible(periods, register) {
 }
 function fillGaps(filings, crible) {
   const near = (a, b) => Math.abs(Date.parse(a) - Date.parse(b)) <= 10 * 864e5;
-  const whole = (c) => ({ ...c, filled: Object.keys(c.ids) });
-  if (!filings.length) return crible.map(whole);
+  const whole2 = (c) => ({ ...c, filled: Object.keys(c.ids) });
+  if (!filings.length) return crible.map(whole2);
   const newest = filings[0].period.end;
-  const newer = crible.filter((c) => Date.parse(c.period.end) > Date.parse(newest) + 10 * 864e5).map(whole);
+  const newer = crible.filter((c) => Date.parse(c.period.end) > Date.parse(newest) + 10 * 864e5).map(whole2);
   for (const f3 of filings) {
     const c = crible.find((x) => near(x.period.end, f3.period.end));
     if (!c) continue;
