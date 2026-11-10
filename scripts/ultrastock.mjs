@@ -22254,15 +22254,20 @@ import { closeSync as closeSync3, existsSync as existsSync20, fsyncSync as fsync
 import { join as join25 } from "path";
 
 // src/core/lock.ts
-import { closeSync as closeSync2, fsyncSync, mkdirSync as mkdirSync13, openSync as openSync2, readFileSync as readFileSync22, rmSync as rmSync6, unlinkSync as unlinkSync3, writeSync as writeSync2 } from "fs";
+import { closeSync as closeSync2, fsyncSync, mkdirSync as mkdirSync13, openSync as openSync2, readFileSync as readFileSync22, rmSync as rmSync6, statSync as statSync6, unlinkSync as unlinkSync3, writeSync as writeSync2 } from "fs";
 import { hostname } from "os";
 import { dirname as dirname4 } from "path";
+var UNWRITTEN_GRACE_MS = 5e3;
 function isStaleLock(path2) {
   let owner;
   try {
     owner = JSON.parse(readFileSync22(path2, "utf8"));
   } catch {
-    return false;
+    try {
+      return Date.now() - statSync6(path2).mtimeMs > UNWRITTEN_GRACE_MS;
+    } catch {
+      return false;
+    }
   }
   if (!Number.isSafeInteger(owner?.pid) || owner.pid <= 0 || owner.hostname !== hostname()) return false;
   try {
@@ -22294,12 +22299,17 @@ async function acquireLock(path2, waitMs = 1e4) {
   for (; ; ) {
     if (tryAcquire(path2)) return () => rmSync6(path2, { force: true });
     if (isStaleLock(path2)) {
-      if (tryAcquire(`${path2}.recovery`)) {
+      const recovery = `${path2}.recovery`;
+      if (tryAcquire(recovery)) {
         try {
           if (isStaleLock(path2)) unlinkSync3(path2);
         } finally {
-          rmSync6(`${path2}.recovery`, { force: true });
+          rmSync6(recovery, { force: true });
         }
+        continue;
+      }
+      if (isStaleLock(recovery)) {
+        rmSync6(recovery, { force: true });
         continue;
       }
     }
@@ -51572,7 +51582,7 @@ async function portfolioAnalyticsCommand(args, asJson) {
 import { resolve as resolve16 } from "path";
 
 // src/portfolio/store.ts
-import { existsSync as existsSync42, mkdirSync as mkdirSync30, readdirSync as readdirSync12, statSync as statSync6 } from "fs";
+import { existsSync as existsSync42, mkdirSync as mkdirSync30, readdirSync as readdirSync12, statSync as statSync7 } from "fs";
 import { join as join55 } from "path";
 function jsonlBooks() {
   const dir2 = join55(homeDir(), "ledger");
@@ -51632,11 +51642,11 @@ function storeStatus() {
   return withStore(
     (db) => {
       const schemaVersion = schemaVersionOf(db);
-      if (schemaVersion < 1) return { ...base2, bytes: statSync6(path2).size, schemaVersion };
+      if (schemaVersion < 1) return { ...base2, bytes: statSync7(path2).size, schemaVersion };
       const count = (t) => Number(db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get()?.n ?? 0);
       return {
         ...base2,
-        bytes: statSync6(path2).size,
+        bytes: statSync7(path2).size,
         schemaVersion,
         counts: { transactions: count("transactions"), snapshots: count("snapshots"), news_items: count("news_items"), events_seen: count("events_seen") },
         books: db.prepare("SELECT book, COUNT(*) AS n FROM transactions GROUP BY book ORDER BY book").all().map((r3) => ({ book: String(r3.book), transactions: Number(r3.n) }))

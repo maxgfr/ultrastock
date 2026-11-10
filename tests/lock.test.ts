@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -23,5 +23,30 @@ describe("file lock", () => {
     const foreign = join(dir, "foreign.lock");
     writeFileSync(foreign, JSON.stringify({ pid: 999_999_9, hostname: "another-host", createdAt: "x" }));
     expect(isStaleLock(foreign)).toBe(false);
+  });
+  it("recovers when the process doing the recovery died too", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "us-lock-"));
+    const path = join(dir, "ledger.lock");
+    const deadOwner = JSON.stringify({ pid: 999_999_9, hostname: hostname(), createdAt: "x" });
+    writeFileSync(path, deadOwner);
+    // A waiter took the recovery lock and crashed before removing it: nobody could ever recover the main lock again.
+    writeFileSync(`${path}.recovery`, deadOwner);
+    const release = await acquireLock(path, 500);
+    release();
+    expect(existsSync(`${path}.recovery`)).toBe(false);
+  });
+  it("recovers a lock file left empty by a crash, once it is clearly not being written", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "us-lock-"));
+    const fresh = join(dir, "fresh.lock");
+    writeFileSync(fresh, "");
+    // Created this instant: its owner may be about to write itself in.
+    expect(isStaleLock(fresh)).toBe(false);
+    await expect(acquireLock(fresh, 150)).rejects.toThrow(/locked/);
+    const old = join(dir, "old.lock");
+    writeFileSync(old, "");
+    const before = new Date(Date.now() - 60_000);
+    utimesSync(old, before, before);
+    expect(isStaleLock(old)).toBe(true);
+    (await acquireLock(old, 500))();
   });
 });

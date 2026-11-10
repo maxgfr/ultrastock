@@ -4,7 +4,7 @@
 // owner is a dead process on this host is stale and may be recovered. The
 // engine's withRunLock only serialises within one process, which is not enough
 // when an agent runs two commands in parallel.
-import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, rmSync, unlinkSync, writeSync } from "node:fs";
+import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, rmSync, statSync, unlinkSync, writeSync } from "node:fs";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
 import { sleep } from "../engine.js";
@@ -15,13 +15,24 @@ interface LockOwner {
   createdAt: string;
 }
 
-/** A lock whose owner is a dead process on this host. A foreign host's lock is never stale. */
+/** A lock file is written the instant it is created: one still unreadable after this long was left by a process that died in between. */
+const UNWRITTEN_GRACE_MS = 5_000;
+
+/**
+ * A lock whose owner is a dead process on this host — or one that never got
+ * its owner written (a crash between creating the file and filling it) and has
+ * sat there since. A foreign host's lock is never stale.
+ */
 export function isStaleLock(path: string): boolean {
   let owner: LockOwner;
   try {
     owner = JSON.parse(readFileSync(path, "utf8"));
   } catch {
-    return false;
+    try {
+      return Date.now() - statSync(path).mtimeMs > UNWRITTEN_GRACE_MS;
+    } catch {
+      return false; // gone meanwhile
+    }
   }
   if (!Number.isSafeInteger(owner?.pid) || owner.pid <= 0 || owner.hostname !== hostname()) return false;
   try {
@@ -60,12 +71,18 @@ export async function acquireLock(path: string, waitMs = 10_000): Promise<() => 
     if (tryAcquire(path)) return () => rmSync(path, { force: true });
     if (isStaleLock(path)) {
       // Recovery is itself exclusive, so two waiters cannot delete each other's fresh lock.
-      if (tryAcquire(`${path}.recovery`)) {
+      const recovery = `${path}.recovery`;
+      if (tryAcquire(recovery)) {
         try {
           if (isStaleLock(path)) unlinkSync(path);
         } finally {
-          rmSync(`${path}.recovery`, { force: true });
+          rmSync(recovery, { force: true });
         }
+        continue;
+      }
+      // The recovery lock has an owner too, and it can die: left in place it would keep the stale lock for ever.
+      if (isStaleLock(recovery)) {
+        rmSync(recovery, { force: true });
         continue;
       }
     }
