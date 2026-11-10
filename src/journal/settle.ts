@@ -8,7 +8,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Decision, journalDir } from "../analyze/decision.js";
 import { defaultBenchmark } from "../analyze/technicals.js";
-import { addSessions, calendarFor } from "../core/calendar.js";
+import { addSessions, type CalendarMarket, calendarFor } from "../core/calendar.js";
 import { clockNow } from "../core/net.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
 import type { Bar } from "../providers/types.js";
@@ -68,6 +68,21 @@ export function judge(rating: Decision["rating"], alphaPct: number, horizon: num
   return Math.abs(alphaPct) < 2 * Math.max(1, horizon / 21);
 }
 
+/** The day a horizon ends: `h` sessions after the decision day — calendar days for crypto, which never closes. */
+export function horizonEnd(market: CalendarMarket | undefined, start: string, h: number): string {
+  return market === "CRYPTO" ? new Date(Date.parse(start) + h * 86_400_000).toISOString().slice(0, 10) : addSessions(market, start, h);
+}
+
+/**
+ * The horizons whose last close exists: those ending before `today` (UTC). On
+ * the end date itself the session is still open, or its daily bar still
+ * forming — settling then would score the call on the close of the day before,
+ * and a settlement is never re-scored.
+ */
+export function maturedHorizons(market: CalendarMarket | undefined, start: string, due: readonly number[], today: string): number[] {
+  return due.filter((h) => horizonEnd(market, start, h) < today);
+}
+
 /** Settle every decision horizon that has matured and is not settled yet. */
 export async function settleDecisions(now = clockNow()): Promise<{ settled: Settlement[]; pending: number; errors: string[] }> {
   const done = new Set(readSettlements().map((s) => `${s.decisionId}|${s.horizon}`));
@@ -83,9 +98,7 @@ export async function settleDecisions(now = clockNow()): Promise<{ settled: Sett
       // No calendar for the venue (Xetra, Tokyo…): horizons are counted in weekdays, holidays unknown.
       const market = calendarFor(r.instrument);
       const start = d.decidedAt.slice(0, 10);
-      const matured = due.filter(
-        (h) => (market === "CRYPTO" ? new Date(Date.parse(start) + h * 86_400_000).toISOString().slice(0, 10) : addSessions(market, start, h)) <= today,
-      );
+      const matured = maturedHorizons(market, start, due, today);
       pending += due.length - matured.length;
       if (!matured.length) continue;
       const from = new Date(Date.parse(start) - 10 * 86_400_000);
@@ -93,7 +106,7 @@ export async function settleDecisions(now = clockNow()): Promise<{ settled: Sett
       const benchSym = defaultBenchmark(r.instrument.market, r.instrument.mic);
       const bench = benchSym ? await getHistory(await resolveSymbol(benchSym), { from, to: now }).catch(() => undefined) : undefined;
       for (const h of matured) {
-        const endDate = market === "CRYPTO" ? new Date(Date.parse(start) + h * 86_400_000).toISOString().slice(0, 10) : addSessions(market, start, h);
+        const endDate = horizonEnd(market, start, h);
         const s0 = closeAtOrBefore(series.bars, start);
         const s1 = closeAtOrBefore(series.bars, endDate);
         if (!s0 || !s1) {

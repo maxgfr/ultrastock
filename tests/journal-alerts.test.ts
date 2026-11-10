@@ -13,12 +13,26 @@ import {
   reviewTrip,
   roundTrips,
 } from "../src/journal/journal.js";
-import { hitRates, judge } from "../src/journal/settle.js";
+import { hitRates, horizonEnd, judge, maturedHorizons } from "../src/journal/settle.js";
 import { transactionId, type Transaction } from "../src/portfolio/ledger.js";
 import { fromCloses, ramp } from "./helpers/series.js";
 
 const tx = (t: Omit<Transaction, "id" | "origin" | "currency">): Transaction =>
   ({ origin: "manual", currency: "EUR", ...t, id: transactionId({ origin: "manual", currency: "EUR", ...t }) }) as Transaction;
+
+describe("settlement timing", () => {
+  it("settles a horizon once its last session is over, not on the day it ends", () => {
+    // Decided Monday 2 March 2026: five sessions later is Monday 9 March.
+    expect(horizonEnd("XNYS", "2026-03-02", 5)).toBe("2026-03-09");
+    // On the 9th the close does not exist yet: settling would score Friday's close, and a settlement is never re-scored.
+    expect(maturedHorizons("XNYS", "2026-03-02", [5, 20, 60], "2026-03-09")).toEqual([]);
+    expect(maturedHorizons("XNYS", "2026-03-02", [5, 20, 60], "2026-03-10")).toEqual([5]);
+    // Crypto counts calendar days, and its daily bar closes at midnight UTC.
+    expect(horizonEnd("CRYPTO", "2026-03-02", 5)).toBe("2026-03-07");
+    expect(maturedHorizons("CRYPTO", "2026-03-02", [5, 20], "2026-03-07")).toEqual([]);
+    expect(maturedHorizons("CRYPTO", "2026-03-02", [5, 20], "2026-03-08")).toEqual([5]);
+  });
+});
 
 describe("settlement judgement", () => {
   it("judges calls by the sign of alpha, holds by a band", () => {

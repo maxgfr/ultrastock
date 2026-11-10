@@ -41376,6 +41376,12 @@ function judge(rating2, alphaPct, horizon) {
   if (rating2 === "sell" || rating2 === "underweight") return alphaPct < 0;
   return Math.abs(alphaPct) < 2 * Math.max(1, horizon / 21);
 }
+function horizonEnd(market, start, h) {
+  return market === "CRYPTO" ? new Date(Date.parse(start) + h * 864e5).toISOString().slice(0, 10) : addSessions(market, start, h);
+}
+function maturedHorizons(market, start, due, today) {
+  return due.filter((h) => horizonEnd(market, start, h) < today);
+}
 async function settleDecisions(now = clockNow()) {
   const done = new Set(readSettlements().map((s) => `${s.decisionId}|${s.horizon}`));
   const settled = [];
@@ -41389,9 +41395,7 @@ async function settleDecisions(now = clockNow()) {
       const r3 = await resolveSymbol(d.symbol);
       const market = calendarFor(r3.instrument);
       const start = d.decidedAt.slice(0, 10);
-      const matured = due.filter(
-        (h) => (market === "CRYPTO" ? new Date(Date.parse(start) + h * 864e5).toISOString().slice(0, 10) : addSessions(market, start, h)) <= today
-      );
+      const matured = maturedHorizons(market, start, due, today);
       pending += due.length - matured.length;
       if (!matured.length) continue;
       const from = new Date(Date.parse(start) - 10 * 864e5);
@@ -41399,7 +41403,7 @@ async function settleDecisions(now = clockNow()) {
       const benchSym = defaultBenchmark(r3.instrument.market, r3.instrument.mic);
       const bench = benchSym ? await getHistory(await resolveSymbol(benchSym), { from, to: now }).catch(() => void 0) : void 0;
       for (const h of matured) {
-        const endDate = market === "CRYPTO" ? new Date(Date.parse(start) + h * 864e5).toISOString().slice(0, 10) : addSessions(market, start, h);
+        const endDate = horizonEnd(market, start, h);
         const s0 = closeAtOrBefore(series.bars, start);
         const s1 = closeAtOrBefore(series.bars, endDate);
         if (!s0 || !s1) {
