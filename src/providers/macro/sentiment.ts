@@ -12,6 +12,7 @@
 //                      published daily history (official; whole history in one file, hundreds of KB);
 //                      https://cdn.cboe.com/data/us/options/market_statistics/daily/<YYYY-MM-DD>_daily_options —
 //                      the day's put/call ratios and volumes (403 on a non-trading day).
+import { mapLimit } from "../../engine.js";
 import type { Dataset, Point } from "../../core/datasets.js";
 import { isTradingDay } from "../../core/calendar.js";
 import { csvRecords, parseLooseNumber } from "../../core/csv.js";
@@ -158,8 +159,12 @@ export async function vixTermStructure(symbols: readonly string[] = VIX_FAMILY):
   const quotes = new Map<string, { price: number; asOf?: string; change?: number }>();
   let fetchedAt = "";
   const notes: string[] = [];
-  for (const s of symbols) {
-    const res = await fetchJson<CboeQuote>(`https://cdn.cboe.com/api/global/delayed_quotes/quotes/_${encodeURIComponent(s)}.json`);
+  // Six files off Cboe's CDN, none depending on another: three at a time, kept in the order asked.
+  const answers = await mapLimit([...symbols], 3, (s) =>
+    fetchJson<CboeQuote>(`https://cdn.cboe.com/api/global/delayed_quotes/quotes/_${encodeURIComponent(s)}.json`),
+  );
+  for (const [i, s] of symbols.entries()) {
+    const res = answers[i]!;
     const d = res.data?.data;
     if (!res.ok || typeof d?.current_price !== "number") {
       notes.push(`no Cboe quote for ${s} (HTTP ${res.status})`);

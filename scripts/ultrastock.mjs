@@ -27964,8 +27964,13 @@ async function vixTermStructure(symbols = VIX_FAMILY) {
   const quotes = /* @__PURE__ */ new Map();
   let fetchedAt = "";
   const notes = [];
-  for (const s of symbols) {
-    const res = await fetchJson(`https://cdn.cboe.com/api/global/delayed_quotes/quotes/_${encodeURIComponent(s)}.json`);
+  const answers = await mapLimit(
+    [...symbols],
+    3,
+    (s) => fetchJson(`https://cdn.cboe.com/api/global/delayed_quotes/quotes/_${encodeURIComponent(s)}.json`)
+  );
+  for (const [i, s] of symbols.entries()) {
+    const res = answers[i];
     const d = res.data?.data;
     if (!res.ok || typeof d?.current_price !== "number") {
       notes.push(`no Cboe quote for ${s} (HTTP ${res.status})`);
@@ -34620,11 +34625,13 @@ async function policyMeetings() {
   const notes = [];
   const meetings = [];
   let fetchedAt = (/* @__PURE__ */ new Date()).toISOString();
-  for (const [name, url, parse2] of [
+  const banks = [
     ["Fed", FOMC_URL, parseFomc],
     ["ECB", ECB_URL, parseEcbCalendar]
-  ]) {
-    const r3 = await fetchText(url, { userAgent: "browser", hostIntervalMs: 500 });
+  ];
+  const pages = await Promise.all(banks.map(([, url]) => fetchText(url, { userAgent: "browser", hostIntervalMs: 500 })));
+  for (const [i, [name, , parse2]] of banks.entries()) {
+    const r3 = pages[i];
     if (!r3.ok) {
       notes.push(`${name} calendar unavailable (HTTP ${r3.status})`);
       continue;

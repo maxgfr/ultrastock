@@ -89,11 +89,14 @@ export async function policyMeetings(): Promise<{ meetings: PolicyMeeting[]; not
   const notes: string[] = [];
   const meetings: PolicyMeeting[] = [];
   let fetchedAt = new Date().toISOString();
-  for (const [name, url, parse] of [
+  const banks = [
     ["Fed", FOMC_URL, parseFomc],
     ["ECB", ECB_URL, parseEcbCalendar],
-  ] as const) {
-    const r = await fetchText(url, { userAgent: "browser", hostIntervalMs: 500 });
+  ] as const;
+  // Two sites that know nothing of each other: asked together, read in the order above.
+  const pages = await Promise.all(banks.map(([, url]) => fetchText(url, { userAgent: "browser", hostIntervalMs: 500 })));
+  for (const [i, [name, , parse]] of banks.entries()) {
+    const r = pages[i]!;
     if (!r.ok) {
       notes.push(`${name} calendar unavailable (HTTP ${r.status})`);
       continue;
