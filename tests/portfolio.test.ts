@@ -101,6 +101,12 @@ describe("sizing", () => {
     const crypto = sizePosition({ equity: 10_000, entry: 80_000, stop: 76_000, riskPct: 1, maxPositionPct: 10, fractional: true, lot: 0.0001 });
     expect(crypto.quantity).toBeCloseTo(0.0125, 10);
     expect(sizePosition({ equity: 1_000, entry: 500, stop: 490, riskPct: 0.1, maxPositionPct: 10 }).quantity).toBe(0);
+    // 3 % of 1 000 at 100 is 0.3: three lots of 0.1, not two because 0.3 / 0.1 is 2.999… in binary.
+    expect(sizePosition({ equity: 1_000, entry: 100, riskPct: 1, maxPositionPct: 3, fractional: true, lot: 0.1 }).quantity).toBe(0.3);
+    // 29 shares at 0.1, where 2.9 / 0.1 is 28.999… in binary.
+    expect(sizePosition({ equity: 1_000, entry: 0.1, riskPct: 1, maxPositionPct: 0.29 }).quantity).toBe(29);
+    // Rounding still goes down, never up to a lot the limits do not allow.
+    expect(sizePosition({ equity: 1_000, entry: 100, riskPct: 1, maxPositionPct: 2.99, fractional: true, lot: 0.1 }).quantity).toBe(0.2);
     expect(() => sizePosition({ equity: 1, entry: 1, stop: 1, riskPct: 1, maxPositionPct: 1 })).toThrow(/stop equals/);
   });
   it("Kelly, binary Kelly, vol targeting, expectancy, R:R, ATR stop", () => {

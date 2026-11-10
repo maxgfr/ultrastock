@@ -19889,8 +19889,10 @@ function strategyPoints(q, expiry, spec, legs, out5, opts = {}) {
 
 // src/analytics/sizing.ts
 function roundDown(q, lot, fractional) {
-  if (fractional) return Math.floor(q / lot) * lot;
-  return Math.floor(q / Math.max(1, lot)) * Math.max(1, lot);
+  const step = fractional ? lot : Math.max(1, lot);
+  const lots = q / step;
+  const whole2 = Math.floor(lots + 1e-9 * Math.max(1, Math.abs(lots)));
+  return Number((whole2 * step).toPrecision(12));
 }
 function sizePosition(i) {
   const reasons = [];

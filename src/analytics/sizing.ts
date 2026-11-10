@@ -35,9 +35,17 @@ export interface SizingResult {
   reasons: string[];
 }
 
+/**
+ * The largest whole number of lots in `q`. A quantity that is a whole number of
+ * lots on paper is often a hair under one in binary (0.3 / 0.1 = 2.999…96):
+ * flooring that would drop a lot the limits allow, so the count is taken within
+ * a billionth, and the product is written back without the binary noise.
+ */
 function roundDown(q: number, lot: number, fractional: boolean): number {
-  if (fractional) return Math.floor(q / lot) * lot;
-  return Math.floor(q / Math.max(1, lot)) * Math.max(1, lot);
+  const step = fractional ? lot : Math.max(1, lot);
+  const lots = q / step;
+  const whole = Math.floor(lots + 1e-9 * Math.max(1, Math.abs(lots)));
+  return Number((whole * step).toPrecision(12));
 }
 
 /** Fixed-fractional risk sizing: quantity = equity × risk% / |entry − stop|, then every cap applies. */
