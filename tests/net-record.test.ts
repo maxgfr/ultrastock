@@ -8,6 +8,55 @@ import { fetchBytes, fetchJson, fetchText, setNetMode } from "../src/core/net.js
 
 afterEach(() => setNetMode({ kind: "live" }));
 
+describe("the same GET asked twice in one process", () => {
+  it("is sent once and its answer shared, in flight included — unless it failed, is asked fresh, or the mode changed", async () => {
+    const hits: Record<string, number> = {};
+    let fail = true;
+    const server = createServer((req, res) => {
+      const path = req.url ?? "";
+      hits[path] = (hits[path] ?? 0) + 1;
+      if (path === "/flaky" && fail) {
+        res.statusCode = 503;
+        return res.end("busy");
+      }
+      res.setHeader("content-type", "application/json");
+      setTimeout(() => res.end(JSON.stringify({ path, n: hits[path] })), 20);
+    });
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      setNetMode({ kind: "live" });
+      // Three slices of one command ask for the same history: two side by side, one later.
+      const [a, b] = await Promise.all([fetchJson(`${base}/history`, { retries: 0 }), fetchJson(`${base}/history`, { retries: 0 })]);
+      const c = await fetchJson(`${base}/history`, { retries: 0 });
+      expect(hits["/history"]).toBe(1);
+      expect([a.data, b.data, c.data]).toEqual([
+        { path: "/history", n: 1 },
+        { path: "/history", n: 1 },
+        { path: "/history", n: 1 },
+      ]);
+      expect(c.fetchedAt).toBe(a.fetchedAt); // the time of the read that happened, not of the asking
+      // Another URL, or the same one asked as another client, is another request.
+      await fetchJson(`${base}/quote`, { retries: 0 });
+      await fetchJson(`${base}/history`, { retries: 0, headers: { "x-key": "k" } });
+      expect(hits).toMatchObject({ "/quote": 1, "/history": 2 });
+      // A caller can insist on a new read.
+      expect((await fetchJson(`${base}/history`, { retries: 0, fresh: true })).data).toEqual({ path: "/history", n: 3 });
+      // A refusal is not an answer: the next asker tries again.
+      expect((await fetchText(`${base}/flaky`, { retries: 0 })).ok).toBe(false);
+      fail = false;
+      expect((await fetchText(`${base}/flaky`, { retries: 0 })).ok).toBe(true);
+      expect(hits["/flaky"]).toBe(2);
+      // What was read live is not what a recording should hold: a new mode starts from nothing.
+      setNetMode({ kind: "record", dir: mkdtempSync(join(tmpdir(), "us-net-memo-")) });
+      await fetchJson(`${base}/quote`, { retries: 0 });
+      expect(hits["/quote"]).toBe(2);
+    } finally {
+      await new Promise((done) => server.close(done));
+    }
+  });
+});
+
 describe("a response larger than the size cap", () => {
   it("is a failed read, as text and as bytes, and is not recorded", async () => {
     // No Content-Length: the size is only known once the cap is hit.

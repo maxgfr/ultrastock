@@ -61,7 +61,9 @@ text (headlines, filing titles, market rules) is flagged `untrusted`, and is
 printed between `<<<UNTRUSTED_DATA` fences. The router tries the sources of a
 market in order (Euronext → Yahoo; Nasdaq → Yahoo; Binance → Kraken →
 Coinbase), and records the stand-in as `fallbackFrom`. A dataset cache keeps
-each kind for its own TTL.
+each kind for its own TTL. Within one command, the same GET is sent once and
+its answer shared between the slices that ask for it (`core/net.ts`); nothing
+of that is kept from one command to the next.
 
 ## The user's state
 

@@ -23,6 +23,37 @@ export function politeUa(contact?: string): string {
 export type NetMode = { kind: "live" } | { kind: "record"; dir: string } | { kind: "fixture"; dir: string };
 let mode: NetMode = { kind: "live" };
 
+// One process, one answer per GET.
+//
+// A command is one short-lived process (an MCP tool call spawns its own), and
+// its slices are written independently: `analyze --depth full` on a US share
+// reads the SEC's submissions index from four of them, the price history and
+// the quote from three, each insider filing from two. Within the process a GET
+// is therefore sent once and its answer shared — in flight included, so two
+// slices running side by side wait for the same request — with the `fetchedAt`
+// of the read that really happened. Nothing is kept across processes: this is
+// no cache of market data, and a second command asks again.
+const MEMO_MS = 5 * 60_000;
+/** A body larger than this is not held (characters). */
+const MEMO_ENTRY_CHARS = 8 * 1024 * 1024;
+/** What the memo may hold in all (characters); the oldest answers go first. */
+const MEMO_TOTAL_CHARS = 64 * 1024 * 1024;
+const memo = new Map<string, { at: number; size: number; res: Promise<NetResponse> }>();
+
+function forget(key: string, entry: { res: Promise<NetResponse> }): void {
+  if (memo.get(key)?.res === entry.res) memo.delete(key);
+}
+
+function trimMemo(): void {
+  let total = 0;
+  for (const e of memo.values()) total += e.size;
+  for (const [k, e] of memo) {
+    if (total <= MEMO_TOTAL_CHARS) break;
+    memo.delete(k);
+    total -= e.size;
+  }
+}
+
 /**
  * Declare how this process reaches the network. Recording stamps the fixture
  * with the time it was made; replaying reads that time back as "now", so date
@@ -31,6 +62,7 @@ let mode: NetMode = { kind: "live" };
  */
 export function setNetMode(next: NetMode): void {
   mode = next;
+  memo.clear(); // an answer read live is not what another recording, or a replay, holds
   if (next.kind === "record") {
     mkdirSync(next.dir, { recursive: true });
     const meta = join(next.dir, "fixture.json");
@@ -78,6 +110,8 @@ export interface FetchOptions {
    * recording never holds the secret, and replays whatever key is set, or none.
    */
   recordAs?: string;
+  /** Ask the network again even when this process already holds the answer to the same GET. */
+  fresh?: boolean;
 }
 
 /** Was the request refused by its `authorizeUrl`, before any byte left? */
@@ -128,6 +162,29 @@ export async function fetchText(url: string, opts: FetchOptions = {}): Promise<N
     const rec = JSON.parse(readFileSync(path, "utf8")) as { response: NetResponse };
     return { ...rec.response, replayed: true };
   }
+  // A GET already answered, or in flight, in this process is that answer. A request that names who may be reached
+  // (`authorizeUrl`) is a link from outside, read once; `fresh` asks for a new read.
+  if ((opts.method ?? "GET") !== "GET" || opts.authorizeUrl || opts.fresh) return requestText(url, opts, shown, key);
+  const memoKey = JSON.stringify([shown, opts.userAgent ?? "", opts.accept ?? "", opts.headers ?? {}, opts.maxBytes ?? 0]);
+  const hit = memo.get(memoKey);
+  if (hit && Date.now() - hit.at < MEMO_MS) return { ...(await hit.res) };
+  const entry = { at: Date.now(), size: 0, res: requestText(url, opts, shown, key) };
+  memo.set(memoKey, entry);
+  try {
+    const res = await entry.res;
+    entry.size = res.body.length;
+    // Only an answer is kept: a refusal or a throttle must stay free to be asked again, and a very large body is not held.
+    if (!res.ok || entry.size > MEMO_ENTRY_CHARS) forget(memoKey, entry);
+    else trimMemo();
+    return { ...res };
+  } catch (e) {
+    forget(memoKey, entry);
+    throw e;
+  }
+}
+
+/** The request itself: paced, sent, and recorded when recording. */
+async function requestText(url: string, opts: FetchOptions, shown: string, key: string): Promise<NetResponse> {
   if (opts.hostIntervalMs) await awaitHostSlot(url, opts.hostIntervalMs);
   const userAgent = !opts.userAgent || opts.userAgent === "browser" ? BROWSER_UA : opts.userAgent;
   const fetchedAt = new Date().toISOString();

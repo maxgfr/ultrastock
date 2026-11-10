@@ -12778,8 +12778,25 @@ function politeUa(contact) {
   return `ultrastock/${VERSION} (+${CONTACT_URL}${contact ? `; ${contact}` : ""})`;
 }
 var mode2 = { kind: "live" };
+var MEMO_MS = 5 * 6e4;
+var MEMO_ENTRY_CHARS = 8 * 1024 * 1024;
+var MEMO_TOTAL_CHARS = 64 * 1024 * 1024;
+var memo = /* @__PURE__ */ new Map();
+function forget2(key, entry2) {
+  if (memo.get(key)?.res === entry2.res) memo.delete(key);
+}
+function trimMemo() {
+  let total = 0;
+  for (const e of memo.values()) total += e.size;
+  for (const [k, e] of memo) {
+    if (total <= MEMO_TOTAL_CHARS) break;
+    memo.delete(k);
+    total -= e.size;
+  }
+}
 function setNetMode(next2) {
   mode2 = next2;
+  memo.clear();
   if (next2.kind === "record") {
     mkdirSync5(next2.dir, { recursive: true });
     const meta2 = join6(next2.dir, "fixture.json");
@@ -12824,6 +12841,24 @@ async function fetchText(url, opts = {}) {
     const rec = JSON.parse(readFileSync11(path2, "utf8"));
     return { ...rec.response, replayed: true };
   }
+  if ((opts.method ?? "GET") !== "GET" || opts.authorizeUrl || opts.fresh) return requestText(url, opts, shown, key);
+  const memoKey = JSON.stringify([shown, opts.userAgent ?? "", opts.accept ?? "", opts.headers ?? {}, opts.maxBytes ?? 0]);
+  const hit = memo.get(memoKey);
+  if (hit && Date.now() - hit.at < MEMO_MS) return { ...await hit.res };
+  const entry2 = { at: Date.now(), size: 0, res: requestText(url, opts, shown, key) };
+  memo.set(memoKey, entry2);
+  try {
+    const res = await entry2.res;
+    entry2.size = res.body.length;
+    if (!res.ok || entry2.size > MEMO_ENTRY_CHARS) forget2(memoKey, entry2);
+    else trimMemo();
+    return { ...res };
+  } catch (e) {
+    forget2(memoKey, entry2);
+    throw e;
+  }
+}
+async function requestText(url, opts, shown, key) {
   if (opts.hostIntervalMs) await awaitHostSlot(url, opts.hostIntervalMs);
   const userAgent = !opts.userAgent || opts.userAgent === "browser" ? BROWSER_UA : opts.userAgent;
   const fetchedAt = (/* @__PURE__ */ new Date()).toISOString();
