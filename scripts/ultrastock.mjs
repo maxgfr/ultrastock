@@ -47582,7 +47582,7 @@ var UsRegime = class extends TaxRegime {
         const notes = [];
         let qualified;
         if (t.type === "dividend") {
-          const held = [...active2].filter((l) => l.symbol === sym3 && l.account === t.account);
+          const held = [...active2].filter((l) => l.symbol === sym3 && l.account === t.account && l.remaining > 1e-12);
           const need = this.param("qualifiedDividend.holdingDays");
           qualified = held.some((l) => Date.parse(day3(t.date)) - Date.parse(l.acquired) > need * 864e5);
           notes.push(

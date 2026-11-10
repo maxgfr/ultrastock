@@ -257,6 +257,19 @@ describe("United States", () => {
     expect(fr.find((e) => e.kind === "crypto-disposal")?.gain).toBeCloseTo(100, 6);
   });
 
+  it("judges a dividend's holding period on the shares still held, not on lots sold long ago", () => {
+    const txs = [
+      u({ date: "2020-01-10", type: "buy", symbol: "KO", quantity: 10, price: 50 }),
+      u({ date: "2021-02-01", type: "sell", symbol: "KO", quantity: 10, price: 55 }),
+      u({ date: "2025-03-01", type: "buy", symbol: "KO", quantity: 10, price: 60 }),
+      u({ date: "2025-03-14", type: "dividend", symbol: "KO", amount: 5 }),
+      u({ date: "2025-09-15", type: "dividend", symbol: "KO", amount: 5 }),
+    ];
+    const divs = new UsRegime(2025).realize(usIn(txs)).filter((e) => e.kind === "dividend");
+    // Held 13 days at the first payment (the 2020 lot is gone), 198 at the second.
+    expect(divs.map((e) => e.lines?.qualified)).toEqual(["false", "true"]);
+  });
+
   it("wash sale: the loss moves into the replacement's basis; an IRA replacement loses it", () => {
     const txs = [
       u({ date: "2025-01-02", type: "buy", symbol: "AAPL", quantity: 10, price: 100 }),

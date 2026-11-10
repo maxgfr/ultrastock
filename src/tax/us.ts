@@ -256,7 +256,8 @@ export class UsRegime extends TaxRegime {
         let qualified: boolean | undefined;
         if (t.type === "dividend") {
           // Held more than 60 days around the payment (the ex-date is not in the ledger: an approximation).
-          const held = [...active].filter((l) => l.symbol === sym && l.account === t.account);
+          // Only what is still held earns the dividend: a lot sold out years ago says nothing of this holding period.
+          const held = [...active].filter((l) => l.symbol === sym && l.account === t.account && l.remaining > 1e-12);
           const need = this.param("qualifiedDividend.holdingDays");
           qualified = held.some((l) => Date.parse(day(t.date)) - Date.parse(l.acquired) > need * 86_400_000);
           notes.push(
