@@ -80,6 +80,8 @@ async function rpc<T>(method: string, params: unknown[]): Promise<{ result: T; u
     method: "POST",
     json: { jsonrpc: "2.0", id: 1, method, params },
     hostIntervalMs: 500,
+    // A private RPC URL usually carries its API key: a recording names the public endpoint instead.
+    recordAs: PUBLIC_RPC,
   });
   let body = res.data;
   if (!body && res.body)

@@ -12698,10 +12698,12 @@ function fixturePath(dir2, key) {
   return join6(dir2, "http", `${key}.json`);
 }
 async function fetchText(url, opts = {}) {
-  const key = requestKey(url, opts);
+  const shown = opts.recordAs ?? url;
+  const key = requestKey(shown, opts);
   if (mode2.kind === "fixture") {
     const path2 = fixturePath(mode2.dir, key);
-    if (!existsSync8(path2)) throw new FixtureMiss(`fixture ${mode2.dir} has no recorded answer for ${opts.method ?? "GET"} ${url} \u2014 re-record it with --record`);
+    if (!existsSync8(path2))
+      throw new FixtureMiss(`fixture ${mode2.dir} has no recorded answer for ${opts.method ?? "GET"} ${shown} \u2014 re-record it with --record`);
     const rec = JSON.parse(readFileSync9(path2, "utf8"));
     return { ...rec.response, replayed: true };
   }
@@ -12735,7 +12737,14 @@ async function fetchText(url, opts = {}) {
     mkdirSync4(join6(mode2.dir, "http"), { recursive: true });
     writeFileAtomic(
       fixturePath(mode2.dir, key),
-      `${JSON.stringify({ request: { method: opts.method ?? "GET", url, json: opts.json }, response: { ...res, rateLimited: void 0 } }, null, 1)}
+      `${JSON.stringify(
+        {
+          request: { method: opts.method ?? "GET", url: shown, json: opts.json },
+          response: { ...res, ...opts.recordAs ? { url: shown } : {}, rateLimited: void 0 }
+        },
+        null,
+        1
+      )}
 `
     );
   }
@@ -27643,8 +27652,11 @@ async function fredSeries(id, opts = {}) {
   let fetchedAt;
   const notes = [];
   if (key) {
-    const apiUrl = `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(sid)}&api_key=${encodeURIComponent(key)}&file_type=json&observation_start=${start}`;
-    const res = await fetchJson(apiUrl, { userAgent: politeUa() });
+    const apiUrl = (apiKey) => `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(sid)}&api_key=${encodeURIComponent(apiKey)}&file_type=json&observation_start=${start}`;
+    const res = await fetchJson(apiUrl(key), {
+      userAgent: politeUa(),
+      recordAs: apiUrl("REDACTED")
+    });
     if (!res.ok || !res.data) throw new ProviderError(SOURCE20, `${sid}: API answered HTTP ${res.status}`, res.status);
     obs = parseFredJson(res.data);
     url = `https://fred.stlouisfed.org/series/${sid}`;
@@ -36555,7 +36567,9 @@ async function rpc2(method, params) {
   const res = await fetchJson(url, {
     method: "POST",
     json: { jsonrpc: "2.0", id: 1, method, params },
-    hostIntervalMs: 500
+    hostIntervalMs: 500,
+    // A private RPC URL usually carries its API key: a recording names the public endpoint instead.
+    recordAs: PUBLIC_RPC
   });
   let body = res.data;
   if (!body && res.body)

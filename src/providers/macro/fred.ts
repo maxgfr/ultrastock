@@ -67,8 +67,13 @@ export async function fredSeries(id: string, opts: { days?: number; now?: Date; 
   let fetchedAt: string;
   const notes: string[] = [];
   if (key) {
-    const apiUrl = `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(sid)}&api_key=${encodeURIComponent(key)}&file_type=json&observation_start=${start}`;
-    const res = await fetchJson<{ observations?: Array<{ date: string; value: string }>; error_message?: string }>(apiUrl, { userAgent: politeUa() });
+    const apiUrl = (apiKey: string) =>
+      `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(sid)}&api_key=${encodeURIComponent(apiKey)}&file_type=json&observation_start=${start}`;
+    // FRED takes its key in the query: a recording stores, and is keyed by, the URL without it.
+    const res = await fetchJson<{ observations?: Array<{ date: string; value: string }>; error_message?: string }>(apiUrl(key), {
+      userAgent: politeUa(),
+      recordAs: apiUrl("REDACTED"),
+    });
     if (!res.ok || !res.data) throw new ProviderError(SOURCE, `${sid}: API answered HTTP ${res.status}`, res.status);
     obs = parseFredJson(res.data);
     url = `https://fred.stlouisfed.org/series/${sid}`;

@@ -72,6 +72,12 @@ export interface FetchOptions {
    * `isPublicUrl`. A refusal answers `ok: false` with "URL not authorized".
    */
   authorizeUrl?: (url: string) => Promise<boolean>;
+  /**
+   * The URL a fixture stores and is keyed by, for a request whose real URL
+   * carries a credential (an API key in the query, a private RPC endpoint): a
+   * recording never holds the secret, and replays whatever key is set, or none.
+   */
+  recordAs?: string;
 }
 
 /** Was the request refused by its `authorizeUrl`, before any byte left? */
@@ -102,10 +108,12 @@ function fixturePath(dir: string, key: string): string {
 
 /** Fetch a URL as text, live, recorded or replayed. Never throws on HTTP errors — `ok` says. */
 export async function fetchText(url: string, opts: FetchOptions = {}): Promise<NetResponse> {
-  const key = requestKey(url, opts);
+  const shown = opts.recordAs ?? url;
+  const key = requestKey(shown, opts);
   if (mode.kind === "fixture") {
     const path = fixturePath(mode.dir, key);
-    if (!existsSync(path)) throw new FixtureMiss(`fixture ${mode.dir} has no recorded answer for ${opts.method ?? "GET"} ${url} — re-record it with --record`);
+    if (!existsSync(path))
+      throw new FixtureMiss(`fixture ${mode.dir} has no recorded answer for ${opts.method ?? "GET"} ${shown} — re-record it with --record`);
     const rec = JSON.parse(readFileSync(path, "utf8")) as { response: NetResponse };
     return { ...rec.response, replayed: true };
   }
@@ -139,7 +147,14 @@ export async function fetchText(url: string, opts: FetchOptions = {}): Promise<N
     mkdirSync(join(mode.dir, "http"), { recursive: true });
     writeFileAtomic(
       fixturePath(mode.dir, key),
-      `${JSON.stringify({ request: { method: opts.method ?? "GET", url, json: opts.json }, response: { ...res, rateLimited: undefined } }, null, 1)}\n`,
+      `${JSON.stringify(
+        {
+          request: { method: opts.method ?? "GET", url: shown, json: opts.json },
+          response: { ...res, ...(opts.recordAs ? { url: shown } : {}), rateLimited: undefined },
+        },
+        null,
+        1,
+      )}\n`,
     );
   }
   return res;
