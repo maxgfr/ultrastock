@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.39](https://github.com/maxgfr/ultrastock/compare/v1.12.38...v1.12.39) (2026-11-10)
+
+
+### Bug Fixes
+
+* **live:** "not found at the venue" no longer frees a ticket on its own ([45bca79](https://github.com/maxgfr/ultrastock/commit/45bca7959e9534f197caa98495216347ee88cd1b))
+
 ## [1.12.38](https://github.com/maxgfr/ultrastock/compare/v1.12.37...v1.12.38) (2026-11-10)
 
 
