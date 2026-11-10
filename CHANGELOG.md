@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.35](https://github.com/maxgfr/ultrastock/compare/v1.12.34...v1.12.35) (2026-11-10)
+
+
+### Performance Improvements
+
+* **tax:** read the ledger once for the crypto portfolio values of a report ([11ebea3](https://github.com/maxgfr/ultrastock/commit/11ebea3a84c39596eb5952b490dfb16e906e003f))
+
 ## [1.12.34](https://github.com/maxgfr/ultrastock/compare/v1.12.33...v1.12.34) (2026-11-10)
 
 
