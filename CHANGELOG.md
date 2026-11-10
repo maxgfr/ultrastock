@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.34](https://github.com/maxgfr/ultrastock/compare/v1.12.33...v1.12.34) (2026-11-10)
+
+
+### Performance Improvements
+
+* **calendar:** work out a market's holidays once per year, not once per day asked ([d1e009e](https://github.com/maxgfr/ultrastock/commit/d1e009e3c23136d11c7aa88b850806042734deba))
+
 ## [1.12.33](https://github.com/maxgfr/ultrastock/compare/v1.12.32...v1.12.33) (2026-11-10)
 
 
