@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.19](https://github.com/maxgfr/ultrastock/compare/v1.12.18...v1.12.19) (2026-11-10)
+
+
+### Bug Fixes
+
+* **backtest:** look back whole calendar months in dual momentum ([9d36f0c](https://github.com/maxgfr/ultrastock/commit/9d36f0cd222ffa96087c49999ef0552ccd3e1dba))
+
 ## [1.12.18](https://github.com/maxgfr/ultrastock/compare/v1.12.17...v1.12.18) (2026-11-10)
 
 
