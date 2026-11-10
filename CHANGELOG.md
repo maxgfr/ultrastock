@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.37](https://github.com/maxgfr/ultrastock/compare/v1.12.36...v1.12.37) (2026-11-10)
+
+
+### Performance Improvements
+
+* **macro:** ask for independent pages together, read them in the same order ([c990463](https://github.com/maxgfr/ultrastock/commit/c99046310fbef8bc0c03678ef80a2af98ec3d69c))
+
 ## [1.12.36](https://github.com/maxgfr/ultrastock/compare/v1.12.35...v1.12.36) (2026-11-10)
 
 
