@@ -47,7 +47,8 @@ interface FrState {
   /** Household PMP per security over ordinary accounts. */
   securities: Map<string, { quantity: number; cost: number; firstBuy?: string; currency: string }>;
   transfers: Map<string, number>;
-  crypto: { acquisitions: number; fractions: number; holdings: Map<string, number> };
+  /** `unknownSince`: the first disposal whose share of the acquisition price could not be computed (no portfolio value). */
+  crypto: { acquisitions: number; fractions: number; holdings: Map<string, number>; unknownSince?: string };
   sheltered: Map<string, { deposits: number; netDeposits: number; opened?: string; type: string }>;
   events: TaxEvent[];
   warnings: string[];
@@ -253,6 +254,8 @@ export class FranceRegime extends TaxRegime {
       const value = input.cryptoValue?.(day(t.date), t);
       const acquisitionNet = c.acquisitions - c.fractions;
       if (value === undefined || value <= 0) {
+        // Its share of the acquisition price stays in the pool: every later disposal is computed on too high a price.
+        c.unknownSince ??= day(t.date);
         if (inYear) {
           st.warnings.push(
             `crypto disposal on ${day(t.date)}: the portfolio's total value at that moment is unknown — the gain cannot be computed (give it, or let the command value the holdings)`,
@@ -282,6 +285,13 @@ export class FranceRegime extends TaxRegime {
       const v = Math.max(value, price);
       const fraction = (acquisitionNet * price) / v;
       const gain = net - fraction;
+      const understated = c.unknownSince
+        ? `computed without the share of the acquisition price used by the disposal of ${c.unknownSince}, whose portfolio value is unknown: this gain is understated — give that value and run the report again`
+        : undefined;
+      if (inYear && understated && !st.warnings.some((w) => w.includes("is understated")))
+        st.warnings.push(
+          `crypto disposals after ${c.unknownSince}: the gain of the disposal of ${c.unknownSince} could not be computed, so its share of the acquisition price was not deducted — every later gain is understated until that portfolio value is given`,
+        );
       if (inYear)
         st.events.push({
           ...base,
@@ -305,7 +315,10 @@ export class FranceRegime extends TaxRegime {
             "223": round2(acquisitionNet),
             "224": round2(gain),
           },
-          notes: value < price ? ["the portfolio value given is below the disposal price: raised to the price"] : [],
+          notes: [
+            ...(value < price ? ["the portfolio value given is below the disposal price: raised to the price"] : []),
+            ...(understated ? [understated] : []),
+          ],
         });
       c.fractions += fraction;
       return;

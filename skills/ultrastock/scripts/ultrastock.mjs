@@ -46955,6 +46955,7 @@ var FranceRegime = class extends TaxRegime {
       const value = input.cryptoValue?.(day3(t.date), t);
       const acquisitionNet = c.acquisitions - c.fractions;
       if (value === void 0 || value <= 0) {
+        c.unknownSince ??= day3(t.date);
         if (inYear) {
           st.warnings.push(
             `crypto disposal on ${day3(t.date)}: the portfolio's total value at that moment is unknown \u2014 the gain cannot be computed (give it, or let the command value the holdings)`
@@ -46984,6 +46985,11 @@ var FranceRegime = class extends TaxRegime {
       const v = Math.max(value, price);
       const fraction2 = acquisitionNet * price / v;
       const gain = net - fraction2;
+      const understated = c.unknownSince ? `computed without the share of the acquisition price used by the disposal of ${c.unknownSince}, whose portfolio value is unknown: this gain is understated \u2014 give that value and run the report again` : void 0;
+      if (inYear && understated && !st.warnings.some((w) => w.includes("is understated")))
+        st.warnings.push(
+          `crypto disposals after ${c.unknownSince}: the gain of the disposal of ${c.unknownSince} could not be computed, so its share of the acquisition price was not deducted \u2014 every later gain is understated until that portfolio value is given`
+        );
       if (inYear)
         st.events.push({
           ...base2,
@@ -47007,7 +47013,10 @@ var FranceRegime = class extends TaxRegime {
             "223": round22(acquisitionNet),
             "224": round22(gain)
           },
-          notes: value < price ? ["the portfolio value given is below the disposal price: raised to the price"] : []
+          notes: [
+            ...value < price ? ["the portfolio value given is below the disposal price: raised to the price"] : [],
+            ...understated ? [understated] : []
+          ]
         });
       c.fractions += fraction2;
       return;

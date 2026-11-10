@@ -150,6 +150,26 @@ describe("France", () => {
     expect(u.warnings.join(" ")).toMatch(/total value at that moment is unknown/);
   });
 
+  it("crypto: a gain computed after a disposal of unknown portfolio value is flagged as understated", () => {
+    // The 2086 notice's example with the first disposal's portfolio value missing: the second is then computed on the
+    // whole 1 000 € of acquisitions (1 300 − 1 000 × 1 300 / 1 300 = 300) where the notice finds 675.
+    const txs = [
+      tx({ date: "2025-01-10", type: "buy", account: "kraken", symbol: "BTCEUR", quantity: 0.1, price: 10_000 }),
+      tx({ date: "2025-03-10", type: "sell", account: "kraken", symbol: "BTCEUR", quantity: 0.0375, price: 12_000 }),
+      tx({ date: "2025-08-10", type: "sell", account: "kraken", symbol: "BTCEUR", quantity: 0.0625, price: 20_800 }),
+    ];
+    const values: Record<string, number> = { "2025-08-10": 1300 };
+    const s = new FranceRegime(2025).annualSummary(input(txs, [KRAKEN], { cryptoValue: (d) => values[d] }));
+    const second = s.events.filter((e) => e.kind === "crypto-disposal")[1]!;
+    expect(second.gain).toBe(300);
+    expect(second.notes.join(" ")).toMatch(/disposal of 2025-03-10.*this gain is understated/);
+    expect(s.warnings.filter((w) => /every later gain is understated/.test(w))).toHaveLength(1);
+    // With every value known, nothing is flagged.
+    const full = new FranceRegime(2025).annualSummary(input(txs, [KRAKEN], { cryptoValue: (d) => ({ ...values, "2025-03-10": 1200 })[d] }));
+    expect(full.warnings.join(" ")).not.toMatch(/understated/);
+    expect(full.events.filter((e) => e.kind === "crypto-disposal").map((e) => e.gain)).toEqual([75, 675]);
+  });
+
   it("PEA withdrawal after 5 years: social levies on the gain share only", () => {
     const txs = [
       tx({ date: "2018-01-05", type: "deposit", account: "pea", amount: 100_000 }),
