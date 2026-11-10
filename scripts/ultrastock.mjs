@@ -12380,7 +12380,7 @@ function readBody(req) {
 }
 
 // src/version.ts
-var VERSION = "1.12.27";
+var VERSION = "1.12.28";
 
 // src/engine.ts
 configure({
