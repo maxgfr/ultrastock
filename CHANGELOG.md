@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.13](https://github.com/maxgfr/ultrastock/compare/v1.12.12...v1.12.13) (2026-11-10)
+
+
+### Bug Fixes
+
+* **analyze:** keep the instrument's own statistics and its benchmark when it has peers ([4184d36](https://github.com/maxgfr/ultrastock/commit/4184d36d42f992ba6b732bbab6fcd5326c6f187e))
+
 ## [1.12.12](https://github.com/maxgfr/ultrastock/compare/v1.12.11...v1.12.12) (2026-11-10)
 
 
