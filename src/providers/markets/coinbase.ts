@@ -50,15 +50,29 @@ function failure(status: number, product: string, body?: { message?: string }, e
   return new ProviderError(SOURCE, `request for ${product} failed (${status}${error ? `, ${error}` : ""})`, status);
 }
 
-/** Bars between two instants, paged 300 at a time. Only CLOSED bars: the one still forming is dropped. */
-export async function coinbaseHistory(instrument: Instrument, interval: Interval, from: Date, to: Date, notes: string[] = []): Promise<PriceSeries> {
+/** The most pages one history read asks for: 18 000 candles. */
+export const COINBASE_MAX_PAGES = 60;
+
+/**
+ * Bars between two instants, paged 300 at a time. Only CLOSED bars: the one still forming is dropped.
+ * A window longer than `maxPages` pages is read from its start and stops short of `to`: the series says so.
+ */
+export async function coinbaseHistory(
+  instrument: Instrument,
+  interval: Interval,
+  from: Date,
+  to: Date,
+  notes: string[] = [],
+  maxPages = COINBASE_MAX_PAGES,
+): Promise<PriceSeries> {
   const g = GRANULARITY[interval];
   if (!g) throw new ProviderError(SOURCE, `Coinbase has no ${interval} candles (1m, 5m, 15m, 1h, 6h, 1d only)`, 400);
   const bars = new Map<string, Bar>();
   let firstUrl = "";
   let fetchedAt = "";
   const end = to.getTime();
-  for (let start = from.getTime(), page = 0; start <= end && page < 60; page++) {
+  let start = from.getTime();
+  for (let page = 0; start <= end && page < maxPages; page++) {
     const stop = Math.min(end, start + (300 - 1) * g * 1000);
     const url = `${BASE}/products/${instrument.venueId}/candles?granularity=${g}&start=${new Date(start).toISOString()}&end=${new Date(stop).toISOString()}`;
     const res = await fetchJson<Array<[number, number, number, number, number, number]>>(url, PACE);
@@ -73,6 +87,10 @@ export async function coinbaseHistory(instrument: Instrument, interval: Interval
     start = stop + g * 1000;
   }
   if (!bars.size) throw new ProviderError(SOURCE, `no closed ${interval} candles for ${instrument.venueId} in the window`);
+  if (start <= end)
+    notes.push(
+      `the window holds more than ${maxPages * 300} ${interval} candles: the series stops at ${new Date(start - g * 1000).toISOString().slice(0, 16)}Z, short of ${to.toISOString().slice(0, 10)} — ask for a shorter window or a longer interval`,
+    );
   return {
     instrument,
     interval,

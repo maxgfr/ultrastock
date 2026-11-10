@@ -73,15 +73,33 @@ function refusal(status: number, pair: string): ProviderError {
   return new ProviderError(SOURCE, `request for ${pair} failed (${status})`, status);
 }
 
-/** Bars between two instants, paged 1000 at a time. Only CLOSED bars: the one still forming is dropped. */
-export async function binanceHistory(instrument: Instrument, interval: Interval, from: Date, to: Date, notes: string[] = []): Promise<PriceSeries> {
+/** The most pages one history read asks for: 50 000 bars. */
+export const BINANCE_MAX_PAGES = 50;
+
+/**
+ * Bars between two instants, paged 1000 at a time. Only CLOSED bars: the one still forming is dropped.
+ * A window longer than `maxPages` pages is read from its start and stops short of `to`: the series says so.
+ */
+export async function binanceHistory(
+  instrument: Instrument,
+  interval: Interval,
+  from: Date,
+  to: Date,
+  notes: string[] = [],
+  maxPages = BINANCE_MAX_PAGES,
+): Promise<PriceSeries> {
   const step = MS[interval];
   const bars: Bar[] = [];
   let start = from.getTime();
   const end = to.getTime();
   let firstUrl = "";
   let fetchedAt = "";
-  for (let page = 0; start <= end && page < 50; page++) {
+  let complete = false;
+  for (let page = 0; page < maxPages; page++) {
+    if (start > end) {
+      complete = true;
+      break;
+    }
     const url = `${BASE}/api/v3/klines?symbol=${instrument.venueId}&interval=${interval}&startTime=${start}&endTime=${end}&limit=1000`;
     const res = await fetchJson<Kline[]>(url);
     if (!res.ok || !Array.isArray(res.data)) throw refusal(res.status, instrument.venueId);
@@ -90,14 +108,20 @@ export async function binanceHistory(instrument: Instrument, interval: Interval,
       fetchedAt = res.fetchedAt;
     }
     const rows = res.data;
-    if (!rows.length) break;
     // A kline is closed when its close time (index 6) is in the past at read time.
     const closed = rows.filter((k) => k[6] < Date.parse(res.fetchedAt));
     bars.push(...parseKlines(closed, interval));
-    if (rows.length < 1000) break;
+    if (rows.length < 1000) {
+      complete = true;
+      break;
+    }
     start = rows[rows.length - 1]![0] + step;
   }
   if (!bars.length) throw new ProviderError(SOURCE, `no closed ${interval} bars for ${instrument.venueId} in the window`);
+  if (!complete && start <= end)
+    notes.push(
+      `the window holds more than ${maxPages * 1000} ${interval} bars: the series stops at ${bars[bars.length - 1]!.date}, short of ${to.toISOString().slice(0, 10)} — ask for a shorter window or a longer interval`,
+    );
   return {
     instrument,
     interval,

@@ -1,7 +1,10 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { clockNow, FixtureMiss, fetchText, setNetMode } from "../src/core/net.js";
-import { looksLikeCryptoPair, parseKlines, resolveBinance } from "../src/providers/binance.js";
+import { contentHash } from "../src/engine.js";
+import { binanceHistory, looksLikeCryptoPair, parseKlines, resolveBinance } from "../src/providers/binance.js";
 import { parseEuronextHistory } from "../src/providers/euronext.js";
 import { monthDayYear, parseNasdaqHistory } from "../src/providers/nasdaq.js";
 import { classifySymbol, getHistory, getQuote, resolveSymbol } from "../src/providers/router.js";
@@ -84,6 +87,23 @@ describe("fixtures", () => {
     const s = await getHistory(b, { from: new Date(now.getTime() - 729 * 86400_000), to: now });
     // Only closed bars: the session still forming at record time is never a bar.
     expect(s.bars[s.bars.length - 1]!.date < now.toISOString().slice(0, 10)).toBe(true);
+  });
+  it("says so when a Binance history stops at the page cap, short of the window's end", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "us-binance-pages-"));
+    mkdirSync(join(dir, "http"));
+    const from = Date.parse("2026-01-01T00:00:00Z");
+    const to = Date.parse("2026-04-01T00:00:00Z"); // 2160 hourly bars: three pages
+    const hour = 3_600_000;
+    const url = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&startTime=${from}&endTime=${to}&limit=1000`;
+    const rows = Array.from({ length: 1000 }, (_, i) => [from + i * hour, "1", "2", "0.5", "1.5", "10", from + (i + 1) * hour - 1, "15", 3, "5", "7", "0"]);
+    writeFileSync(
+      join(dir, "http", `${contentHash(`GET ${url} `).slice(0, 20)}.json`),
+      JSON.stringify({ response: { ok: true, status: 200, body: JSON.stringify(rows), url, fetchedAt: "2026-04-01T00:00:00.000Z" } }),
+    );
+    setNetMode({ kind: "fixture", dir });
+    const s = await binanceHistory(resolveBinance("BTCUSDT").instrument, "1h", new Date(from), new Date(to), [], 1);
+    expect(s.bars).toHaveLength(1000);
+    expect(s.notes.join(" ")).toMatch(/more than 1000 1h bars: the series stops at 2026-02-11T15:00:00.000Z, short of 2026-04-01/);
   });
   it("throws on a request the fixture never recorded, instead of going live", async () => {
     setNetMode({ kind: "fixture", dir: join(FIX, "mc-pa") });

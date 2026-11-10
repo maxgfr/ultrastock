@@ -45,6 +45,12 @@ describe("crypto fallback fixtures", () => {
       expect(s.bars.length).toBeGreaterThan(390);
       expect(s.bars[s.bars.length - 1]!.date < now.toISOString().slice(0, 10)).toBe(true);
       expect(s.provenance).toMatchObject({ source: "coinbase", official: true });
+      expect(s.notes).toEqual([]);
+      // A window longer than the page cap stops short of its end: the series must say so, not pass for the whole window.
+      const cut = await coinbaseHistory(inst, "1d", new Date(now.getTime() - 400 * 86400_000), now, [], 1);
+      expect(cut.bars.length).toBeLessThanOrEqual(300);
+      expect(cut.bars[cut.bars.length - 1]!.date < s.bars[s.bars.length - 1]!.date).toBe(true);
+      expect(cut.notes.join(" ")).toMatch(/more than 300 1d candles: the series stops at \d{4}-\d{2}-\d{2}/);
       const q = await coinbaseQuote(inst);
       expect(q.price).toBeGreaterThan(0);
     });

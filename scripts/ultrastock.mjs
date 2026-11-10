@@ -12905,14 +12905,20 @@ function refusal(status, pair) {
   if (status === 400) return new ProviderError(SOURCE, `${pair} is not a Binance spot pair`, status);
   return new ProviderError(SOURCE, `request for ${pair} failed (${status})`, status);
 }
-async function binanceHistory(instrument, interval, from, to, notes = []) {
+var BINANCE_MAX_PAGES = 50;
+async function binanceHistory(instrument, interval, from, to, notes = [], maxPages = BINANCE_MAX_PAGES) {
   const step = MS[interval];
   const bars = [];
   let start = from.getTime();
   const end = to.getTime();
   let firstUrl = "";
   let fetchedAt = "";
-  for (let page = 0; start <= end && page < 50; page++) {
+  let complete = false;
+  for (let page = 0; page < maxPages; page++) {
+    if (start > end) {
+      complete = true;
+      break;
+    }
     const url = `${BASE}/api/v3/klines?symbol=${instrument.venueId}&interval=${interval}&startTime=${start}&endTime=${end}&limit=1000`;
     const res = await fetchJson(url);
     if (!res.ok || !Array.isArray(res.data)) throw refusal(res.status, instrument.venueId);
@@ -12921,13 +12927,19 @@ async function binanceHistory(instrument, interval, from, to, notes = []) {
       fetchedAt = res.fetchedAt;
     }
     const rows = res.data;
-    if (!rows.length) break;
     const closed = rows.filter((k) => k[6] < Date.parse(res.fetchedAt));
     bars.push(...parseKlines(closed, interval));
-    if (rows.length < 1e3) break;
+    if (rows.length < 1e3) {
+      complete = true;
+      break;
+    }
     start = rows[rows.length - 1][0] + step;
   }
   if (!bars.length) throw new ProviderError(SOURCE, `no closed ${interval} bars for ${instrument.venueId} in the window`);
+  if (!complete && start <= end)
+    notes.push(
+      `the window holds more than ${maxPages * 1e3} ${interval} bars: the series stops at ${bars[bars.length - 1].date}, short of ${to.toISOString().slice(0, 10)} \u2014 ask for a shorter window or a longer interval`
+    );
   return {
     instrument,
     interval,
@@ -13378,14 +13390,16 @@ function failure(status, product2, body, error) {
     return new ProviderError(SOURCE4, `${product2} is not a Coinbase product${body?.message ? ` (${body.message})` : ""}`, status);
   return new ProviderError(SOURCE4, `request for ${product2} failed (${status}${error ? `, ${error}` : ""})`, status);
 }
-async function coinbaseHistory(instrument, interval, from, to, notes = []) {
+var COINBASE_MAX_PAGES = 60;
+async function coinbaseHistory(instrument, interval, from, to, notes = [], maxPages = COINBASE_MAX_PAGES) {
   const g = GRANULARITY[interval];
   if (!g) throw new ProviderError(SOURCE4, `Coinbase has no ${interval} candles (1m, 5m, 15m, 1h, 6h, 1d only)`, 400);
   const bars = /* @__PURE__ */ new Map();
   let firstUrl = "";
   let fetchedAt = "";
   const end = to.getTime();
-  for (let start = from.getTime(), page = 0; start <= end && page < 60; page++) {
+  let start = from.getTime();
+  for (let page = 0; start <= end && page < maxPages; page++) {
     const stop = Math.min(end, start + (300 - 1) * g * 1e3);
     const url = `${BASE4}/products/${instrument.venueId}/candles?granularity=${g}&start=${new Date(start).toISOString()}&end=${new Date(stop).toISOString()}`;
     const res = await fetchJson(url, PACE);
@@ -13400,6 +13414,10 @@ async function coinbaseHistory(instrument, interval, from, to, notes = []) {
     start = stop + g * 1e3;
   }
   if (!bars.size) throw new ProviderError(SOURCE4, `no closed ${interval} candles for ${instrument.venueId} in the window`);
+  if (start <= end)
+    notes.push(
+      `the window holds more than ${maxPages * 300} ${interval} candles: the series stops at ${new Date(start - g * 1e3).toISOString().slice(0, 16)}Z, short of ${to.toISOString().slice(0, 10)} \u2014 ask for a shorter window or a longer interval`
+    );
   return {
     instrument,
     interval,
