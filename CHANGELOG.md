@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.29](https://github.com/maxgfr/ultrastock/compare/v1.12.28...v1.12.29) (2026-11-10)
+
+
+### Bug Fixes
+
+* **crible:** a misbehaving crible server ends in an error, not a crash or a two-minute wait ([d563909](https://github.com/maxgfr/ultrastock/commit/d563909b6bafbd3fa4c9f80299cb19d8ede6cf0a))
+
 ## [1.12.28](https://github.com/maxgfr/ultrastock/compare/v1.12.27...v1.12.28) (2026-11-10)
 
 
