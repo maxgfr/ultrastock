@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.17](https://github.com/maxgfr/ultrastock/compare/v1.12.16...v1.12.17) (2026-11-10)
+
+
+### Bug Fixes
+
+* **backtest:** annualise intraday bars of a listed security by the bars in a session ([5d9d6d7](https://github.com/maxgfr/ultrastock/commit/5d9d6d7f9b301f3f3abec3a031d1641e170f7e83))
+
 ## [1.12.16](https://github.com/maxgfr/ultrastock/compare/v1.12.15...v1.12.16) (2026-11-10)
 
 
