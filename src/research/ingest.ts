@@ -342,7 +342,11 @@ async function readPlain(c: Candidate): Promise<{ page?: ReadPage; dropped?: Dro
       if (!r.ok) return drop(`HTTP ${r.status}${r.error ? ` (${r.error})` : ""}`);
       ({ fetchedAt } = r);
       finalUrl = r.url;
-      if (r.body.startsWith("%PDF-")) {
+      // A PDF behind a URL that does not look like one (an IR site's /static-files/<id>) answers as a document: the
+      // text read of it is empty, by design of the net layer. It is read again as bytes instead of being dropped as
+      // an empty page.
+      const empty = !r.body.trim();
+      if (r.body.startsWith("%PDF-") || empty) {
         const b = await fetchBytes(c.url, {
           userAgent: "browser",
           timeoutMs: PAGE_TIMEOUT_MS,
@@ -350,9 +354,15 @@ async function readPlain(c: Candidate): Promise<{ page?: ReadPage; dropped?: Dro
           maxBytes: 40 * 1024 * 1024,
           hostIntervalMs: 1000,
           authorizeUrl: isPublicUrl,
+        }).catch((e) => {
+          // A fixture recorded before this second read holds the empty page alone: it replays as it was recorded.
+          if (empty && e instanceof FixtureMiss) return undefined;
+          throw e;
         });
-        if (!b.ok) return drop(`HTTP ${b.status} on the PDF`);
-        pdfBytes = b.bytes;
+        if (b && refusedUrl(b)) return drop(PRIVATE_ADDRESS);
+        if (b && !b.ok && !empty) return drop(`HTTP ${b.status} on the PDF`);
+        if (b?.ok && sniffDocument(b.bytes) === "pdf") pdfBytes = b.bytes;
+        else html = r.body;
       } else html = r.body;
     }
     if (pdfBytes) {

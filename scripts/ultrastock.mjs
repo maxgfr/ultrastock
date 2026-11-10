@@ -21865,7 +21865,8 @@ async function readPlain(c) {
       if (!r3.ok) return drop(`HTTP ${r3.status}${r3.error ? ` (${r3.error})` : ""}`);
       ({ fetchedAt } = r3);
       finalUrl = r3.url;
-      if (r3.body.startsWith("%PDF-")) {
+      const empty = !r3.body.trim();
+      if (r3.body.startsWith("%PDF-") || empty) {
         const b = await fetchBytes(c.url, {
           userAgent: "browser",
           timeoutMs: PAGE_TIMEOUT_MS,
@@ -21873,9 +21874,14 @@ async function readPlain(c) {
           maxBytes: 40 * 1024 * 1024,
           hostIntervalMs: 1e3,
           authorizeUrl: isPublicUrl
+        }).catch((e) => {
+          if (empty && e instanceof FixtureMiss) return void 0;
+          throw e;
         });
-        if (!b.ok) return drop(`HTTP ${b.status} on the PDF`);
-        pdfBytes = b.bytes;
+        if (b && refusedUrl(b)) return drop(PRIVATE_ADDRESS);
+        if (b && !b.ok && !empty) return drop(`HTTP ${b.status} on the PDF`);
+        if (b?.ok && sniffDocument(b.bytes) === "pdf") pdfBytes = b.bytes;
+        else html = r3.body;
       } else html = r3.body;
     }
     if (pdfBytes) {

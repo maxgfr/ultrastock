@@ -323,6 +323,27 @@ describe("discovery and rescue", () => {
     expect(r.page?.fetchedAt).toBe("2026-10-26T10:00:00.000Z");
   });
 
+  it("reads a PDF served from a URL that does not look like one, instead of dropping an empty page", async () => {
+    const dir = run();
+    const url = "https://ir.issuer.test/static-files/0b6f6a7e";
+    mkdirSync(join(dir, "http"), { recursive: true });
+    const response = { ok: true, status: 200, url, fetchedAt: "2026-10-26T10:00:00.000Z" };
+    // What the net layer returns for a response it identified as a document: no text.
+    writeFileSync(join(dir, "http", `${contentHash(`GET ${url} `).slice(0, 20)}.json`), JSON.stringify({ response: { ...response, body: "" } }));
+    writeFileSync(
+      join(dir, "http", `${contentHash(`BYTES ${url}`).slice(0, 20)}.json`),
+      JSON.stringify({ response: { ...response, body: "", bodyBase64: Buffer.from("%PDF-1.4\n%fake\n").toString("base64"), contentType: "application/pdf" } }),
+    );
+    setNetMode({ kind: "fixture", dir });
+    const r = await readCandidate({ url, score: 1, angles: ["results"] }, { wayback: false });
+    // The bytes went down the PDF ladder (this stub holds no text): it is no longer "a near-empty page".
+    expect(r.page?.pdf ?? r.dropped?.reason).toMatch(/^PDF without extractable text/);
+    // A fixture recorded before the second read exists holds the empty page alone, and replays as before.
+    const old = "https://ir.issuer.test/static-files/old";
+    writeFileSync(join(dir, "http", `${contentHash(`GET ${old} `).slice(0, 20)}.json`), JSON.stringify({ response: { ...response, url: old, body: "" } }));
+    expect((await readCandidate({ url: old, score: 1, angles: ["results"] }, { wayback: false })).dropped?.reason).toMatch(/near-empty/);
+  });
+
   it("follows the PDF reports an official page links to, one hop", async () => {
     const { linkedReports } = await import("../src/research/ingest.js");
     const page = {
