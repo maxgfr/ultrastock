@@ -362,26 +362,70 @@ export async function liveSubmit(p: PreconditionInput): Promise<{ ticket: Ticket
   });
 }
 
-/** Ask the venue what became of a ticket's order (after "unknown", or to follow a working order). */
-export async function reconcile(ticketId: string, adapter: BrokerAdapter, now = new Date()): Promise<{ ticket: Ticket; result?: OrderResult; note: string }> {
+/** How long after a send "the venue does not list it" can still mean "not yet": a request in flight, an index catching up. */
+export const NOT_PLACED_WAIT_MS = 10 * 60_000;
+
+/** What the code that declares an order never placed approves: that order, there, and nothing else. */
+export function notPlacedBinding(rec: Pick<LiveRecord, "venue" | "env" | "clientOrderId">): string {
+  return `not-placed|${rec.venue}|${rec.env}|${rec.clientOrderId}`;
+}
+
+/**
+ * Ask the venue what became of a ticket's order (after "unknown", or to follow a working order).
+ *
+ * An answer changes the ticket. An absence does not, on its own: every venue's
+ * lookup covers a window (a few pages of history, the current session, a
+ * search index that lags a send by seconds), and "not found" read as "never
+ * placed" frees the ticket for a second, real order. The ticket is only freed
+ * when the venue's open orders do not hold it either, ten minutes have passed
+ * since the send, and the user — who can see the venue's own order history —
+ * says so with an out-of-band code (`broker code <ticket> --not-placed`).
+ */
+export async function reconcile(
+  ticketId: string,
+  adapter: BrokerAdapter,
+  now = new Date(),
+  opts: { notPlacedCode?: string } = {},
+): Promise<{ ticket: Ticket; result?: OrderResult; note: string }> {
   const t = loadTicket(ticketId);
   const rec = liveOf(t);
   if (!rec) return { ticket: t, note: "this ticket never went to a venue" };
   assertSameVenue(t.id, rec, adapter);
-  const r = await adapter.query(rec.venueSymbol, rec.clientOrderId);
+  let r = await adapter.query(rec.venueSymbol, rec.clientOrderId);
+  // The lookup by id missed it: the list of what is working now may still hold it.
+  if (!r && rec.state === "unknown") r = (await adapter.openOrders().catch(() => [])).find((o) => o.clientOrderId === rec.clientOrderId);
   audit({ event: "live-reconcile", ticket: t.id, venue: rec.venue, env: rec.env, clientOrderId: rec.clientOrderId, state: r?.state ?? "not-found" });
   if (!r) {
     if (rec.state !== "unknown") return { ticket: t, note: `${rec.venue} does not know ${rec.clientOrderId} any more` };
-    // The venue never received it: the ticket may be checked and approved again.
+    const readyAt = Date.parse(rec.at) + NOT_PLACED_WAIT_MS;
+    const how = `look at ${rec.venue}'s own order history, then \`broker code ${t.id} --not-placed\` and \`broker reconcile ${t.id} --code <code>\``;
+    if (now.getTime() < readyAt)
+      return {
+        ticket: t,
+        note: `not found at ${rec.venue} yet — that is not proof it was never placed. Nothing is resent. Ask again after ${new Date(readyAt).toISOString().slice(11, 16)} UTC; if it is still absent, ${how}`,
+      };
+    if (!opts.notPlacedCode)
+      return {
+        ticket: t,
+        note: `not found at ${rec.venue}, ${Math.round((now.getTime() - Date.parse(rec.at)) / 60_000)} minutes after the send. Nothing is resent on that alone: ${how}`,
+      };
+    const v = verifyCode(t.id, notPlacedBinding(rec), opts.notPlacedCode, now);
+    if (!v.ok) return { ticket: t, note: `not found at ${rec.venue}, and the code does not declare it never placed: ${v.reason}` };
+    audit({ event: "live-not-placed", ticket: t.id, venue: rec.venue, env: rec.env, clientOrderId: rec.clientOrderId });
     const ticket = await transition(
       t.id,
       "blocked",
-      `${rec.venue} has no order ${rec.clientOrderId}: it was never placed — check and approve again to resend`,
+      `${rec.venue} has no order ${rec.clientOrderId} and the user declared it never placed — check and approve again to resend`,
       (x) => {
-        (x as Ticket & { live?: LiveRecord }).live = { ...rec, state: "rejected", at: now.toISOString(), message: "not found at the venue" };
+        (x as Ticket & { live?: LiveRecord }).live = {
+          ...rec,
+          state: "rejected",
+          at: now.toISOString(),
+          message: "not found at the venue; declared never placed by the user",
+        };
       },
     );
-    return { ticket, note: "not found at the venue: never placed" };
+    return { ticket, note: "not found at the venue, declared never placed: the ticket can be checked and approved again" };
   }
   if (r.state === rec.state && r.state !== "filled") return { ticket: t, result: r, note: `still ${r.state}` };
   const ticket = rec.state === "filled" ? t : await applyResult(t, r, rec, now);

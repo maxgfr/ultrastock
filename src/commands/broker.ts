@@ -25,6 +25,7 @@ import {
   liveCancel,
   liveRecordOf,
   liveSubmit,
+  notPlacedBinding,
   orderBinding,
   preconditions,
   reconcile,
@@ -162,6 +163,22 @@ export async function brokerCommand(args: CommandArgs, asJson: boolean): Promise
         "usage: ultrastock broker code <ticket-id> [--env test|live] [--venue <v>] [--conid <id>] | code limits [--max-order] [--max-daily] [--venues] [--attest]",
       );
     const t = loadTicket(id);
+    if (args.bools.has("not-placed")) {
+      // The user, who can read the venue's own order history, declares a lost order never placed: only then may it be sent again.
+      const rec = liveRecordOf(t);
+      if (!rec || rec.state !== "unknown")
+        throw new Error(`ticket ${id} has no order of unknown fate: --not-placed is for an order whose answer was lost and that the venue does not list`);
+      const r = await issueCode(
+        t.id,
+        notPlacedBinding(rec),
+        `declares order ${rec.clientOrderId} NEVER PLACED on ${rec.venue} ${rec.env === "live" ? "LIVE" : "test"} (ticket ${t.id}: ${t.order.side} ${t.order.quantity} ${t.order.symbol}) so that it can be sent again — check ${rec.venue}'s own order history first`,
+      );
+      return out(
+        asJson,
+        r,
+        `approval code sent to ${r.sentTo.join(", ")} (valid until ${r.expiresAt}). After checking ${rec.venue}'s order history, the user types it: ultrastock broker reconcile ${t.id} --code <code>`,
+      );
+    }
     if (t.status !== "checked") throw new Error(`ticket ${id} is ${t.status}: check it first (\`ultrastock ticket check ${id}\`)`);
     const o = t.order;
     // The code approves this order where it will go: the venue, the environment and the venue's own symbol are part
@@ -315,7 +332,7 @@ export async function brokerCommand(args: CommandArgs, asJson: boolean): Promise
       throw new UsageError(`ticket ${id} went to ${rec.venue} ${rec.env}: drop --venue/--env, the order is followed there`);
     const a = adapterFor(rec.venue, rec.env);
     if (sub === "reconcile") {
-      const r = await reconcile(id, a, now);
+      const r = await reconcile(id, a, now, { notPlacedCode: argValue(args, "code") });
       return out(asJson, r, `${id}: ${r.note}`);
     }
     const r = await liveCancel(id, a, now);

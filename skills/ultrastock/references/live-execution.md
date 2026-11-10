@@ -54,8 +54,16 @@ plus Node ≥ 22 and a paper record that passes `paper readiness`.
 5. The **user** runs `broker submit <id> --venue <v> --env <e> --code <code>`
    themselves, or approves your call when the harness asks.
 6. If the answer is lost, the order is **unknown**. Nothing is resent until
-   `broker reconcile <id>` has asked the venue. A fill is booked in the ledger:
-   the `real` book live, the `live-test` book in test.
+   `broker reconcile <id>` has asked the venue (it follows the order where it
+   went: no `--venue`, no `--env`). A fill is booked in the ledger: the `real`
+   book live, the `live-test` book in test.
+7. **"Not found" is not "never placed".** A venue's lookup covers a window,
+   and its index can lag a send. When `reconcile` finds nothing, the ticket
+   stays unknown and nothing is resent. Only the user can free it, ten minutes
+   after the send at the earliest and after reading the venue's own order
+   history: `broker code <id> --not-placed` sends them a code, and they run
+   `broker reconcile <id> --code <code>`. Never tell the user an order "was
+   not placed" on the strength of a missing lookup.
 
 ## Refusal codes
 

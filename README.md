@@ -100,9 +100,10 @@ of each command: **stable**, **beta** (unofficial sources) or
   - The order: a limit within 1 % of the venue's book, inside the per-order
     and per-day limits of the experience tier.
   - Approval: a **6-digit code delivered out of band**, never in the agent's
-    output, bound to that exact order.
+    output, bound to that exact order, venue and environment.
   - Sending: **one request**. A lost answer is reconciled with the venue,
-    never resent.
+    never resent; an order the venue does not list is not "never placed"
+    until the user says so, with a code.
 - **Limits ratchet.** They tighten at once. Loosening takes a code and 24
   hours.
 - **Keys stay in the OS keychain**, are never taken on a command line, and

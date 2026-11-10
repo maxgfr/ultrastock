@@ -88,9 +88,12 @@ checked ─► paper submit ─► fill on the live book / last price ± slippag
 checked ─► broker preview (venue dry run) ─► broker code (out of band) ─► broker submit
              └─ preconditions: live switch, venue on, jurisdiction (MiCA), kill switch,
                 breaker, limit order, no short, tier limits, no withdrawal right,
-                1 % price band, the code bound to the fingerprint
+                1 % price band, the code bound to the fingerprint, the venue,
+                the environment and the venue symbol
            ─► lock, audit, ONE request, audit ─► filled / accepted / rejected / unknown
-           unknown ─► broker reconcile (query by clientOrderId) — never a resend
+           unknown ─► broker reconcile (query by clientOrderId, where the order went) — never a resend
+                      not found ≠ never placed: the ticket stays unknown until the user
+                      declares it, by code, ten minutes after the send at the earliest
 ```
 
 The gate is a pure function of the order and a context: the profile, the

@@ -146,7 +146,7 @@ USAGE
   ultrastock backtest walkforward|sweep|montecarlo|review <strategy> <symbol> [--grid alias.param=a,b;…] [--objective sharpe|sortino|cagr|calmar|profit-factor] [--train N] [--test N] [--anchored] [--trials N] [--groups 6] [--test-groups 2] [--purge 5] [--embargo N] [--paths 5000] [--seed 42] [--out <dir>] [--json]
   ultrastock backtest compare <s1,s2,…> <symbol> · backtest decisions [--rating buy|…] [--horizon 5|20|60] [--json]
   ultrastock broker status|setup <venue>|balances|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr] [--env test|live] [--max-order <n>] [--max-daily <n>] [--venues a,b] [--attest a,b] [--code <code>] [--json]
-  ultrastock broker preview|code|submit|reconcile|cancel <ticket-id> [--venue <v>] [--env test|live] [--code <code>] [--conid <id>] [--json]
+  ultrastock broker preview|code|submit|reconcile|cancel <ticket-id> [--venue <v>] [--env test|live] [--code <code>] [--conid <id>] [--not-placed] [--json]
   ultrastock mcp [--transport stdio|http] [--port 8765] [--token <24+ chars>]
   ultrastock strategy list | show <name|file.json> | validate <name|file.json> | new <name> [--like <strategy>] [--json]
   ultrastock watch list|add <symbol> <condition>|add 8k <symbol>|add stops|add events [--days 14] [--min-weight 2]|rm <id>|run [--notify] [--message <text>] [--json]
@@ -753,6 +753,7 @@ export const BOOL_FLAGS = [
   "watch",
   "leveraged",
   "hedged",
+  "not-placed",
 ];
 export const COMMANDS = [
   "analyze",
@@ -998,7 +999,7 @@ const SPEC: CliSpec = {
     ],
     strategy: ["like", "json"],
     mcp: ["transport", "port", "token"],
-    broker: ["venue", "env", "code", "conid", "max-order", "max-daily", "venues", "attest", "json"],
+    broker: ["venue", "env", "code", "conid", "max-order", "max-daily", "venues", "attest", "not-placed", "json"],
     journal: ["book", "symbol", "thesis", "invalidation", "catalysts", "review-by", "note", "outcome", "ticket-id", "tags", "tag", "out", ...NET],
     knowledge: ["title", "json"],
     watch: ["notify", "message", "days", "min-weight", ...NET],

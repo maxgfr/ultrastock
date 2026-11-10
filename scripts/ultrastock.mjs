@@ -44151,24 +44151,49 @@ async function liveSubmit(p) {
     return { ticket, result, refusals: [] };
   });
 }
-async function reconcile(ticketId, adapter, now = /* @__PURE__ */ new Date()) {
+var NOT_PLACED_WAIT_MS = 10 * 6e4;
+function notPlacedBinding(rec) {
+  return `not-placed|${rec.venue}|${rec.env}|${rec.clientOrderId}`;
+}
+async function reconcile(ticketId, adapter, now = /* @__PURE__ */ new Date(), opts = {}) {
   const t = loadTicket(ticketId);
   const rec = liveOf(t);
   if (!rec) return { ticket: t, note: "this ticket never went to a venue" };
   assertSameVenue(t.id, rec, adapter);
-  const r3 = await adapter.query(rec.venueSymbol, rec.clientOrderId);
+  let r3 = await adapter.query(rec.venueSymbol, rec.clientOrderId);
+  if (!r3 && rec.state === "unknown") r3 = (await adapter.openOrders().catch(() => [])).find((o) => o.clientOrderId === rec.clientOrderId);
   audit({ event: "live-reconcile", ticket: t.id, venue: rec.venue, env: rec.env, clientOrderId: rec.clientOrderId, state: r3?.state ?? "not-found" });
   if (!r3) {
     if (rec.state !== "unknown") return { ticket: t, note: `${rec.venue} does not know ${rec.clientOrderId} any more` };
+    const readyAt = Date.parse(rec.at) + NOT_PLACED_WAIT_MS;
+    const how = `look at ${rec.venue}'s own order history, then \`broker code ${t.id} --not-placed\` and \`broker reconcile ${t.id} --code <code>\``;
+    if (now.getTime() < readyAt)
+      return {
+        ticket: t,
+        note: `not found at ${rec.venue} yet \u2014 that is not proof it was never placed. Nothing is resent. Ask again after ${new Date(readyAt).toISOString().slice(11, 16)} UTC; if it is still absent, ${how}`
+      };
+    if (!opts.notPlacedCode)
+      return {
+        ticket: t,
+        note: `not found at ${rec.venue}, ${Math.round((now.getTime() - Date.parse(rec.at)) / 6e4)} minutes after the send. Nothing is resent on that alone: ${how}`
+      };
+    const v = verifyCode(t.id, notPlacedBinding(rec), opts.notPlacedCode, now);
+    if (!v.ok) return { ticket: t, note: `not found at ${rec.venue}, and the code does not declare it never placed: ${v.reason}` };
+    audit({ event: "live-not-placed", ticket: t.id, venue: rec.venue, env: rec.env, clientOrderId: rec.clientOrderId });
     const ticket2 = await transition(
       t.id,
       "blocked",
-      `${rec.venue} has no order ${rec.clientOrderId}: it was never placed \u2014 check and approve again to resend`,
+      `${rec.venue} has no order ${rec.clientOrderId} and the user declared it never placed \u2014 check and approve again to resend`,
       (x) => {
-        x.live = { ...rec, state: "rejected", at: now.toISOString(), message: "not found at the venue" };
+        x.live = {
+          ...rec,
+          state: "rejected",
+          at: now.toISOString(),
+          message: "not found at the venue; declared never placed by the user"
+        };
       }
     );
-    return { ticket: ticket2, note: "not found at the venue: never placed" };
+    return { ticket: ticket2, note: "not found at the venue, declared never placed: the ticket can be checked and approved again" };
   }
   if (r3.state === rec.state && r3.state !== "filled") return { ticket: t, result: r3, note: `still ${r3.state}` };
   const ticket = rec.state === "filled" ? t : await applyResult(t, r3, rec, now);
@@ -44370,6 +44395,21 @@ async function brokerCommand(args, asJson) {
         "usage: ultrastock broker code <ticket-id> [--env test|live] [--venue <v>] [--conid <id>] | code limits [--max-order] [--max-daily] [--venues] [--attest]"
       );
     const t2 = loadTicket(id);
+    if (args.bools.has("not-placed")) {
+      const rec = liveRecordOf(t2);
+      if (!rec || rec.state !== "unknown")
+        throw new Error(`ticket ${id} has no order of unknown fate: --not-placed is for an order whose answer was lost and that the venue does not list`);
+      const r4 = await issueCode(
+        t2.id,
+        notPlacedBinding(rec),
+        `declares order ${rec.clientOrderId} NEVER PLACED on ${rec.venue} ${rec.env === "live" ? "LIVE" : "test"} (ticket ${t2.id}: ${t2.order.side} ${t2.order.quantity} ${t2.order.symbol}) so that it can be sent again \u2014 check ${rec.venue}'s own order history first`
+      );
+      return printResult(
+        asJson,
+        r4,
+        `approval code sent to ${r4.sentTo.join(", ")} (valid until ${r4.expiresAt}). After checking ${rec.venue}'s order history, the user types it: ultrastock broker reconcile ${t2.id} --code <code>`
+      );
+    }
     if (t2.status !== "checked") throw new Error(`ticket ${id} is ${t2.status}: check it first (\`ultrastock ticket check ${id}\`)`);
     const o = t2.order;
     const venue2 = venueOf(args, o.venue);
@@ -44508,7 +44548,7 @@ The answer was lost: nothing will be resent. Run \`ultrastock broker reconcile $
       throw new UsageError(`ticket ${id} went to ${rec.venue} ${rec.env}: drop --venue/--env, the order is followed there`);
     const a = adapterFor(rec.venue, rec.env);
     if (sub === "reconcile") {
-      const r4 = await reconcile(id, a, now);
+      const r4 = await reconcile(id, a, now, { notPlacedCode: argValue(args, "code") });
       return printResult(asJson, r4, `${id}: ${r4.note}`);
     }
     const r3 = await liveCancel(id, a, now);
@@ -55681,7 +55721,7 @@ USAGE
   ultrastock backtest walkforward|sweep|montecarlo|review <strategy> <symbol> [--grid alias.param=a,b;\u2026] [--objective sharpe|sortino|cagr|calmar|profit-factor] [--train N] [--test N] [--anchored] [--trials N] [--groups 6] [--test-groups 2] [--purge 5] [--embargo N] [--paths 5000] [--seed 42] [--out <dir>] [--json]
   ultrastock backtest compare <s1,s2,\u2026> <symbol> \xB7 backtest decisions [--rating buy|\u2026] [--horizon 5|20|60] [--json]
   ultrastock broker status|setup <venue>|balances|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr] [--env test|live] [--max-order <n>] [--max-daily <n>] [--venues a,b] [--attest a,b] [--code <code>] [--json]
-  ultrastock broker preview|code|submit|reconcile|cancel <ticket-id> [--venue <v>] [--env test|live] [--code <code>] [--conid <id>] [--json]
+  ultrastock broker preview|code|submit|reconcile|cancel <ticket-id> [--venue <v>] [--env test|live] [--code <code>] [--conid <id>] [--not-placed] [--json]
   ultrastock mcp [--transport stdio|http] [--port 8765] [--token <24+ chars>]
   ultrastock strategy list | show <name|file.json> | validate <name|file.json> | new <name> [--like <strategy>] [--json]
   ultrastock watch list|add <symbol> <condition>|add 8k <symbol>|add stops|add events [--days 14] [--min-weight 2]|rm <id>|run [--notify] [--message <text>] [--json]
@@ -56286,7 +56326,8 @@ var BOOL_FLAGS = [
   "ucits",
   "watch",
   "leveraged",
-  "hedged"
+  "hedged",
+  "not-placed"
 ];
 var COMMANDS = [
   "analyze",
@@ -56531,7 +56572,7 @@ var SPEC = {
     ],
     strategy: ["like", "json"],
     mcp: ["transport", "port", "token"],
-    broker: ["venue", "env", "code", "conid", "max-order", "max-daily", "venues", "attest", "json"],
+    broker: ["venue", "env", "code", "conid", "max-order", "max-daily", "venues", "attest", "not-placed", "json"],
     journal: ["book", "symbol", "thesis", "invalidation", "catalysts", "review-by", "note", "outcome", "ticket-id", "tags", "tag", "out", ...NET],
     knowledge: ["title", "json"],
     watch: ["notify", "message", "days", "min-weight", ...NET],

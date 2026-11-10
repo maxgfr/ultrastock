@@ -6,7 +6,17 @@ import { defaultProfile, saveProfile } from "../src/core/profile.js";
 import type { BrokerAdapter, LiveOrder, OrderResult } from "../src/trading/brokers/types.js";
 import { effectiveLimits, isTightening, type LiveLimits, LOOSEN_DELAY_MS, requestLimits, tierFor } from "../src/trading/limits.js";
 import { readLedger } from "../src/portfolio/ledger.js";
-import { clientOrderIdFor, liveCancel, liveSubmit, orderBinding, preconditions, reconcile, venueSymbol } from "../src/trading/live.js";
+import {
+  clientOrderIdFor,
+  liveCancel,
+  liveSubmit,
+  NOT_PLACED_WAIT_MS,
+  notPlacedBinding,
+  orderBinding,
+  preconditions,
+  reconcile,
+  venueSymbol,
+} from "../src/trading/live.js";
 import { type Channel, issueCode, verifyCode } from "../src/trading/otp.js";
 import { killSwitchPath, type Order, orderFingerprint } from "../src/trading/riskgate.js";
 import { readCredentials, redact, setupCommands } from "../src/trading/secrets.js";
@@ -18,6 +28,7 @@ function fakeVenue(
     submit?: (o: LiveOrder) => OrderResult | Promise<OrderResult>;
     query?: OrderResult;
     cancel?: OrderResult;
+    open?: OrderResult[];
     env?: "test" | "live";
     canWithdraw?: boolean;
     bid?: number;
@@ -45,7 +56,7 @@ function fakeVenue(
       calls.cancel++;
       return opts.cancel ?? { state: "cancelled", clientOrderId: id };
     },
-    openOrders: async () => [],
+    openOrders: async () => opts.open ?? [],
   };
   return { a, calls };
 }
@@ -198,6 +209,55 @@ describe("live preconditions and the single submission", () => {
     expect(r.result?.state).toBe("accepted");
     return t;
   }
+
+  it("does not take 'not found at the venue' for 'never placed': only the user's code, after a wait, frees the ticket", async () => {
+    switchOn();
+    const t = await checkedTicket(order());
+    await issueCode(t.id, orderBinding(t.order, "kraken", "test", "SOLEUR"), "order", [["capture", capture]]);
+    const sentAt = new Date();
+    const lost = fakeVenue({ submit: () => Promise.reject(new Error("timeout after 10000 ms")) });
+    await liveSubmit({ ticket: t, venue: "kraken", env: "test", adapter: lost.a, venueSym: "SOLEUR", code: codeFrom(), micaAuthorised: true, now: sentAt });
+    const rec = (loadTicket(t.id) as unknown as { live: { venue: "kraken"; env: "test"; clientOrderId: string } }).live;
+    const silent = fakeVenue(); // the lookup finds nothing, and nothing is working
+    // A minute later: the request may still be in flight, the venue's index may lag.
+    const early = await reconcile(t.id, silent.a, new Date(sentAt.getTime() + 60_000));
+    expect(early.note).toMatch(/not found at kraken yet — that is not proof/);
+    expect(loadTicket(t.id).status).toBe("submitted");
+    // Later, still absent: absence alone resends nothing.
+    const later = new Date(sentAt.getTime() + 11 * 60_000);
+    expect((await reconcile(t.id, silent.a, later)).note).toMatch(/Nothing is resent on that alone/);
+    expect(loadTicket(t.id).status).toBe("submitted");
+    // A code issued for something else does not declare it either.
+    await issueCode(t.id, "something-else", "x", [["capture", capture]], later);
+    expect((await reconcile(t.id, silent.a, later, { notPlacedCode: codeFrom() })).note).toMatch(/does not declare it never placed/);
+    expect(loadTicket(t.id).status).toBe("submitted");
+    // The lookup by id missed an order that is in fact working: the open orders are read too.
+    const working = fakeVenue({ open: [{ state: "accepted", clientOrderId: rec.clientOrderId, venueOrderId: "V7" }] });
+    expect((await reconcile(t.id, working.a, later)).note).toBe("accepted");
+    expect(loadTicket(t.id).status).toBe("submitted");
+  }, 60_000);
+
+  it("frees a lost order once the user declares it never placed, by code, after the wait", async () => {
+    switchOn();
+    const t = await checkedTicket(order());
+    await issueCode(t.id, orderBinding(t.order, "kraken", "test", "SOLEUR"), "order", [["capture", capture]]);
+    const sentAt = new Date();
+    const lost = fakeVenue({ submit: () => Promise.reject(new Error("timeout after 10000 ms")) });
+    await liveSubmit({ ticket: t, venue: "kraken", env: "test", adapter: lost.a, venueSym: "SOLEUR", code: codeFrom(), micaAuthorised: true, now: sentAt });
+    const rec = (loadTicket(t.id) as unknown as { live: { venue: "kraken"; env: "test"; clientOrderId: string } }).live;
+    const silent = fakeVenue();
+    // Even with the right code, not before the wait is over — and the refusal does not use the code up.
+    const soon = new Date(sentAt.getTime() + 60_000);
+    await issueCode(t.id, notPlacedBinding(rec), "never placed", [["capture", capture]], soon);
+    expect((await reconcile(t.id, silent.a, soon, { notPlacedCode: codeFrom() })).note).toMatch(/not found at kraken yet/);
+    expect(loadTicket(t.id).status).toBe("submitted");
+    const after = new Date(sentAt.getTime() + NOT_PLACED_WAIT_MS + 1000);
+    await issueCode(t.id, notPlacedBinding(rec), "never placed", [["capture", capture]], after);
+    const freed = await reconcile(t.id, silent.a, after, { notPlacedCode: codeFrom() });
+    expect(freed.note).toMatch(/declared never placed/);
+    expect(loadTicket(t.id).status).toBe("blocked");
+    expect(readAudit().map((e) => e.event)).toContain("live-not-placed");
+  }, 60_000);
 
   it("never reconciles or cancels against another environment than the one the order went to", async () => {
     switchOn();
