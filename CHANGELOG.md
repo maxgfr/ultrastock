@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.26](https://github.com/maxgfr/ultrastock/compare/v1.12.25...v1.12.26) (2026-11-10)
+
+
+### Bug Fixes
+
+* **quote:** leave out a change that cannot be computed, instead of losing the quote ([da3ddb4](https://github.com/maxgfr/ultrastock/commit/da3ddb4f27292f07b76ad746ad42b31c79ffed2c))
+
 ## [1.12.25](https://github.com/maxgfr/ultrastock/compare/v1.12.24...v1.12.25) (2026-11-10)
 
 
