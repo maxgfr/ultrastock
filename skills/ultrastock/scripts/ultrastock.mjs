@@ -17249,40 +17249,54 @@ async function binanceFuturesPositioning(symbol, opts = {}) {
     provenance: prov5(prem, isoDay3(prem.data.time)),
     notes: ["positive funding: longs pay shorts (demand for leverage on the long side)"]
   });
-  const oi = await get2(`/fapi/v1/openInterest?symbol=${pair}`, pair);
-  const hist = await get2(
-    `/futures/data/openInterestHist?symbol=${pair}&period=1d&limit=${days}`,
-    pair
-  );
-  const oiPoints = [
-    { key: `${b}.deriv.oi.binance`, label: `${pair} open interest (Binance)`, value: Number(oi.data.openInterest), unit: b, asOf: isoDay3(oi.data.time) }
-  ];
-  const h0 = hist.data[0];
-  const h1 = hist.data[hist.data.length - 1];
-  if (h1)
-    oiPoints.push({
-      key: `${b}.deriv.oi.binance.usd`,
-      label: `${pair} open interest value (Binance, daily)`,
-      value: Number(h1.sumOpenInterestValue),
-      unit: "USD",
-      asOf: isoDay3(h1.timestamp)
+  const unavailable = [];
+  const optional = async (what, read2) => {
+    try {
+      await read2();
+    } catch (e) {
+      if (!(e instanceof ProviderError)) throw e;
+      unavailable.push(`unavailable \u2014 ${what}: ${e.message}`);
+    }
+  };
+  const finite4 = (points) => points.filter((p) => typeof p.value !== "number" || Number.isFinite(p.value));
+  await optional("open interest", async () => {
+    const oi = await get2(`/fapi/v1/openInterest?symbol=${pair}`, pair);
+    const oiPoints = [
+      { key: `${b}.deriv.oi.binance`, label: `${pair} open interest (Binance)`, value: Number(oi.data.openInterest), unit: b, asOf: isoDay3(oi.data.time) }
+    ];
+    await optional("open interest history", async () => {
+      const hist = await get2(
+        `/futures/data/openInterestHist?symbol=${pair}&period=1d&limit=${days}`,
+        pair
+      );
+      const h0 = hist.data[0];
+      const h1 = hist.data[hist.data.length - 1];
+      if (h1)
+        oiPoints.push({
+          key: `${b}.deriv.oi.binance.usd`,
+          label: `${pair} open interest value (Binance, daily)`,
+          value: Number(h1.sumOpenInterestValue),
+          unit: "USD",
+          asOf: isoDay3(h1.timestamp)
+        });
+      if (h0 && h1 && h0 !== h1 && Number(h0.sumOpenInterest) > 0)
+        oiPoints.push({
+          key: `${b}.deriv.oi.binance.change`,
+          label: `${pair} open interest change since ${isoDay3(h0.timestamp)} (Binance)`,
+          value: (Number(h1.sumOpenInterest) / Number(h0.sumOpenInterest) - 1) * 100,
+          unit: "%",
+          asOf: isoDay3(h1.timestamp),
+          formula: "(OI last / OI first \u2212 1) \xD7 100, in coins"
+        });
     });
-  if (h0 && h1 && h0 !== h1 && Number(h0.sumOpenInterest) > 0)
-    oiPoints.push({
-      key: `${b}.deriv.oi.binance.change`,
-      label: `${pair} open interest change since ${isoDay3(h0.timestamp)} (Binance)`,
-      value: (Number(h1.sumOpenInterest) / Number(h0.sumOpenInterest) - 1) * 100,
-      unit: "%",
-      asOf: isoDay3(h1.timestamp),
-      formula: "(OI last / OI first \u2212 1) \xD7 100, in coins"
+    out5.push({
+      kind: "derivatives",
+      title: `${pair} open interest (Binance)`,
+      subject: b,
+      points: finite4(oiPoints),
+      provenance: prov5(oi, isoDay3(oi.data.time)),
+      notes: ["open interest in coins; the USD value is Binance's daily snapshot"]
     });
-  out5.push({
-    kind: "derivatives",
-    title: `${pair} open interest (Binance)`,
-    subject: b,
-    points: oiPoints,
-    provenance: prov5(oi, isoDay3(oi.data.time)),
-    notes: ["open interest in coins; the USD value is Binance's daily snapshot"]
   });
   const ratios = [
     ["globalLongShortAccountRatio", "ls.accounts", "long/short account ratio (all accounts)", "longShortRatio"],
@@ -17291,22 +17305,23 @@ async function binanceFuturesPositioning(symbol, opts = {}) {
   ];
   const rp = [];
   let rprov;
-  for (const [ep, key, what, field2] of ratios) {
-    const r3 = await get2(`/futures/data/${ep}?symbol=${pair}&period=${period2}&limit=2`, pair);
-    rprov ??= prov5(r3);
-    const last2 = r3.data[r3.data.length - 1];
-    const v = last2 ? Number(last2[field2]) : Number.NaN;
-    if (!last2 || !Number.isFinite(v)) continue;
-    rp.push({ key: `${b}.deriv.${key}.binance`, label: `${pair} ${what}, ${period2} (Binance)`, value: v, unit: "ratio", asOf: isoDay3(last2.timestamp) });
-    if (last2.longAccount !== void 0)
-      rp.push({
-        key: `${b}.deriv.${key}.binance.long`,
-        label: `${pair} share long, ${what} (Binance)`,
-        value: Number(last2.longAccount) * 100,
-        unit: "%",
-        asOf: isoDay3(last2.timestamp)
-      });
-  }
+  for (const [ep, key, what, field2] of ratios)
+    await optional(what, async () => {
+      const r3 = await get2(`/futures/data/${ep}?symbol=${pair}&period=${period2}&limit=2`, pair);
+      rprov ??= prov5(r3);
+      const last2 = r3.data[r3.data.length - 1];
+      const v = last2 ? Number(last2[field2]) : Number.NaN;
+      if (!last2 || !Number.isFinite(v)) return;
+      rp.push({ key: `${b}.deriv.${key}.binance`, label: `${pair} ${what}, ${period2} (Binance)`, value: v, unit: "ratio", asOf: isoDay3(last2.timestamp) });
+      if (last2.longAccount !== void 0 && Number.isFinite(Number(last2.longAccount)))
+        rp.push({
+          key: `${b}.deriv.${key}.binance.long`,
+          label: `${pair} share long, ${what} (Binance)`,
+          value: Number(last2.longAccount) * 100,
+          unit: "%",
+          asOf: isoDay3(last2.timestamp)
+        });
+    });
   if (rp.length && rprov)
     out5.push({
       kind: "derivatives",
@@ -17316,6 +17331,7 @@ async function binanceFuturesPositioning(symbol, opts = {}) {
       provenance: rprov,
       notes: ["ratios describe Binance's own users only; a crowded side is a contrarian signal at best, not a forecast"]
     });
+  out5[0].notes.push(...unavailable);
   return out5;
 }
 

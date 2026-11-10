@@ -1,6 +1,10 @@
+import { cpSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { setNetMode } from "../src/core/net.js";
 import { binanceFuturesPositioning, futuresFailure, meanFunding, perpSymbol, premiumPoints } from "../src/providers/crypto/binance-futures.js";
-import { withFixture } from "./helpers/fixtures.js";
+import { FIXTURES, withFixture } from "./helpers/fixtures.js";
 
 describe("binance futures parsers", () => {
   it("names the perpetual and reads the premium index", () => {
@@ -48,5 +52,32 @@ describe("binance futures fixture", () => {
     ])
       expect(keys).toContain(k);
     expect(ds[0]!.provenance).toMatchObject({ source: "binance-futures", official: true });
+    expect(ds[0]!.notes.join(" ")).not.toMatch(/unavailable/);
+  });
+
+  it("keeps the price and the funding when a statistics endpoint refuses, and names what is missing", async () => {
+    // The recorded run, with the two throttled endpoints answering 429 as they do past 1000 requests in 5 minutes.
+    const dir = mkdtempSync(join(tmpdir(), "us-futures-"));
+    cpSync(join(FIXTURES, "crypto-binance-futures-btc"), dir, { recursive: true });
+    for (const f of readdirSync(join(dir, "http"))) {
+      const path = join(dir, "http", f);
+      const rec = JSON.parse(readFileSync(path, "utf8")) as { request: { url: string }; response: Record<string, unknown> };
+      if (!/openInterestHist|takerlongshortRatio/.test(rec.request.url)) continue;
+      writeFileSync(path, JSON.stringify({ ...rec, response: { ...rec.response, ok: false, status: 429, body: "" } }));
+    }
+    setNetMode({ kind: "fixture", dir });
+    try {
+      const ds = await binanceFuturesPositioning("BTC", { days: 7, fundingLimit: 21 });
+      const keys = ds.flatMap((d) => d.points.map((p) => p.key));
+      expect(keys).toEqual(
+        expect.arrayContaining(["BTC.deriv.funding.binance", "BTC.deriv.oi.binance", "BTC.deriv.ls.accounts.binance", "BTC.deriv.ls.top.binance"]),
+      );
+      expect(keys).not.toContain("BTC.deriv.oi.binance.change");
+      expect(keys).not.toContain("BTC.deriv.taker.binance");
+      expect(ds[0]!.notes.filter((n) => n.startsWith("unavailable — "))).toHaveLength(2);
+      expect(ds[0]!.notes.join(" ")).toMatch(/unavailable — open interest history: .*429/);
+    } finally {
+      setNetMode({ kind: "live" });
+    }
   });
 });

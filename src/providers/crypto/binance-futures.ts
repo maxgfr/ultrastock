@@ -151,40 +151,58 @@ export async function binanceFuturesPositioning(symbol: string, opts: { period?:
     notes: ["positive funding: longs pay shorts (demand for leverage on the long side)"],
   });
 
-  const oi = await get<{ openInterest: string; time: number }>(`/fapi/v1/openInterest?symbol=${pair}`, pair);
-  const hist = await get<Array<{ sumOpenInterest: string; sumOpenInterestValue: string; timestamp: number }>>(
-    `/futures/data/openInterestHist?symbol=${pair}&period=1d&limit=${days}`,
-    pair,
-  );
-  const oiPoints: Point[] = [
-    { key: `${b}.deriv.oi.binance`, label: `${pair} open interest (Binance)`, value: Number(oi.data.openInterest), unit: b, asOf: isoDay(oi.data.time) },
-  ];
-  const h0 = hist.data[0];
-  const h1 = hist.data[hist.data.length - 1];
-  if (h1)
-    oiPoints.push({
-      key: `${b}.deriv.oi.binance.usd`,
-      label: `${pair} open interest value (Binance, daily)`,
-      value: Number(h1.sumOpenInterestValue),
-      unit: "USD",
-      asOf: isoDay(h1.timestamp),
+  // The price and the funding above are the answer; what follows comes from the statistics endpoints, which Binance
+  // throttles on their own (1000 requests per 5 minutes). One of them refusing must not throw the funding away with it:
+  // the part is named as unavailable. A recording that lacks a request is another matter, and still fails the replay.
+  const unavailable: string[] = [];
+  const optional = async (what: string, read: () => Promise<void>): Promise<void> => {
+    try {
+      await read();
+    } catch (e) {
+      if (!(e instanceof ProviderError)) throw e;
+      unavailable.push(`unavailable — ${what}: ${e.message}`);
+    }
+  };
+  const finite = (points: Point[]) => points.filter((p) => typeof p.value !== "number" || Number.isFinite(p.value));
+
+  await optional("open interest", async () => {
+    const oi = await get<{ openInterest: string; time: number }>(`/fapi/v1/openInterest?symbol=${pair}`, pair);
+    const oiPoints: Point[] = [
+      { key: `${b}.deriv.oi.binance`, label: `${pair} open interest (Binance)`, value: Number(oi.data.openInterest), unit: b, asOf: isoDay(oi.data.time) },
+    ];
+    await optional("open interest history", async () => {
+      const hist = await get<Array<{ sumOpenInterest: string; sumOpenInterestValue: string; timestamp: number }>>(
+        `/futures/data/openInterestHist?symbol=${pair}&period=1d&limit=${days}`,
+        pair,
+      );
+      const h0 = hist.data[0];
+      const h1 = hist.data[hist.data.length - 1];
+      if (h1)
+        oiPoints.push({
+          key: `${b}.deriv.oi.binance.usd`,
+          label: `${pair} open interest value (Binance, daily)`,
+          value: Number(h1.sumOpenInterestValue),
+          unit: "USD",
+          asOf: isoDay(h1.timestamp),
+        });
+      if (h0 && h1 && h0 !== h1 && Number(h0.sumOpenInterest) > 0)
+        oiPoints.push({
+          key: `${b}.deriv.oi.binance.change`,
+          label: `${pair} open interest change since ${isoDay(h0.timestamp)} (Binance)`,
+          value: (Number(h1.sumOpenInterest) / Number(h0.sumOpenInterest) - 1) * 100,
+          unit: "%",
+          asOf: isoDay(h1.timestamp),
+          formula: "(OI last / OI first − 1) × 100, in coins",
+        });
     });
-  if (h0 && h1 && h0 !== h1 && Number(h0.sumOpenInterest) > 0)
-    oiPoints.push({
-      key: `${b}.deriv.oi.binance.change`,
-      label: `${pair} open interest change since ${isoDay(h0.timestamp)} (Binance)`,
-      value: (Number(h1.sumOpenInterest) / Number(h0.sumOpenInterest) - 1) * 100,
-      unit: "%",
-      asOf: isoDay(h1.timestamp),
-      formula: "(OI last / OI first − 1) × 100, in coins",
+    out.push({
+      kind: "derivatives",
+      title: `${pair} open interest (Binance)`,
+      subject: b,
+      points: finite(oiPoints),
+      provenance: prov(oi, isoDay(oi.data.time)),
+      notes: ["open interest in coins; the USD value is Binance's daily snapshot"],
     });
-  out.push({
-    kind: "derivatives",
-    title: `${pair} open interest (Binance)`,
-    subject: b,
-    points: oiPoints,
-    provenance: prov(oi, isoDay(oi.data.time)),
-    notes: ["open interest in coins; the USD value is Binance's daily snapshot"],
   });
 
   const ratios: Array<[string, string, string, string]> = [
@@ -194,22 +212,23 @@ export async function binanceFuturesPositioning(symbol: string, opts: { period?:
   ];
   const rp: Point[] = [];
   let rprov: ReturnType<typeof prov> | undefined;
-  for (const [ep, key, what, field] of ratios) {
-    const r = await get<RatioRow[]>(`/futures/data/${ep}?symbol=${pair}&period=${period}&limit=2`, pair);
-    rprov ??= prov(r);
-    const last = r.data[r.data.length - 1];
-    const v = last ? Number(last[field as keyof RatioRow]) : Number.NaN;
-    if (!last || !Number.isFinite(v)) continue;
-    rp.push({ key: `${b}.deriv.${key}.binance`, label: `${pair} ${what}, ${period} (Binance)`, value: v, unit: "ratio", asOf: isoDay(last.timestamp) });
-    if (last.longAccount !== undefined)
-      rp.push({
-        key: `${b}.deriv.${key}.binance.long`,
-        label: `${pair} share long, ${what} (Binance)`,
-        value: Number(last.longAccount) * 100,
-        unit: "%",
-        asOf: isoDay(last.timestamp),
-      });
-  }
+  for (const [ep, key, what, field] of ratios)
+    await optional(what, async () => {
+      const r = await get<RatioRow[]>(`/futures/data/${ep}?symbol=${pair}&period=${period}&limit=2`, pair);
+      rprov ??= prov(r);
+      const last = r.data[r.data.length - 1];
+      const v = last ? Number(last[field as keyof RatioRow]) : Number.NaN;
+      if (!last || !Number.isFinite(v)) return;
+      rp.push({ key: `${b}.deriv.${key}.binance`, label: `${pair} ${what}, ${period} (Binance)`, value: v, unit: "ratio", asOf: isoDay(last.timestamp) });
+      if (last.longAccount !== undefined && Number.isFinite(Number(last.longAccount)))
+        rp.push({
+          key: `${b}.deriv.${key}.binance.long`,
+          label: `${pair} share long, ${what} (Binance)`,
+          value: Number(last.longAccount) * 100,
+          unit: "%",
+          asOf: isoDay(last.timestamp),
+        });
+    });
   if (rp.length && rprov)
     out.push({
       kind: "derivatives",
@@ -219,5 +238,6 @@ export async function binanceFuturesPositioning(symbol: string, opts: { period?:
       provenance: rprov,
       notes: ["ratios describe Binance's own users only; a crowded side is a contrarian signal at best, not a forecast"],
     });
+  out[0]!.notes.push(...unavailable);
   return out;
 }
