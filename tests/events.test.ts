@@ -3,7 +3,7 @@ import { eventExposure, type Exposure, type MarketEvent } from "../src/analyze/e
 import { holdingCountry } from "../src/analyze/events/markets.js";
 import { eventReaction, reactionStats } from "../src/analyze/events/study.js";
 import { parseEcbCalendar, parseFomc } from "../src/providers/macro/central-banks.js";
-import { countryIso, electionKind, parseElectionCalendar } from "../src/providers/macro/elections.js";
+import { countryIso, electionKind, parseDay, parseElectionCalendar } from "../src/providers/macro/elections.js";
 
 const CALENDAR = `Intro text.
 ==October==
@@ -36,6 +36,13 @@ describe("electoral calendar", () => {
     expect(events[3]!.endDate).toBe("2026-10-10");
     expect(events[5]!.article).toBe("2026 Brazilian general election");
     expect(events.some((e) => e.country === "Guam")).toBe(false);
+  });
+  it("reads a day and a span of days, into the next year when the span crosses it", () => {
+    expect(parseDay("25 October", 9, 2026)).toEqual({ date: "2026-10-25" });
+    expect(parseDay("9–10 October", 9, 2026)).toEqual({ date: "2026-10-09", endDate: "2026-10-10" });
+    expect(parseDay("30 September – 1 October", 8, 2026)).toEqual({ date: "2026-09-30", endDate: "2026-10-01" });
+    // The span ended on 2 January 2026, eleven months before it began.
+    expect(parseDay("30 December – 2 January", 11, 2026)).toEqual({ date: "2026-12-30", endDate: "2027-01-02" });
   });
   it("maps country names to ISO codes, aliases included", () => {
     expect(countryIso("Brazil")).toBe("BR");

@@ -34348,12 +34348,13 @@ var plain2 = (s) => s.replace(LINK, (_m, target, label2) => label2 ?? target).re
 function parseDay(text, month, year) {
   const m = /^(\d{1,2})(?:\s*[–-]\s*(\d{1,2}))?\s+([A-Za-z]+)(?:\s*[–-]\s*(\d{1,2})\s+([A-Za-z]+))?/.exec(text.trim());
   if (!m) return void 0;
-  const iso5 = (d, mo2) => `${year}-${String(mo2 + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const iso5 = (d, mo2, y = year) => `${y}-${String(mo2 + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   const mo = MONTHS7.indexOf(m[3].toLowerCase());
   const start = mo >= 0 ? mo : month;
   if (m[4] && m[5]) {
     const mo2 = MONTHS7.indexOf(m[5].toLowerCase());
-    return { date: iso5(Number(m[1]), start), endDate: iso5(Number(m[4]), mo2 >= 0 ? mo2 : start) };
+    const end = mo2 >= 0 ? mo2 : start;
+    return { date: iso5(Number(m[1]), start), endDate: iso5(Number(m[4]), end, end < start ? year + 1 : year) };
   }
   return { date: iso5(Number(m[1]), start), ...m[2] ? { endDate: iso5(Number(m[2]), start) } : {} };
 }

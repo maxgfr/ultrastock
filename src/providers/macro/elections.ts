@@ -132,16 +132,18 @@ const plain = (s: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-function parseDay(text: string, month: number, year: number): { date: string; endDate?: string } | undefined {
-  // "25 October", "9–10 October", "30 September – 1 October"
+/** The day, or span of days, a calendar line opens with. `month` is 0-based; a span into an earlier month ends the next year. */
+export function parseDay(text: string, month: number, year: number): { date: string; endDate?: string } | undefined {
+  // "25 October", "9–10 October", "30 September – 1 October", "30 December – 2 January"
   const m = /^(\d{1,2})(?:\s*[–-]\s*(\d{1,2}))?\s+([A-Za-z]+)(?:\s*[–-]\s*(\d{1,2})\s+([A-Za-z]+))?/.exec(text.trim());
   if (!m) return undefined;
-  const iso = (d: number, mo: number) => `${year}-${String(mo + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const iso = (d: number, mo: number, y = year) => `${y}-${String(mo + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   const mo = MONTHS.indexOf(m[3]!.toLowerCase());
   const start = mo >= 0 ? mo : month;
   if (m[4] && m[5]) {
     const mo2 = MONTHS.indexOf(m[5].toLowerCase());
-    return { date: iso(Number(m[1]), start), endDate: iso(Number(m[4]), mo2 >= 0 ? mo2 : start) };
+    const end = mo2 >= 0 ? mo2 : start;
+    return { date: iso(Number(m[1]), start), endDate: iso(Number(m[4]), end, end < start ? year + 1 : year) };
   }
   return { date: iso(Number(m[1]), start), ...(m[2] ? { endDate: iso(Number(m[2]), start) } : {}) };
 }
