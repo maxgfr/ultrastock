@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.36](https://github.com/maxgfr/ultrastock/compare/v1.12.35...v1.12.36) (2026-11-10)
+
+
+### Performance Improvements
+
+* **events:** keep the electoral calendar of a year that is over ([71ecc59](https://github.com/maxgfr/ultrastock/commit/71ecc59f6571317f6cd2a7cf0b515b7ccc50d8c4))
+
 ## [1.12.35](https://github.com/maxgfr/ultrastock/compare/v1.12.34...v1.12.35) (2026-11-10)
 
 
