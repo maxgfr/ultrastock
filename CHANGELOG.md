@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.23](https://github.com/maxgfr/ultrastock/compare/v1.12.22...v1.12.23) (2026-11-10)
+
+
+### Bug Fixes
+
+* **tax:** judge a US dividend's holding period on the shares still held ([a0cab4e](https://github.com/maxgfr/ultrastock/commit/a0cab4e776bc70a1de2a971d3e99004558c3ef7e))
+
 ## [1.12.22](https://github.com/maxgfr/ultrastock/compare/v1.12.21...v1.12.22) (2026-11-10)
 
 
