@@ -21134,19 +21134,20 @@ function parseDigits(d) {
   const decimals = s.includes(".") ? s.split(".")[1].length : 0;
   return { value: Number(s), decimals };
 }
-function figureMatches(f3, items) {
+function figureMatches(f3, items, opts = {}) {
   const tol = 0.5 * 10 ** -f3.decimals * f3.scale;
+  const writtenNegative = !!opts.signed && /^[-−](?:[$€£]\s?)?\d/.test(f3.raw);
   for (const it of items) {
     if (typeof it.value !== "number") continue;
     const candidates2 = [it.value];
     if (f3.percent && it.unit !== "%") candidates2.push(it.value * 100);
     if (!f3.percent && it.unit === "%") candidates2.push(it.value / 100);
     for (const v of candidates2) {
-      for (const target of [f3.value, Math.abs(f3.value)]) {
-        const a = Math.abs(v) === Math.abs(target) ? 0 : Math.abs(Math.abs(v) - Math.abs(target));
-        if (a <= tol + 1e-9 * Math.max(1, Math.abs(v))) return true;
-        if (Math.abs(v) > 0 && a / Math.abs(v) <= 1e-3) return true;
-      }
+      const a = Math.abs(Math.abs(v) - Math.abs(f3.value));
+      const near = a <= tol + 1e-9 * Math.max(1, Math.abs(v)) || Math.abs(v) > 0 && a / Math.abs(v) <= 1e-3;
+      if (!near) continue;
+      if (writtenNegative && v > tol) continue;
+      return true;
     }
   }
   return false;
@@ -21289,7 +21290,7 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
           });
         }
       for (const f3 of figs) {
-        if (figureMatches(f3, known)) continue;
+        if (figureMatches(f3, known, { signed: true })) continue;
         const holder = citedDocs.find((d) => figureMatches(f3, docOf(d).figures));
         if (holder) {
           const doc = docOf(holder);

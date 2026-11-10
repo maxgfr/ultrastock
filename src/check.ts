@@ -135,9 +135,18 @@ function parseDigits(d: string): { value: number; decimals: number } {
   return { value: Number(s), decimals };
 }
 
-/** Is the written figure one of the values these evidence items hold? */
-export function figureMatches(f: Figure, items: readonly EvidenceItem[]): boolean {
+/**
+ * Is the written figure one of the values these evidence items hold?
+ *
+ * Magnitudes are compared: prose carries the direction in words ("fell 12.3 %"
+ * for −12.3). With `signed`, a minus sign written on the number itself is a
+ * claim about the direction too, and "−12.3 %" is refused against +12.3. A
+ * dash set apart by a space is punctuation, and a document says its direction
+ * in words, so neither is held to it.
+ */
+export function figureMatches(f: Figure, items: readonly EvidenceItem[], opts: { signed?: boolean } = {}): boolean {
   const tol = 0.5 * 10 ** -f.decimals * f.scale;
+  const writtenNegative = !!opts.signed && /^[-−](?:[$€£]\s?)?\d/.test(f.raw);
   for (const it of items) {
     if (typeof it.value !== "number") continue;
     const candidates = [it.value];
@@ -145,11 +154,12 @@ export function figureMatches(f: Figure, items: readonly EvidenceItem[]): boolea
     if (f.percent && it.unit !== "%") candidates.push(it.value * 100);
     if (!f.percent && it.unit === "%") candidates.push(it.value / 100);
     for (const v of candidates) {
-      for (const target of [f.value, Math.abs(f.value)]) {
-        const a = Math.abs(v) === Math.abs(target) ? 0 : Math.abs(Math.abs(v) - Math.abs(target));
-        if (a <= tol + 1e-9 * Math.max(1, Math.abs(v))) return true;
-        if (Math.abs(v) > 0 && a / Math.abs(v) <= 0.001) return true;
-      }
+      const a = Math.abs(Math.abs(v) - Math.abs(f.value));
+      const near = a <= tol + 1e-9 * Math.max(1, Math.abs(v)) || (Math.abs(v) > 0 && a / Math.abs(v) <= 0.001);
+      if (!near) continue;
+      // A positive value that rounds to the zero written ("-0.0 %") contradicts nothing.
+      if (writtenNegative && v > tol) continue;
+      return true;
     }
   }
   return false;
@@ -331,7 +341,7 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
           });
         }
       for (const f of figs) {
-        if (figureMatches(f, known)) continue;
+        if (figureMatches(f, known, { signed: true })) continue;
         const holder = citedDocs.find((d) => figureMatches(f, docOf(d)!.figures));
         if (holder) {
           const doc = docOf(holder)!;

@@ -88,6 +88,19 @@ describe("checkAnswer", () => {
     const r = checkAnswer(run(), "# T\n\nLe titre cote 383,00 € [E1] après −37,7 % sur un an [E2].\n");
     expect(failing(r)).toEqual([]);
   });
+  it("refuses a minus sign written on a figure the evidence holds as positive, and nothing else about signs", () => {
+    // E1 is +383 EUR, E2 is −37.683 %.
+    const kinds = (answer: string) => failing(checkAnswer(run(), answer));
+    expect(kinds("Le titre a pris -383,00 € [E1].\n")).toEqual(["unsupported"]);
+    expect(kinds("Le titre a pris −383,00 € [E1].\n")).toEqual(["unsupported"]);
+    // The direction said in words, an unsigned magnitude, and a plus sign are all left alone.
+    expect(kinds("Le titre recule de 37,7 % sur un an [E2].\n")).toEqual([]);
+    expect(kinds("Down 37.7 % over a year [E2], at 383.00 € [E1].\n")).toEqual([]);
+    expect(kinds("Variation sur un an : −37,7 % [E2].\n")).toEqual([]);
+    // A dash set apart by a space is punctuation, not a sign.
+    expect(kinds("Cours de clôture - 383,00 € [E1].\n")).toEqual([]);
+    expect(kinds("Cours de clôture – 383,00 € [E1].\n")).toEqual([]);
+  });
   it("fails uncited, dangling and unsupported figures, each on its line", () => {
     const r = checkAnswer(run(), "A 383 € close [E1].\n\nTarget 450 € soon.\n\nPE of 22.5 [E9].\n\nUp 12% [E2].\n");
     expect(failing(r)).toEqual(["uncited", "dangling", "unsupported", "unsupported"]);
