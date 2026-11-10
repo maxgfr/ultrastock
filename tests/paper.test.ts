@@ -94,9 +94,14 @@ describe("paper flow on a recorded fixture", () => {
       expect(again.verdict).toBe("pass");
       const twice = riskGate(t.order, (await gateContextFor(t.order, { now })).ctx);
       expect(twice.checks.find((c) => c.code === "POSITION_PCT")!.reason).not.toBe(again.checks.find((c) => c.code === "POSITION_PCT")!.reason);
-      const r = await paperSubmit(t.id, now);
+      // Two submissions racing for one ticket: exactly one fills it.
+      const race = await Promise.allSettled([paperSubmit(t.id, now), paperSubmit(t.id, now)]);
+      expect(race.map((x) => x.status).sort()).toEqual(["fulfilled", "rejected"]);
+      expect((race.find((x) => x.status === "rejected") as PromiseRejectedResult).reason.message).toMatch(/filled, not checked/);
+      const r = (race.find((x) => x.status === "fulfilled") as PromiseFulfilledResult<Awaited<ReturnType<typeof paperSubmit>>>).value;
       expect(r.outcome.kind).toBe("fill");
       expect(r.ticket.status).toBe("filled");
+      expect(loadTicket(t.id).fills).toHaveLength(1);
       const book = buildBook(readLedger("paper"));
       expect(book.positions.find((x) => x.symbol === "MC.PA")!.quantity).toBe(p.quantity);
       await expect(paperSubmit(t.id, now)).rejects.toThrow(/filled, not checked/);

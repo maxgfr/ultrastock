@@ -10,7 +10,10 @@
 //                 stay working, and `paper sweep` fills them later from the bars that
 //                 traded since — at the bar's open if it gapped through the limit
 //   fees          a fee model per market (a parameter, defaults below)
+import { join } from "node:path";
+import { withFileLock } from "../core/lock.js";
 import { fetchJson } from "../core/net.js";
+import { homeDir } from "../core/paths.js";
 import { appendTransactions, buildBook, readLedger } from "../portfolio/ledger.js";
 import { getHistory, getQuote, resolveSymbol } from "../providers/router.js";
 import { executionRefusal, type Fill, listTickets, loadTicket, type Ticket, transition } from "./tickets.js";
@@ -134,17 +137,26 @@ async function book(t: Ticket, fill: Fill): Promise<void> {
   );
 }
 
+/**
+ * One paper execution at a time: a ticket's state is read, its fill booked and
+ * its state changed as one step, so two `paper submit`, or a submit and a
+ * sweep, cannot both fill the same ticket.
+ */
+const paperLock = <T>(fn: () => Promise<T>): Promise<T> => withFileLock(join(homeDir(), "state", "paper.lock"), fn, 60_000);
+
 /** Execute a checked ticket on paper: fill now, or leave it working. */
 export async function paperSubmit(id: string, now = new Date()): Promise<{ ticket: Ticket; outcome: PaperOutcome }> {
-  const t = loadTicket(id);
-  if (t.order.venue !== "paper") throw new Error(`ticket ${id} is for ${t.order.venue}, not paper — live venues have their own, stricter path`);
-  const refusal = executionRefusal(t, now);
-  if (refusal) throw new Error(refusal);
-  const outcome = await simulateFill(t.order, now);
-  if (outcome.kind === "working") return { ticket: await transition(id, "working", outcome.reason, undefined, now), outcome };
-  await book(t, outcome.fill);
-  const done = await transition(id, "filled", `${outcome.fill.method}${outcome.note ? `; ${outcome.note}` : ""}`, (x) => x.fills.push(outcome.fill), now);
-  return { ticket: done, outcome };
+  return paperLock(async () => {
+    const t = loadTicket(id);
+    if (t.order.venue !== "paper") throw new Error(`ticket ${id} is for ${t.order.venue}, not paper — live venues have their own, stricter path`);
+    const refusal = executionRefusal(t, now);
+    if (refusal) throw new Error(refusal);
+    const outcome = await simulateFill(t.order, now);
+    if (outcome.kind === "working") return { ticket: await transition(id, "working", outcome.reason, undefined, now), outcome };
+    await book(t, outcome.fill);
+    const done = await transition(id, "filled", `${outcome.fill.method}${outcome.note ? `; ${outcome.note}` : ""}`, (x) => x.fills.push(outcome.fill), now);
+    return { ticket: done, outcome };
+  });
 }
 
 /**
@@ -185,9 +197,14 @@ export async function paperSweep(now = new Date()): Promise<Array<{ id: string; 
       venue: "paper",
       method: gapped ? `opened through the limit on ${bar.date}: filled at the open` : `traded through the limit on ${bar.date}`,
     };
-    await book(t, fill);
-    await transition(t.id, "filled", fill.method, (x) => x.fills.push(fill), now);
-    out.push({ id: t.id, result: `filled at ${price}` });
+    // The bars were read without the lock: the ticket may have been filled, swept or cancelled since.
+    const booked = await paperLock(async () => {
+      if (loadTicket(t.id).status !== "working") return false;
+      await book(t, fill);
+      await transition(t.id, "filled", fill.method, (x) => x.fills.push(fill), now);
+      return true;
+    });
+    out.push({ id: t.id, result: booked ? `filled at ${price}` : `no longer working (${loadTicket(t.id).status})` });
   }
   return out;
 }

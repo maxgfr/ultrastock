@@ -42887,7 +42887,7 @@ function currentLimits() {
 
 // src/trading/live.ts
 import { existsSync as existsSync34 } from "fs";
-import { join as join47 } from "path";
+import { join as join48 } from "path";
 import { createHash as createHash5 } from "crypto";
 
 // src/tax/rules.ts
@@ -43372,6 +43372,7 @@ function verifyCode(subject, binding, code, now = /* @__PURE__ */ new Date()) {
 }
 
 // src/trading/paper.ts
+import { join as join47 } from "path";
 var FEE_MODELS = {
   euronext: { pct: 1e-3, min: 2 },
   europe: { pct: 1e-3, min: 3 },
@@ -43468,16 +43469,19 @@ async function book(t, fill2) {
     "paper"
   );
 }
+var paperLock = (fn) => withFileLock(join47(homeDir(), "state", "paper.lock"), fn, 6e4);
 async function paperSubmit(id, now = /* @__PURE__ */ new Date()) {
-  const t = loadTicket(id);
-  if (t.order.venue !== "paper") throw new Error(`ticket ${id} is for ${t.order.venue}, not paper \u2014 live venues have their own, stricter path`);
-  const refusal2 = executionRefusal(t, now);
-  if (refusal2) throw new Error(refusal2);
-  const outcome = await simulateFill(t.order, now);
-  if (outcome.kind === "working") return { ticket: await transition(id, "working", outcome.reason, void 0, now), outcome };
-  await book(t, outcome.fill);
-  const done = await transition(id, "filled", `${outcome.fill.method}${outcome.note ? `; ${outcome.note}` : ""}`, (x) => x.fills.push(outcome.fill), now);
-  return { ticket: done, outcome };
+  return paperLock(async () => {
+    const t = loadTicket(id);
+    if (t.order.venue !== "paper") throw new Error(`ticket ${id} is for ${t.order.venue}, not paper \u2014 live venues have their own, stricter path`);
+    const refusal2 = executionRefusal(t, now);
+    if (refusal2) throw new Error(refusal2);
+    const outcome = await simulateFill(t.order, now);
+    if (outcome.kind === "working") return { ticket: await transition(id, "working", outcome.reason, void 0, now), outcome };
+    await book(t, outcome.fill);
+    const done = await transition(id, "filled", `${outcome.fill.method}${outcome.note ? `; ${outcome.note}` : ""}`, (x) => x.fills.push(outcome.fill), now);
+    return { ticket: done, outcome };
+  });
 }
 async function paperSweep(now = /* @__PURE__ */ new Date()) {
   const out5 = [];
@@ -43512,9 +43516,13 @@ async function paperSweep(now = /* @__PURE__ */ new Date()) {
       venue: "paper",
       method: gapped ? `opened through the limit on ${bar.date}: filled at the open` : `traded through the limit on ${bar.date}`
     };
-    await book(t, fill2);
-    await transition(t.id, "filled", fill2.method, (x) => x.fills.push(fill2), now);
-    out5.push({ id: t.id, result: `filled at ${price}` });
+    const booked = await paperLock(async () => {
+      if (loadTicket(t.id).status !== "working") return false;
+      await book(t, fill2);
+      await transition(t.id, "filled", fill2.method, (x) => x.fills.push(fill2), now);
+      return true;
+    });
+    out5.push({ id: t.id, result: booked ? `filled at ${price}` : `no longer working (${loadTicket(t.id).status})` });
   }
   return out5;
 }
@@ -43727,7 +43735,7 @@ async function applyResult(t, r3, rec, now) {
 }
 async function liveSubmit(p) {
   const now = p.now ?? /* @__PURE__ */ new Date();
-  return withFileLock(join47(homeDir(), "state", "live.lock"), async () => {
+  return withFileLock(join48(homeDir(), "state", "live.lock"), async () => {
     const t = loadTicket(p.ticket.id);
     const prev = liveOf(t);
     if (prev && (prev.state === "unknown" || prev.state === "accepted" || prev.state === "partially-filled"))
@@ -44150,7 +44158,7 @@ import { execFile } from "child_process";
 import { randomBytes as randomBytes4 } from "crypto";
 import { mkdtempSync as mkdtempSync5, rmSync as rmSync9, writeFileSync as writeFileSync11 } from "fs";
 import { tmpdir as tmpdir6 } from "os";
-import { join as join48 } from "path";
+import { join as join49 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 var OUT = { kind: "string", description: "absolute run directory: figures become [E#] evidence there, to cite and to check" };
 var sym2 = (d = "instrument: MC.PA, NVDA, CW8.PA, an EU ISIN, BTCUSDT") => ({ kind: "string", description: d, positional: 0, required: true });
@@ -44616,9 +44624,9 @@ function mcpAdapter(run3 = runBundle) {
       if (hitsKey) delete given[hitsKey];
       if (hits === void 0) return { text: await run3(argvFor(t, given), ctx?.signal) };
       if (!Array.isArray(hits)) throw new ToolError(`${t.name}: ${hitsKey} is an array of search hits`);
-      const dir2 = mkdtempSync5(join48(tmpdir6(), "ultrastock-hits-"));
+      const dir2 = mkdtempSync5(join49(tmpdir6(), "ultrastock-hits-"));
       try {
-        const file = join48(dir2, "websearch.json");
+        const file = join49(dir2, "websearch.json");
         writeFileSync11(file, JSON.stringify(hits));
         return { text: await run3([...argvFor(t, given).filter((a) => a !== "--json"), `--web-results=${file}`, "--json"], ctx?.signal) };
       } finally {
@@ -44645,13 +44653,13 @@ import { basename as basename3, resolve as resolve12 } from "path";
 
 // src/alerts/alerts.ts
 import { existsSync as existsSync36, mkdirSync as mkdirSync27, readFileSync as readFileSync40 } from "fs";
-import { join as join49 } from "path";
-var statePath = () => join49(homeDir(), "state", "alerts.json");
+import { join as join50 } from "path";
+var statePath = () => join50(homeDir(), "state", "alerts.json");
 function loadRules() {
   return existsSync36(statePath()) ? JSON.parse(readFileSync40(statePath(), "utf8")) : [];
 }
 function saveRules(rules) {
-  mkdirSync27(join49(homeDir(), "state"), { recursive: true });
+  mkdirSync27(join50(homeDir(), "state"), { recursive: true });
   writeFileAtomic(statePath(), `${JSON.stringify(rules, null, 2)}
 `, 384);
 }
@@ -44889,13 +44897,13 @@ async function notify(events) {
 
 // src/portfolio/watchlist.ts
 import { existsSync as existsSync37, mkdirSync as mkdirSync28, readFileSync as readFileSync41 } from "fs";
-import { join as join50 } from "path";
-var statePath2 = () => join50(homeDir(), "state", "watchlist.json");
+import { join as join51 } from "path";
+var statePath2 = () => join51(homeDir(), "state", "watchlist.json");
 function loadWatchlist() {
   return existsSync37(statePath2()) ? JSON.parse(readFileSync41(statePath2(), "utf8")) : [];
 }
 function saveWatchlist(items) {
-  mkdirSync28(join50(homeDir(), "state"), { recursive: true });
+  mkdirSync28(join51(homeDir(), "state"), { recursive: true });
   writeFileAtomic(statePath2(), `${JSON.stringify(items, null, 2)}
 `, 384);
 }
@@ -45129,11 +45137,11 @@ async function watchlistCommand(args, asJson) {
 
 // src/analyze/morning/run.ts
 import { existsSync as existsSync39, readFileSync as readFileSync44 } from "fs";
-import { join as join52 } from "path";
+import { join as join53 } from "path";
 
 // src/analyze/morning/confirm.ts
 import { existsSync as existsSync38, readFileSync as readFileSync43 } from "fs";
-import { join as join51 } from "path";
+import { join as join52 } from "path";
 var RESULTS_LINE = /r[ée]sultats?|results?|earnings|chiffre d'affaires|revenues?|sales|ventes|trading update|publication/i;
 var NEAR_LINES2 = 3;
 function confirmDates(dir2, items, today) {
@@ -45141,7 +45149,7 @@ function confirmDates(dir2, items, today) {
   const out5 = [];
   if (!store) return items.map((i) => ({ ...i, status: "not-searched", sources: 0, stating: [] }));
   for (const it of items) {
-    const path2 = join51(dir2, researchFiles(it.tag).index);
+    const path2 = join52(dir2, researchFiles(it.tag).index);
     const entries = existsSync38(path2) ? JSON.parse(readFileSync43(path2, "utf8")) : [];
     if (!entries.length) {
       out5.push({ ...it, status: "not-searched", sources: 0, stating: [] });
@@ -45845,7 +45853,7 @@ async function morningRun(dir2, opts = {}) {
       f3.note(`${c.symbol}: the calendar search ${opts.researchWith ? "failed" : "worklist could not be written"} (${e.message.split("\n")[0]})`);
     }
   }
-  writeFileAtomic(join52(dir2, MORNING_STATE), `${JSON.stringify({ today, toConfirm: searching }, null, 2)}
+  writeFileAtomic(join53(dir2, MORNING_STATE), `${JSON.stringify({ today, toConfirm: searching }, null, 2)}
 `);
   const confirmations = confirmDates(dir2, searching, today);
   const md = morningMarkdown(
@@ -45874,7 +45882,7 @@ async function morningRun(dir2, opts = {}) {
     result,
     store
   );
-  const file = join52(dir2, "MORNING.md");
+  const file = join53(dir2, "MORNING.md");
   writeArtifact(file, md);
   return { dir: dir2, file, flags, universe: universe.map((s) => ({ symbol: s, origins: originsRec[s] })), confirmations, notes: f3.notes };
 }
@@ -45906,12 +45914,12 @@ function webDatesSection(dir2, cs, store) {
   return ["## Dates on the web", "", WEB_OPEN, ...lines.length ? lines : ["No results date flagged: nothing to confirm."], WEB_CLOSE, ""].join("\n");
 }
 function confirmMorning(dir2) {
-  const statePath3 = join52(dir2, MORNING_STATE);
+  const statePath3 = join53(dir2, MORNING_STATE);
   if (!existsSync39(statePath3)) throw new UsageError(`${dir2} holds no ${MORNING_STATE} \u2014 run \`ultrastock morning --out ${dir2}\` first`);
   const state = JSON.parse(readFileSync44(statePath3, "utf8"));
   const confirmations = confirmDates(dir2, state.toConfirm, state.today);
   const store = EvidenceStore.load(dir2);
-  const file = join52(dir2, "MORNING.md");
+  const file = join53(dir2, "MORNING.md");
   const md = readFileSync44(file, "utf8");
   const section = webDatesSection(dir2, confirmations, store);
   const at = md.indexOf("## Dates on the web");
@@ -46492,7 +46500,7 @@ ${checklist.map((c) => `- ${c.rule} (verified ${c.verifiedAt}): "${c.query}" \u2
 
 // src/commands/tax.ts
 import { mkdirSync as mkdirSync29, writeFileSync as writeFileSync12 } from "fs";
-import { join as join53, resolve as resolve14 } from "path";
+import { join as join54, resolve as resolve14 } from "path";
 
 // src/tax/export.ts
 var EXPORT_FORMATS = ["8949", "2086", "2074", "koinly"];
@@ -48005,7 +48013,7 @@ ${pn.join("\n")}` : ""}`
     const out5 = argValue(args, "out");
     if (!out5) return void process.stdout.write(csv);
     mkdirSync29(resolve14(out5), { recursive: true });
-    const file = join53(resolve14(out5), `tax-${regime.id}-${year}-${format}.csv`);
+    const file = join54(resolve14(out5), `tax-${regime.id}-${year}-${format}.csv`);
     writeFileSync12(file, csv, { mode: 384 });
     return print(asJson, { file, rows: csv.split("\r\n").length - 2 }, `written ${file}`);
   }
@@ -51364,9 +51372,9 @@ import { resolve as resolve16 } from "path";
 
 // src/portfolio/store.ts
 import { existsSync as existsSync42, mkdirSync as mkdirSync30, readdirSync as readdirSync12, statSync as statSync6 } from "fs";
-import { join as join54 } from "path";
+import { join as join55 } from "path";
 function jsonlBooks() {
-  const dir2 = join54(homeDir(), "ledger");
+  const dir2 = join55(homeDir(), "ledger");
   if (!existsSync42(dir2)) return [];
   return readdirSync12(dir2).filter((f3) => /^[a-z0-9-]{1,40}\.jsonl$/.test(f3)).map((f3) => f3.replace(/\.jsonl$/, "")).sort();
 }
@@ -51376,7 +51384,7 @@ function storeBooks() {
   );
 }
 async function initStore(now = /* @__PURE__ */ new Date()) {
-  mkdirSync30(join54(homeDir(), "ledger"), { recursive: true });
+  mkdirSync30(join55(homeDir(), "ledger"), { recursive: true });
   const books = [];
   for (const book2 of jsonlBooks()) {
     const r3 = await withFileLock(`${ledgerPath(book2)}.lock`, () => {
@@ -51392,7 +51400,7 @@ async function initStore(now = /* @__PURE__ */ new Date()) {
 }
 async function exportBook(book2) {
   const path2 = ledgerPath(book2);
-  mkdirSync30(join54(homeDir(), "ledger"), { recursive: true });
+  mkdirSync30(join55(homeDir(), "ledger"), { recursive: true });
   return withFileLock(`${path2}.lock`, () => {
     const stored = withStore((db) => readSqliteLedger(db, book2));
     const file = readJsonlLedger(book2);
@@ -52898,10 +52906,10 @@ async function screenCommand(args, asJson) {
 
 // src/commands/etf.ts
 import { readFileSync as readFileSync48 } from "fs";
-import { join as join56, resolve as resolve18 } from "path";
+import { join as join57, resolve as resolve18 } from "path";
 
 // src/analyze/etf-propose.ts
-import { join as join55 } from "path";
+import { join as join56 } from "path";
 var ETF_GOALS = ["core", "growth", "income", "defensive"];
 var ETF_ENVELOPES = ["pea", "cto", "av"];
 var ESG = /\b(?:esg|sri|screened|ctb|pab|climate|transition|green|paris)\b/;
@@ -53560,7 +53568,7 @@ async function etfPropose(dir2, o) {
     const sym3 = w.scored[0] ? symbols.get(w.scored[0].m.ticker) : "CASH";
     targets[sym3] = (targets[sym3] ?? 0) + w.line.weightPct;
   }
-  writeArtifact(join55(dir2, "TARGETS.json"), `${JSON.stringify(targets, null, 2)}
+  writeArtifact(join56(dir2, "TARGETS.json"), `${JSON.stringify(targets, null, 2)}
 `);
   const result = {
     dir: dir2,
@@ -53594,7 +53602,7 @@ async function etfPropose(dir2, o) {
     evidence: store.items.length
   };
   writeArtifact(
-    join55(dir2, "PROPOSAL.md"),
+    join56(dir2, "PROPOSAL.md"),
     etfProposalMarkdown(result, store, { currency, distribution, priips, jurisdiction, amount: o.amount, hedged: !!o.hedged, work: lines, pairKeys })
   );
   return result;
@@ -53633,7 +53641,7 @@ function etfProposalMarkdown(r3, store, c) {
   }
   L.push(
     "",
-    `Weights sum to ${r3.lines.reduce((s, x) => s + x.weightPct, 0)} %. \`TARGETS.json\` holds them for \`ultrastock portfolio rebalance --targets ${join55(r3.dir, "TARGETS.json")}\`.`,
+    `Weights sum to ${r3.lines.reduce((s, x) => s + x.weightPct, 0)} %. \`TARGETS.json\` holds them for \`ultrastock portfolio rebalance --targets ${join56(r3.dir, "TARGETS.json")}\`.`,
     ""
   );
   L.push("## The funds, line by line", "");
@@ -53700,11 +53708,11 @@ function etfProposalMarkdown(r3, store, c) {
   L.push(
     "## Runbook",
     "",
-    `1. Analyse each pick: ${syms.map((s) => `\`ultrastock analyze ${s} --out ${join55(r3.dir, s)}\``).join(", ") || "(no pick)"} \u2014 ETF.md settles replication, PEA, domicile, tracking and holdings.`,
-    `2. Read each pick's factsheet and KID: ${syms.map((s) => `\`ultrastock research ${s} --kind etf --out ${join55(r3.dir, s)}\``).join(", ") || "(no pick)"} \u2014 the KID is the document that settles PEA eligibility and costs.`,
+    `1. Analyse each pick: ${syms.map((s) => `\`ultrastock analyze ${s} --out ${join56(r3.dir, s)}\``).join(", ") || "(no pick)"} \u2014 ETF.md settles replication, PEA, domicile, tracking and holdings.`,
+    `2. Read each pick's factsheet and KID: ${syms.map((s) => `\`ultrastock research ${s} --kind etf --out ${join56(r3.dir, s)}\``).join(", ") || "(no pick)"} \u2014 the KID is the document that settles PEA eligibility and costs.`,
     "3. Answer citing the [E#] of this run (weights, TER, AUM, scores), say it is a convention, name what the envelope could not hold.",
     `4. \`ultrastock check ${r3.dir} <answer.md>\` before sending it.`,
-    `5. To put it in place: \`ultrastock portfolio rebalance --targets ${join55(r3.dir, "TARGETS.json")}\` (add --contribution <amount> for new money) \u2014 nothing is ordered.`,
+    `5. To put it in place: \`ultrastock portfolio rebalance --targets ${join56(r3.dir, "TARGETS.json")}\` (add --contribution <amount> for new money) \u2014 nothing is ordered.`,
     ""
   );
   return `${L.join("\n")}
@@ -53850,7 +53858,7 @@ ${USAGE6}`);
       throw e;
     }
     if (asJson) process.stdout.write(jsonLine(r3));
-    else process.stdout.write(`${readFileSync48(join56(dir2, "PROPOSAL.md"), "utf8")}
+    else process.stdout.write(`${readFileSync48(join57(dir2, "PROPOSAL.md"), "utf8")}
 run: ${dir2}
 `);
     return;
@@ -53860,10 +53868,10 @@ run: ${dir2}
 
 // src/commands/value.ts
 import { readFileSync as readFileSync49 } from "fs";
-import { join as join58 } from "path";
+import { join as join59 } from "path";
 
 // src/analyze/value/run.ts
-import { join as join57 } from "path";
+import { join as join58 } from "path";
 
 // src/analyze/value/styles.ts
 var VALUE_STYLE_IDS = ["quality-value", "deep-value", "dividend", "garp", "magic-formula"];
@@ -54766,7 +54774,7 @@ async function valueRun(dir2, opts, deps = defaultValueDeps()) {
   }
   store.save();
   const ctx = { region: opts.region, minCapEur, shortlist, top, now, notes, dir: dir2 };
-  writeArtifact(join57(dir2, "VALUE.md"), valueMarkdown(store, runs, valuations, alerts, [], ctx));
+  writeArtifact(join58(dir2, "VALUE.md"), valueMarkdown(store, runs, valuations, alerts, [], ctx));
   const research = [];
   if (opts.research) {
     const names2 = [...topNames(store, runs)].slice(0, opts.research.top);
@@ -54782,7 +54790,7 @@ async function valueRun(dir2, opts, deps = defaultValueDeps()) {
         research.push({ symbol: sym3, tag, ok: false, notes: [], error: e.message.split("\n")[0].slice(0, 300) });
       }
     }
-    writeArtifact(join57(dir2, "VALUE.md"), valueMarkdown(store, runs, valuations, alerts, research, { ...ctx, researchWith: opts.research.with }));
+    writeArtifact(join58(dir2, "VALUE.md"), valueMarkdown(store, runs, valuations, alerts, research, { ...ctx, researchWith: opts.research.with }));
   }
   const evidence = research.length ? EvidenceStore.load(dir2)?.items.length ?? store.items.length : store.items.length;
   return { dir: dir2, region: opts.region.id, styles: runs.map((r3) => r3.result), valuations, alerts, research, evidence, notes };
@@ -55021,7 +55029,7 @@ async function valueCommand(args, asJson) {
 `)
   });
   if (asJson) process.stdout.write(jsonLine(r3));
-  else process.stdout.write(`${readFileSync49(join58(dir2, "VALUE.md"), "utf8")}
+  else process.stdout.write(`${readFileSync49(join59(dir2, "VALUE.md"), "utf8")}
 run: ${dir2}
 `);
 }
