@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.21](https://github.com/maxgfr/ultrastock/compare/v1.12.20...v1.12.21) (2026-11-10)
+
+
+### Bug Fixes
+
+* **tax:** replay a day's trades in the order of their time ([3888ec5](https://github.com/maxgfr/ultrastock/commit/3888ec5cf8ca549eeeb328e0ea99769bd4074118))
+
 ## [1.12.20](https://github.com/maxgfr/ultrastock/compare/v1.12.19...v1.12.20) (2026-11-10)
 
 
