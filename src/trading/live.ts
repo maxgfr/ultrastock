@@ -217,11 +217,26 @@ export interface LiveRecord {
   message?: string;
 }
 
-const liveOf = (t: Ticket) => (t as Ticket & { live?: LiveRecord }).live;
+/** Where a ticket's order went and what the venue last said of it, when it ever left. */
+export const liveRecordOf = (t: Ticket): LiveRecord | undefined => (t as Ticket & { live?: LiveRecord }).live;
+const liveOf = liveRecordOf;
+
+/**
+ * An order is only ever asked about, or cancelled, where it went. Another
+ * environment of the same venue has never heard of it: its "no such order"
+ * would read as "never placed" and free the ticket for a second send.
+ */
+function assertSameVenue(ticketId: string, rec: LiveRecord, adapter: BrokerAdapter): void {
+  if (adapter.venue !== rec.venue || adapter.env !== rec.env)
+    throw new Error(`ticket ${ticketId} went to ${rec.venue} ${rec.env}: it cannot be followed on ${adapter.venue} ${adapter.env}`);
+}
+
+/** An answer that ends the order with something filled: a fill, or a cancel that came after a partial one. */
+const settledFill = (r: OrderResult): boolean => (r.state === "filled" || r.state === "cancelled") && !!r.filledQuantity && !!r.averagePrice;
 
 /** Record a fill in the ledger (real book live, "live-test" book otherwise), once per ticket. */
 async function bookFill(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date): Promise<void> {
-  if (!r.filledQuantity || !r.averagePrice) return;
+  if (!settledFill(r)) return;
   await appendTransactions(
     [
       {
@@ -229,8 +244,8 @@ async function bookFill(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date): 
         type: t.order.side,
         account: t.order.account,
         symbol: t.order.symbol,
-        quantity: r.filledQuantity,
-        price: r.averagePrice,
+        quantity: r.filledQuantity!,
+        price: r.averagePrice!,
         fee: r.feeCurrency && r.feeCurrency !== t.order.currency ? undefined : r.fee,
         currency: t.order.currency,
         note: `${rec.venue} ${rec.env} order ${r.venueOrderId ?? rec.clientOrderId}${r.fee && r.feeCurrency && r.feeCurrency !== t.order.currency ? ` (fee ${r.fee} ${r.feeCurrency})` : ""}`,
@@ -251,11 +266,11 @@ async function applyResult(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date
     `${rec.venue} ${rec.env}: ${r.state}${r.message ? ` — ${r.message}` : ""}`,
     (x) => {
       (x as Ticket & { live?: LiveRecord }).live = next;
-      if (r.state === "filled" && r.filledQuantity && r.averagePrice)
+      if (settledFill(r))
         x.fills.push({
           at: now.toISOString(),
-          quantity: r.filledQuantity,
-          price: r.averagePrice,
+          quantity: r.filledQuantity!,
+          price: r.averagePrice!,
           fee: r.fee ?? 0,
           venue: `${rec.venue}-${rec.env}`,
           method: "venue fill",
@@ -263,7 +278,7 @@ async function applyResult(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date
     },
     now,
   );
-  if (r.state === "filled") await bookFill(t, r, next, now);
+  await bookFill(t, r, next, now);
   return updated;
 }
 
@@ -334,6 +349,7 @@ export async function reconcile(ticketId: string, adapter: BrokerAdapter, now = 
   const t = loadTicket(ticketId);
   const rec = liveOf(t);
   if (!rec) return { ticket: t, note: "this ticket never went to a venue" };
+  assertSameVenue(t.id, rec, adapter);
   const r = await adapter.query(rec.venueSymbol, rec.clientOrderId);
   audit({ event: "live-reconcile", ticket: t.id, venue: rec.venue, env: rec.env, clientOrderId: rec.clientOrderId, state: r?.state ?? "not-found" });
   if (!r) {
@@ -354,14 +370,37 @@ export async function reconcile(ticketId: string, adapter: BrokerAdapter, now = 
   return { ticket, result: r, note: r.state };
 }
 
-/** Cancel a ticket's working order at its venue. */
+/**
+ * Cancel a ticket's working order at its venue. Only the venue's word changes
+ * the ticket: a refused cancel leaves it pending (the order may be working, or
+ * filled a moment ago), so nothing can be sent again on a guess.
+ */
 export async function liveCancel(ticketId: string, adapter: BrokerAdapter, now = new Date()): Promise<OrderResult | undefined> {
   const t = loadTicket(ticketId);
   const rec = liveOf(t);
   if (!rec) return undefined;
+  assertSameVenue(t.id, rec, adapter);
+  if (rec.state === "filled" || rec.state === "cancelled" || rec.state === "rejected")
+    throw new Error(`ticket ${t.id} is already ${rec.state} at ${rec.venue}: there is nothing to cancel`);
   audit({ event: "live-cancel-intent", ticket: t.id, venue: rec.venue, env: rec.env, clientOrderId: rec.clientOrderId });
   const r = await adapter.cancel(rec.venueSymbol, rec.clientOrderId);
   audit({ event: "live-cancel-result", ticket: t.id, venue: rec.venue, env: rec.env, clientOrderId: rec.clientOrderId, state: r.state, message: r.message });
-  await applyResult(t, r, rec, now);
-  return r;
+  // A cancel answer rarely says what filled before it, and a refusal says nothing of the order: ask for the order itself.
+  const seen = await adapter.query(rec.venueSymbol, rec.clientOrderId).catch(() => undefined);
+  if (r.state === "rejected") {
+    if (seen && seen.state !== rec.state && seen.state !== "unknown") await applyResult(t, seen, rec, now);
+    return r;
+  }
+  const done: OrderResult =
+    seen && (seen.state === "filled" || seen.state === "cancelled")
+      ? seen
+      : {
+          ...r,
+          filledQuantity: r.filledQuantity ?? seen?.filledQuantity,
+          averagePrice: r.averagePrice ?? seen?.averagePrice,
+          fee: r.fee ?? seen?.fee,
+          feeCurrency: r.feeCurrency ?? seen?.feeCurrency,
+        };
+  await applyResult(t, done, rec, now);
+  return done;
 }

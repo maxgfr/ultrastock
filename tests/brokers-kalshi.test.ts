@@ -80,6 +80,10 @@ describe("Kalshi adapter", () => {
       fee: 0.06,
     });
     expect(parseKalshiOrder({ status: "canceled", fill_count_fp: "0.00" }, "c").state).toBe("cancelled");
+    // A cancel after a partial fill ends the order: it is cancelled, and says what filled.
+    expect(
+      parseKalshiOrder({ status: "canceled", side: "yes", fill_count_fp: "2.00", remaining_count_fp: "3.00", taker_fill_cost_dollars: "0.80" }, "c"),
+    ).toMatchObject({ state: "cancelled", filledQuantity: 2, averagePrice: 0.4 });
     expect(venueSymbol("kalshi", "KALSHI:fed-1:yes", "USD")).toBe("FED-1:YES");
   });
 });

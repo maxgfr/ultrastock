@@ -5,7 +5,8 @@ import { homeDir } from "../src/core/paths.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
 import type { BrokerAdapter, LiveOrder, OrderResult } from "../src/trading/brokers/types.js";
 import { effectiveLimits, isTightening, type LiveLimits, LOOSEN_DELAY_MS, requestLimits, tierFor } from "../src/trading/limits.js";
-import { clientOrderIdFor, liveSubmit, preconditions, reconcile, venueSymbol } from "../src/trading/live.js";
+import { readLedger } from "../src/portfolio/ledger.js";
+import { clientOrderIdFor, liveCancel, liveSubmit, preconditions, reconcile, venueSymbol } from "../src/trading/live.js";
 import { type Channel, issueCode, verifyCode } from "../src/trading/otp.js";
 import { killSwitchPath, type Order, orderFingerprint } from "../src/trading/riskgate.js";
 import { readCredentials, redact, setupCommands } from "../src/trading/secrets.js";
@@ -16,6 +17,8 @@ function fakeVenue(
   opts: {
     submit?: (o: LiveOrder) => OrderResult | Promise<OrderResult>;
     query?: OrderResult;
+    cancel?: OrderResult;
+    env?: "test" | "live";
     canWithdraw?: boolean;
     bid?: number;
     ask?: number;
@@ -25,7 +28,7 @@ function fakeVenue(
   const calls = { submit: 0, query: 0, cancel: 0 };
   const a: BrokerAdapter = {
     venue: "kraken",
-    env: "test",
+    env: opts.env ?? "test",
     bookTop: async () => ({ bid: opts.bid ?? 99.9, ask: opts.ask ?? 100, at: new Date().toISOString() }),
     permissions: async () => ({ canTrade: true, canWithdraw: opts.canWithdraw ?? false, source: "apiRestrictions" }),
     balances: async () => [{ asset: "SOL", free: opts.free ?? 0, locked: 0 }],
@@ -40,7 +43,7 @@ function fakeVenue(
     },
     cancel: async (_s, id) => {
       calls.cancel++;
-      return { state: "cancelled", clientOrderId: id };
+      return opts.cancel ?? { state: "cancelled", clientOrderId: id };
     },
     openOrders: async () => [],
   };
@@ -184,6 +187,82 @@ describe("live preconditions and the single submission", () => {
     const events = readAudit().map((e) => e.event);
     expect(events.indexOf("live-intent")).toBeLessThan(events.indexOf("live-result"));
     expect(events).toContain("live-reconcile");
+  });
+
+  /** A ticket sent to the fake venue (kraken, test) and accepted there. */
+  async function acceptedTicket() {
+    switchOn();
+    const t = await checkedTicket(order());
+    await issueCode(t.id, orderFingerprint(t.order), "order", [["capture", capture]]);
+    const r = await liveSubmit({ ticket: t, venue: "kraken", env: "test", adapter: fakeVenue().a, venueSym: "SOLEUR", code: codeFrom(), micaAuthorised: true });
+    expect(r.result?.state).toBe("accepted");
+    return t;
+  }
+
+  it("never reconciles or cancels against another environment than the one the order went to", async () => {
+    switchOn();
+    const t = await checkedTicket(order());
+    await issueCode(t.id, orderFingerprint(t.order), "order", [["capture", capture]]);
+    const lost = fakeVenue({ submit: () => Promise.reject(new Error("timeout after 10000 ms")) });
+    await liveSubmit({ ticket: t, venue: "kraken", env: "test", adapter: lost.a, venueSym: "SOLEUR", code: codeFrom(), micaAuthorised: true });
+    // The other environment knows nothing of the order: asking it would read "never placed" and free the ticket for a resend.
+    const other = fakeVenue({ env: "live" });
+    await expect(reconcile(t.id, other.a)).rejects.toThrow(/went to kraken test/);
+    await expect(liveCancel(t.id, other.a)).rejects.toThrow(/went to kraken test/);
+    expect(other.calls).toMatchObject({ query: 0, cancel: 0 });
+    expect(loadTicket(t.id).status).toBe("submitted");
+  });
+
+  it("keeps a ticket pending when the venue refuses the cancel", async () => {
+    const t = await acceptedTicket();
+    const v = fakeVenue({ cancel: { state: "rejected", clientOrderId: clientOrderIdFor(t.id, 1), message: "HTTP 503" } });
+    const r = await liveCancel(t.id, v.a);
+    expect(r?.state).toBe("rejected");
+    // Still working at the venue as far as anyone knows: not resendable.
+    expect(loadTicket(t.id).status).toBe("submitted");
+    const again = await liveSubmit({
+      ticket: loadTicket(t.id),
+      venue: "kraken",
+      env: "test",
+      adapter: v.a,
+      venueSym: "SOLEUR",
+      code: "123456",
+      micaAuthorised: true,
+    });
+    expect(again.refusals[0]!.code).toBe("PENDING");
+    expect(v.calls.submit).toBe(0);
+  });
+
+  it("reads what became of the order when a cancel is refused because it filled, and refuses to cancel a finished one", async () => {
+    const t = await acceptedTicket();
+    const id = clientOrderIdFor(t.id, 1);
+    const v = fakeVenue({
+      cancel: { state: "rejected", clientOrderId: id, message: "Unknown order sent." },
+      query: { state: "filled", clientOrderId: id, venueOrderId: "V1", filledQuantity: 1, averagePrice: 100, fee: 0.26, feeCurrency: "EUR" },
+    });
+    await liveCancel(t.id, v.a);
+    expect(loadTicket(t.id).status).toBe("filled");
+    expect(readLedger("live-test").filter((x) => x.type === "buy")).toHaveLength(1);
+    await expect(liveCancel(t.id, v.a)).rejects.toThrow(/already filled/);
+    expect(v.calls.cancel).toBe(1);
+    expect(loadTicket(t.id).status).toBe("filled");
+  });
+
+  it("books what filled before a cancel", async () => {
+    const t = await acceptedTicket();
+    const id = clientOrderIdFor(t.id, 1);
+    const v = fakeVenue({
+      query: { state: "cancelled", clientOrderId: id, venueOrderId: "V1", filledQuantity: 0.4, averagePrice: 99.9, fee: 0.1, feeCurrency: "EUR" },
+    });
+    const r = await liveCancel(t.id, v.a);
+    expect(r).toMatchObject({ state: "cancelled", filledQuantity: 0.4 });
+    const after = loadTicket(t.id);
+    expect(after.status).toBe("cancelled");
+    expect(after.fills).toMatchObject([{ quantity: 0.4, price: 99.9 }]);
+    expect(readLedger("live-test").filter((x) => x.type === "buy")).toMatchObject([{ quantity: 0.4, price: 99.9 }]);
+    // Asking again books nothing twice.
+    await reconcile(t.id, v.a);
+    expect(readLedger("live-test").filter((x) => x.type === "buy")).toHaveLength(1);
   });
 
   it("refuses a code issued for another order, and maps symbols per venue", async () => {

@@ -62,9 +62,7 @@ export function parseKalshiOrder(o: KalshiOrder, clientOrderId: string, outcome:
     o.status === "executed"
       ? "filled"
       : o.status === "canceled"
-        ? filled > 0
-          ? "partially-filled"
-          : "cancelled"
+        ? "cancelled" // what filled before the cancel is in filledQuantity: the order itself is over
         : o.status === "resting"
           ? filled > 0
             ? "partially-filled"
@@ -209,8 +207,7 @@ export function kalshiAdapter(opts: AdapterOptions): BrokerAdapter {
       const o = await find(ticker, clientOrderId);
       if (!o?.order_id) return { state: "rejected", clientOrderId, message: "no Kalshi order carries this client_order_id" };
       const r = await call("DELETE", `/portfolio/events/orders/${encodeURIComponent(o.order_id)}`);
-      if (r.status === 200)
-        return { ...parseKalshiOrder({ ...o, status: "canceled" }, clientOrderId, side), state: n(o.fill_count_fp) > 0 ? "partially-filled" : "cancelled" };
+      if (r.status === 200) return parseKalshiOrder({ ...o, status: "canceled" }, clientOrderId, side);
       return { state: "rejected", clientOrderId, message: message(r.data, r.text) };
     },
     async openOrders() {

@@ -42508,7 +42508,7 @@ var n = (s) => s === void 0 ? 0 : Number(s);
 function parseKalshiOrder(o, clientOrderId, outcome = "yes") {
   const filled = n(o.fill_count_fp);
   const remaining = n(o.remaining_count_fp);
-  const state = o.status === "executed" ? "filled" : o.status === "canceled" ? filled > 0 ? "partially-filled" : "cancelled" : o.status === "resting" ? filled > 0 ? "partially-filled" : "accepted" : "unknown";
+  const state = o.status === "executed" ? "filled" : o.status === "canceled" ? "cancelled" : o.status === "resting" ? filled > 0 ? "partially-filled" : "accepted" : "unknown";
   const cost = n(o.taker_fill_cost_dollars) + n(o.maker_fill_cost_dollars);
   let avg = filled ? cost / filled : void 0;
   if (avg !== void 0 && (o.side ?? "yes") !== outcome) avg = 1 - avg;
@@ -42634,8 +42634,7 @@ function kalshiAdapter(opts) {
       const o = await find(ticker, clientOrderId);
       if (!o?.order_id) return { state: "rejected", clientOrderId, message: "no Kalshi order carries this client_order_id" };
       const r3 = await call2("DELETE", `/portfolio/events/orders/${encodeURIComponent(o.order_id)}`);
-      if (r3.status === 200)
-        return { ...parseKalshiOrder({ ...o, status: "canceled" }, clientOrderId, side2), state: n(o.fill_count_fp) > 0 ? "partially-filled" : "cancelled" };
+      if (r3.status === 200) return parseKalshiOrder({ ...o, status: "canceled" }, clientOrderId, side2);
       return { state: "rejected", clientOrderId, message: message(r3.data, r3.text) };
     },
     async openOrders() {
@@ -43675,9 +43674,15 @@ async function preconditions(p) {
   } else if (!p.code) no("CODE", "an out-of-band approval code is needed (`broker code <ticket>`), once the other conditions hold");
   return { refusals: R, notional, book: book2 };
 }
-var liveOf = (t) => t.live;
+var liveRecordOf = (t) => t.live;
+var liveOf = liveRecordOf;
+function assertSameVenue(ticketId, rec, adapter) {
+  if (adapter.venue !== rec.venue || adapter.env !== rec.env)
+    throw new Error(`ticket ${ticketId} went to ${rec.venue} ${rec.env}: it cannot be followed on ${adapter.venue} ${adapter.env}`);
+}
+var settledFill = (r3) => (r3.state === "filled" || r3.state === "cancelled") && !!r3.filledQuantity && !!r3.averagePrice;
 async function bookFill(t, r3, rec, now) {
-  if (!r3.filledQuantity || !r3.averagePrice) return;
+  if (!settledFill(r3)) return;
   await appendTransactions(
     [
       {
@@ -43705,7 +43710,7 @@ async function applyResult(t, r3, rec, now) {
     `${rec.venue} ${rec.env}: ${r3.state}${r3.message ? ` \u2014 ${r3.message}` : ""}`,
     (x) => {
       x.live = next2;
-      if (r3.state === "filled" && r3.filledQuantity && r3.averagePrice)
+      if (settledFill(r3))
         x.fills.push({
           at: now.toISOString(),
           quantity: r3.filledQuantity,
@@ -43717,7 +43722,7 @@ async function applyResult(t, r3, rec, now) {
     },
     now
   );
-  if (r3.state === "filled") await bookFill(t, r3, next2, now);
+  await bookFill(t, r3, next2, now);
   return updated;
 }
 async function liveSubmit(p) {
@@ -43783,6 +43788,7 @@ async function reconcile(ticketId, adapter, now = /* @__PURE__ */ new Date()) {
   const t = loadTicket(ticketId);
   const rec = liveOf(t);
   if (!rec) return { ticket: t, note: "this ticket never went to a venue" };
+  assertSameVenue(t.id, rec, adapter);
   const r3 = await adapter.query(rec.venueSymbol, rec.clientOrderId);
   audit({ event: "live-reconcile", ticket: t.id, venue: rec.venue, env: rec.env, clientOrderId: rec.clientOrderId, state: r3?.state ?? "not-found" });
   if (!r3) {
@@ -43805,11 +43811,26 @@ async function liveCancel(ticketId, adapter, now = /* @__PURE__ */ new Date()) {
   const t = loadTicket(ticketId);
   const rec = liveOf(t);
   if (!rec) return void 0;
+  assertSameVenue(t.id, rec, adapter);
+  if (rec.state === "filled" || rec.state === "cancelled" || rec.state === "rejected")
+    throw new Error(`ticket ${t.id} is already ${rec.state} at ${rec.venue}: there is nothing to cancel`);
   audit({ event: "live-cancel-intent", ticket: t.id, venue: rec.venue, env: rec.env, clientOrderId: rec.clientOrderId });
   const r3 = await adapter.cancel(rec.venueSymbol, rec.clientOrderId);
   audit({ event: "live-cancel-result", ticket: t.id, venue: rec.venue, env: rec.env, clientOrderId: rec.clientOrderId, state: r3.state, message: r3.message });
-  await applyResult(t, r3, rec, now);
-  return r3;
+  const seen = await adapter.query(rec.venueSymbol, rec.clientOrderId).catch(() => void 0);
+  if (r3.state === "rejected") {
+    if (seen && seen.state !== rec.state && seen.state !== "unknown") await applyResult(t, seen, rec, now);
+    return r3;
+  }
+  const done = seen && (seen.state === "filled" || seen.state === "cancelled") ? seen : {
+    ...r3,
+    filledQuantity: r3.filledQuantity ?? seen?.filledQuantity,
+    averagePrice: r3.averagePrice ?? seen?.averagePrice,
+    fee: r3.fee ?? seen?.fee,
+    feeCurrency: r3.feeCurrency ?? seen?.feeCurrency
+  };
+  await applyResult(t, done, rec, now);
+  return done;
 }
 
 // src/trading/secrets.ts
@@ -44099,17 +44120,24 @@ async function brokerCommand(args, asJson) {
 The answer was lost: nothing will be resent. Run \`ultrastock broker reconcile ${t.id}\`.` : ""}`
     );
   }
-  if (sub === "reconcile") {
-    const r3 = await reconcile(id, adapterFor(venue, env2), now);
-    return out(asJson, r3, `${id}: ${r3.note}`);
-  }
-  if (sub === "cancel") {
-    const r3 = await liveCancel(id, adapterFor(venue, env2), now);
-    return out(
-      asJson,
-      r3 ?? {},
-      r3 ? `${id}: ${r3.state}${r3.message ? ` \u2014 ${r3.message}` : ""}` : `${id} never went to a venue: \`ultrastock ticket cancel ${id}\``
-    );
+  if (sub === "reconcile" || sub === "cancel") {
+    const rec = liveRecordOf(t);
+    if (!rec)
+      return out(
+        asJson,
+        sub === "reconcile" ? { ticket: t, note: "this ticket never went to a venue" } : {},
+        sub === "reconcile" ? `${id}: this ticket never went to a venue` : `${id} never went to a venue: \`ultrastock ticket cancel ${id}\``
+      );
+    const asked = { venue: argValue(args, "venue")?.toLowerCase(), env: argValue(args, "env") };
+    if (asked.venue && asked.venue !== rec.venue || asked.env && asked.env !== rec.env)
+      throw new UsageError(`ticket ${id} went to ${rec.venue} ${rec.env}: drop --venue/--env, the order is followed there`);
+    const a = adapterFor(rec.venue, rec.env);
+    if (sub === "reconcile") {
+      const r4 = await reconcile(id, a, now);
+      return out(asJson, r4, `${id}: ${r4.note}`);
+    }
+    const r3 = await liveCancel(id, a, now);
+    return out(asJson, r3 ?? {}, r3 ? `${id}: ${r3.state}${r3.message ? ` \u2014 ${r3.message}` : ""}` : `${id}: nothing to cancel`);
   }
   throw new UsageError(USAGE);
 }

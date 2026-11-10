@@ -18,7 +18,7 @@ import { kalshiAdapter } from "../trading/brokers/kalshi.js";
 import { krakenAdapter } from "../trading/brokers/kraken.js";
 import type { BrokerAdapter, Environment, Venue } from "../trading/brokers/types.js";
 import { currentLimits, effectiveLimits, limitsBinding, type LiveLimits, requestLimits } from "../trading/limits.js";
-import { CRYPTO_VENUES, liveActivity, liveCancel, liveSubmit, preconditions, reconcile, VENUES, venueSymbol } from "../trading/live.js";
+import { CRYPTO_VENUES, liveActivity, liveCancel, liveRecordOf, liveSubmit, preconditions, reconcile, VENUES, venueSymbol } from "../trading/live.js";
 import { issueCode, verifyCode } from "../trading/otp.js";
 import { killSwitchPath, orderFingerprint } from "../trading/riskgate.js";
 import { readCredentials, setupCommands } from "../trading/secrets.js";
@@ -279,18 +279,25 @@ export async function brokerCommand(args: CommandArgs, asJson: boolean): Promise
     );
   }
 
-  if (sub === "reconcile") {
-    const r = await reconcile(id, adapterFor(venue, env), now);
-    return out(asJson, r, `${id}: ${r.note}`);
-  }
-
-  if (sub === "cancel") {
-    const r = await liveCancel(id, adapterFor(venue, env), now);
-    return out(
-      asJson,
-      r ?? {},
-      r ? `${id}: ${r.state}${r.message ? ` — ${r.message}` : ""}` : `${id} never went to a venue: \`ultrastock ticket cancel ${id}\``,
-    );
+  if (sub === "reconcile" || sub === "cancel") {
+    // The order is followed where it went, whatever --venue and --env default to: the testnet has never heard of a live order.
+    const rec = liveRecordOf(t);
+    if (!rec)
+      return out(
+        asJson,
+        sub === "reconcile" ? { ticket: t, note: "this ticket never went to a venue" } : {},
+        sub === "reconcile" ? `${id}: this ticket never went to a venue` : `${id} never went to a venue: \`ultrastock ticket cancel ${id}\``,
+      );
+    const asked = { venue: argValue(args, "venue")?.toLowerCase(), env: argValue(args, "env") };
+    if ((asked.venue && asked.venue !== rec.venue) || (asked.env && asked.env !== rec.env))
+      throw new UsageError(`ticket ${id} went to ${rec.venue} ${rec.env}: drop --venue/--env, the order is followed there`);
+    const a = adapterFor(rec.venue, rec.env);
+    if (sub === "reconcile") {
+      const r = await reconcile(id, a, now);
+      return out(asJson, r, `${id}: ${r.note}`);
+    }
+    const r = await liveCancel(id, a, now);
+    return out(asJson, r ?? {}, r ? `${id}: ${r.state}${r.message ? ` — ${r.message}` : ""}` : `${id}: nothing to cancel`);
   }
 
   throw new UsageError(USAGE);
