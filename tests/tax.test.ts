@@ -122,6 +122,31 @@ describe("France", () => {
     expect(h.get("USDT")).toBeCloseTo(120);
   });
 
+  it("crypto: the holdings before each disposal are the same asked once or for every disposal of a report", () => {
+    const txs = [
+      tx({ date: "2025-01-10T09:00:00", type: "buy", account: "kraken", symbol: "BTCEUR", quantity: 0.1, price: 10_000 }),
+      tx({ date: "2025-02-01T09:00:00", type: "buy", account: "kraken", symbol: "ETHBTC", currency: "BTC", quantity: 1, price: 0.03, fee: 0.0001 }),
+      tx({ date: "2025-03-10T09:00:00", type: "sell", account: "kraken", symbol: "BTCEUR", quantity: 0.02, price: 12_000 }),
+      tx({ date: "2025-03-10T15:00:00", type: "transfer-out", account: "kraken", symbol: "ETH", currency: "ETH", quantity: 0.25 }),
+      tx({ date: "2025-04-01T09:00:00", type: "sell", account: "kraken", symbol: "ETHEUR", quantity: 0.5, price: 2_000 }),
+      tx({ date: "2025-04-02", type: "buy", account: "cto", symbol: "MC.PA", quantity: 1, price: 500 }),
+    ];
+    const envelopes = [KRAKEN, CTO];
+    const asObject = (t?: Transaction) => Object.fromEntries([...cryptoHoldings(txs, envelopes, t)].map(([k, v]) => [k, Number(v.toFixed(8))]));
+    // Before the first sale: 0.1 BTC less the 0.03 and the 0.0001 fee that bought 1 ETH.
+    expect(asObject(txs[2])).toEqual({ BTC: 0.0699, ETH: 1 });
+    // Before the second: the day's later transfer has gone out, the first sale too.
+    expect(asObject(txs[4])).toEqual({ BTC: 0.0499, ETH: 0.75 });
+    // Asked again, and in the other order, the answers do not move.
+    expect(asObject(txs[2])).toEqual({ BTC: 0.0699, ETH: 1 });
+    expect(asObject()).toEqual({ BTC: 0.0499, ETH: 0.25 });
+    // A ledger that grows is read again: nothing worked out on the shorter one is reused.
+    txs.push(tx({ date: "2025-05-01", type: "buy", account: "kraken", symbol: "BTCEUR", quantity: 1, price: 20_000 }));
+    expect(asObject()).toEqual({ BTC: 1.0499, ETH: 0.25 });
+    // Another set of accounts is another reading: without the Kraken envelope the rows are still crypto by their name.
+    expect([...cryptoHoldings(txs, [CTO]).keys()].sort()).toEqual(["BTC", "ETH"]);
+  });
+
   it("crypto: rows quoted in another crypto-asset do not stop the report for want of a euro rate", () => {
     const BINANCE: Envelope = { id: "binance", type: "CRYPTO", broker: "Binance", currency: "EUR" };
     // What a Binance statement holds: a pair quoted in BTC with its fee in BTC, and a fee taken in BNB. The test's rate

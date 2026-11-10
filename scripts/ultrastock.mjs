@@ -48045,23 +48045,36 @@ async function historicalFx(base2, currencies, from, to) {
   };
   return { fx, notes };
 }
-function cryptoHoldings(txs, envelopes, upTo) {
-  const h = /* @__PURE__ */ new Map();
-  const add2 = (a, q) => h.set(a, (h.get(a) ?? 0) + q);
+var CRYPTO_MOVES = /* @__PURE__ */ new WeakMap();
+function cryptoMoves(txs, envelopes) {
+  const held = CRYPTO_MOVES.get(txs);
+  if (held && held.envelopes === envelopes && held.length === txs.length) return held.moves;
+  const moves = [];
   for (const t of chronological(txs)) {
-    if (t === upTo) break;
-    if (upTo && day3(t.date) > day3(upTo.date)) break;
     if (envelopeOf2(t.account, envelopes, t.symbol).type !== "CRYPTO") continue;
+    const changes = [];
     const q = t.quantity ?? 0;
     const cur = t.currency.toUpperCase();
     if (t.type === "buy" || t.type === "sell") {
       const { base: base2 } = splitPair(t.symbol ?? "", cur);
       const sign2 = t.type === "buy" ? 1 : -1;
-      add2(base2, sign2 * q);
-      if (!isFiat(cur)) add2(cur, -sign2 * gross2(t) - (t.fee ?? 0));
+      changes.push([base2, sign2 * q]);
+      if (!isFiat(cur)) changes.push([cur, -sign2 * gross2(t) - (t.fee ?? 0)]);
     } else if (t.type === "transfer-in" || t.type === "transfer-out") {
-      add2(splitPair(t.symbol ?? cur, cur).base, (t.type === "transfer-in" ? 1 : -1) * q);
-    } else if (!isFiat(cur) && typeof t.amount === "number") add2(cur, t.amount);
+      changes.push([splitPair(t.symbol ?? cur, cur).base, (t.type === "transfer-in" ? 1 : -1) * q]);
+    } else if (!isFiat(cur) && typeof t.amount === "number") changes.push([cur, t.amount]);
+    moves.push({ t, day: day3(t.date), changes });
+  }
+  CRYPTO_MOVES.set(txs, { envelopes, length: txs.length, moves });
+  return moves;
+}
+function cryptoHoldings(txs, envelopes, upTo) {
+  const h = /* @__PURE__ */ new Map();
+  const last2 = upTo ? day3(upTo.date) : void 0;
+  for (const m of cryptoMoves(txs, envelopes)) {
+    if (m.t === upTo) break;
+    if (last2 !== void 0 && m.day > last2) break;
+    for (const [asset, quantity] of m.changes) h.set(asset, (h.get(asset) ?? 0) + quantity);
   }
   for (const [k, v] of h) if (Math.abs(v) < 1e-12) h.delete(k);
   return h;

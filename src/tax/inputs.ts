@@ -52,24 +52,51 @@ export async function historicalFx(base: string, currencies: readonly string[], 
   return { fx, notes };
 }
 
-/** Crypto holdings by asset just before transaction `upTo` (ledger order). */
-export function cryptoHoldings(txs: readonly Transaction[], envelopes: readonly Envelope[], upTo?: Transaction): Map<string, number> {
-  const h = new Map<string, number>();
-  const add = (a: string, q: number) => h.set(a, (h.get(a) ?? 0) + q);
+/** What one ledger row does to the crypto holdings: the assets it moves, in the order they are booked. */
+interface CryptoMove {
+  t: Transaction;
+  day: string;
+  changes: Array<[asset: string, quantity: number]>;
+}
+
+// The French formula values the whole crypto portfolio at each disposal, so the
+// holdings are replayed once per disposal. What does not change between two of
+// them — the order of the ledger, which rows belong to a crypto account, the
+// asset each one moves — is worked out once per ledger, instead of sorting it
+// and matching every row's account and pair again for every sale.
+const CRYPTO_MOVES = new WeakMap<readonly Transaction[], { envelopes: readonly Envelope[]; length: number; moves: CryptoMove[] }>();
+
+function cryptoMoves(txs: readonly Transaction[], envelopes: readonly Envelope[]): CryptoMove[] {
+  const held = CRYPTO_MOVES.get(txs);
+  if (held && held.envelopes === envelopes && held.length === txs.length) return held.moves;
+  const moves: CryptoMove[] = [];
   for (const t of chronological(txs)) {
-    if (t === upTo) break;
-    if (upTo && day(t.date) > day(upTo.date)) break;
     if (envelopeOf(t.account, envelopes, t.symbol).type !== "CRYPTO") continue;
+    const changes: CryptoMove["changes"] = [];
     const q = t.quantity ?? 0;
     const cur = t.currency.toUpperCase();
     if (t.type === "buy" || t.type === "sell") {
       const { base } = splitPair(t.symbol ?? "", cur);
       const sign = t.type === "buy" ? 1 : -1;
-      add(base, sign * q);
-      if (!isFiat(cur)) add(cur, -sign * gross(t) - (t.fee ?? 0));
+      changes.push([base, sign * q]);
+      if (!isFiat(cur)) changes.push([cur, -sign * gross(t) - (t.fee ?? 0)]);
     } else if (t.type === "transfer-in" || t.type === "transfer-out") {
-      add(splitPair(t.symbol ?? cur, cur).base, (t.type === "transfer-in" ? 1 : -1) * q);
-    } else if (!isFiat(cur) && typeof t.amount === "number") add(cur, t.amount);
+      changes.push([splitPair(t.symbol ?? cur, cur).base, (t.type === "transfer-in" ? 1 : -1) * q]);
+    } else if (!isFiat(cur) && typeof t.amount === "number") changes.push([cur, t.amount]);
+    moves.push({ t, day: day(t.date), changes });
+  }
+  CRYPTO_MOVES.set(txs, { envelopes, length: txs.length, moves });
+  return moves;
+}
+
+/** Crypto holdings by asset just before transaction `upTo` (chronological order). */
+export function cryptoHoldings(txs: readonly Transaction[], envelopes: readonly Envelope[], upTo?: Transaction): Map<string, number> {
+  const h = new Map<string, number>();
+  const last = upTo ? day(upTo.date) : undefined;
+  for (const m of cryptoMoves(txs, envelopes)) {
+    if (m.t === upTo) break;
+    if (last !== undefined && m.day > last) break;
+    for (const [asset, quantity] of m.changes) h.set(asset, (h.get(asset) ?? 0) + quantity);
   }
   for (const [k, v] of h) if (Math.abs(v) < 1e-12) h.delete(k);
   return h;
