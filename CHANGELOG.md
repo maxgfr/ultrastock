@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.15](https://github.com/maxgfr/ultrastock/compare/v1.12.14...v1.12.15) (2026-11-10)
+
+
+### Bug Fixes
+
+* **crypto:** say when a history stops at the page cap, short of the window ([37bfb24](https://github.com/maxgfr/ultrastock/commit/37bfb2484a8cbacac8cae92c9ca7533739fe47a2))
+
 ## [1.12.14](https://github.com/maxgfr/ultrastock/compare/v1.12.13...v1.12.14) (2026-11-10)
 
 
