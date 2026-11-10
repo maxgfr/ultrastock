@@ -92,6 +92,20 @@ export function withBudget<T>(p: Promise<T>, ms: number, what: string): Promise<
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
+/**
+ * The `stats` calls of a full analysis. `stats` on one symbol gives its own
+ * distribution, risk and performance against a benchmark; on several, their
+ * co-movement only — and it reads `--benchmark` for one symbol alone. So the
+ * instrument is always measured on its own against the benchmark first, and
+ * compared with the benchmark and its largest peers second, when it has peers.
+ */
+export function statisticsCalls(symbol: string, benchmark: string | undefined, peers: readonly string[]): Array<{ symbols: string[]; benchmark?: string }> {
+  const calls: Array<{ symbols: string[]; benchmark?: string }> = [{ symbols: [symbol], benchmark }];
+  const others = [...new Set([benchmark, ...peers.slice(0, 3)].filter((s): s is string => !!s && s !== symbol))];
+  if (peers.length && others.length) calls.push({ symbols: [symbol, ...others] });
+  return calls;
+}
+
 /** BTC and ETH have a listed option chain (Deribit); other coins do not. */
 const DERIBIT_COINS = new Set(["BTC", "ETH"]);
 
@@ -426,7 +440,20 @@ async function fullSlices(raw: string, sym: string, inst: Instrument, dir: strin
   const bench = defaultBenchmark(inst.market, inst.mic);
   try {
     const ds = await withBudget(
-      datasetsOf(() => statsCommand(commandArgs("stats", [sym, ...peerSymbols.slice(0, 3)], { days: "730", ...(bench ? { benchmark: bench } : {}) }), false)),
+      (async () => {
+        const out: Dataset[] = [];
+        let failure: Error | undefined;
+        for (const call of statisticsCalls(sym, bench, peerSymbols)) {
+          try {
+            const args = commandArgs("stats", call.symbols, { days: "730", ...(call.benchmark ? { benchmark: call.benchmark } : {}) });
+            out.push(...(await datasetsOf(() => statsCommand(args, false))));
+          } catch (e) {
+            failure ??= e as Error;
+          }
+        }
+        if (!out.length && failure) throw failure;
+        return out;
+      })(),
       SLICE_BUDGET_MS,
       "statistics",
     );

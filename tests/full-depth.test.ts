@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEPTHS, withBudget } from "../src/analyze/full.js";
+import { DEPTHS, statisticsCalls, withBudget } from "../src/analyze/full.js";
 import { PEER_EUROPE, peerCountries } from "../src/analyze/peers.js";
 import { extendedValuation } from "../src/analyze/valuation-extra.js";
 import { commandArgs, datasetsOf, emitDatasets } from "../src/commands/emit.js";
@@ -49,6 +49,17 @@ describe("full depth", () => {
       process.stdout.write = write;
     }
     expect(printed).toBe("");
+  });
+
+  it("always measures the instrument against its benchmark, and adds the peers' co-movement when it has peers", () => {
+    // `stats` reads --benchmark for a single symbol only: asking for the peers in the same call dropped the benchmark.
+    expect(statisticsCalls("NVDA", "SPY", [])).toEqual([{ symbols: ["NVDA"], benchmark: "SPY" }]);
+    expect(statisticsCalls("NVDA", "SPY", ["AMD", "AVGO", "INTC", "QCOM"])).toEqual([
+      { symbols: ["NVDA"], benchmark: "SPY" },
+      { symbols: ["NVDA", "SPY", "AMD", "AVGO", "INTC"] },
+    ]);
+    expect(statisticsCalls("BTCUSDT", undefined, ["ETHUSDT"])).toEqual([{ symbols: ["BTCUSDT"], benchmark: undefined }, { symbols: ["BTCUSDT", "ETHUSDT"] }]);
+    expect(statisticsCalls("SPY", "SPY", ["SPY"])).toEqual([{ symbols: ["SPY"], benchmark: "SPY" }]);
   });
 
   it("draws peers from the region, by country", () => {

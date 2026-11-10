@@ -33200,6 +33200,12 @@ function withBudget(p, ms, what) {
   });
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
+function statisticsCalls(symbol, benchmark, peers) {
+  const calls = [{ symbols: [symbol], benchmark }];
+  const others = [...new Set([benchmark, ...peers.slice(0, 3)].filter((s) => !!s && s !== symbol))];
+  if (peers.length && others.length) calls.push({ symbols: [symbol, ...others] });
+  return calls;
+}
 var DERIBIT_COINS = /* @__PURE__ */ new Set(["BTC", "ETH"]);
 function portfolioContext(symbol, book2 = "real") {
   const txs = readLedger(book2);
@@ -33490,7 +33496,20 @@ async function fullSlices(raw, sym3, inst, dir2, c) {
   const bench = defaultBenchmark(inst.market, inst.mic);
   try {
     const ds = await withBudget(
-      datasetsOf(() => statsCommand(commandArgs("stats", [sym3, ...peerSymbols.slice(0, 3)], { days: "730", ...bench ? { benchmark: bench } : {} }), false)),
+      (async () => {
+        const out5 = [];
+        let failure4;
+        for (const call2 of statisticsCalls(sym3, bench, peerSymbols)) {
+          try {
+            const args = commandArgs("stats", call2.symbols, { days: "730", ...call2.benchmark ? { benchmark: call2.benchmark } : {} });
+            out5.push(...await datasetsOf(() => statsCommand(args, false)));
+          } catch (e) {
+            failure4 ??= e;
+          }
+        }
+        if (!out5.length && failure4) throw failure4;
+        return out5;
+      })(),
       SLICE_BUDGET_MS,
       "statistics"
     );
