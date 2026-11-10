@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.10](https://github.com/maxgfr/ultrastock/compare/v1.12.9...v1.12.10) (2026-11-10)
+
+
+### Bug Fixes
+
+* **untrusted:** keep a headline's link and label inside the external-text fence ([23b681e](https://github.com/maxgfr/ultrastock/commit/23b681e4baef0a7c6052e7f9aaeab1b3939beba8))
+
 ## [1.12.9](https://github.com/maxgfr/ultrastock/compare/v1.12.8...v1.12.9) (2026-11-10)
 
 
