@@ -36789,6 +36789,9 @@ function equityAt(curve, t) {
   }
   return v ?? curve[0]?.equity;
 }
+function ledgerInstant(date) {
+  return Date.parse(/T\d{2}:\d{2}/.test(date) && !/(?:Z|[+-]\d{2}:?\d{2})$/.test(date) ? `${date}Z` : date);
+}
 function closedTradeResults(txs) {
   const avg = /* @__PURE__ */ new Map();
   const out5 = [];
@@ -36797,8 +36800,9 @@ function closedTradeResults(txs) {
     const k = `${t.account}|${t.symbol}`;
     const p = avg.get(k) ?? { q: 0, cost: 0 };
     if (t.type === "buy") {
-      p.cost = (p.cost * p.q + t.quantity * t.price + (t.fee ?? 0)) / (p.q + t.quantity);
-      p.q += t.quantity;
+      const before = Math.max(p.q, 0);
+      p.cost = (p.cost * before + t.quantity * t.price + (t.fee ?? 0)) / (before + t.quantity);
+      p.q = before + t.quantity;
     } else if (t.type === "sell") {
       out5.push({ date: t.date, pnl: (t.price - p.cost) * t.quantity - (t.fee ?? 0) });
       p.q -= t.quantity;
@@ -36840,10 +36844,10 @@ function breakerState(curve, trades2, limits, now) {
     st.sizeMultiplier = dd >= 20 ? 0 : dd >= 15 ? 0.25 : dd >= 10 ? 0.5 : 1;
     if (dd >= 20) trip(`drawdown of ${dd.toFixed(1)} % from the equity peak: no new risk until the plan is reviewed`, new Date(now.getTime() + 7 * 864e5));
   }
-  if (streak >= 2 && lastLoss && now.getTime() - Date.parse(lastLoss) < 24 * 36e5 && !st.tripped) {
+  if (streak >= 2 && lastLoss && now.getTime() - ledgerInstant(lastLoss) < 24 * 36e5 && !st.tripped) {
     st.tripped = true;
     st.reason = `${streak} losing trades in a row: a 24-hour cooling-off before the next entry`;
-    st.until = new Date(Date.parse(lastLoss) + 24 * 36e5).toISOString();
+    st.until = new Date(ledgerInstant(lastLoss) + 24 * 36e5).toISOString();
   }
   return st;
 }

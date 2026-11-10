@@ -73,6 +73,15 @@ function equityAt(curve: readonly EquityPoint[], t: Date): number | undefined {
   return v ?? curve[0]?.equity;
 }
 
+/**
+ * A ledger date as an instant. A venue fill is written in UTC without its zone
+ * ("2026-10-24T11:00:00"), which `Date.parse` alone would read as local time
+ * and shift by the machine's offset.
+ */
+export function ledgerInstant(date: string): number {
+  return Date.parse(/T\d{2}:\d{2}/.test(date) && !/(?:Z|[+-]\d{2}:?\d{2})$/.test(date) ? `${date}Z` : date);
+}
+
 /** Realised results of closed (sell) trades by average cost, in date order. */
 export function closedTradeResults(txs: readonly Transaction[]): Array<{ date: string; pnl: number }> {
   const avg = new Map<string, { q: number; cost: number }>();
@@ -82,8 +91,11 @@ export function closedTradeResults(txs: readonly Transaction[]): Array<{ date: s
     const k = `${t.account}|${t.symbol}`;
     const p = avg.get(k) ?? { q: 0, cost: 0 };
     if (t.type === "buy") {
-      p.cost = (p.cost * p.q + t.quantity! * t.price! + (t.fee ?? 0)) / (p.q + t.quantity!);
-      p.q += t.quantity!;
+      // Units sold that this replay never saw bought (a transfer in) leave a negative count: the average restarts
+      // from this buy, instead of dividing by a quantity that nets to zero.
+      const before = Math.max(p.q, 0);
+      p.cost = (p.cost * before + t.quantity! * t.price! + (t.fee ?? 0)) / (before + t.quantity!);
+      p.q = before + t.quantity!;
     } else if (t.type === "sell") {
       out.push({ date: t.date, pnl: (t.price! - p.cost) * t.quantity! - (t.fee ?? 0) });
       p.q -= t.quantity!;
@@ -126,10 +138,10 @@ export function breakerState(curve: readonly EquityPoint[], trades: ReadonlyArra
     st.sizeMultiplier = dd >= 20 ? 0 : dd >= 15 ? 0.25 : dd >= 10 ? 0.5 : 1;
     if (dd >= 20) trip(`drawdown of ${dd.toFixed(1)} % from the equity peak: no new risk until the plan is reviewed`, new Date(now.getTime() + 7 * 86_400_000));
   }
-  if (streak >= 2 && lastLoss && now.getTime() - Date.parse(lastLoss) < 24 * 3_600_000 && !st.tripped) {
+  if (streak >= 2 && lastLoss && now.getTime() - ledgerInstant(lastLoss) < 24 * 3_600_000 && !st.tripped) {
     st.tripped = true;
     st.reason = `${streak} losing trades in a row: a 24-hour cooling-off before the next entry`;
-    st.until = new Date(Date.parse(lastLoss) + 24 * 3_600_000).toISOString();
+    st.until = new Date(ledgerInstant(lastLoss) + 24 * 3_600_000).toISOString();
   }
   return st;
 }

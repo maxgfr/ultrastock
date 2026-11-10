@@ -185,4 +185,31 @@ describe("circuit breaker", () => {
     expect(breakerState([], losses, limits, new Date("2026-10-24T12:00:00Z")).reason).toMatch(/cooling-off/);
     expect(breakerState([], losses, limits, new Date("2026-10-26T12:00:00Z")).tripped).toBe(false);
   });
+  it("times the cooling-off from a venue fill's UTC date, whatever the machine's time zone", () => {
+    const tz = process.env.TZ;
+    process.env.TZ = "America/New_York";
+    try {
+      // A live fill is booked as UTC without its zone.
+      const losses = [
+        { date: "2026-10-24T10:00:00", pnl: -1 },
+        { date: "2026-10-24T11:00:00", pnl: -2 },
+      ];
+      const during = breakerState([], losses, limits, new Date("2026-10-25T10:30:00Z"));
+      expect(during.tripped).toBe(true);
+      expect(during.until).toBe("2026-10-25T11:00:00.000Z");
+      expect(breakerState([], losses, limits, new Date("2026-10-25T11:30:00Z")).tripped).toBe(false);
+    } finally {
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
+    }
+  });
+  it("keeps realised results finite when a buy follows units sold without a recorded buy", () => {
+    const results = closedTradeResults([
+      tx({ date: "2026-10-01", type: "transfer-in", account: "a", symbol: "X", quantity: 10 }),
+      tx({ date: "2026-10-02", type: "sell", account: "a", symbol: "X", quantity: 10, price: 12 }),
+      tx({ date: "2026-10-03", type: "buy", account: "a", symbol: "X", quantity: 10, price: 10 }),
+      tx({ date: "2026-10-04", type: "sell", account: "a", symbol: "X", quantity: 10, price: 9 }),
+    ]);
+    expect(results.at(-1)!.pnl).toBe(-10);
+  });
 });
