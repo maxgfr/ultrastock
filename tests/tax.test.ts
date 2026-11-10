@@ -122,6 +122,21 @@ describe("France", () => {
     expect(h.get("USDT")).toBeCloseTo(120);
   });
 
+  it("crypto: rows quoted in another crypto-asset do not stop the report for want of a euro rate", () => {
+    const BINANCE: Envelope = { id: "binance", type: "CRYPTO", broker: "Binance", currency: "EUR" };
+    // What a Binance statement holds: a pair quoted in BTC with its fee in BTC, and a fee taken in BNB. The test's rate
+    // table knows the euro and the dollar only, like the ECB's.
+    const txs = [
+      tx({ date: "2025-01-10", type: "buy", account: "binance", symbol: "BTCEUR", quantity: 0.1, price: 50_000, fee: 5 }),
+      tx({ date: "2025-02-01", type: "buy", account: "binance", symbol: "ETHBTC", currency: "BTC", quantity: 1, price: 0.03, fee: 0.00003 }),
+      tx({ date: "2025-02-01", type: "fee", account: "binance", currency: "BNB", amount: -0.001 }),
+      tx({ date: "2025-02-02", type: "transfer-out", account: "binance", symbol: "ETH", currency: "ETH", quantity: 0.5 }),
+    ];
+    const s = new FranceRegime(2025).annualSummary(input(txs, [BINANCE]));
+    expect(s.events.filter((e) => e.kind === "crypto-exchange")).toHaveLength(1);
+    expect(s.events.some((e) => e.kind === "crypto-disposal")).toBe(false);
+  });
+
   it("crypto: 305 € or less of disposals in the year is exempt; an unknown portfolio value is named", () => {
     const txs = [
       tx({ date: "2025-01-10", type: "buy", account: "kraken", symbol: "ETHEUR", quantity: 1, price: 200 }),

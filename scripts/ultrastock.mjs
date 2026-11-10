@@ -43404,6 +43404,7 @@ var TaxRegime = class {
   }
   /** An amount in the regime's currency at the transaction's date (stablecoins at their peg, named in the notes). */
   toBase(t, amount, input) {
+    if (amount === 0) return 0;
     let c = t.currency.toUpperCase();
     if (isStablecoin(c)) c = c.startsWith("EUR") ? "EUR" : "USD";
     if (c === this.currency) return amount;
@@ -46807,7 +46808,8 @@ var FranceRegime = class extends TaxRegime {
         );
       }
       const base2 = { date: day3(t.date), account: t.account, envelope: env2.type, symbol: t.symbol, notes: [] };
-      const fee = this.toBase(t, t.fee ?? 0, input);
+      const cryptoQuoted = env2.type === "CRYPTO" && !isFiat(t.currency) && !isStablecoin(t.currency);
+      const fee = cryptoQuoted ? 0 : this.toBase(t, t.fee ?? 0, input);
       if (env2.type === "CRYPTO") {
         this.crypto(t, st, input, base2, fee, inYear(t));
         continue;

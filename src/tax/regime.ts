@@ -254,6 +254,8 @@ export abstract class TaxRegime {
 
   /** An amount in the regime's currency at the transaction's date (stablecoins at their peg, named in the notes). */
   protected toBase(t: Transaction, amount: number, input: TaxInput): number {
+    // Nothing needs no rate: an absent fee on a BNB or BTC-quoted row must not ask for a BNB→EUR one.
+    if (amount === 0) return 0;
     let c = t.currency.toUpperCase();
     if (isStablecoin(c)) c = c.startsWith("EUR") ? "EUR" : "USD";
     if (c === this.currency) return amount;

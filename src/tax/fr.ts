@@ -32,6 +32,7 @@ import {
   gross,
   type HarvestCandidate,
   isFiat,
+  isStablecoin,
   round2,
   splitPair,
   type TaxEvent,
@@ -90,7 +91,10 @@ export class FranceRegime extends TaxRegime {
         );
       }
       const base = { date: day(t.date), account: t.account, envelope: env.type, symbol: t.symbol, notes: [] as string[] };
-      const fee = this.toBase(t, t.fee ?? 0, input);
+      // A trade quoted in another crypto-asset is a deferred exchange: its fee, paid in that asset, enters no figure —
+      // and has no euro rate to be converted at.
+      const cryptoQuoted = env.type === "CRYPTO" && !isFiat(t.currency) && !isStablecoin(t.currency);
+      const fee = cryptoQuoted ? 0 : this.toBase(t, t.fee ?? 0, input);
 
       if (env.type === "CRYPTO") {
         this.crypto(t, st, input, base, fee, inYear(t));
