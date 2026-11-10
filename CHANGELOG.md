@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.7](https://github.com/maxgfr/ultrastock/compare/v1.12.6...v1.12.7) (2026-11-10)
+
+
+### Bug Fixes
+
+* **research:** never follow a link into a private network ([94407f5](https://github.com/maxgfr/ultrastock/commit/94407f54c7cc0c7c7f92b8cd70707502c7634ffb))
+
 ## [1.12.6](https://github.com/maxgfr/ultrastock/compare/v1.12.5...v1.12.6) (2026-11-10)
 
 
