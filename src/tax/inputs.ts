@@ -8,7 +8,7 @@ import { fetchJson } from "../core/net.js";
 import type { Envelope } from "../core/profile.js";
 import type { Transaction } from "../portfolio/ledger.js";
 import { getHistory, getQuote, resolveSymbol } from "../providers/router.js";
-import { day, envelopeOf, type Fx, gross, isFiat, isStablecoin, splitPair } from "./regime.js";
+import { chronological, day, envelopeOf, type Fx, gross, isFiat, isStablecoin, splitPair } from "./regime.js";
 
 const FRANKFURTER = "https://api.frankfurter.dev/v1";
 
@@ -56,8 +56,7 @@ export async function historicalFx(base: string, currencies: readonly string[], 
 export function cryptoHoldings(txs: readonly Transaction[], envelopes: readonly Envelope[], upTo?: Transaction): Map<string, number> {
   const h = new Map<string, number>();
   const add = (a: string, q: number) => h.set(a, (h.get(a) ?? 0) + q);
-  const sorted = txs.map((t, i) => ({ t, i })).sort((a, b) => day(a.t.date).localeCompare(day(b.t.date)) || a.i - b.i);
-  for (const { t } of sorted) {
+  for (const t of chronological(txs)) {
     if (t === upTo) break;
     if (upTo && day(t.date) > day(upTo.date)) break;
     if (envelopeOf(t.account, envelopes, t.symbol).type !== "CRYPTO") continue;

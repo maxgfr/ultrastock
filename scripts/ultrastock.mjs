@@ -43412,11 +43412,14 @@ var TaxRegime = class {
       throw new Error(`no ${c}\u2192${this.currency} rate for ${day3(t.date)} (transaction ${t.id}) \u2014 the tax report needs every amount converted at its date`);
     return amount * rate2;
   }
-  /** Transactions up to the end of the year, oldest first (stable within a day). */
+  /** Transactions up to the end of the year, oldest first. */
   history(input) {
-    return input.transactions.map((t, i) => ({ t, i })).filter(({ t }) => yearOf(t.date) <= input.year).sort((a, b) => day3(a.t.date).localeCompare(day3(b.t.date)) || a.i - b.i).map(({ t }) => t);
+    return chronological(input.transactions.filter((t) => yearOf(t.date) <= input.year));
   }
 };
+function chronological(txs) {
+  return txs.map((t, i) => ({ t, i })).sort((a, b) => a.t.date.localeCompare(b.t.date) || a.i - b.i).map(({ t }) => t);
+}
 
 // src/trading/otp.ts
 import { execFileSync } from "child_process";
@@ -47860,8 +47863,7 @@ async function historicalFx(base2, currencies, from, to) {
 function cryptoHoldings(txs, envelopes, upTo) {
   const h = /* @__PURE__ */ new Map();
   const add2 = (a, q) => h.set(a, (h.get(a) ?? 0) + q);
-  const sorted = txs.map((t, i) => ({ t, i })).sort((a, b) => day3(a.t.date).localeCompare(day3(b.t.date)) || a.i - b.i);
-  for (const { t } of sorted) {
+  for (const t of chronological(txs)) {
     if (t === upTo) break;
     if (upTo && day3(t.date) > day3(upTo.date)) break;
     if (envelopeOf2(t.account, envelopes, t.symbol).type !== "CRYPTO") continue;

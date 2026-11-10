@@ -263,12 +263,21 @@ export abstract class TaxRegime {
     return amount * rate;
   }
 
-  /** Transactions up to the end of the year, oldest first (stable within a day). */
+  /** Transactions up to the end of the year, oldest first. */
   protected history(input: TaxInput): Transaction[] {
-    return input.transactions
-      .map((t, i) => ({ t, i }))
-      .filter(({ t }) => yearOf(t.date) <= input.year)
-      .sort((a, b) => day(a.t.date).localeCompare(day(b.t.date)) || a.i - b.i)
-      .map(({ t }) => t);
+    return chronological(input.transactions.filter((t) => yearOf(t.date) <= input.year));
   }
+}
+
+/**
+ * Transactions oldest first, by their full date: the time of day when a
+ * statement gives one, ledger order between equal dates. This is the order the
+ * portfolio book replays them in. Sorting on the day alone left a day's trades
+ * in file order, and a statement listed newest-first then sold before it bought.
+ */
+export function chronological(txs: readonly Transaction[]): Transaction[] {
+  return txs
+    .map((t, i) => ({ t, i }))
+    .sort((a, b) => a.t.date.localeCompare(b.t.date) || a.i - b.i)
+    .map(({ t }) => t);
 }

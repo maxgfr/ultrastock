@@ -217,6 +217,29 @@ describe("United States", () => {
     expect(export8949(ev).split("\r\n")).toHaveLength(4);
   });
 
+  it("replays a day's trades in the order of their time, whatever order the statement lists them in", () => {
+    // A statement exported newest-first: the sale of 15:00 is listed before the purchase of 10:00.
+    const txs = [
+      u({ date: "2025-03-03T15:00:00", type: "sell", symbol: "NVDA", quantity: 10, price: 110 }),
+      u({ date: "2025-03-03T10:00:00", type: "buy", symbol: "NVDA", quantity: 10, price: 100 }),
+    ];
+    const ev = new UsRegime(2025).realize(usIn(txs)).filter((e) => e.kind === "securities-disposal");
+    // Sold before it was bought, the sale had no lot: a basis of 0 and a gain of the whole proceeds.
+    expect(ev.map((e) => [e.proceeds, e.cost, e.gain])).toEqual([[1100, 1000, 100]]);
+    // The French crypto formula reads the same order: the purchase is in the acquisition cost when the sale is computed.
+    const fr = new FranceRegime(2025).realize(
+      input(
+        [
+          tx({ date: "2025-03-03T15:00:00", type: "sell", account: "kraken", symbol: "BTCEUR", quantity: 0.1, price: 51_000 }),
+          tx({ date: "2025-03-03T10:00:00", type: "buy", account: "kraken", symbol: "BTCEUR", quantity: 0.1, price: 50_000 }),
+        ],
+        [KRAKEN],
+        { cryptoValue: () => 5_100 },
+      ),
+    );
+    expect(fr.find((e) => e.kind === "crypto-disposal")?.gain).toBeCloseTo(100, 6);
+  });
+
   it("wash sale: the loss moves into the replacement's basis; an IRA replacement loses it", () => {
     const txs = [
       u({ date: "2025-01-02", type: "buy", symbol: "AAPL", quantity: 10, price: 100 }),
