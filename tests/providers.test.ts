@@ -2,7 +2,9 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { EvidenceStore } from "../src/core/evidence.js";
 import { clockNow, FixtureMiss, fetchText, setNetMode } from "../src/core/net.js";
+import { changeAgainst } from "../src/providers/types.js";
 import { contentHash } from "../src/engine.js";
 import { binanceHistory, looksLikeCryptoPair, parseKlines, resolveBinance } from "../src/providers/binance.js";
 import { parseEuronextHistory } from "../src/providers/euronext.js";
@@ -54,6 +56,16 @@ describe("routing", () => {
     expect(classifySymbol("US0378331005")).toHaveProperty("unsupported");
     expect(classifySymbol("SAP.DE")).toBe("europe");
     expect(classifySymbol("XYZ.ZZ")).toHaveProperty("unsupported");
+  });
+  it("gives a quote no change when there is no positive reference price to divide by", () => {
+    expect(changeAgainst(110, 100)).toEqual({ previousClose: 100, change: 10, changePct: 10 });
+    // A first session's previous close of 0 would give Infinity, which the evidence register refuses: the quote keeps its price alone.
+    for (const reference of [0, undefined, Number.NaN, -1, Number.POSITIVE_INFINITY]) expect(changeAgainst(110, reference)).toEqual({});
+    expect(changeAgainst(Number.NaN, 100)).toEqual({});
+    const store = EvidenceStore.open(mkdtempSync(join(tmpdir(), "us-quote-")));
+    expect(() => store.add({ key: "x", label: "x", value: (110 - 0) / 0, source: "t", fetchedAt: "2026-01-01T00:00:00Z", official: false })).toThrow(
+      /not a finite/,
+    );
   });
   it("maps a -USD crypto pair to USDT, and says so", () => {
     const r = resolveBinance("btc-usd");

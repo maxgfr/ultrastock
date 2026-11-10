@@ -9,7 +9,7 @@
 // Granularities are 1m, 5m, 15m, 1h, 6h and 1d: no 4h or weekly bars here.
 // Public endpoints allow about 10 requests/s per IP; calls are paced below that.
 import { fetchJson } from "../../core/net.js";
-import { type Bar, type Instrument, type Interval, type PriceSeries, ProviderError, type QuoteResult } from "../types.js";
+import { type Bar, changeAgainst, type Instrument, type Interval, type PriceSeries, ProviderError, type QuoteResult } from "../types.js";
 
 const BASE = "https://api.exchange.coinbase.com";
 export const SOURCE = "coinbase";
@@ -111,7 +111,7 @@ export async function coinbaseQuote(instrument: Instrument, notes: string[] = []
   return {
     instrument,
     price,
-    ...(open ? { previousClose: open, change: price - open, changePct: ((price - open) / open) * 100 } : {}),
+    ...changeAgainst(price, open),
     at: t.data.time,
     provenance: { source: SOURCE, url: t.url, fetchedAt: t.fetchedAt, delay: "realtime", official: true },
     notes: [

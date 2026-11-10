@@ -137,12 +137,16 @@ export async function binanceQuote(instrument: Instrument, notes: string[] = [])
   const res = await fetchJson<{ lastPrice: string; priceChange: string; priceChangePercent: string; prevClosePrice: string; closeTime: number }>(url);
   if (!res.ok || !res.data) throw refusal(res.status, instrument.venueId);
   const d = res.data;
+  // A field Binance leaves out reads as NaN, which the evidence register refuses: it is left out here too.
+  const finite = (v: string | undefined) => (v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : undefined);
+  const price = finite(d.lastPrice);
+  if (price === undefined) throw new ProviderError(SOURCE, `no last price for ${instrument.venueId}`);
   return {
     instrument,
-    price: Number(d.lastPrice),
-    change: Number(d.priceChange),
-    changePct: Number(d.priceChangePercent),
-    previousClose: Number(d.prevClosePrice),
+    price,
+    change: finite(d.priceChange),
+    changePct: finite(d.priceChangePercent),
+    previousClose: finite(d.prevClosePrice),
     at: new Date(d.closeTime).toISOString(),
     provenance: { source: SOURCE, url: res.url, fetchedAt: res.fetchedAt, delay: "realtime", official: true },
     notes: [...notes, "24h rolling change (crypto trades around the clock; there is no session close)"],

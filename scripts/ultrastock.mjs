@@ -12825,6 +12825,10 @@ async function recordedCall(kind, call2, live, keep = () => true) {
 }
 
 // src/providers/types.ts
+function changeAgainst(price, reference) {
+  if (reference === void 0 || !(reference > 0) || !Number.isFinite(reference) || !Number.isFinite(price)) return {};
+  return { previousClose: reference, change: price - reference, changePct: (price - reference) / reference * 100 };
+}
 var ProviderError = class extends Error {
   constructor(source2, message, status) {
     super(`${source2}: ${message}`);
@@ -12954,12 +12958,15 @@ async function binanceQuote(instrument, notes = []) {
   const res = await fetchJson(url);
   if (!res.ok || !res.data) throw refusal(res.status, instrument.venueId);
   const d = res.data;
+  const finite4 = (v) => v !== void 0 && v !== "" && Number.isFinite(Number(v)) ? Number(v) : void 0;
+  const price = finite4(d.lastPrice);
+  if (price === void 0) throw new ProviderError(SOURCE, `no last price for ${instrument.venueId}`);
   return {
     instrument,
-    price: Number(d.lastPrice),
-    change: Number(d.priceChange),
-    changePct: Number(d.priceChangePercent),
-    previousClose: Number(d.prevClosePrice),
+    price,
+    change: finite4(d.priceChange),
+    changePct: finite4(d.priceChangePercent),
+    previousClose: finite4(d.prevClosePrice),
     at: new Date(d.closeTime).toISOString(),
     provenance: { source: SOURCE, url: res.url, fetchedAt: res.fetchedAt, delay: "realtime", official: true },
     notes: [...notes, "24h rolling change (crypto trades around the clock; there is no session close)"]
@@ -13436,7 +13443,7 @@ async function coinbaseQuote(instrument, notes = []) {
   return {
     instrument,
     price,
-    ...open2 ? { previousClose: open2, change: price - open2, changePct: (price - open2) / open2 * 100 } : {},
+    ...changeAgainst(price, open2),
     at: t.data.time,
     provenance: { source: SOURCE4, url: t.url, fetchedAt: t.fetchedAt, delay: "realtime", official: true },
     notes: [
@@ -13532,7 +13539,7 @@ async function krakenQuote(instrument, notes = []) {
   return {
     instrument,
     price,
-    ...open2 > 0 ? { previousClose: open2, change: price - open2, changePct: (price - open2) / open2 * 100 } : {},
+    ...changeAgainst(price, open2),
     at: res.fetchedAt,
     provenance: { source: SOURCE5, url: res.url, fetchedAt: res.fetchedAt, delay: "realtime", official: true },
     notes: [...notes, "change against today's open at 00:00 UTC (crypto has no session close); time is the read time, Kraken's ticker carries none"]
@@ -13782,7 +13789,7 @@ async function yahooQuote(instrument, now = clockNow()) {
   return {
     instrument,
     price,
-    ...previousClose !== void 0 ? { previousClose, change: price - previousClose, changePct: (price - previousClose) / previousClose * 100 } : {},
+    ...changeAgainst(price, previousClose),
     at,
     provenance: { source: SOURCE6, url: res.url, fetchedAt: res.fetchedAt, delay: DELAY_QUOTE, official: false },
     notes: parsed.notes

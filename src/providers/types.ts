@@ -62,6 +62,17 @@ export interface QuoteResult {
 }
 
 /**
+ * A price's change against a reference (the previous close, the open) — or
+ * nothing when there is no positive reference to divide by. A listing's first
+ * session reports a previous close of 0: the change would be Infinity, which
+ * the evidence register refuses, and the whole quote would be lost with it.
+ */
+export function changeAgainst(price: number, reference: number | undefined): Pick<QuoteResult, "previousClose" | "change" | "changePct"> {
+  if (reference === undefined || !(reference > 0) || !Number.isFinite(reference) || !Number.isFinite(price)) return {};
+  return { previousClose: reference, change: price - reference, changePct: ((price - reference) / reference) * 100 };
+}
+
+/**
  * A provider refused or failed: the reason is kept, never an empty success.
  * `status` 0 (no answer), 429 and 5xx are transient — another source may stand
  * in; a 4xx or "no such listing" is an answer, and must not be routed around.

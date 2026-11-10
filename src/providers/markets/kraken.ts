@@ -11,7 +11,7 @@
 // Bitcoin is XBT on Kraken; the user's BTC is accepted and mapped.
 import { cachedJson, TTL } from "../../core/cache.js";
 import { fetchJson } from "../../core/net.js";
-import { type Bar, type Instrument, type Interval, type PriceSeries, ProviderError, type QuoteResult } from "../types.js";
+import { type Bar, changeAgainst, type Instrument, type Interval, type PriceSeries, ProviderError, type QuoteResult } from "../types.js";
 import { splitCryptoPair } from "./coinbase.js";
 
 const BASE = "https://api.kraken.com/0/public";
@@ -122,7 +122,7 @@ export async function krakenQuote(instrument: Instrument, notes: string[] = []):
   return {
     instrument,
     price,
-    ...(open > 0 ? { previousClose: open, change: price - open, changePct: ((price - open) / open) * 100 } : {}),
+    ...changeAgainst(price, open),
     at: res.fetchedAt,
     provenance: { source: SOURCE, url: res.url, fetchedAt: res.fetchedAt, delay: "realtime", official: true },
     notes: [...notes, "change against today's open at 00:00 UTC (crypto has no session close); time is the read time, Kraken's ticker carries none"],

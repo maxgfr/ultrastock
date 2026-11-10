@@ -20,7 +20,7 @@
 // and said so. Splits and dividends come back as their own dataset.
 import type { Dataset, Point } from "../../core/datasets.js";
 import { clockNow, fetchJson, politeUa } from "../../core/net.js";
-import { type AssetKind, type Bar, type Instrument, type Interval, type PriceSeries, ProviderError, type QuoteResult } from "../types.js";
+import { type AssetKind, type Bar, changeAgainst, type Instrument, type Interval, type PriceSeries, ProviderError, type QuoteResult } from "../types.js";
 
 const HOSTS = ["https://query1.finance.yahoo.com", "https://query2.finance.yahoo.com"];
 export const SOURCE = "yahoo";
@@ -390,7 +390,7 @@ export async function yahooQuote(instrument: Instrument, now: Date = clockNow())
   return {
     instrument,
     price,
-    ...(previousClose !== undefined ? { previousClose, change: price - previousClose, changePct: ((price - previousClose) / previousClose) * 100 } : {}),
+    ...changeAgainst(price, previousClose),
     at,
     provenance: { source: SOURCE, url: res.url, fetchedAt: res.fetchedAt, delay: DELAY_QUOTE, official: false },
     notes: parsed.notes,
