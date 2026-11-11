@@ -15,7 +15,7 @@ import { tradingviewSnapshot } from "../providers/markets/tradingview.js";
 import { getQuote, resolveSymbol } from "../providers/router.js";
 import type { Instrument, QuoteResult } from "../providers/types.js";
 import { parsePredictionSymbol, predictionQuote } from "./prediction.js";
-import { breakerState, closedTradeResults, netContributed, readEquity, recordEquity } from "./breaker.js";
+import { breakerState, closedTradeResults, contributions, readEquity, recordEquity } from "./breaker.js";
 import type { GateContext, Order } from "./riskgate.js";
 import { listTickets, readAudit, type Ticket } from "./tickets.js";
 
@@ -180,7 +180,7 @@ export async function gateContextFor(
     throw new Error(`the ${bookName} book is empty — record a deposit first (\`ultrastock portfolio deposit <account> <amount> --book ${bookName}\`)`);
   // A replayed fixture is not the market, and its clock is the recording's: the equity curve the breaker reads is the
   // real book's history, and a point stamped with a replayed (or invented) time would move its reference points.
-  if (netMode().kind === "live") recordEquity(bookName, valued.totalBase, now, netContributed(txs, fx.rates, profile.baseCurrency));
+  if (netMode().kind === "live") recordEquity(bookName, valued.totalBase, now, contributions(txs, fx.rates, profile.baseCurrency, warn));
   else notes.push("replaying a fixture: the equity curve is not written");
   const rate = fx.rates[order.currency] ?? (order.currency === profile.baseCurrency ? 1 : Number.NaN);
   if (!Number.isFinite(rate)) throw new Error(`no ${order.currency}→${profile.baseCurrency} rate: cannot size the order`);

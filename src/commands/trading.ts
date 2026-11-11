@@ -11,7 +11,7 @@ import { argList, argValue, type CommandArgs, mapLimit, UsageError } from "../en
 import { printResult as out } from "./emit.js";
 import { appendTransactions, type Book, buildBook, readLedger, type Transaction, type TxType, valueBook, xirr } from "../portfolio/ledger.js";
 import { getQuote, resolveSymbol } from "../providers/router.js";
-import { breakerState, closedTradeResults, type EquityPoint, netContributed, readEquity, recordEquity } from "../trading/breaker.js";
+import { breakerState, closedTradeResults, contributions, type EquityPoint, readEquity, recordEquity, transfersAcross } from "../trading/breaker.js";
 import { fxToBase, gateContextFor } from "../trading/context.js";
 import { paperSubmit, paperSweep, readiness } from "../trading/paper.js";
 import { planTrade, tradeContextMarkdown } from "../trading/plan.js";
@@ -59,7 +59,15 @@ export async function markBook(book: string) {
   const fx = await fxToBase([...held.map((p) => p.currency), ...b.cash.map((c) => c.currency)], profile.baseCurrency);
   const v = valueBook(b, prices, fx.rates, profile.baseCurrency);
   // Never on a fixture's clock: recordEquity writes on the wall clock only, and the notes say so.
-  if (v.totalBase > 0 && !recordEquity(book, v.totalBase, now, netContributed(txs, fx.rates, profile.baseCurrency)))
+  if (
+    v.totalBase > 0 &&
+    !recordEquity(
+      book,
+      v.totalBase,
+      now,
+      contributions(txs, fx.rates, profile.baseCurrency, (m) => notes.push(m)),
+    )
+  )
     notes.push("replaying or recording a fixture: the equity curve is not written");
   return { profile, txs, book: b, valued: v, fxRates: fx.rates, sources, notes: [...notes, ...fx.notes, ...v.missing.map((m) => `missing ${m}`)], now };
 }
@@ -72,37 +80,6 @@ export interface FlowRates {
 }
 
 const isFlow = (t: Transaction) => t.type === "deposit" || t.type === "withdrawal";
-
-/**
- * The part of each transfer that crossed the book's edge. A transfer in is
- * matched with the transfers out of the same symbol from the user's other
- * accounts — earlier ones, or later the same day (the two statements come in
- * either order) — and only what no out matches came from outside; the units
- * of a transfer out that no transfer in received went outside.
- */
-export function transfersAcross(txs: readonly Transaction[]): {
-  in: Array<{ t: Transaction; units: number }>;
-  out: Array<{ t: Transaction; units: number }>;
-} {
-  const sorted = [...txs].sort((a, b) => a.date.localeCompare(b.date));
-  const left = sorted.map((t) => (t.type === "transfer-out" || t.type === "transfer-in" ? (t.quantity ?? 0) : 0));
-  const ins: Array<{ t: Transaction; units: number }> = [];
-  sorted.forEach((t, i) => {
-    if (t.type !== "transfer-in") return;
-    const day = t.date.slice(0, 10);
-    for (let j = 0; j < sorted.length && left[i]! > 1e-12; j++) {
-      const o = sorted[j]!;
-      if (j > i && o.date.slice(0, 10) !== day) break;
-      if (o.type !== "transfer-out" || o.symbol !== t.symbol || o.account === t.account || left[j]! <= 1e-12) continue;
-      const n = Math.min(left[i]!, left[j]!);
-      left[i] = left[i]! - n;
-      left[j] = left[j]! - n;
-    }
-    if (left[i]! > 1e-12) ins.push({ t, units: left[i]! });
-  });
-  const out = sorted.flatMap((t, j) => (t.type === "transfer-out" && left[j]! > 1e-12 ? [{ t, units: left[j]! }] : []));
-  return { in: ins, out };
-}
 
 /**
  * The ECB rate of each deposit's and withdrawal's own date (the tax engine's

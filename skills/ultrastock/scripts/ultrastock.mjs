@@ -38978,15 +38978,56 @@ async function stressAnalysis(m, f3) {
 // src/trading/breaker.ts
 import { appendFileSync as appendFileSync6, mkdirSync as mkdirSync20 } from "fs";
 import { join as join39 } from "path";
-function netContributed(txs, rates, base2) {
-  let sum = 0;
+function transfersAcross(txs) {
+  const sorted = [...txs].sort((a, b) => a.date.localeCompare(b.date));
+  const left = sorted.map((t) => t.type === "transfer-out" || t.type === "transfer-in" ? t.quantity ?? 0 : 0);
+  const ins = [];
+  sorted.forEach((t, i) => {
+    if (t.type !== "transfer-in") return;
+    const day4 = t.date.slice(0, 10);
+    for (let j = 0; j < sorted.length && left[i] > 1e-12; j++) {
+      const o = sorted[j];
+      if (j > i && o.date.slice(0, 10) !== day4) break;
+      if (o.type !== "transfer-out" || o.symbol !== t.symbol || o.account === t.account || left[j] <= 1e-12) continue;
+      const n2 = Math.min(left[i], left[j]);
+      left[i] = left[i] - n2;
+      left[j] = left[j] - n2;
+    }
+    if (left[i] > 1e-12) ins.push({ t, units: left[i] });
+  });
+  const out = sorted.flatMap((t, j) => t.type === "transfer-out" && left[j] > 1e-12 ? [{ t, units: left[j] }] : []);
+  return { in: ins, out };
+}
+function contributions(txs, rates, base2, note) {
+  const rateOf = (currency) => currency === base2 ? 1 : rates[currency];
+  let deposits = 0;
   for (const t of txs) {
     if (t.type !== "deposit" && t.type !== "withdrawal") continue;
-    const rate2 = t.currency === base2 ? 1 : rates[t.currency];
+    const rate2 = rateOf(t.currency);
     if (rate2 === void 0) return void 0;
-    sum += (t.amount ?? 0) * rate2;
+    deposits += (t.amount ?? 0) * rate2;
   }
-  return sum;
+  const across = transfersAcross(txs);
+  let transfers = 0;
+  let unpriced = 0;
+  for (const [sign2, moves] of [
+    [1, across.in],
+    [-1, across.out]
+  ])
+    for (const { t, units } of moves) {
+      if (t.price === void 0) {
+        unpriced++;
+        continue;
+      }
+      const rate2 = rateOf(t.currency);
+      if (rate2 === void 0) return void 0;
+      transfers += sign2 * units * t.price * rate2;
+    }
+  if (unpriced)
+    note?.(
+      `${unpriced} transfer(s) from or to outside the book have no price: the circuit breaker cannot count them as money put in or taken out, and reads their value as a gain or a loss (give them a price to count them)`
+    );
+  return { contributed: deposits + transfers, transfers };
 }
 function equityPath(book2) {
   return join39(homeDir(), "state", `equity-${book2}.jsonl`);
@@ -38998,7 +39039,7 @@ function recordEquity(book2, equity, at, contributed) {
   if (netMode().kind !== "live") return false;
   const path2 = equityPath(book2);
   mkdirSync20(join39(homeDir(), "state"), { recursive: true });
-  const point = { at: at.toISOString(), equity, ...contributed !== void 0 ? { contributed } : {} };
+  const point = { at: at.toISOString(), equity, ...typeof contributed === "number" ? { contributed } : contributed ?? {} };
   withFileLockSync(`${path2}.lock`, () => {
     sealJsonlTail(path2);
     appendFileSync6(path2, `${JSON.stringify(point)}
@@ -39124,7 +39165,11 @@ function breakerState(curve, trades2, limits, now) {
   if (curve.length) {
     const last2 = curve[curve.length - 1];
     const nowEq = last2.equity;
-    const asNow = (p) => p.contributed !== void 0 && last2.contributed !== void 0 ? p.equity + (last2.contributed - p.contributed) : p.equity;
+    const asNow = (p) => {
+      if (p.contributed === void 0 || last2.contributed === void 0) return p.equity;
+      const now2 = p.transfers === void 0 && last2.transfers !== void 0 ? last2.contributed - last2.transfers : last2.contributed;
+      return p.equity + (now2 - p.contributed);
+    };
     const change = (unit) => {
       const ref = equityAt(curve, new Date(startOf(now, unit).getTime() - 1));
       return ref?.equity ? (nowEq / asNow(ref) - 1) * 100 : void 0;
@@ -39257,7 +39302,7 @@ async function gateContextFor(order, opts = {}) {
   notes.push(...valued2.missing.map((m) => `missing ${m}: the portfolio total is understated`));
   if (!(valued2.totalBase > 0))
     throw new Error(`the ${bookName} book is empty \u2014 record a deposit first (\`ultrastock portfolio deposit <account> <amount> --book ${bookName}\`)`);
-  if (netMode().kind === "live") recordEquity(bookName, valued2.totalBase, now, netContributed(txs, fx.rates, profile.baseCurrency));
+  if (netMode().kind === "live") recordEquity(bookName, valued2.totalBase, now, contributions(txs, fx.rates, profile.baseCurrency, warn));
   else notes.push("replaying a fixture: the equity curve is not written");
   const rate2 = fx.rates[order.currency] ?? (order.currency === profile.baseCurrency ? 1 : Number.NaN);
   if (!Number.isFinite(rate2)) throw new Error(`no ${order.currency}\u2192${profile.baseCurrency} rate: cannot size the order`);
@@ -51330,31 +51375,16 @@ async function markBook(book2) {
   });
   const fx = await fxToBase([...held.map((p) => p.currency), ...b.cash.map((c) => c.currency)], profile.baseCurrency);
   const v = valueBook(b, prices, fx.rates, profile.baseCurrency);
-  if (v.totalBase > 0 && !recordEquity(book2, v.totalBase, now, netContributed(txs, fx.rates, profile.baseCurrency)))
+  if (v.totalBase > 0 && !recordEquity(
+    book2,
+    v.totalBase,
+    now,
+    contributions(txs, fx.rates, profile.baseCurrency, (m) => notes.push(m))
+  ))
     notes.push("replaying or recording a fixture: the equity curve is not written");
   return { profile, txs, book: b, valued: v, fxRates: fx.rates, sources, notes: [...notes, ...fx.notes, ...v.missing.map((m) => `missing ${m}`)], now };
 }
 var isFlow = (t) => t.type === "deposit" || t.type === "withdrawal";
-function transfersAcross(txs) {
-  const sorted = [...txs].sort((a, b) => a.date.localeCompare(b.date));
-  const left = sorted.map((t) => t.type === "transfer-out" || t.type === "transfer-in" ? t.quantity ?? 0 : 0);
-  const ins = [];
-  sorted.forEach((t, i) => {
-    if (t.type !== "transfer-in") return;
-    const day4 = t.date.slice(0, 10);
-    for (let j = 0; j < sorted.length && left[i] > 1e-12; j++) {
-      const o = sorted[j];
-      if (j > i && o.date.slice(0, 10) !== day4) break;
-      if (o.type !== "transfer-out" || o.symbol !== t.symbol || o.account === t.account || left[j] <= 1e-12) continue;
-      const n2 = Math.min(left[i], left[j]);
-      left[i] = left[i] - n2;
-      left[j] = left[j] - n2;
-    }
-    if (left[i] > 1e-12) ins.push({ t, units: left[i] });
-  });
-  const out = sorted.flatMap((t, j) => t.type === "transfer-out" && left[j] > 1e-12 ? [{ t, units: left[j] }] : []);
-  return { in: ins, out };
-}
 async function flowRates(txs, base2, now) {
   const flows = txs.filter((t) => isFlow(t) || t.type === "transfer-in" && t.price !== void 0);
   const foreign = [...new Set(flows.map((t) => t.currency.toUpperCase()))].filter((c) => c !== base2);
@@ -51791,8 +51821,8 @@ async function portfolioView(book2, now) {
   if (hint) return hint;
   const f3 = new Findings();
   const m = await loadMarkedBook(book2, f3, now, { dayChange: true });
-  const contributed = netContributed(m.txs, m.rates, m.base);
-  const curve = m.totalBase > 0 ? [...readEquity(book2), { at: now.toISOString(), equity: m.totalBase, ...contributed !== void 0 ? { contributed } : {} }] : readEquity(book2);
+  const contributed = contributions(m.txs, m.rates, m.base);
+  const curve = m.totalBase > 0 ? [...readEquity(book2), { at: now.toISOString(), equity: m.totalBase, ...contributed ?? {} }] : readEquity(book2);
   const rates = await flowRates(m.txs, m.base, now);
   return {
     book: book2,

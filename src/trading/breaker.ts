@@ -10,8 +10,10 @@
 //   drawdown from the equity peak: 10 % → sizes × 0.5, 15 % → × 0.25, 20 % → no new risk
 //
 // Losses and drawdowns are net of the deposits and withdrawals booked between
-// two points (each point carries what they added up to): taking money out is
-// not a loss, putting money in does not hide one.
+// two points (each point carries what they added up to), and of the transfers
+// that crossed the book's edge at their recorded price — shares brought in
+// from another broker are money put in, shares moved out are money taken out:
+// taking money out is not a loss, putting money in does not hide one.
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { withFileLockSync } from "../core/lock.js";
@@ -26,26 +28,100 @@ export interface EquityPoint {
   equity: number;
   /**
    * The deposits less the withdrawals the ledger held when the point was taken,
-   * in the base currency: between two points, the part of the change that is
-   * money moved in or out, not a gain or a loss.
+   * with the transfers that crossed the book's edge (`transfers`), in the base
+   * currency: between two points, the part of the change that is money moved in
+   * or out, not a gain or a loss.
    */
   contributed?: number;
+  /**
+   * The part of `contributed` that is transfers across the book's edge. A point
+   * without it (recorded before transfers were counted) has deposits and
+   * withdrawals only in `contributed`: it is compared on those alone.
+   */
+  transfers?: number;
+}
+
+/**
+ * The part of each transfer that crossed the book's edge. A transfer in is
+ * matched with the transfers out of the same symbol from the user's other
+ * accounts — earlier ones, or later the same day (the two statements come in
+ * either order) — and only what no out matches came from outside; the units
+ * of a transfer out that no transfer in received went outside.
+ */
+export function transfersAcross(txs: readonly Transaction[]): {
+  in: Array<{ t: Transaction; units: number }>;
+  out: Array<{ t: Transaction; units: number }>;
+} {
+  const sorted = [...txs].sort((a, b) => a.date.localeCompare(b.date));
+  const left = sorted.map((t) => (t.type === "transfer-out" || t.type === "transfer-in" ? (t.quantity ?? 0) : 0));
+  const ins: Array<{ t: Transaction; units: number }> = [];
+  sorted.forEach((t, i) => {
+    if (t.type !== "transfer-in") return;
+    const day = t.date.slice(0, 10);
+    for (let j = 0; j < sorted.length && left[i]! > 1e-12; j++) {
+      const o = sorted[j]!;
+      if (j > i && o.date.slice(0, 10) !== day) break;
+      if (o.type !== "transfer-out" || o.symbol !== t.symbol || o.account === t.account || left[j]! <= 1e-12) continue;
+      const n = Math.min(left[i]!, left[j]!);
+      left[i] = left[i]! - n;
+      left[j] = left[j]! - n;
+    }
+    if (left[i]! > 1e-12) ins.push({ t, units: left[i]! });
+  });
+  const out = sorted.flatMap((t, j) => (t.type === "transfer-out" && left[j]! > 1e-12 ? [{ t, units: left[j]! }] : []));
+  return { in: ins, out };
 }
 
 /**
  * What the ledger's deposits and withdrawals add up to, in the base currency at
- * `rates` (units of base per unit of each currency, as the book is valued).
- * Undefined when a currency has no rate: a point is then recorded without it.
+ * `rates` (units of base per unit of each currency, as the book is valued),
+ * with the transfers that crossed the book's edge (`transfersAcross`, as the
+ * XIRR counts them): one in from outside at units × its recorded price, one out
+ * to outside less the same. A transfer between two of the user's accounts is
+ * nothing. A transfer across without a price has no known value: it is left
+ * out, and `note` says so. Undefined when a currency has no rate: a point is
+ * then recorded without it.
  */
-export function netContributed(txs: readonly Transaction[], rates: Record<string, number>, base: string): number | undefined {
-  let sum = 0;
+export function netContributed(txs: readonly Transaction[], rates: Record<string, number>, base: string, note?: (message: string) => void): number | undefined {
+  return contributions(txs, rates, base, note)?.contributed;
+}
+
+/** `netContributed`, and the part of it that is transfers across: what an equity point records. */
+export function contributions(
+  txs: readonly Transaction[],
+  rates: Record<string, number>,
+  base: string,
+  note?: (message: string) => void,
+): { contributed: number; transfers: number } | undefined {
+  const rateOf = (currency: string) => (currency === base ? 1 : rates[currency]);
+  let deposits = 0;
   for (const t of txs) {
     if (t.type !== "deposit" && t.type !== "withdrawal") continue;
-    const rate = t.currency === base ? 1 : rates[t.currency];
+    const rate = rateOf(t.currency);
     if (rate === undefined) return undefined;
-    sum += (t.amount ?? 0) * rate;
+    deposits += (t.amount ?? 0) * rate;
   }
-  return sum;
+  const across = transfersAcross(txs);
+  let transfers = 0;
+  let unpriced = 0;
+  for (const [sign, moves] of [
+    [1, across.in],
+    [-1, across.out],
+  ] as const)
+    for (const { t, units } of moves) {
+      if (t.price === undefined) {
+        unpriced++;
+        continue;
+      }
+      const rate = rateOf(t.currency);
+      if (rate === undefined) return undefined;
+      transfers += sign * units * t.price * rate;
+    }
+  if (unpriced)
+    note?.(
+      `${unpriced} transfer(s) from or to outside the book have no price: the circuit breaker cannot count them as money put in or taken out, and reads their value as a gain or a loss (give them a price to count them)`,
+    );
+  return { contributed: deposits + transfers, transfers };
 }
 
 export function equityPath(book: string): string {
@@ -64,11 +140,11 @@ export function readEquity(book: string, warn?: Warn): EquityPoint[] {
  * in the future would stay the curve's last for ever — the breaker measuring
  * every loss from it. Returns whether it was written.
  */
-export function recordEquity(book: string, equity: number, at: Date, contributed?: number): boolean {
+export function recordEquity(book: string, equity: number, at: Date, contributed?: number | { contributed: number; transfers: number }): boolean {
   if (netMode().kind !== "live") return false;
   const path = equityPath(book);
   mkdirSync(join(homeDir(), "state"), { recursive: true });
-  const point: EquityPoint = { at: at.toISOString(), equity, ...(contributed !== undefined ? { contributed } : {}) };
+  const point: EquityPoint = { at: at.toISOString(), equity, ...(typeof contributed === "number" ? { contributed } : (contributed ?? {})) };
   withFileLockSync(`${path}.lock`, () => {
     sealJsonlTail(path);
     appendFileSync(path, `${JSON.stringify(point)}\n`, { mode: 0o600 });
@@ -238,9 +314,13 @@ export function breakerState(curve: readonly EquityPoint[], trades: ReadonlyArra
     const last = curve[curve.length - 1]!;
     const nowEq = last.equity;
     // A point as it would read with the money the book holds now put in: what came in since is added, what went out
-    // taken away. A point recorded before contributions were (legacy) reads as it was.
-    const asNow = (p: EquityPoint) =>
-      p.contributed !== undefined && last.contributed !== undefined ? p.equity + (last.contributed - p.contributed) : p.equity;
+    // taken away. A point recorded before contributions were (legacy) reads as it was; one recorded before transfers
+    // were counted is compared on deposits and withdrawals only (the transfers it predates are in both points' books).
+    const asNow = (p: EquityPoint) => {
+      if (p.contributed === undefined || last.contributed === undefined) return p.equity;
+      const now = p.transfers === undefined && last.transfers !== undefined ? last.contributed - last.transfers : last.contributed;
+      return p.equity + (now - p.contributed);
+    };
     const change = (unit: "day" | "week" | "month") => {
       const ref = equityAt(curve, new Date(startOf(now, unit).getTime() - 1));
       return ref?.equity ? (nowEq / asNow(ref) - 1) * 100 : undefined;
