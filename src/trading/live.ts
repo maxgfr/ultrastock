@@ -300,10 +300,17 @@ async function applyResult(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date
   return updated;
 }
 
+/**
+ * One live operation at a time — a submit, a reconcile or a cancel. Each reads
+ * the ticket under it, so two of them cannot both apply one venue answer (a
+ * fill pushed and booked twice). Not re-entrant: none of them calls another.
+ */
+const liveLock = <T>(fn: () => Promise<T>): Promise<T> => withFileLock(join(homeDir(), "state", "live.lock"), fn);
+
 /** Send a checked, approved ticket to the venue: once. */
 export async function liveSubmit(p: PreconditionInput): Promise<{ ticket: Ticket; result?: OrderResult; refusals: Refusal[] }> {
   const now = p.now ?? new Date();
-  return withFileLock(join(homeDir(), "state", "live.lock"), async () => {
+  return liveLock(async () => {
     const t = loadTicket(p.ticket.id);
     const prev = liveOf(t);
     if (prev && (prev.state === "unknown" || prev.state === "accepted" || prev.state === "partially-filled"))
@@ -387,6 +394,15 @@ export async function reconcile(
   now = new Date(),
   opts: { notPlacedCode?: string } = {},
 ): Promise<{ ticket: Ticket; result?: OrderResult; note: string }> {
+  return liveLock(() => reconcileLocked(ticketId, adapter, now, opts));
+}
+
+async function reconcileLocked(
+  ticketId: string,
+  adapter: BrokerAdapter,
+  now: Date,
+  opts: { notPlacedCode?: string },
+): Promise<{ ticket: Ticket; result?: OrderResult; note: string }> {
   const t = loadTicket(ticketId);
   const rec = liveOf(t);
   if (!rec) return { ticket: t, note: "this ticket never went to a venue" };
@@ -438,6 +454,10 @@ export async function reconcile(
  * filled a moment ago), so nothing can be sent again on a guess.
  */
 export async function liveCancel(ticketId: string, adapter: BrokerAdapter, now = new Date()): Promise<OrderResult | undefined> {
+  return liveLock(() => cancelLocked(ticketId, adapter, now));
+}
+
+async function cancelLocked(ticketId: string, adapter: BrokerAdapter, now: Date): Promise<OrderResult | undefined> {
   const t = loadTicket(ticketId);
   const rec = liveOf(t);
   if (!rec) return undefined;

@@ -44243,9 +44243,10 @@ async function applyResult(t, r3, rec, now) {
   await bookFill(t, r3, next2, now);
   return updated;
 }
+var liveLock = (fn) => withFileLock(join48(homeDir(), "state", "live.lock"), fn);
 async function liveSubmit(p) {
   const now = p.now ?? /* @__PURE__ */ new Date();
-  return withFileLock(join48(homeDir(), "state", "live.lock"), async () => {
+  return liveLock(async () => {
     const t = loadTicket(p.ticket.id);
     const prev = liveOf(t);
     if (prev && (prev.state === "unknown" || prev.state === "accepted" || prev.state === "partially-filled"))
@@ -44307,6 +44308,9 @@ function notPlacedBinding(rec) {
   return `not-placed|${rec.venue}|${rec.env}|${rec.clientOrderId}`;
 }
 async function reconcile(ticketId, adapter, now = /* @__PURE__ */ new Date(), opts = {}) {
+  return liveLock(() => reconcileLocked(ticketId, adapter, now, opts));
+}
+async function reconcileLocked(ticketId, adapter, now, opts) {
   const t = loadTicket(ticketId);
   const rec = liveOf(t);
   if (!rec) return { ticket: t, note: "this ticket never went to a venue" };
@@ -44351,6 +44355,9 @@ async function reconcile(ticketId, adapter, now = /* @__PURE__ */ new Date(), op
   return { ticket, result: r3, note: r3.state };
 }
 async function liveCancel(ticketId, adapter, now = /* @__PURE__ */ new Date()) {
+  return liveLock(() => cancelLocked(ticketId, adapter, now));
+}
+async function cancelLocked(ticketId, adapter, now) {
   const t = loadTicket(ticketId);
   const rec = liveOf(t);
   if (!rec) return void 0;

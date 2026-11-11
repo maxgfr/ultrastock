@@ -325,6 +325,22 @@ describe("live preconditions and the single submission", () => {
     expect(readLedger("live-test").filter((x) => x.type === "buy")).toHaveLength(1);
   });
 
+  it("settles a filled order once when two follow-ups race for it", async () => {
+    const t = await acceptedTicket();
+    const id = clientOrderIdFor(t.id, 1);
+    const filled: OrderResult = { state: "filled", clientOrderId: id, venueOrderId: "V1", filledQuantity: 1, averagePrice: 100, fee: 0.26, feeCurrency: "EUR" };
+    const v = fakeVenue({ query: filled, cancel: { state: "rejected", clientOrderId: id, message: "Unknown order sent." } });
+    // Seconds apart, as two commands would run: the ledger's own same-second dedup cannot hide a double booking.
+    const now = new Date();
+    const later = (s: number) => new Date(now.getTime() + s * 1000);
+    await Promise.allSettled([reconcile(t.id, v.a, now), reconcile(t.id, v.a, later(5)), liveCancel(t.id, v.a, later(10))]);
+    expect(loadTicket(t.id).status).toBe("filled");
+    expect(loadTicket(t.id).fills).toHaveLength(1);
+    expect(readLedger("live-test").filter((x) => x.type === "buy")).toHaveLength(1);
+    // The cancel came after the fill was known: it was refused before reaching the venue.
+    expect(v.calls.cancel).toBe(0);
+  });
+
   it("binds a code to the environment, the venue and the venue symbol it was read for", async () => {
     switchOn();
     let n = 0;
