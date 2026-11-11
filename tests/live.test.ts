@@ -32,6 +32,8 @@ function fakeVenue(
     query?: OrderResult;
     cancel?: OrderResult;
     open?: OrderResult[];
+    /** The open-orders read fails with this message. */
+    openError?: string;
     env?: "test" | "live";
     canWithdraw?: boolean;
     bid?: number;
@@ -59,7 +61,10 @@ function fakeVenue(
       calls.cancel++;
       return opts.cancel ?? { state: "cancelled", clientOrderId: id };
     },
-    openOrders: async () => opts.open ?? [],
+    openOrders: async () => {
+      if (opts.openError) throw new Error(opts.openError);
+      return opts.open ?? [];
+    },
   };
   return { a, calls };
 }
@@ -289,6 +294,27 @@ describe("live preconditions and the single submission", () => {
     expect(freed.note).toMatch(/declared never placed/);
     expect(loadTicket(t.id).status).toBe("blocked");
     expect(readAudit().map((e) => e.event)).toContain("live-not-placed");
+  }, 60_000);
+
+  it("does not take a failed read of the open orders for an absence", async () => {
+    switchOn();
+    const t = await checkedTicket(order());
+    await issueCode(t.id, orderBinding(t.order, "kraken", "test", "SOLEUR"), "order", [["capture", capture]]);
+    const sentAt = new Date();
+    const lost = fakeVenue({ submit: () => Promise.reject(new Error("timeout after 10000 ms")) });
+    await liveSubmit({ ticket: t, venue: "kraken", env: "test", adapter: lost.a, venueSym: "SOLEUR", code: codeFrom(), micaAuthorised: true, now: sentAt });
+    const rec = (loadTicket(t.id) as unknown as { live: { venue: "kraken"; env: "test"; clientOrderId: string } }).live;
+    const after = new Date(sentAt.getTime() + NOT_PLACED_WAIT_MS + 1000);
+    await issueCode(t.id, notPlacedBinding(rec), "never placed", [["capture", capture]], after);
+    // The lookup by id misses it and the open orders cannot be read: the order may be working there right now.
+    const blind = fakeVenue({ openError: "HTTP 503" });
+    const r = await reconcile(t.id, blind.a, after, { notPlacedCode: codeFrom() });
+    expect(r.note).toMatch(/open orders could not be read \(HTTP 503\)/);
+    expect(loadTicket(t.id).status).toBe("submitted");
+    expect((loadTicket(t.id) as unknown as { live: { state: string } }).live.state).toBe("unknown");
+    // The code was not used up: once the cross-check can be made, it declares the order never placed.
+    expect((await reconcile(t.id, fakeVenue().a, after, { notPlacedCode: codeFrom() })).note).toMatch(/declared never placed/);
+    expect(loadTicket(t.id).status).toBe("blocked");
   }, 60_000);
 
   it("never reconciles or cancels against another environment than the one the order went to", async () => {

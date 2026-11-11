@@ -409,10 +409,29 @@ async function reconcileLocked(
   assertSameVenue(t.id, rec, adapter);
   let r = await adapter.query(rec.venueSymbol, rec.clientOrderId);
   // The lookup by id missed it: the list of what is working now may still hold it.
-  if (!r && rec.state === "unknown") r = (await adapter.openOrders().catch(() => [])).find((o) => o.clientOrderId === rec.clientOrderId);
-  audit({ event: "live-reconcile", ticket: t.id, venue: rec.venue, env: rec.env, clientOrderId: rec.clientOrderId, state: r?.state ?? "not-found" });
+  let openUnread: string | undefined;
+  if (!r && rec.state === "unknown")
+    try {
+      r = (await adapter.openOrders()).find((o) => o.clientOrderId === rec.clientOrderId);
+    } catch (e) {
+      openUnread = (e as Error).message;
+    }
+  audit({
+    event: "live-reconcile",
+    ticket: t.id,
+    venue: rec.venue,
+    env: rec.env,
+    clientOrderId: rec.clientOrderId,
+    state: r?.state ?? (openUnread === undefined ? "not-found" : "open-orders-unreadable"),
+  });
   if (!r) {
     if (rec.state !== "unknown") return { ticket: t, note: `${rec.venue} does not know ${rec.clientOrderId} any more` };
+    // A failed read is not an absence: the order may be working there right now. Nothing changes, and a code given is not used up.
+    if (openUnread !== undefined)
+      return {
+        ticket: t,
+        note: `not found at ${rec.venue} by its id, and its open orders could not be read (${openUnread}): the cross-check could not be made, so the order stays of unknown fate. Nothing is resent. Ask again later`,
+      };
     const readyAt = Date.parse(rec.at) + NOT_PLACED_WAIT_MS;
     const how = `look at ${rec.venue}'s own order history, then \`broker code ${t.id} --not-placed\` and \`broker reconcile ${t.id} --code <code>\``;
     if (now.getTime() < readyAt)
