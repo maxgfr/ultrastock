@@ -75,6 +75,49 @@ describe("tickets", () => {
   });
 });
 
+describe("the sector cap", () => {
+  it("counts what the book already holds in the order's sector, and blocks past the profile's limit", async () => {
+    const p = defaultProfile("FR", "EUR");
+    p.limits.maxSectorPct = 10;
+    saveProfile(p);
+    await appendTransactions([{ date: "2026-10-01", type: "deposit", account: "cto", amount: 20_000, currency: "EUR", origin: "manual" }], "paper");
+    await withFixture("trading-paper-mcpa", async () => {
+      const now = clockNow();
+      const order = {
+        account: "cto",
+        symbol: "MC.PA",
+        side: "buy" as const,
+        quantity: 3,
+        price: 600,
+        orderType: "limit" as const,
+        currency: "EUR",
+        stop: 560,
+        assetKind: "equity" as const,
+        venue: "paper",
+      };
+      const asked: string[] = [];
+      const sectorOf = async (s: string) => {
+        asked.push(s);
+        return "Consumer Durables";
+      };
+      const { ctx } = await gateContextFor(order, { now, sectorOf });
+      expect(ctx).toMatchObject({ sector: "Consumer Durables" });
+      expect(asked).toEqual(["MC.PA"]);
+      const r = riskGate(order, ctx);
+      // 3 × 600 = 1 800 of a 20 000 book: 9 % of one sector, under 10 %.
+      expect(r.checks.find((c) => c.code === "SECTOR_PCT")).toMatchObject({ status: "pass" });
+      const bigger = { ...order, quantity: 4 }; // 2 400: 12 %
+      expect(riskGate(bigger, (await gateContextFor(bigger, { now, sectorOf })).ctx).checks.find((c) => c.code === "SECTOR_PCT")).toMatchObject({
+        status: "block",
+      });
+      // No sector to be found: said, and not checked.
+      const blind = await gateContextFor(order, { now, sectorOf: async () => undefined });
+      expect(blind.notes.join(" ")).toMatch(/sector limit .* is not checked/);
+      expect(riskGate(order, blind.ctx).checks.some((c) => c.code === "SECTOR_PCT")).toBe(false);
+    });
+  });
+});
+
 describe("paper flow on a recorded fixture", () => {
   it("plans within the limits, checks, fills, and books the trade", async () => {
     saveProfile(defaultProfile("FR", "EUR"));

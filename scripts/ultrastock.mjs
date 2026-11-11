@@ -22731,9 +22731,10 @@ function riskGate(o, c) {
       posPct > L.maxPositionPct + 1e-9 ? "block" : "pass",
       `position after the order ${pct(posPct)} of the portfolio (limit ${pct(L.maxPositionPct)})`
     );
-    if (c.sectorValueBase !== void 0 && o.sector) {
+    const sector = o.sector ?? c.sector;
+    if (c.sectorValueBase !== void 0 && sector) {
       const secPct = (c.sectorValueBase + notionalBase) / c.equityBase * 100;
-      add2("SECTOR_PCT", secPct > L.maxSectorPct + 1e-9 ? "block" : "pass", `${o.sector} after the order ${pct(secPct)} (limit ${pct(L.maxSectorPct)})`);
+      add2("SECTOR_PCT", secPct > L.maxSectorPct + 1e-9 ? "block" : "pass", `${sector} after the order ${pct(secPct)} (limit ${pct(L.maxSectorPct)})`);
     }
     if (o.assetKind === "crypto") {
       const cPct = (c.cryptoValueBase + notionalBase) / c.equityBase * 100;
@@ -37207,6 +37208,834 @@ async function polymarketBook(tokenId, levels = 10) {
   };
 }
 
+// src/analyze/portfolio/risk.ts
+function concentration(weights) {
+  const total = weights.reduce((s, w2) => s + w2, 0);
+  if (!(total > 0)) return { hhi: Number.NaN, effectiveN: Number.NaN, top5: Number.NaN };
+  const w = weights.map((x) => x / total);
+  const hhi = w.reduce((s, x) => s + x * x, 0);
+  const top5 = [...w].sort((a, b) => b - a).slice(0, 5).reduce((s, x) => s + x, 0);
+  return { hhi, effectiveN: 1 / hhi, top5 };
+}
+function portfolioReturns(weights, returns) {
+  const n2 = Math.min(...returns.map((r3) => r3.length));
+  if (!Number.isFinite(n2)) return [];
+  const out = [];
+  for (let t = 0; t < n2; t++) out.push(returns.reduce((s, r3, i) => s + weights[i] * r3[t], 0));
+  return out;
+}
+function diversificationRatio(weights, returns) {
+  const p = portfolioReturns(weights, returns);
+  const sp = stdev(p);
+  const num16 = returns.reduce((s, r3, i) => s + weights[i] * stdev(r3), 0);
+  return sp > 0 ? num16 / sp : Number.NaN;
+}
+function pairwiseCorrelations(names2, returns) {
+  const m = correlationMatrix(returns);
+  const out = [];
+  for (let i = 0; i < names2.length; i++) for (let j = i + 1; j < names2.length; j++) out.push({ a: names2[i], b: names2[j], rho: m[i][j] });
+  return out;
+}
+function limitChecks(limits, exposure) {
+  const out = [];
+  for (const p of exposure.positions)
+    out.push({
+      kind: "position",
+      subject: p.label,
+      valuePct: p.weight,
+      limitPct: limits.maxPositionPct,
+      breach: p.weight > limits.maxPositionPct + 1e-9,
+      reason: `${p.label} is ${p.weight.toFixed(2)} % of the portfolio; the profile caps one position at ${limits.maxPositionPct} %`
+    });
+  for (const s of exposure.sectors)
+    out.push({
+      kind: "sector",
+      subject: s.label,
+      valuePct: s.weight,
+      limitPct: limits.maxSectorPct,
+      breach: s.weight > limits.maxSectorPct + 1e-9,
+      reason: `sector ${s.label} is ${s.weight.toFixed(2)} %; the profile caps one sector at ${limits.maxSectorPct} %`
+    });
+  out.push({
+    kind: "crypto",
+    subject: "crypto",
+    valuePct: exposure.cryptoPct,
+    limitPct: limits.maxCryptoPct,
+    breach: exposure.cryptoPct > limits.maxCryptoPct + 1e-9,
+    reason: `crypto is ${exposure.cryptoPct.toFixed(2)} %; the profile caps crypto at ${limits.maxCryptoPct} %`
+  });
+  out.push({
+    kind: "cash",
+    subject: "cash",
+    valuePct: exposure.cashPct,
+    limitPct: limits.cashBufferPct,
+    breach: exposure.cashPct < limits.cashBufferPct - 1e-9,
+    reason: `cash is ${exposure.cashPct.toFixed(2)} %; the profile keeps at least ${limits.cashBufferPct} % aside`
+  });
+  return out;
+}
+var TV_SECTORS2 = [
+  "Commercial Services",
+  "Communications",
+  "Consumer Durables",
+  "Consumer Non-Durables",
+  "Consumer Services",
+  "Distribution Services",
+  "Electronic Technology",
+  "Energy Minerals",
+  "Finance",
+  "Government",
+  "Health Services",
+  "Health Technology",
+  "Industrial Services",
+  "Miscellaneous",
+  "Non-Energy Minerals",
+  "Process Industries",
+  "Producer Manufacturing",
+  "Retail Trade",
+  "Technology Services",
+  "Transportation",
+  "Utilities"
+];
+function knownSector(raw) {
+  return typeof raw === "string" ? TV_SECTORS2.find((s) => s.toLowerCase() === raw.trim().toLowerCase()) : void 0;
+}
+var keySlug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+var EU_EEA = /* @__PURE__ */ new Set([
+  "AT",
+  "BE",
+  "BG",
+  "HR",
+  "CY",
+  "CZ",
+  "DK",
+  "EE",
+  "FI",
+  "FR",
+  "DE",
+  "GR",
+  "HU",
+  "IE",
+  "IT",
+  "LV",
+  "LT",
+  "LU",
+  "MT",
+  "NL",
+  "PL",
+  "PT",
+  "RO",
+  "SK",
+  "SI",
+  "ES",
+  "SE",
+  "IS",
+  "LI",
+  "NO"
+]);
+function isinCountry(isin) {
+  return isin && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) ? isin.slice(0, 2) : void 0;
+}
+
+// src/analyze/portfolio/history.ts
+var DAY6 = 864e5;
+var DEPTH_DAYS = { euronext: 725, us: 3640, europe: 1e5, crypto: 1e5 };
+async function dailyHistory(r3, from, to, now) {
+  const age = (now.getTime() - from.getTime()) / DAY6;
+  const ended = (now.getTime() - to.getTime()) / DAY6;
+  const market = r3.instrument.market;
+  const tooOld = age > (DEPTH_DAYS[market] ?? 1e5);
+  const pastWindow = (market === "us" || market === "euronext") && ended > 30;
+  if (tooOld || pastWindow) {
+    const y = await yahooHistory(await resolveYahoo(r3.instrument.symbol), "1d", from, to);
+    const src2 = market === "us" ? "Nasdaq" : "Euronext";
+    return {
+      ...y,
+      notes: [
+        ...y.notes,
+        `${r3.instrument.symbol}: Yahoo used \u2014 ${tooOld ? `the ${src2} history does not reach back to ${iso4(from)}` : `${src2} serves windows ending today, not one ending ${iso4(to)}`}`
+      ]
+    };
+  }
+  return getHistory(r3, { from, to, interval: "1d" });
+}
+var iso4 = (d) => d.toISOString().slice(0, 10);
+var closesOf2 = (s) => s.bars.map((b) => ({ date: b.date.slice(0, 10), close: b.close })).filter((c) => c.close > 0);
+async function ecbDailyRates(currencies, n2) {
+  const want = [...new Set(currencies.map((c) => c === "USDT" || c === "USDC" || c === "FDUSD" ? "USD" : c).filter((c) => c !== "EUR"))];
+  const rates = /* @__PURE__ */ new Map();
+  if (!want.length) return { rates };
+  const { series, url, fetchedAt } = await fetchEcb("EXR", `D.${want.join("+")}.EUR.SP00.A`, n2);
+  const points = [];
+  for (const s of series) {
+    const ccy = s.key.split(".")[2] ?? "";
+    const m = /* @__PURE__ */ new Map();
+    for (const o of s.obs) if (o.value > 0) m.set(o.date, 1 / o.value);
+    rates.set(ccy, m);
+    const first = s.obs[0];
+    const last2 = s.obs[s.obs.length - 1];
+    if (first && last2)
+      points.push({
+        key: `EUR.fxhist.${ccy}.days`,
+        label: `ECB daily reference rates read, ${ccy} per EUR (${first.date} to ${last2.date})`,
+        value: s.obs.length,
+        unit: "count",
+        asOf: last2.date,
+        formula: `daily observations from ${first.date} (${first.value}) to ${last2.date} (${last2.value})`
+      });
+  }
+  for (const c of ["USDT", "USDC", "FDUSD"]) if (currencies.includes(c) && rates.has("USD")) rates.set(c, rates.get("USD"));
+  return {
+    rates,
+    dataset: {
+      kind: "fx",
+      title: "ECB daily euro reference rates (history)",
+      subject: "EUR",
+      points,
+      provenance: { source: "ecb", url, fetchedAt, delay: "eod", official: true, asOf: points[0]?.asOf },
+      notes: []
+    }
+  };
+}
+function toBase(closes, rates) {
+  if (!rates) return closes;
+  const dates = [...rates.keys()].sort();
+  const out = [];
+  let j = -1;
+  for (const c of closes) {
+    while (j + 1 < dates.length && dates[j + 1] <= c.date) j++;
+    if (j < 0) continue;
+    out.push({ date: c.date, close: c.close * rates.get(dates[j]) });
+  }
+  return out;
+}
+var isWeekday = (d) => {
+  const w = (/* @__PURE__ */ new Date(`${d}T00:00:00Z`)).getUTCDay();
+  return w !== 0 && w !== 6;
+};
+function alignReturns(series) {
+  if (!series.length || series.some((s) => s.length < 2)) return { dates: [], returns: series.map(() => []) };
+  const start = series.map((s) => s[0].date).sort().at(-1);
+  const end = series.map((s) => s[s.length - 1].date).sort()[0];
+  const all = /* @__PURE__ */ new Set();
+  for (const s of series) for (const c of s) if (c.date >= start && c.date <= end && isWeekday(c.date)) all.add(c.date);
+  const dates = [...all].sort();
+  const levels = series.map((s) => {
+    const byDate = new Map(s.map((c) => [c.date, c.close]));
+    let last2;
+    for (const c of s) if (c.date <= start) last2 = c.close;
+    return dates.map((d) => {
+      const v = byDate.get(d);
+      if (v !== void 0) last2 = v;
+      return last2;
+    });
+  });
+  const returns = levels.map((lv) => lv.slice(1).map((v, i) => v / lv[i] - 1));
+  return { dates: dates.slice(1), returns };
+}
+function windowCloses(closes, from, to, slackDays = 7) {
+  const start = closes.find((c) => c.date >= from);
+  const end = [...closes].reverse().find((c) => c.date <= to);
+  if (!start || !end || end.date <= start.date) return void 0;
+  const gap = (a, b) => Math.abs(Date.parse(a) - Date.parse(b)) / DAY6;
+  if (gap(start.date, from) > slackDays || gap(end.date, to) > slackDays) return void 0;
+  return { start, end };
+}
+
+// src/analyze/portfolio/series.ts
+var DAY7 = 864e5;
+async function baseHistories(items, days, tag, f3, now) {
+  const from = new Date(now.getTime() - days * DAY7);
+  const fetched = await mapLimit(items, 4, async (it) => {
+    try {
+      return { series: await dailyHistory(it.resolved, from, now, now) };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+  const got = /* @__PURE__ */ new Map();
+  items.forEach((it, i) => {
+    const r3 = fetched[i];
+    if ("error" in r3) {
+      f3.note(`no ${tag} history for ${it.symbol}: ${r3.error}`);
+      return;
+    }
+    const s = r3.series;
+    const local2 = closesOf2(s);
+    if (local2.length < 2) {
+      f3.note(`no ${tag} history for ${it.symbol}: fewer than two closes in the window`);
+      return;
+    }
+    const first = local2[0];
+    const last2 = local2[local2.length - 1];
+    const key = `${it.symbol}.${tag}.lastClose`;
+    f3.input({
+      kind: "history",
+      title: `${it.symbol} daily closes since ${iso4(from)}`,
+      subject: it.symbol,
+      points: [
+        {
+          key,
+          label: `${it.symbol} last daily close of the window`,
+          value: last2.close,
+          unit: s.instrument.currency,
+          asOf: last2.date,
+          formula: `${local2.length} daily closes from ${first.date} (${first.close}) to ${last2.date}${s.adjusted ? ", split-adjusted" : ""}`
+        }
+      ],
+      provenance: { ...s.provenance, asOf: last2.date },
+      notes: s.notes
+    });
+    if (first.date > iso4(new Date(from.getTime() + 10 * DAY7))) f3.note(`${it.symbol}: history starts ${first.date}, later than the ${iso4(from)} asked for`);
+    got.set(it.symbol, { local: local2, currency: s.instrument.currency, key });
+  });
+  const ccys = [...new Set([...got.values()].map((g) => g.currency))];
+  let rates = /* @__PURE__ */ new Map();
+  let fxKeys = {};
+  if (ccys.some((c) => c !== "EUR")) {
+    try {
+      const r3 = await ecbDailyRates(ccys, Math.ceil(days * 5 / 7) + 15);
+      rates = r3.rates;
+      if (r3.dataset) {
+        f3.input(r3.dataset);
+        fxKeys = Object.fromEntries(r3.dataset.points.map((p) => [p.key.split(".")[2], p.key]));
+      }
+    } catch (e) {
+      f3.note(`ECB daily rates unavailable (${e.message}): non-EUR series stay in their own currency`);
+    }
+  }
+  const out = /* @__PURE__ */ new Map();
+  for (const it of items) {
+    const g = got.get(it.symbol);
+    if (!g) continue;
+    const fxc = g.currency === "USDT" || g.currency === "USDC" || g.currency === "FDUSD" ? "USD" : g.currency;
+    const r3 = g.currency === "EUR" ? void 0 : rates.get(g.currency);
+    if (g.currency !== "EUR" && !r3) f3.note(`${it.symbol}: no daily ${g.currency} rate \u2014 its returns are in ${g.currency}, not EUR`);
+    out.set(it.symbol, { symbol: it.symbol, closes: toBase(g.local, r3), local: g.local, currency: g.currency, key: g.key, fxKey: fxKeys[fxc] });
+  }
+  return out;
+}
+
+// src/analyze/portfolio/stress.ts
+var SCENARIOS = [
+  { id: "gfc", label: "Global financial crisis", from: "2008-09-01", to: "2009-03-09" },
+  { id: "covid", label: "COVID crash", from: "2020-02-19", to: "2020-03-23" },
+  { id: "rates2022", label: "2022 rate shock", from: "2022-01-03", to: "2022-10-12" },
+  { id: "crypto2022", label: "Crypto winter", from: "2021-11-10", to: "2022-11-21" }
+];
+var SHOCKS = {
+  /** Every equity and equity fund falls 20 %. */
+  equities: -0.2,
+  /** Rates up one point: a bond fund loses duration × 1 %. */
+  ratesUpPct: 1,
+  /** The dollar loses 10 % against the euro: USD assets lose 10 % in EUR. */
+  usd: -0.1,
+  /** Crypto halves. */
+  crypto: -0.5
+};
+function assumedDuration(name) {
+  return /\b(0-1|1-3|0-3)(?=\s*(y|yr|yrs|year|years|an|ans)?\b)|\bshort\b|\bcourt\b/i.test(name ?? "") ? 2 : 6;
+}
+var looksLikeBondFund = (name) => /\b(bond|bonds|treasury|treasuries|govt|government|aggregate|obligation|oblig|credit|corporate|t-bill)\b/i.test(name ?? "");
+function replay(lines) {
+  let portfolio = 0;
+  let covered = 0;
+  let uncovered = 0;
+  for (const l of lines) {
+    if (l.move === void 0) uncovered += l.weight;
+    else {
+      portfolio += l.weight * l.move;
+      covered += l.weight;
+    }
+  }
+  return { portfolio, covered, uncovered };
+}
+function parametricShocks(items) {
+  const equity = items.filter((i) => (i.assetClass === "equity" || i.assetClass === "etf" || i.assetClass === "fund") && !looksLikeBondFund(i.name));
+  const bonds = items.filter((i) => (i.assetClass === "etf" || i.assetClass === "fund") && looksLikeBondFund(i.name));
+  const usd = items.filter((i) => i.currency === "USD" || i.currency === "USDT" || i.currency === "USDC");
+  const crypto = items.filter((i) => i.assetClass === "crypto");
+  const sum = (xs, f3) => xs.reduce((s, x) => s + x.weight * f3(x), 0);
+  return [
+    {
+      id: "equities",
+      label: "equities \u221220 %",
+      impact: sum(equity, () => SHOCKS.equities),
+      hit: equity.map((i) => i.symbol),
+      formula: "\u03A3 equity and equity-fund weights \xD7 \u221220 %"
+    },
+    {
+      id: "rates",
+      label: "rates +1 point on bond funds",
+      impact: sum(bonds, (b) => -assumedDuration(b.name) * SHOCKS.ratesUpPct / 100),
+      hit: bonds.map((i) => i.symbol),
+      formula: "\u03A3 bond-fund weights \xD7 \u2212(assumed duration \xD7 1 %); duration 2 for 1\u20133-year funds, 6 otherwise"
+    },
+    {
+      id: "usd",
+      label: "USD \u221210 % vs EUR",
+      impact: sum(usd, () => SHOCKS.usd),
+      hit: usd.map((i) => i.symbol),
+      formula: "\u03A3 weights of USD-priced holdings and USD cash \xD7 \u221210 % (the currency's move, not the asset's)"
+    },
+    { id: "crypto", label: "crypto \u221250 %", impact: sum(crypto, () => SHOCKS.crypto), hit: crypto.map((i) => i.symbol), formula: "\u03A3 crypto weights \xD7 \u221250 %" }
+  ];
+}
+
+// src/analyze/portfolio/run-risk.ts
+var DAY8 = 864e5;
+var pct7 = (x) => Number((x * 100).toFixed(6));
+var money2 = (x) => Number(x.toFixed(2));
+var benchmarkFor = (base2) => base2 === "EUR" ? "CW8.PA" : "SPY";
+function tvTicker(h) {
+  const i = h.instrument;
+  if (!i) return void 0;
+  if (i.market !== "us") return h.symbol;
+  const ex = (i.mic ?? "").toUpperCase();
+  const prefix = ex.includes("NASDAQ") ? "NASDAQ" : ex.includes("NYSE") && !ex.includes("ARCA") && !ex.includes("AMERICAN") ? "NYSE" : ex.includes("ARCA") ? "AMEX" : void 0;
+  return prefix ? `${prefix}:${i.symbol.replace(/\./g, "_")}` : void 0;
+}
+var valued = (m) => m.holdings.filter((h) => h.valueBase !== void 0 && h.keys.weight);
+function groupWeights(f3, m, section, key, what, rows) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const r3 of rows) {
+    const g = groups.get(r3.label) ?? { weight: 0, from: [] };
+    g.weight += r3.weight;
+    g.from.push(...r3.from);
+    groups.set(r3.label, g);
+  }
+  const out = [...groups.entries()].map(([label2, g]) => ({ label: label2, weight: g.weight, from: g.from })).sort((a, b) => b.weight - a.weight);
+  for (const g of out)
+    f3.derive(
+      section,
+      `${key}.${keySlug(g.label)}`,
+      `${what} ${g.label}, % of the portfolio`,
+      Number(g.weight.toFixed(4)),
+      "%",
+      [...g.from, m.keys.total],
+      `\u03A3 weights of the ${what} ${g.label} lines`
+    );
+  return out.map(({ label: label2, weight }) => ({ label: label2, weight }));
+}
+async function riskAnalysis(m, f3, opts = {}) {
+  const P = `PORTFOLIO.${m.bookName}.risk`;
+  const hs = valued(m);
+  const cashW = m.totalBase > 0 ? m.cashBase / m.totalBase * 100 : 0;
+  const byClass = groupWeights(f3, m, "exposure by asset class", `${P}.class`, "asset class", [
+    ...hs.map((h) => ({ label: h.assetClass, weight: h.weightPct, from: [h.keys.weight, `${h.symbol}.instrument.kind`] })),
+    ...m.cashBase ? [{ label: "cash", weight: cashW, from: [m.keys.cash] }] : []
+  ]);
+  const stable = (c) => c === "USDT" || c === "USDC" || c === "FDUSD" ? "USD" : c;
+  const byCurrency = groupWeights(f3, m, "exposure by currency", `${P}.currency`, "currency", [
+    ...hs.map((h) => ({ label: stable(h.currency), weight: h.weightPct, from: [h.keys.weight] })),
+    ...m.cash.filter((c) => c.amountBase !== void 0 && m.totalBase > 0).map((c) => ({ label: stable(c.currency), weight: c.amountBase / m.totalBase * 100, from: [m.keys.cash] }))
+  ]);
+  const foreign = byCurrency.filter((c) => c.label !== m.base).reduce((s, c) => s + c.weight, 0);
+  f3.derive(
+    "exposure by currency",
+    `${P}.fxExposure`,
+    `share of the portfolio not in ${m.base} (currency risk of a ${m.base} investor)`,
+    Number(foreign.toFixed(4)),
+    "%",
+    [...hs.map((h) => h.keys.weight), m.keys.cash],
+    `\u03A3 weights of the lines priced in another currency than ${m.base}; stablecoins count as USD`
+  );
+  if (hs.some((h) => h.currency !== stable(h.currency))) f3.note("stablecoin-priced lines (USDT/USDC) are counted as US-dollar exposure");
+  const allEquities = hs.filter((h) => h.assetClass === "equity");
+  const equities = allEquities.slice(0, 30);
+  const sectorRows = [];
+  const countryRows = [];
+  const snapshots = await mapLimit(equities, 4, async (h) => {
+    const ticker = tvTicker(h);
+    if (!ticker) return { error: "no TradingView ticker for its listing" };
+    try {
+      return { ds: await tradingviewSnapshot(ticker, { columns: ["sector", "isin", "country"] }) };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+  equities.forEach((h, i) => {
+    const snap = snapshots[i];
+    let sector;
+    let sectorKey;
+    let isin = h.isin;
+    let isinKey = h.isin ? `${h.symbol}.instrument.isin` : void 0;
+    if (snap.ds) {
+      const ds = snap.ds;
+      f3.input({ ...ds, title: `${h.symbol} sector and ISIN (TradingView snapshot)`, subject: h.symbol });
+      const sp = ds.points.find((p) => p.key.endsWith(".tv.sector"));
+      sector = knownSector(sp?.value);
+      sectorKey = sp?.key;
+      const ip = ds.points.find((p) => p.key.endsWith(".tv.isin"));
+      if (!isin && typeof ip?.value === "string" && isinCountry(ip.value)) {
+        isin = ip.value;
+        isinKey = ip.key;
+      }
+      if (sp && !sector) f3.note(`${h.symbol}: TradingView's sector label is not one of its known sectors \u2014 counted as unclassified`);
+    } else f3.note(`${h.symbol}: no sector (${snap.error})`);
+    sectorRows.push({ label: sector ?? "unclassified", weight: h.weightPct, from: [h.keys.weight, ...sectorKey ? [sectorKey] : []] });
+    const country2 = isinCountry(isin) ?? (h.instrument?.market === "us" ? "US" : void 0);
+    if (!isinCountry(isin) && country2 === "US") f3.note(`${h.symbol}: country taken from its US listing (no ISIN read)`);
+    countryRows.push({ label: country2 ?? "unknown", weight: h.weightPct, from: [h.keys.weight, ...isinKey ? [isinKey] : []] });
+  });
+  for (const h of hs.filter((x) => x.assetClass !== "equity"))
+    countryRows.push({ label: h.assetClass === "crypto" ? "crypto" : "funds", weight: h.weightPct, from: [h.keys.weight] });
+  if (allEquities.length > equities.length)
+    f3.note(
+      `sector lookups are capped at 30 shares: ${allEquities.slice(30).map((h) => h.symbol).join(", ")} not classified`
+    );
+  const bySector = groupWeights(f3, m, "exposure by sector (direct shares)", `${P}.sector`, "sector", sectorRows);
+  const byCountry = groupWeights(f3, m, "exposure by country (direct shares: ISIN prefix)", `${P}.country`, "country", countryRows);
+  if (hs.some((h) => h.assetClass === "etf" || h.assetClass === "fund"))
+    f3.note("funds are not split by sector or country here: `portfolio lookthrough` reads their holdings where the issuer publishes them");
+  f3.note("country = the ISIN's prefix, i.e. where the issuer is incorporated \u2014 not where it earns its revenue");
+  const conc = concentration(hs.map((h) => h.valueBase));
+  const wKeys = hs.map((h) => h.keys.weight);
+  f3.derive(
+    "concentration",
+    `${P}.hhi`,
+    "Herfindahl\u2013Hirschman index of the invested weights",
+    Number(conc.hhi.toFixed(6)),
+    "ratio",
+    wKeys,
+    "\u03A3 w\u1D62\xB2 with w\u1D62 = value \xF7 \u03A3 invested value (cash excluded)"
+  );
+  f3.derive("concentration", `${P}.effectiveN`, "effective number of positions", Number(conc.effectiveN.toFixed(4)), "count", [`${P}.hhi`], "1 \xF7 HHI");
+  f3.derive(
+    "concentration",
+    `${P}.top5`,
+    "weight of the 5 largest positions in the invested part",
+    pct7(conc.top5),
+    "%",
+    wKeys,
+    "\u03A3 of the 5 largest w\u1D62 (cash excluded) \xD7 100"
+  );
+  const result = { byClass, byCurrency, bySector, byCountry, concentration: conc, breaches: [] };
+  const bench = opts.benchmark ?? benchmarkFor(m.base);
+  let benchResolved;
+  try {
+    benchResolved = await resolveSymbol(bench);
+  } catch (e) {
+    f3.note(`benchmark ${bench} unavailable: ${e.message}`);
+  }
+  const items = hs.filter((h) => h.resolved).map((h) => ({ symbol: h.symbol, resolved: h.resolved }));
+  if (benchResolved && !items.some((i) => i.symbol === benchResolved.instrument.symbol))
+    items.push({ symbol: benchResolved.instrument.symbol, resolved: benchResolved });
+  const series = await baseHistories(items, 372, "hist1y", f3, m.now);
+  const withHist = hs.filter((h) => series.has(h.symbol));
+  const benchSeries = benchResolved ? series.get(benchResolved.instrument.symbol) : void 0;
+  const missingW = hs.filter((h) => !series.has(h.symbol)).reduce((s, h) => s + h.weightPct, 0);
+  if (missingW > 0) f3.note(`${missingW.toFixed(2)} % of the portfolio has no history and is left out of the return series (treated like cash)`);
+  if (withHist.length) {
+    const aligned = alignReturns([...withHist.map((h) => series.get(h.symbol).closes), ...benchSeries ? [benchSeries.closes] : []]);
+    const assetR = aligned.returns.slice(0, withHist.length);
+    const w = withHist.map((h) => h.valueBase / m.totalBase);
+    const r3 = portfolioReturns(w, assetR);
+    const histKeys = withHist.flatMap((h) => [series.get(h.symbol).key, ...series.get(h.symbol).fxKey ? [series.get(h.symbol).fxKey] : []]);
+    const from = [...histKeys, ...withHist.map((h) => h.keys.weight)];
+    const span = aligned.dates.length ? `${aligned.dates[0]}\u2026${aligned.dates[aligned.dates.length - 1]}` : "";
+    const how = `daily returns of today's weights over ${r3.length} aligned weekdays (${span}), in ${m.base} at ECB daily rates; cash earns 0`;
+    if (r3.length < 60) f3.note(`only ${r3.length} aligned daily returns: the risk figures are not computed (60 at least)`);
+    else {
+      result.days = r3.length;
+      f3.derive("risk (1 year, daily)", `${P}.days`, "daily returns in the risk window", r3.length, "count", from, how);
+      result.volatility = stdev(r3) * Math.sqrt(252);
+      f3.derive(
+        "risk (1 year, daily)",
+        `${P}.volatility`,
+        "annualised volatility of today's portfolio",
+        pct7(result.volatility),
+        "%",
+        from,
+        `stdev(daily returns) \xD7 \u221A252; ${how}`
+      );
+      const vars = {};
+      for (const c of [0.95, 0.99]) {
+        const tag = String(Math.round(c * 100));
+        const measures = [
+          [`var${tag}`, `1-day historical VaR ${tag} %`, historicalVar(r3, c), `\u2212quantile(daily returns, ${(1 - c).toFixed(2)})`],
+          [`cvar${tag}`, `1-day historical CVaR (expected shortfall) ${tag} %`, historicalCvar(r3, c), "\u2212mean of the returns at or below the VaR quantile"],
+          [`cfVar${tag}`, `1-day Cornish\u2013Fisher VaR ${tag} %`, cornishFisherVar(r3, c), "\u2212(mean + z_cf \xD7 stdev), z corrected for skewness and excess kurtosis"]
+        ];
+        const b10 = bootstrapVar(r3, 10, c, 5e3, 42);
+        measures.push(
+          [
+            `var${tag}d10`,
+            `10-day bootstrap VaR ${tag} %`,
+            b10.var,
+            "5 000 seeded paths (seed 42) of 10 daily returns resampled with replacement, compounded; \u2212quantile"
+          ],
+          [`cvar${tag}d10`, `10-day bootstrap CVaR ${tag} %`, b10.cvar, "mean loss beyond the 10-day bootstrap VaR"]
+        );
+        for (const [k, label2, v, formula] of measures) {
+          vars[k] = v;
+          const key = f3.derive("value at risk", `${P}.${k}`, `${label2} (loss, % of the portfolio)`, pct7(v), "%", from, `${formula}; ${how}`);
+          if (key)
+            f3.derive(
+              "value at risk",
+              `${P}.${k}.amount`,
+              `${label2} (loss in ${m.base})`,
+              money2(v * m.totalBase),
+              m.base,
+              [key, m.keys.total],
+              "loss % \xD7 portfolio total"
+            );
+        }
+      }
+      result.var = vars;
+      const dd = drawdowns(equityCurve(r3));
+      result.maxDrawdown = dd.maxDrawdown;
+      f3.derive(
+        "risk (1 year, daily)",
+        `${P}.maxDrawdown`,
+        "maximum drawdown of today's weights over the window",
+        pct7(dd.maxDrawdown),
+        "%",
+        from,
+        `worst peak-to-trough of the compounded daily returns; ${how}`
+      );
+      const dr = diversificationRatio(w, assetR);
+      result.diversificationRatio = dr;
+      f3.derive(
+        "risk (1 year, daily)",
+        `${P}.diversificationRatio`,
+        "diversification ratio",
+        Number(dr.toFixed(4)),
+        "ratio",
+        from,
+        "\u03A3 w\u1D62 \u03C3\u1D62 \xF7 \u03C3(portfolio): 1 = no diversification benefit"
+      );
+      if (benchSeries) {
+        const br = aligned.returns[withHist.length];
+        const rel = relativeTo(r3, br, 252);
+        result.beta = rel.beta;
+        const bfrom = [...from, benchSeries.key];
+        f3.derive(
+          "risk (1 year, daily)",
+          `${P}.beta`,
+          `beta to ${benchSeries.symbol}`,
+          Number(rel.beta.toFixed(4)),
+          "ratio",
+          bfrom,
+          `cov(portfolio, ${benchSeries.symbol}) \xF7 var(${benchSeries.symbol}), daily, in ${m.base}`
+        );
+        f3.derive(
+          "risk (1 year, daily)",
+          `${P}.benchCorrelation`,
+          `correlation with ${benchSeries.symbol}`,
+          Number(rel.correlation.toFixed(4)),
+          "ratio",
+          bfrom,
+          "Pearson correlation of the daily returns"
+        );
+      }
+      const top = [...withHist].sort((a, b) => b.valueBase - a.valueBase).slice(0, 5);
+      if (top.length >= 2) {
+        const idx = top.map((t) => withHist.indexOf(t));
+        for (const c of pairwiseCorrelations(
+          top.map((t) => t.symbol),
+          idx.map((i) => assetR[i])
+        ))
+          f3.derive(
+            "correlation of the top holdings",
+            `${P}.corr.${c.a}.${c.b}`,
+            `correlation of ${c.a} and ${c.b} (daily, 1 year)`,
+            Number(c.rho.toFixed(4)),
+            "ratio",
+            [series.get(c.a).key, series.get(c.b).key],
+            `Pearson correlation of the aligned daily ${m.base} returns`
+          );
+      }
+    }
+  }
+  const cryptoPct = hs.filter((h) => h.assetClass === "crypto").reduce((s, h) => s + h.weightPct, 0);
+  const checks = limitChecks(m.profile.limits, {
+    positions: hs.map((h) => ({ label: h.symbol, weight: h.weightPct })),
+    sectors: bySector.filter((s) => s.label !== "unclassified"),
+    cryptoPct,
+    cashPct: cashW
+  });
+  for (const c of checks) {
+    const from = c.kind === "position" ? [hs.find((h) => h.symbol === c.subject).keys.weight] : c.kind === "sector" ? [`${P}.sector.${keySlug(c.subject)}`] : c.kind === "crypto" ? [...hs.filter((h) => h.assetClass === "crypto").map((h) => h.keys.weight), m.keys.total] : [m.keys.cash, m.keys.total];
+    f3.derive(
+      "profile limits",
+      `${P}.limit.${c.kind}.${keySlug(c.subject)}`,
+      `${c.kind} limit${c.kind === "position" || c.kind === "sector" ? ` \u2014 ${c.subject}` : ""}`,
+      c.breach ? "BREACH" : "ok",
+      void 0,
+      from,
+      c.reason
+    );
+    if (c.breach) result.breaches.push({ kind: c.kind, subject: c.subject, reason: c.reason });
+  }
+  return result;
+}
+var PROXIES = { equity: ["CW8.PA", "SPY"], bond: ["AGG"], crypto: ["BTCUSDT"] };
+var CRYPTO_START = "2017-08-17";
+var STRESS_MAX_HOLDINGS = 15;
+async function stressAnalysis(m, f3) {
+  const P = `PORTFOLIO.${m.bookName}.stress`;
+  const hs = valued(m).sort((a, b) => b.valueBase - a.valueBase).slice(0, STRESS_MAX_HOLDINGS);
+  if (valued(m).length > hs.length) f3.note(`only the ${STRESS_MAX_HOLDINGS} largest holdings are replayed; the others count as uncovered`);
+  const windowCache = /* @__PURE__ */ new Map();
+  const windowOf2 = (symbol, resolved, from, to, id) => {
+    const k = `${symbol}|${id}`;
+    if (!windowCache.has(k))
+      windowCache.set(
+        k,
+        (async () => {
+          const r3 = resolved ?? await resolveSymbol(symbol);
+          if (r3.instrument.market === "crypto" && to < CRYPTO_START) return void 0;
+          const a = new Date(Date.parse(`${from}T00:00:00Z`) - 10 * DAY8);
+          const b = new Date(Date.parse(`${to}T00:00:00Z`) + 10 * DAY8);
+          const s = r3.instrument.market === "crypto" ? await getHistory(r3, { from: a, to: b, interval: "1d" }) : await dailyHistory(r3, a, b, m.now);
+          const w = windowCloses(closesOf2(s), from, to);
+          return w ? { symbol, id, ...w, key: `${symbol}.stress.${id}`, series: s } : void 0;
+        })().catch(() => void 0)
+      );
+    return windowCache.get(k);
+  };
+  const register = (w) => f3.input({
+    kind: "history",
+    title: `${w.symbol} over the ${w.id} window`,
+    subject: w.symbol,
+    points: [
+      {
+        key: `${w.key}.start`,
+        label: `${w.symbol} close at the start of the ${w.id} window`,
+        value: w.start.close,
+        unit: w.series.instrument.currency,
+        asOf: w.start.date
+      },
+      {
+        key: `${w.key}.end`,
+        label: `${w.symbol} close at the end of the ${w.id} window`,
+        value: w.end.close,
+        unit: w.series.instrument.currency,
+        asOf: w.end.date
+      }
+    ],
+    provenance: { ...w.series.provenance, asOf: w.end.date },
+    notes: w.series.notes
+  });
+  const result = { scenarios: [], shocks: [] };
+  for (const sc of SCENARIOS) {
+    const section = `${sc.label} (${sc.from} \u2192 ${sc.to})`;
+    const found = await mapLimit(hs, 4, async (h) => {
+      const own = await windowOf2(h.symbol, h.resolved, sc.from, sc.to, sc.id);
+      if (own) return { win: own, proxy: void 0 };
+      const chain2 = h.assetClass === "crypto" ? PROXIES.crypto : looksLikeBondFund(h.instrument?.name) ? PROXIES.bond : PROXIES.equity;
+      for (const p of chain2) {
+        const w = await windowOf2(p, void 0, sc.from, sc.to, sc.id);
+        if (w) return { win: w, proxy: p };
+      }
+      return { win: void 0, proxy: void 0 };
+    });
+    const lines = [];
+    const from = [];
+    hs.forEach((h, i) => {
+      const { win, proxy } = found[i];
+      const line = { symbol: h.symbol, weight: h.weightPct / 100, basis: "none" };
+      if (win) {
+        register(win);
+        line.basis = proxy ? "proxy" : "own";
+        if (proxy) line.proxy = proxy;
+        line.move = win.end.close / win.start.close - 1;
+        const key = f3.derive(
+          section,
+          `${P}.${sc.id}.${h.symbol}.move`,
+          `${h.symbol} move over the ${sc.label} window${proxy ? ` (proxy ${proxy})` : ""}`,
+          pct7(line.move),
+          "%",
+          [`${win.key}.start`, `${win.key}.end`],
+          `end close \xF7 start close \u2212 1, in the series' own currency${proxy ? `; ${h.symbol} had no prices then \u2014 ${proxy} stands in` : ""}`
+        );
+        if (key) from.push(key, h.keys.weight);
+      } else if (h.assetClass === "crypto" && sc.to < CRYPTO_START) {
+        line.move = SHOCKS.crypto;
+        line.basis = "shock";
+        const key = f3.derive(
+          section,
+          `${P}.${sc.id}.${h.symbol}.move`,
+          `${h.symbol} move over the ${sc.label} window (no crypto market then: the crypto shock stands in)`,
+          pct7(SHOCKS.crypto),
+          "%",
+          [h.keys.weight],
+          "parametric crypto shock (no crypto prices exist for the window)"
+        );
+        if (key) from.push(key, h.keys.weight);
+      }
+      lines.push(line);
+    });
+    const rp = replay(lines);
+    if (!from.length) {
+      f3.note(`${sc.label}: no holding or proxy has prices over ${sc.from} \u2192 ${sc.to}`);
+      continue;
+    }
+    const proxied = lines.filter((l) => l.basis === "proxy").map((l) => `${l.symbol} \u2192 ${l.proxy}`);
+    const k = f3.derive(
+      section,
+      `${P}.${sc.id}.impact`,
+      `portfolio move if the ${sc.label} replayed on today's weights`,
+      pct7(rp.portfolio),
+      "%",
+      from,
+      `\u03A3 weight\u1D62 \xD7 move\u1D62; cash 0 %; moves in each series' currency (currency moves not included)${proxied.length ? `; proxies: ${proxied.join(", ")}` : ""}`
+    );
+    if (k)
+      f3.derive(
+        section,
+        `${P}.${sc.id}.loss`,
+        `portfolio gain/loss in ${m.base} in the ${sc.label} replay`,
+        money2(rp.portfolio * m.totalBase),
+        m.base,
+        [k, m.keys.total],
+        "move \xD7 portfolio total"
+      );
+    if (rp.uncovered > 0)
+      f3.note(`${sc.label}: ${(rp.uncovered * 100).toFixed(2)} % of the portfolio has neither its own prices nor a proxy for the window and is left at 0 %`);
+    if (proxied.length) f3.note(`${sc.label}: proxies used \u2014 ${proxied.join(", ")}`);
+    result.scenarios.push({ id: sc.id, label: sc.label, from: sc.from, to: sc.to, impactPct: rp.portfolio * 100, coveredPct: rp.covered * 100, lines });
+  }
+  const cashLines = m.cash.filter((c) => c.amountBase !== void 0 && c.currency !== m.base && m.totalBase > 0).map((c) => ({ symbol: `cash:${c.account}:${c.currency}`, weight: c.amountBase / m.totalBase, assetClass: "cash", currency: c.currency }));
+  for (const s of parametricShocks([
+    ...valued(m).map((h) => ({ symbol: h.symbol, weight: h.weightPct / 100, assetClass: h.assetClass, currency: h.currency, name: h.instrument?.name })),
+    ...cashLines
+  ])) {
+    const hit = valued(m).filter((h) => s.hit.includes(h.symbol));
+    const hitCash = cashLines.some((c) => s.hit.includes(c.symbol));
+    if (!hit.length && !hitCash) {
+      f3.note(`shock "${s.label}": no holding concerned`);
+      result.shocks.push({ id: s.id, label: s.label, impactPct: 0 });
+      continue;
+    }
+    const k = f3.derive(
+      "parametric shocks",
+      `${P}.shock.${s.id}`,
+      `portfolio move under the shock: ${s.label}`,
+      pct7(s.impact),
+      "%",
+      [...hit.map((h) => h.keys.weight), ...hitCash ? [m.keys.cash, m.keys.total] : []],
+      `${s.formula} (lines: ${s.hit.join(", ")})`
+    );
+    if (k)
+      f3.derive(
+        "parametric shocks",
+        `${P}.shock.${s.id}.loss`,
+        `portfolio loss in ${m.base} under the shock: ${s.label}`,
+        money2(s.impact * m.totalBase),
+        m.base,
+        [k, m.keys.total],
+        "move \xD7 portfolio total"
+      );
+    result.shocks.push({ id: s.id, label: s.label, impactPct: s.impact * 100 });
+  }
+  if (valued(m).some((h) => looksLikeBondFund(h.instrument?.name)))
+    f3.note("bond funds are read from their names; durations are assumed (2 for 1\u20133-year funds, 6 otherwise), not read from the fund");
+  f3.note("historical windows use each holding's own prices when it was listed then (Yahoo when the primary source keeps less history), else the stated proxy");
+  return result;
+}
+
 // src/trading/prediction.ts
 function parsePredictionSymbol(symbol) {
   const m = /^(KALSHI|POLYMARKET|MANIFOLD):([A-Za-z0-9._-]+):(YES|NO)$/i.exec(symbol.trim());
@@ -37400,6 +38229,15 @@ function pendingBuys(tickets, book2, ticketId) {
     (t) => t.id !== ticketId && t.order.side === "buy" && bookOf(t.order.venue) === book2 && (t.status === "working" || t.status === "checked" || t.status === "submitted" && t.live?.env !== "test")
   );
 }
+var tradingviewSector = async (symbol, instrument) => {
+  const ticker = tvTicker({ symbol, instrument });
+  if (!ticker) return void 0;
+  const label2 = await cachedJson(`gate:sector:${ticker}`, TTL.reference, async () => {
+    const ds = await tradingviewSnapshot(ticker, { columns: ["sector"] });
+    return knownSector(ds.points.find((p) => p.key.endsWith(".tv.sector"))?.value);
+  });
+  return label2;
+};
 async function gateContextFor(order, opts = {}) {
   const now = opts.now ?? clockNow();
   const bookName = opts.book ?? (order.venue === "paper" ? "paper" : "real");
@@ -37415,6 +38253,7 @@ async function gateContextFor(order, opts = {}) {
   const notes = [];
   const prices = { [order.symbol]: quote2.price };
   const kinds = { [order.symbol]: resolved?.instrument.market ?? "prediction" };
+  const instruments2 = resolved ? { [order.symbol]: resolved.instrument } : {};
   await mapLimit(symbols, 4, async (s) => {
     try {
       if (parsePredictionSymbol(s)) {
@@ -37425,6 +38264,7 @@ async function gateContextFor(order, opts = {}) {
       const r3 = await resolveSymbol(s);
       prices[s] = (await getQuote(r3, now)).price;
       kinds[s] = r3.instrument.market;
+      instruments2[s] = r3.instrument;
     } catch (e) {
       notes.push(`could not price ${s}: ${e.message}`);
     }
@@ -37446,6 +38286,25 @@ async function gateContextFor(order, opts = {}) {
   const ordersToday = readAudit().filter(
     (e) => e.at.startsWith(today) && e.event === "ticket" && (e.to === "filled" || e.to === "submitted" || e.to === "working")
   ).length;
+  let sector = order.sector;
+  let sectorValueBase;
+  if (order.assetKind === "equity" && order.side === "buy") {
+    const sectorOf2 = opts.sectorOf ?? tradingviewSector;
+    const ask = async (s) => {
+      const i = instruments2[s] ?? await resolveSymbol(s).then((r3) => r3.instrument);
+      return i?.kind === "equity" ? sectorOf2(s, i) : void 0;
+    };
+    sector ??= await ask(order.symbol).catch(() => void 0);
+    if (!sector) notes.push(`${order.symbol}: no sector found \u2014 the sector limit (${profile.limits.maxSectorPct} %) is not checked for this order`);
+    else {
+      const others = [.../* @__PURE__ */ new Set([...held.map((p) => p.symbol), ...Object.keys(pendingBuysBase)])].filter((s) => s !== order.symbol && kinds[s] !== "crypto");
+      const sectors = await mapLimit(others, 4, (s) => ask(s).catch(() => void 0));
+      const unknown2 = others.filter((_, i) => !sectors[i]);
+      const same = /* @__PURE__ */ new Set([order.symbol, ...others.filter((_, i) => sectors[i] === sector)]);
+      sectorValueBase = valued2.positions.filter((v) => same.has(v.symbol)).reduce((t, v) => t + (v.valueBase ?? 0), 0) + Object.entries(pendingBuysBase).filter(([s]) => same.has(s) && s !== order.symbol).reduce((t, [, v]) => t + v, 0);
+      if (unknown2.length) notes.push(`sector unknown for ${unknown2.join(", ")}: not counted in ${sector}`);
+    }
+  }
   const eod = quote2.provenance.delay === "eod" || /^\d{4}-\d{2}-\d{2}$/.test(quote2.at);
   const ctx = {
     profile,
@@ -37454,6 +38313,8 @@ async function gateContextFor(order, opts = {}) {
     fxToBase: rate2,
     positionValueBase: valued2.positions.filter((v) => v.symbol === order.symbol).reduce((s, v) => s + (v.valueBase ?? 0), 0),
     heldQuantity: held.find((p) => p.symbol === order.symbol && p.account === order.account)?.quantity ?? 0,
+    ...sector ? { sector } : {},
+    ...sectorValueBase !== void 0 ? { sectorValueBase } : {},
     cryptoValueBase: valued2.positions.filter((v) => kinds[v.symbol] === "crypto").reduce((s, v) => s + (v.valueBase ?? 0), 0),
     openSymbols: [.../* @__PURE__ */ new Set([...held.map((p) => p.symbol), ...Object.keys(pendingBuysBase)])],
     pendingBuysBase,
@@ -40288,7 +41149,7 @@ async function bulkKlines(req) {
 
 // src/backtest/data.ts
 var INTERVAL_MS = { "15m": 9e5, "1h": 36e5, "4h": 144e5, "1d": 864e5, "1w": 6048e5 };
-var DAY6 = 864e5;
+var DAY9 = 864e5;
 var isoDay8 = (d) => d.toISOString().slice(0, 10);
 async function loadBars(raw, req) {
   const resolved = await resolveSymbol(raw);
@@ -40321,7 +41182,7 @@ async function loadBars(raw, req) {
     return { resolved, series: await getHistory(resolved, req) };
   }
   const series = await getHistory(resolved, req);
-  const wanted = isoDay8(new Date(req.from.getTime() + 7 * DAY6));
+  const wanted = isoDay8(new Date(req.from.getTime() + 7 * DAY9));
   if (inst.market === "euronext" && series.bars[0] && series.bars[0].date > wanted) {
     try {
       const y = await resolveYahoo(inst.symbol);
@@ -41180,25 +42041,25 @@ var PointList2 = class {
     this.points.push({ key: `${this.prefix}.${key}`, label: label2, value: typeof value2 === "number" ? Number(value2.toPrecision(10)) : value2, unit, formula });
   }
 };
-var pct7 = (x) => x * 100;
+var pct8 = (x) => x * 100;
 var costText = (c) => `maker ${c.makerPct} %, taker ${c.takerPct} %, slippage ${c.slippagePct} % per side`;
 var FILLS = "signals on closed bars, filled at the next open; stops gap to the open; stop before target inside a bar";
 function provenanceOf(m) {
   return { ...m.series.provenance, asOf: m.bars[m.bars.length - 1].date };
 }
 function performancePoints(P, s, label2, ccy, basis) {
-  P.add("cagr", `${label2} CAGR`, pct7(s.cagr), "%", `(final / initial)^(1 / years) \u2212 1 of the ${basis}`);
-  P.add("totalReturn", `${label2} total return`, pct7(s.totalReturn), "%", `final equity / initial \u2212 1 (${basis})`);
+  P.add("cagr", `${label2} CAGR`, pct8(s.cagr), "%", `(final / initial)^(1 / years) \u2212 1 of the ${basis}`);
+  P.add("totalReturn", `${label2} total return`, pct8(s.totalReturn), "%", `final equity / initial \u2212 1 (${basis})`);
   P.add("finalEquity", `${label2} final equity`, s.finalEquity, ccy, `mark-to-market equity at the last close (${basis})`);
-  P.add("volatility", `${label2} annualised volatility`, pct7(s.volatility), "%", "stdev of per-bar returns \xD7 \u221A(periods per year)");
+  P.add("volatility", `${label2} annualised volatility`, pct8(s.volatility), "%", "stdev of per-bar returns \xD7 \u221A(periods per year)");
   P.add("sharpe", `${label2} Sharpe ratio`, s.sharpe, "ratio", "mean / stdev of per-bar returns \xD7 \u221A(periods per year), risk-free 0");
   P.add("sortino", `${label2} Sortino ratio`, s.sortino, "ratio", "mean / downside deviation \xD7 \u221A(periods per year), target 0");
-  P.add("maxDrawdown", `${label2} maximum drawdown`, pct7(s.maxDrawdown), "%", "worst peak-to-trough of the equity curve");
+  P.add("maxDrawdown", `${label2} maximum drawdown`, pct8(s.maxDrawdown), "%", "worst peak-to-trough of the equity curve");
   P.add("calmar", `${label2} Calmar ratio`, s.calmar, "ratio", "CAGR / |maximum drawdown|");
   P.add("ulcer", `${label2} Ulcer index`, s.ulcer, "index", "root mean square of percentage drawdowns (Martin)");
   P.add("omega", `${label2} Omega ratio`, s.omega, "ratio", "sum of per-bar gains over sum of per-bar losses, threshold 0");
-  P.add("var95", `${label2} 1-bar historical VaR 95 %`, pct7(s.var95), "%", "\u22125th percentile of per-bar returns");
-  P.add("cvar95", `${label2} 1-bar expected shortfall 95 %`, pct7(s.cvar95), "%", "\u2212mean of per-bar returns at or below the 5th percentile");
+  P.add("var95", `${label2} 1-bar historical VaR 95 %`, pct8(s.var95), "%", "\u22125th percentile of per-bar returns");
+  P.add("cvar95", `${label2} 1-bar expected shortfall 95 %`, pct8(s.cvar95), "%", "\u2212mean of per-bar returns at or below the 5th percentile");
   P.add(
     "psr",
     `${label2} probabilistic Sharpe ratio`,
@@ -41263,21 +42124,21 @@ function strategyBacktest(m, def2, overrides2 = {}) {
   P.add(
     "bh.totalReturn",
     `Buy-and-hold ${m.symbol} total return`,
-    pct7(buyHold.totalReturn),
+    pct8(buyHold.totalReturn),
     "%",
     "bought at the first open, sold at the last close, taker fee and slippage both ways"
   );
-  P.add("bh.cagr", `Buy-and-hold ${m.symbol} CAGR`, pct7(buyHold.summary.cagr), "%", "(final / initial)^(1 / years) \u2212 1");
+  P.add("bh.cagr", `Buy-and-hold ${m.symbol} CAGR`, pct8(buyHold.summary.cagr), "%", "(final / initial)^(1 / years) \u2212 1");
   P.add("bh.sharpe", `Buy-and-hold ${m.symbol} Sharpe ratio`, buyHold.summary.sharpe, "ratio", "annualised per-bar Sharpe, risk-free 0");
-  P.add("bh.maxDrawdown", `Buy-and-hold ${m.symbol} maximum drawdown`, pct7(buyHold.summary.maxDrawdown), "%", "worst peak-to-trough");
+  P.add("bh.maxDrawdown", `Buy-and-hold ${m.symbol} maximum drawdown`, pct8(buyHold.summary.maxDrawdown), "%", "worst peak-to-trough");
   P.add(
     "excessReturn",
     `${name} total return minus buy-and-hold`,
-    pct7(summary.totalReturn - buyHold.totalReturn),
+    pct8(summary.totalReturn - buyHold.totalReturn),
     "pp",
     "strategy total return \u2212 buy-and-hold total return"
   );
-  P.add("x2.totalReturn", `${name} total return at \xD72 costs`, pct7(stressed.summary.totalReturn), "%", `same signals, ${costText(sCosts)}`);
+  P.add("x2.totalReturn", `${name} total return at \xD72 costs`, pct8(stressed.summary.totalReturn), "%", `same signals, ${costText(sCosts)}`);
   P.add("x2.netProfit", `${name} net profit at \xD72 costs`, stressed.stats.netProfit, ccy, `\u03A3 trade P&L, ${costText(sCosts)}`);
   P.add("x2.sharpe", `${name} Sharpe at \xD72 costs`, stressed.summary.sharpe, "ratio", "annualised per-bar Sharpe with doubled fees and slippage");
   const datasets = [
@@ -41301,7 +42162,7 @@ function strategyBacktest(m, def2, overrides2 = {}) {
     B.add(
       "benchTotalReturn",
       `${m.benchmark.symbol} total return over the window`,
-      benchTotalReturn === void 0 ? void 0 : pct7(benchTotalReturn),
+      benchTotalReturn === void 0 ? void 0 : pct8(benchTotalReturn),
       "%",
       "last close / first close \u2212 1"
     );
@@ -41455,8 +42316,8 @@ function walkForwardReport(m, def2, dims, opts) {
     "%",
     "OOS Sharpe / mean IS Sharpe"
   );
-  P.add("oosCagr", `${def2.name}: out-of-sample CAGR`, pct7(summary.cagr), "%", "CAGR of the stitched out-of-sample equity");
-  P.add("oosMaxDrawdown", `${def2.name}: out-of-sample maximum drawdown`, pct7(summary.maxDrawdown), "%", "worst peak-to-trough of the stitched OOS equity");
+  P.add("oosCagr", `${def2.name}: out-of-sample CAGR`, pct8(summary.cagr), "%", "CAGR of the stitched out-of-sample equity");
+  P.add("oosMaxDrawdown", `${def2.name}: out-of-sample maximum drawdown`, pct8(summary.maxDrawdown), "%", "worst peak-to-trough of the stitched OOS equity");
   P.add("oosTrades", `${def2.name}: out-of-sample trades`, wf.oosTrades.length, "count", "trades opened and closed inside the test windows");
   return {
     wf,
@@ -41619,12 +42480,12 @@ async function portfolioRun(kind, symbols, opts) {
   P.add("rebalances", `${kind}: rebalances`, result.rebalances.length, "count", "rebalance dates where weights were traded");
   P.add("turnover", `${kind}: turnover`, result.turnoverPct, "%", "\u03A3 traded value / average equity");
   P.add("costs", `${kind}: trading costs paid`, result.costs, ok[0].instrument.currency, "\u03A3 traded value \xD7 (taker fee + slippage)");
-  P.add("x2.cagr", `${kind}: CAGR at \xD72 costs`, pct7(stressedSummary.cagr), "%", "same rule with doubled fees and slippage");
+  P.add("x2.cagr", `${kind}: CAGR at \xD72 costs`, pct8(stressedSummary.cagr), "%", "same rule with doubled fees and slippage");
   result.finalWeights.forEach(
     (w, i) => P.add(
       `weight.${ok[i].instrument.symbol}`,
       `${kind}: final weight of ${ok[i].instrument.symbol}`,
-      pct7(w),
+      pct8(w),
       "%",
       "position value / equity at the last close"
     )
@@ -45391,135 +46252,6 @@ function incomeFigures(units, rate2, averageCost, price) {
   };
 }
 
-// src/analyze/portfolio/risk.ts
-function concentration(weights) {
-  const total = weights.reduce((s, w2) => s + w2, 0);
-  if (!(total > 0)) return { hhi: Number.NaN, effectiveN: Number.NaN, top5: Number.NaN };
-  const w = weights.map((x) => x / total);
-  const hhi = w.reduce((s, x) => s + x * x, 0);
-  const top5 = [...w].sort((a, b) => b - a).slice(0, 5).reduce((s, x) => s + x, 0);
-  return { hhi, effectiveN: 1 / hhi, top5 };
-}
-function portfolioReturns(weights, returns) {
-  const n2 = Math.min(...returns.map((r3) => r3.length));
-  if (!Number.isFinite(n2)) return [];
-  const out = [];
-  for (let t = 0; t < n2; t++) out.push(returns.reduce((s, r3, i) => s + weights[i] * r3[t], 0));
-  return out;
-}
-function diversificationRatio(weights, returns) {
-  const p = portfolioReturns(weights, returns);
-  const sp = stdev(p);
-  const num16 = returns.reduce((s, r3, i) => s + weights[i] * stdev(r3), 0);
-  return sp > 0 ? num16 / sp : Number.NaN;
-}
-function pairwiseCorrelations(names2, returns) {
-  const m = correlationMatrix(returns);
-  const out = [];
-  for (let i = 0; i < names2.length; i++) for (let j = i + 1; j < names2.length; j++) out.push({ a: names2[i], b: names2[j], rho: m[i][j] });
-  return out;
-}
-function limitChecks(limits, exposure) {
-  const out = [];
-  for (const p of exposure.positions)
-    out.push({
-      kind: "position",
-      subject: p.label,
-      valuePct: p.weight,
-      limitPct: limits.maxPositionPct,
-      breach: p.weight > limits.maxPositionPct + 1e-9,
-      reason: `${p.label} is ${p.weight.toFixed(2)} % of the portfolio; the profile caps one position at ${limits.maxPositionPct} %`
-    });
-  for (const s of exposure.sectors)
-    out.push({
-      kind: "sector",
-      subject: s.label,
-      valuePct: s.weight,
-      limitPct: limits.maxSectorPct,
-      breach: s.weight > limits.maxSectorPct + 1e-9,
-      reason: `sector ${s.label} is ${s.weight.toFixed(2)} %; the profile caps one sector at ${limits.maxSectorPct} %`
-    });
-  out.push({
-    kind: "crypto",
-    subject: "crypto",
-    valuePct: exposure.cryptoPct,
-    limitPct: limits.maxCryptoPct,
-    breach: exposure.cryptoPct > limits.maxCryptoPct + 1e-9,
-    reason: `crypto is ${exposure.cryptoPct.toFixed(2)} %; the profile caps crypto at ${limits.maxCryptoPct} %`
-  });
-  out.push({
-    kind: "cash",
-    subject: "cash",
-    valuePct: exposure.cashPct,
-    limitPct: limits.cashBufferPct,
-    breach: exposure.cashPct < limits.cashBufferPct - 1e-9,
-    reason: `cash is ${exposure.cashPct.toFixed(2)} %; the profile keeps at least ${limits.cashBufferPct} % aside`
-  });
-  return out;
-}
-var TV_SECTORS2 = [
-  "Commercial Services",
-  "Communications",
-  "Consumer Durables",
-  "Consumer Non-Durables",
-  "Consumer Services",
-  "Distribution Services",
-  "Electronic Technology",
-  "Energy Minerals",
-  "Finance",
-  "Government",
-  "Health Services",
-  "Health Technology",
-  "Industrial Services",
-  "Miscellaneous",
-  "Non-Energy Minerals",
-  "Process Industries",
-  "Producer Manufacturing",
-  "Retail Trade",
-  "Technology Services",
-  "Transportation",
-  "Utilities"
-];
-function knownSector(raw) {
-  return typeof raw === "string" ? TV_SECTORS2.find((s) => s.toLowerCase() === raw.trim().toLowerCase()) : void 0;
-}
-var keySlug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-var EU_EEA = /* @__PURE__ */ new Set([
-  "AT",
-  "BE",
-  "BG",
-  "HR",
-  "CY",
-  "CZ",
-  "DK",
-  "EE",
-  "FI",
-  "FR",
-  "DE",
-  "GR",
-  "HU",
-  "IE",
-  "IT",
-  "LV",
-  "LT",
-  "LU",
-  "MT",
-  "NL",
-  "PL",
-  "PT",
-  "RO",
-  "SK",
-  "SI",
-  "ES",
-  "SE",
-  "IS",
-  "LI",
-  "NO"
-]);
-function isinCountry(isin) {
-  return isin && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) ? isin.slice(0, 2) : void 0;
-}
-
 // src/analyze/portfolio/location.ts
 var PEA_CEILING = 15e4;
 var SP_PEA = { label: "service-public.fr \u2014 Plan d'\xE9pargne en actions (PEA)", url: "https://www.service-public.fr/particuliers/vosdroits/F2385" };
@@ -45679,9 +46411,9 @@ function sellTaxNote(envelope) {
 }
 
 // src/analyze/portfolio/run-book.ts
-var DAY7 = 864e5;
-var pct8 = (x) => Number((x * 100).toFixed(6));
-var money2 = (x) => Number(x.toFixed(2));
+var DAY10 = 864e5;
+var pct9 = (x) => Number((x * 100).toFixed(6));
+var money3 = (x) => Number(x.toFixed(2));
 async function rebalanceAnalysis(m, f3, o) {
   const P = `PORTFOLIO.${m.bookName}.rebalance`;
   const band = o.bandPct ?? 5;
@@ -45741,7 +46473,7 @@ async function rebalanceAnalysis(m, f3, o) {
   if ("CASH" in targets) holdings.CASH = m.cashBase;
   else if (m.cashBase > 0)
     f3.note(
-      `the ${money2(m.cashBase)} ${m.base} of cash is not in the targets, so it is left aside \u2014 add "CASH" to the targets, or pass --contribution to invest some`
+      `the ${money3(m.cashBase)} ${m.base} of cash is not in the targets, so it is left aside \u2014 add "CASH" to the targets, or pass --contribution to invest some`
     );
   const notTargeted = all.filter((h) => !(h.symbol in targets) && h.valueBase);
   if (notTargeted.length) f3.note(`not in the targets, so their target is 0 % (sold if out of band): ${notTargeted.map((h) => h.symbol).join(", ")}`);
@@ -45764,7 +46496,7 @@ async function rebalanceAnalysis(m, f3, o) {
       "band rule",
       `${P}.${t.asset}.amount`,
       t.asset === "CASH" ? `cash ${t.amount >= 0 ? "set aside" : "spent"} to reach the targets (${m.base})` : `${t.asset} amount to ${t.amount >= 0 ? "buy" : "sell"} (${m.base})`,
-      money2(t.amount),
+      money3(t.amount),
       m.base,
       [...base2, `${P}.${t.asset}.drift`],
       `back to target when |drift| > ${band} points or |drift| \xF7 target > ${rel * 100} %; new money to the underweights first`
@@ -45787,7 +46519,7 @@ async function rebalanceAnalysis(m, f3, o) {
       averageCost: main2?.averageCost
     });
     if (!order) {
-      f3.note(`${t.asset}: ${money2(t.amount)} ${m.base} is less than one share \u2014 no order`);
+      f3.note(`${t.asset}: ${money3(t.amount)} ${m.base} is less than one share \u2014 no order`);
       continue;
     }
     const from = [k, h.keys.price, ...m.keys.fx[h.currency] ? [m.keys.fx[h.currency]] : []];
@@ -45806,7 +46538,7 @@ async function rebalanceAnalysis(m, f3, o) {
       sec,
       `${P}.${h.symbol}.notional`,
       `${h.symbol} order notional (${m.base})`,
-      money2(order.notionalBase),
+      money3(order.notionalBase),
       m.base,
       [`${P}.${h.symbol}.units`, ...from],
       "units \xD7 price \xD7 rate"
@@ -45815,7 +46547,7 @@ async function rebalanceAnalysis(m, f3, o) {
       sec,
       `${P}.${h.symbol}.fee`,
       `${h.symbol} estimated fee (${m.base})`,
-      money2(order.feeBase),
+      money3(order.feeBase),
       m.base,
       [`${P}.${h.symbol}.units`, ...from],
       `paper fee model for the ${h.instrument?.market ?? "?"} market (src/trading/paper.ts feeFor) \xD7 rate`
@@ -45829,7 +46561,7 @@ async function rebalanceAnalysis(m, f3, o) {
           sec,
           `${P}.${h.symbol}.realisedPmp`,
           `${h.symbol} gain realised by the sell, average-cost rule (${h.currency})`,
-          money2(order.realisedPmp),
+          money3(order.realisedPmp),
           h.currency,
           [`${P}.${h.symbol}.units`, h.keys.price, `PORTFOLIO.${m.bookName}.${h.symbol}.averageCost`],
           "units \xD7 price \u2212 fee \u2212 units \xD7 PMP"
@@ -45877,7 +46609,7 @@ async function locationAnalysis(m, f3) {
   const depositPoints = [...peaAccounts].map((a) => ({
     key: `PORTFOLIO.${m.bookName}.${a}.deposits`,
     label: `deposits into ${a} (PEA)`,
-    value: money2(peaDeposits(m.txs, /* @__PURE__ */ new Set([a]))),
+    value: money3(peaDeposits(m.txs, /* @__PURE__ */ new Set([a]))),
     unit: "EUR"
   }));
   let room = 0;
@@ -45896,7 +46628,7 @@ async function locationAnalysis(m, f3) {
       "PEA",
       `${P}.pea.room`,
       "room left under the PEA deposit ceiling",
-      money2(room),
+      money3(room),
       "EUR",
       depositPoints.map((p) => p.key),
       `${PEA_CEILING} \u20AC ceiling \u2212 \u03A3 deposits into the PEA (withdrawals do not give room back)`
@@ -46049,15 +46781,15 @@ async function incomeAnalysis(m, f3) {
     {
       key: `PORTFOLIO.${m.bookName}.${sym3}.dividends.total`,
       label: `${sym3} dividends recorded in the ledger (all time)`,
-      value: money2(e.total),
+      value: money3(e.total),
       unit: e.currency
     },
     {
       key: `PORTFOLIO.${m.bookName}.${sym3}.dividends.last12m`,
       label: `${sym3} dividends recorded in the last 12 months`,
-      value: money2(e.last12m),
+      value: money3(e.last12m),
       unit: e.currency,
-      formula: `${e.count12m} payments with a date after ${new Date(Date.parse(`${day4}T00:00:00Z`) - 365 * DAY7).toISOString().slice(0, 10)}`
+      formula: `${e.count12m} payments with a date after ${new Date(Date.parse(`${day4}T00:00:00Z`) - 365 * DAY10).toISOString().slice(0, 10)}`
     }
   ]);
   if (ledPoints.length)
@@ -46078,7 +46810,7 @@ async function incomeAnalysis(m, f3) {
         "received (ledger)",
         `${P}.${sym3}.received`,
         `${sym3} dividends received, in ${m.base} at today's rate`,
-        money2(e.total * rate2),
+        money3(e.total * rate2),
         m.base,
         [k, ...m.keys.fx[e.currency] ? [m.keys.fx[e.currency]] : []],
         "\u03A3 ledger dividends \xD7 today's rate"
@@ -46098,7 +46830,7 @@ async function incomeAnalysis(m, f3) {
         notes.push(e.message);
       }
     try {
-      const y = await yahooChart(await resolveYahoo(h.instrument.symbol), new Date(m.now.getTime() - 372 * DAY7), m.now);
+      const y = await yahooChart(await resolveYahoo(h.instrument.symbol), new Date(m.now.getTime() - 372 * DAY10), m.now);
       const divs = y.chart.dividends;
       const t = trailingPerShare(divs, day4);
       if (!y.actions.points.some((p) => p.key.includes(".action.dividend.")))
@@ -46128,7 +46860,7 @@ async function incomeAnalysis(m, f3) {
           "forward 12 months (estimate)",
           `${P}.${h.symbol}.forward`,
           `${h.symbol} forward 12-month income estimate (${m.base}) \u2014 last 12 months' ledger dividends`,
-          money2(v),
+          money3(v),
           m.base,
           [`PORTFOLIO.${m.bookName}.${h.symbol}.dividends.last12m`],
           "the ledger's last 12 months of dividends repeated"
@@ -46161,7 +46893,7 @@ async function incomeAnalysis(m, f3) {
       `${h.symbol}`,
       `${P}.${h.symbol}.forward`,
       `${h.symbol} forward 12-month income estimate (${m.base})`,
-      money2(fwdBase),
+      money3(fwdBase),
       m.base,
       [rateKey, h.keys.quantity, ...h.keys.fx ? [h.keys.fx] : []],
       "units \xD7 per-share rate \xD7 rate to base"
@@ -46171,7 +46903,7 @@ async function incomeAnalysis(m, f3) {
       `${h.symbol}`,
       `${P}.${h.symbol}.yieldOnCost`,
       `${h.symbol} yield on cost`,
-      pct8(fig.yieldOnCost),
+      pct9(fig.yieldOnCost),
       "%",
       [rateKey, `PORTFOLIO.${m.bookName}.${h.symbol}.averageCost`],
       "per-share rate \xF7 average cost (PMP) \xD7 100"
@@ -46180,7 +46912,7 @@ async function incomeAnalysis(m, f3) {
       `${h.symbol}`,
       `${P}.${h.symbol}.currentYield`,
       `${h.symbol} current yield`,
-      pct8(fig.currentYield),
+      pct9(fig.currentYield),
       "%",
       [rateKey, h.keys.price],
       "per-share rate \xF7 latest price \xD7 100"
@@ -46194,7 +46926,7 @@ async function incomeAnalysis(m, f3) {
       "portfolio",
       `${P}.forward`,
       `forward 12-month income estimate (${m.base})`,
-      money2(forwardTotal),
+      money3(forwardTotal),
       m.base,
       forwardKeys,
       "\u03A3 of the holdings' estimates"
@@ -46204,7 +46936,7 @@ async function incomeAnalysis(m, f3) {
         "portfolio",
         `${P}.yield`,
         "forward income \xF7 portfolio total",
-        pct8(forwardTotal / m.totalBase),
+        pct9(forwardTotal / m.totalBase),
         "%",
         [kt, m.keys.total],
         "forward income \xF7 total \xD7 100 (cash included)"
@@ -46214,7 +46946,7 @@ async function incomeAnalysis(m, f3) {
           "portfolio",
           `${P}.yieldOnCost`,
           "forward income \xF7 cost of the lines with an estimate",
-          pct8(forwardTotal / costTotal),
+          pct9(forwardTotal / costTotal),
           "%",
           [kt, ...hs.map((h) => `PORTFOLIO.${m.bookName}.${h.symbol}.averageCost`)],
           "forward income \xF7 \u03A3 units \xD7 PMP \xD7 today's rate \xD7 100"
@@ -46225,705 +46957,6 @@ async function incomeAnalysis(m, f3) {
     "forward figures repeat the last year's or the indicated rate: dividends get cut, raised and skipped; amounts before withholding and tax; accumulating funds pay none"
   );
   return { holdings: out, forwardBase: forwardTotal };
-}
-
-// src/analyze/portfolio/history.ts
-var DAY8 = 864e5;
-var DEPTH_DAYS = { euronext: 725, us: 3640, europe: 1e5, crypto: 1e5 };
-async function dailyHistory(r3, from, to, now) {
-  const age = (now.getTime() - from.getTime()) / DAY8;
-  const ended = (now.getTime() - to.getTime()) / DAY8;
-  const market = r3.instrument.market;
-  const tooOld = age > (DEPTH_DAYS[market] ?? 1e5);
-  const pastWindow = (market === "us" || market === "euronext") && ended > 30;
-  if (tooOld || pastWindow) {
-    const y = await yahooHistory(await resolveYahoo(r3.instrument.symbol), "1d", from, to);
-    const src2 = market === "us" ? "Nasdaq" : "Euronext";
-    return {
-      ...y,
-      notes: [
-        ...y.notes,
-        `${r3.instrument.symbol}: Yahoo used \u2014 ${tooOld ? `the ${src2} history does not reach back to ${iso4(from)}` : `${src2} serves windows ending today, not one ending ${iso4(to)}`}`
-      ]
-    };
-  }
-  return getHistory(r3, { from, to, interval: "1d" });
-}
-var iso4 = (d) => d.toISOString().slice(0, 10);
-var closesOf2 = (s) => s.bars.map((b) => ({ date: b.date.slice(0, 10), close: b.close })).filter((c) => c.close > 0);
-async function ecbDailyRates(currencies, n2) {
-  const want = [...new Set(currencies.map((c) => c === "USDT" || c === "USDC" || c === "FDUSD" ? "USD" : c).filter((c) => c !== "EUR"))];
-  const rates = /* @__PURE__ */ new Map();
-  if (!want.length) return { rates };
-  const { series, url, fetchedAt } = await fetchEcb("EXR", `D.${want.join("+")}.EUR.SP00.A`, n2);
-  const points = [];
-  for (const s of series) {
-    const ccy = s.key.split(".")[2] ?? "";
-    const m = /* @__PURE__ */ new Map();
-    for (const o of s.obs) if (o.value > 0) m.set(o.date, 1 / o.value);
-    rates.set(ccy, m);
-    const first = s.obs[0];
-    const last2 = s.obs[s.obs.length - 1];
-    if (first && last2)
-      points.push({
-        key: `EUR.fxhist.${ccy}.days`,
-        label: `ECB daily reference rates read, ${ccy} per EUR (${first.date} to ${last2.date})`,
-        value: s.obs.length,
-        unit: "count",
-        asOf: last2.date,
-        formula: `daily observations from ${first.date} (${first.value}) to ${last2.date} (${last2.value})`
-      });
-  }
-  for (const c of ["USDT", "USDC", "FDUSD"]) if (currencies.includes(c) && rates.has("USD")) rates.set(c, rates.get("USD"));
-  return {
-    rates,
-    dataset: {
-      kind: "fx",
-      title: "ECB daily euro reference rates (history)",
-      subject: "EUR",
-      points,
-      provenance: { source: "ecb", url, fetchedAt, delay: "eod", official: true, asOf: points[0]?.asOf },
-      notes: []
-    }
-  };
-}
-function toBase(closes, rates) {
-  if (!rates) return closes;
-  const dates = [...rates.keys()].sort();
-  const out = [];
-  let j = -1;
-  for (const c of closes) {
-    while (j + 1 < dates.length && dates[j + 1] <= c.date) j++;
-    if (j < 0) continue;
-    out.push({ date: c.date, close: c.close * rates.get(dates[j]) });
-  }
-  return out;
-}
-var isWeekday = (d) => {
-  const w = (/* @__PURE__ */ new Date(`${d}T00:00:00Z`)).getUTCDay();
-  return w !== 0 && w !== 6;
-};
-function alignReturns(series) {
-  if (!series.length || series.some((s) => s.length < 2)) return { dates: [], returns: series.map(() => []) };
-  const start = series.map((s) => s[0].date).sort().at(-1);
-  const end = series.map((s) => s[s.length - 1].date).sort()[0];
-  const all = /* @__PURE__ */ new Set();
-  for (const s of series) for (const c of s) if (c.date >= start && c.date <= end && isWeekday(c.date)) all.add(c.date);
-  const dates = [...all].sort();
-  const levels = series.map((s) => {
-    const byDate = new Map(s.map((c) => [c.date, c.close]));
-    let last2;
-    for (const c of s) if (c.date <= start) last2 = c.close;
-    return dates.map((d) => {
-      const v = byDate.get(d);
-      if (v !== void 0) last2 = v;
-      return last2;
-    });
-  });
-  const returns = levels.map((lv) => lv.slice(1).map((v, i) => v / lv[i] - 1));
-  return { dates: dates.slice(1), returns };
-}
-function windowCloses(closes, from, to, slackDays = 7) {
-  const start = closes.find((c) => c.date >= from);
-  const end = [...closes].reverse().find((c) => c.date <= to);
-  if (!start || !end || end.date <= start.date) return void 0;
-  const gap = (a, b) => Math.abs(Date.parse(a) - Date.parse(b)) / DAY8;
-  if (gap(start.date, from) > slackDays || gap(end.date, to) > slackDays) return void 0;
-  return { start, end };
-}
-
-// src/analyze/portfolio/series.ts
-var DAY9 = 864e5;
-async function baseHistories(items, days, tag, f3, now) {
-  const from = new Date(now.getTime() - days * DAY9);
-  const fetched = await mapLimit(items, 4, async (it) => {
-    try {
-      return { series: await dailyHistory(it.resolved, from, now, now) };
-    } catch (e) {
-      return { error: e.message };
-    }
-  });
-  const got = /* @__PURE__ */ new Map();
-  items.forEach((it, i) => {
-    const r3 = fetched[i];
-    if ("error" in r3) {
-      f3.note(`no ${tag} history for ${it.symbol}: ${r3.error}`);
-      return;
-    }
-    const s = r3.series;
-    const local2 = closesOf2(s);
-    if (local2.length < 2) {
-      f3.note(`no ${tag} history for ${it.symbol}: fewer than two closes in the window`);
-      return;
-    }
-    const first = local2[0];
-    const last2 = local2[local2.length - 1];
-    const key = `${it.symbol}.${tag}.lastClose`;
-    f3.input({
-      kind: "history",
-      title: `${it.symbol} daily closes since ${iso4(from)}`,
-      subject: it.symbol,
-      points: [
-        {
-          key,
-          label: `${it.symbol} last daily close of the window`,
-          value: last2.close,
-          unit: s.instrument.currency,
-          asOf: last2.date,
-          formula: `${local2.length} daily closes from ${first.date} (${first.close}) to ${last2.date}${s.adjusted ? ", split-adjusted" : ""}`
-        }
-      ],
-      provenance: { ...s.provenance, asOf: last2.date },
-      notes: s.notes
-    });
-    if (first.date > iso4(new Date(from.getTime() + 10 * DAY9))) f3.note(`${it.symbol}: history starts ${first.date}, later than the ${iso4(from)} asked for`);
-    got.set(it.symbol, { local: local2, currency: s.instrument.currency, key });
-  });
-  const ccys = [...new Set([...got.values()].map((g) => g.currency))];
-  let rates = /* @__PURE__ */ new Map();
-  let fxKeys = {};
-  if (ccys.some((c) => c !== "EUR")) {
-    try {
-      const r3 = await ecbDailyRates(ccys, Math.ceil(days * 5 / 7) + 15);
-      rates = r3.rates;
-      if (r3.dataset) {
-        f3.input(r3.dataset);
-        fxKeys = Object.fromEntries(r3.dataset.points.map((p) => [p.key.split(".")[2], p.key]));
-      }
-    } catch (e) {
-      f3.note(`ECB daily rates unavailable (${e.message}): non-EUR series stay in their own currency`);
-    }
-  }
-  const out = /* @__PURE__ */ new Map();
-  for (const it of items) {
-    const g = got.get(it.symbol);
-    if (!g) continue;
-    const fxc = g.currency === "USDT" || g.currency === "USDC" || g.currency === "FDUSD" ? "USD" : g.currency;
-    const r3 = g.currency === "EUR" ? void 0 : rates.get(g.currency);
-    if (g.currency !== "EUR" && !r3) f3.note(`${it.symbol}: no daily ${g.currency} rate \u2014 its returns are in ${g.currency}, not EUR`);
-    out.set(it.symbol, { symbol: it.symbol, closes: toBase(g.local, r3), local: g.local, currency: g.currency, key: g.key, fxKey: fxKeys[fxc] });
-  }
-  return out;
-}
-
-// src/analyze/portfolio/stress.ts
-var SCENARIOS = [
-  { id: "gfc", label: "Global financial crisis", from: "2008-09-01", to: "2009-03-09" },
-  { id: "covid", label: "COVID crash", from: "2020-02-19", to: "2020-03-23" },
-  { id: "rates2022", label: "2022 rate shock", from: "2022-01-03", to: "2022-10-12" },
-  { id: "crypto2022", label: "Crypto winter", from: "2021-11-10", to: "2022-11-21" }
-];
-var SHOCKS = {
-  /** Every equity and equity fund falls 20 %. */
-  equities: -0.2,
-  /** Rates up one point: a bond fund loses duration × 1 %. */
-  ratesUpPct: 1,
-  /** The dollar loses 10 % against the euro: USD assets lose 10 % in EUR. */
-  usd: -0.1,
-  /** Crypto halves. */
-  crypto: -0.5
-};
-function assumedDuration(name) {
-  return /\b(0-1|1-3|0-3)(?=\s*(y|yr|yrs|year|years|an|ans)?\b)|\bshort\b|\bcourt\b/i.test(name ?? "") ? 2 : 6;
-}
-var looksLikeBondFund = (name) => /\b(bond|bonds|treasury|treasuries|govt|government|aggregate|obligation|oblig|credit|corporate|t-bill)\b/i.test(name ?? "");
-function replay(lines) {
-  let portfolio = 0;
-  let covered = 0;
-  let uncovered = 0;
-  for (const l of lines) {
-    if (l.move === void 0) uncovered += l.weight;
-    else {
-      portfolio += l.weight * l.move;
-      covered += l.weight;
-    }
-  }
-  return { portfolio, covered, uncovered };
-}
-function parametricShocks(items) {
-  const equity = items.filter((i) => (i.assetClass === "equity" || i.assetClass === "etf" || i.assetClass === "fund") && !looksLikeBondFund(i.name));
-  const bonds = items.filter((i) => (i.assetClass === "etf" || i.assetClass === "fund") && looksLikeBondFund(i.name));
-  const usd = items.filter((i) => i.currency === "USD" || i.currency === "USDT" || i.currency === "USDC");
-  const crypto = items.filter((i) => i.assetClass === "crypto");
-  const sum = (xs, f3) => xs.reduce((s, x) => s + x.weight * f3(x), 0);
-  return [
-    {
-      id: "equities",
-      label: "equities \u221220 %",
-      impact: sum(equity, () => SHOCKS.equities),
-      hit: equity.map((i) => i.symbol),
-      formula: "\u03A3 equity and equity-fund weights \xD7 \u221220 %"
-    },
-    {
-      id: "rates",
-      label: "rates +1 point on bond funds",
-      impact: sum(bonds, (b) => -assumedDuration(b.name) * SHOCKS.ratesUpPct / 100),
-      hit: bonds.map((i) => i.symbol),
-      formula: "\u03A3 bond-fund weights \xD7 \u2212(assumed duration \xD7 1 %); duration 2 for 1\u20133-year funds, 6 otherwise"
-    },
-    {
-      id: "usd",
-      label: "USD \u221210 % vs EUR",
-      impact: sum(usd, () => SHOCKS.usd),
-      hit: usd.map((i) => i.symbol),
-      formula: "\u03A3 weights of USD-priced holdings and USD cash \xD7 \u221210 % (the currency's move, not the asset's)"
-    },
-    { id: "crypto", label: "crypto \u221250 %", impact: sum(crypto, () => SHOCKS.crypto), hit: crypto.map((i) => i.symbol), formula: "\u03A3 crypto weights \xD7 \u221250 %" }
-  ];
-}
-
-// src/analyze/portfolio/run-risk.ts
-var DAY10 = 864e5;
-var pct9 = (x) => Number((x * 100).toFixed(6));
-var money3 = (x) => Number(x.toFixed(2));
-var benchmarkFor = (base2) => base2 === "EUR" ? "CW8.PA" : "SPY";
-function tvTicker(h) {
-  const i = h.instrument;
-  if (!i) return void 0;
-  if (i.market !== "us") return h.symbol;
-  const ex = (i.mic ?? "").toUpperCase();
-  const prefix = ex.includes("NASDAQ") ? "NASDAQ" : ex.includes("NYSE") && !ex.includes("ARCA") && !ex.includes("AMERICAN") ? "NYSE" : ex.includes("ARCA") ? "AMEX" : void 0;
-  return prefix ? `${prefix}:${i.symbol.replace(/\./g, "_")}` : void 0;
-}
-var valued = (m) => m.holdings.filter((h) => h.valueBase !== void 0 && h.keys.weight);
-function groupWeights(f3, m, section, key, what, rows) {
-  const groups = /* @__PURE__ */ new Map();
-  for (const r3 of rows) {
-    const g = groups.get(r3.label) ?? { weight: 0, from: [] };
-    g.weight += r3.weight;
-    g.from.push(...r3.from);
-    groups.set(r3.label, g);
-  }
-  const out = [...groups.entries()].map(([label2, g]) => ({ label: label2, weight: g.weight, from: g.from })).sort((a, b) => b.weight - a.weight);
-  for (const g of out)
-    f3.derive(
-      section,
-      `${key}.${keySlug(g.label)}`,
-      `${what} ${g.label}, % of the portfolio`,
-      Number(g.weight.toFixed(4)),
-      "%",
-      [...g.from, m.keys.total],
-      `\u03A3 weights of the ${what} ${g.label} lines`
-    );
-  return out.map(({ label: label2, weight }) => ({ label: label2, weight }));
-}
-async function riskAnalysis(m, f3, opts = {}) {
-  const P = `PORTFOLIO.${m.bookName}.risk`;
-  const hs = valued(m);
-  const cashW = m.totalBase > 0 ? m.cashBase / m.totalBase * 100 : 0;
-  const byClass = groupWeights(f3, m, "exposure by asset class", `${P}.class`, "asset class", [
-    ...hs.map((h) => ({ label: h.assetClass, weight: h.weightPct, from: [h.keys.weight, `${h.symbol}.instrument.kind`] })),
-    ...m.cashBase ? [{ label: "cash", weight: cashW, from: [m.keys.cash] }] : []
-  ]);
-  const stable = (c) => c === "USDT" || c === "USDC" || c === "FDUSD" ? "USD" : c;
-  const byCurrency = groupWeights(f3, m, "exposure by currency", `${P}.currency`, "currency", [
-    ...hs.map((h) => ({ label: stable(h.currency), weight: h.weightPct, from: [h.keys.weight] })),
-    ...m.cash.filter((c) => c.amountBase !== void 0 && m.totalBase > 0).map((c) => ({ label: stable(c.currency), weight: c.amountBase / m.totalBase * 100, from: [m.keys.cash] }))
-  ]);
-  const foreign = byCurrency.filter((c) => c.label !== m.base).reduce((s, c) => s + c.weight, 0);
-  f3.derive(
-    "exposure by currency",
-    `${P}.fxExposure`,
-    `share of the portfolio not in ${m.base} (currency risk of a ${m.base} investor)`,
-    Number(foreign.toFixed(4)),
-    "%",
-    [...hs.map((h) => h.keys.weight), m.keys.cash],
-    `\u03A3 weights of the lines priced in another currency than ${m.base}; stablecoins count as USD`
-  );
-  if (hs.some((h) => h.currency !== stable(h.currency))) f3.note("stablecoin-priced lines (USDT/USDC) are counted as US-dollar exposure");
-  const allEquities = hs.filter((h) => h.assetClass === "equity");
-  const equities = allEquities.slice(0, 30);
-  const sectorRows = [];
-  const countryRows = [];
-  const snapshots = await mapLimit(equities, 4, async (h) => {
-    const ticker = tvTicker(h);
-    if (!ticker) return { error: "no TradingView ticker for its listing" };
-    try {
-      return { ds: await tradingviewSnapshot(ticker, { columns: ["sector", "isin", "country"] }) };
-    } catch (e) {
-      return { error: e.message };
-    }
-  });
-  equities.forEach((h, i) => {
-    const snap = snapshots[i];
-    let sector;
-    let sectorKey;
-    let isin = h.isin;
-    let isinKey = h.isin ? `${h.symbol}.instrument.isin` : void 0;
-    if (snap.ds) {
-      const ds = snap.ds;
-      f3.input({ ...ds, title: `${h.symbol} sector and ISIN (TradingView snapshot)`, subject: h.symbol });
-      const sp = ds.points.find((p) => p.key.endsWith(".tv.sector"));
-      sector = knownSector(sp?.value);
-      sectorKey = sp?.key;
-      const ip = ds.points.find((p) => p.key.endsWith(".tv.isin"));
-      if (!isin && typeof ip?.value === "string" && isinCountry(ip.value)) {
-        isin = ip.value;
-        isinKey = ip.key;
-      }
-      if (sp && !sector) f3.note(`${h.symbol}: TradingView's sector label is not one of its known sectors \u2014 counted as unclassified`);
-    } else f3.note(`${h.symbol}: no sector (${snap.error})`);
-    sectorRows.push({ label: sector ?? "unclassified", weight: h.weightPct, from: [h.keys.weight, ...sectorKey ? [sectorKey] : []] });
-    const country2 = isinCountry(isin) ?? (h.instrument?.market === "us" ? "US" : void 0);
-    if (!isinCountry(isin) && country2 === "US") f3.note(`${h.symbol}: country taken from its US listing (no ISIN read)`);
-    countryRows.push({ label: country2 ?? "unknown", weight: h.weightPct, from: [h.keys.weight, ...isinKey ? [isinKey] : []] });
-  });
-  for (const h of hs.filter((x) => x.assetClass !== "equity"))
-    countryRows.push({ label: h.assetClass === "crypto" ? "crypto" : "funds", weight: h.weightPct, from: [h.keys.weight] });
-  if (allEquities.length > equities.length)
-    f3.note(
-      `sector lookups are capped at 30 shares: ${allEquities.slice(30).map((h) => h.symbol).join(", ")} not classified`
-    );
-  const bySector = groupWeights(f3, m, "exposure by sector (direct shares)", `${P}.sector`, "sector", sectorRows);
-  const byCountry = groupWeights(f3, m, "exposure by country (direct shares: ISIN prefix)", `${P}.country`, "country", countryRows);
-  if (hs.some((h) => h.assetClass === "etf" || h.assetClass === "fund"))
-    f3.note("funds are not split by sector or country here: `portfolio lookthrough` reads their holdings where the issuer publishes them");
-  f3.note("country = the ISIN's prefix, i.e. where the issuer is incorporated \u2014 not where it earns its revenue");
-  const conc = concentration(hs.map((h) => h.valueBase));
-  const wKeys = hs.map((h) => h.keys.weight);
-  f3.derive(
-    "concentration",
-    `${P}.hhi`,
-    "Herfindahl\u2013Hirschman index of the invested weights",
-    Number(conc.hhi.toFixed(6)),
-    "ratio",
-    wKeys,
-    "\u03A3 w\u1D62\xB2 with w\u1D62 = value \xF7 \u03A3 invested value (cash excluded)"
-  );
-  f3.derive("concentration", `${P}.effectiveN`, "effective number of positions", Number(conc.effectiveN.toFixed(4)), "count", [`${P}.hhi`], "1 \xF7 HHI");
-  f3.derive(
-    "concentration",
-    `${P}.top5`,
-    "weight of the 5 largest positions in the invested part",
-    pct9(conc.top5),
-    "%",
-    wKeys,
-    "\u03A3 of the 5 largest w\u1D62 (cash excluded) \xD7 100"
-  );
-  const result = { byClass, byCurrency, bySector, byCountry, concentration: conc, breaches: [] };
-  const bench = opts.benchmark ?? benchmarkFor(m.base);
-  let benchResolved;
-  try {
-    benchResolved = await resolveSymbol(bench);
-  } catch (e) {
-    f3.note(`benchmark ${bench} unavailable: ${e.message}`);
-  }
-  const items = hs.filter((h) => h.resolved).map((h) => ({ symbol: h.symbol, resolved: h.resolved }));
-  if (benchResolved && !items.some((i) => i.symbol === benchResolved.instrument.symbol))
-    items.push({ symbol: benchResolved.instrument.symbol, resolved: benchResolved });
-  const series = await baseHistories(items, 372, "hist1y", f3, m.now);
-  const withHist = hs.filter((h) => series.has(h.symbol));
-  const benchSeries = benchResolved ? series.get(benchResolved.instrument.symbol) : void 0;
-  const missingW = hs.filter((h) => !series.has(h.symbol)).reduce((s, h) => s + h.weightPct, 0);
-  if (missingW > 0) f3.note(`${missingW.toFixed(2)} % of the portfolio has no history and is left out of the return series (treated like cash)`);
-  if (withHist.length) {
-    const aligned = alignReturns([...withHist.map((h) => series.get(h.symbol).closes), ...benchSeries ? [benchSeries.closes] : []]);
-    const assetR = aligned.returns.slice(0, withHist.length);
-    const w = withHist.map((h) => h.valueBase / m.totalBase);
-    const r3 = portfolioReturns(w, assetR);
-    const histKeys = withHist.flatMap((h) => [series.get(h.symbol).key, ...series.get(h.symbol).fxKey ? [series.get(h.symbol).fxKey] : []]);
-    const from = [...histKeys, ...withHist.map((h) => h.keys.weight)];
-    const span = aligned.dates.length ? `${aligned.dates[0]}\u2026${aligned.dates[aligned.dates.length - 1]}` : "";
-    const how = `daily returns of today's weights over ${r3.length} aligned weekdays (${span}), in ${m.base} at ECB daily rates; cash earns 0`;
-    if (r3.length < 60) f3.note(`only ${r3.length} aligned daily returns: the risk figures are not computed (60 at least)`);
-    else {
-      result.days = r3.length;
-      f3.derive("risk (1 year, daily)", `${P}.days`, "daily returns in the risk window", r3.length, "count", from, how);
-      result.volatility = stdev(r3) * Math.sqrt(252);
-      f3.derive(
-        "risk (1 year, daily)",
-        `${P}.volatility`,
-        "annualised volatility of today's portfolio",
-        pct9(result.volatility),
-        "%",
-        from,
-        `stdev(daily returns) \xD7 \u221A252; ${how}`
-      );
-      const vars = {};
-      for (const c of [0.95, 0.99]) {
-        const tag = String(Math.round(c * 100));
-        const measures = [
-          [`var${tag}`, `1-day historical VaR ${tag} %`, historicalVar(r3, c), `\u2212quantile(daily returns, ${(1 - c).toFixed(2)})`],
-          [`cvar${tag}`, `1-day historical CVaR (expected shortfall) ${tag} %`, historicalCvar(r3, c), "\u2212mean of the returns at or below the VaR quantile"],
-          [`cfVar${tag}`, `1-day Cornish\u2013Fisher VaR ${tag} %`, cornishFisherVar(r3, c), "\u2212(mean + z_cf \xD7 stdev), z corrected for skewness and excess kurtosis"]
-        ];
-        const b10 = bootstrapVar(r3, 10, c, 5e3, 42);
-        measures.push(
-          [
-            `var${tag}d10`,
-            `10-day bootstrap VaR ${tag} %`,
-            b10.var,
-            "5 000 seeded paths (seed 42) of 10 daily returns resampled with replacement, compounded; \u2212quantile"
-          ],
-          [`cvar${tag}d10`, `10-day bootstrap CVaR ${tag} %`, b10.cvar, "mean loss beyond the 10-day bootstrap VaR"]
-        );
-        for (const [k, label2, v, formula] of measures) {
-          vars[k] = v;
-          const key = f3.derive("value at risk", `${P}.${k}`, `${label2} (loss, % of the portfolio)`, pct9(v), "%", from, `${formula}; ${how}`);
-          if (key)
-            f3.derive(
-              "value at risk",
-              `${P}.${k}.amount`,
-              `${label2} (loss in ${m.base})`,
-              money3(v * m.totalBase),
-              m.base,
-              [key, m.keys.total],
-              "loss % \xD7 portfolio total"
-            );
-        }
-      }
-      result.var = vars;
-      const dd = drawdowns(equityCurve(r3));
-      result.maxDrawdown = dd.maxDrawdown;
-      f3.derive(
-        "risk (1 year, daily)",
-        `${P}.maxDrawdown`,
-        "maximum drawdown of today's weights over the window",
-        pct9(dd.maxDrawdown),
-        "%",
-        from,
-        `worst peak-to-trough of the compounded daily returns; ${how}`
-      );
-      const dr = diversificationRatio(w, assetR);
-      result.diversificationRatio = dr;
-      f3.derive(
-        "risk (1 year, daily)",
-        `${P}.diversificationRatio`,
-        "diversification ratio",
-        Number(dr.toFixed(4)),
-        "ratio",
-        from,
-        "\u03A3 w\u1D62 \u03C3\u1D62 \xF7 \u03C3(portfolio): 1 = no diversification benefit"
-      );
-      if (benchSeries) {
-        const br = aligned.returns[withHist.length];
-        const rel = relativeTo(r3, br, 252);
-        result.beta = rel.beta;
-        const bfrom = [...from, benchSeries.key];
-        f3.derive(
-          "risk (1 year, daily)",
-          `${P}.beta`,
-          `beta to ${benchSeries.symbol}`,
-          Number(rel.beta.toFixed(4)),
-          "ratio",
-          bfrom,
-          `cov(portfolio, ${benchSeries.symbol}) \xF7 var(${benchSeries.symbol}), daily, in ${m.base}`
-        );
-        f3.derive(
-          "risk (1 year, daily)",
-          `${P}.benchCorrelation`,
-          `correlation with ${benchSeries.symbol}`,
-          Number(rel.correlation.toFixed(4)),
-          "ratio",
-          bfrom,
-          "Pearson correlation of the daily returns"
-        );
-      }
-      const top = [...withHist].sort((a, b) => b.valueBase - a.valueBase).slice(0, 5);
-      if (top.length >= 2) {
-        const idx = top.map((t) => withHist.indexOf(t));
-        for (const c of pairwiseCorrelations(
-          top.map((t) => t.symbol),
-          idx.map((i) => assetR[i])
-        ))
-          f3.derive(
-            "correlation of the top holdings",
-            `${P}.corr.${c.a}.${c.b}`,
-            `correlation of ${c.a} and ${c.b} (daily, 1 year)`,
-            Number(c.rho.toFixed(4)),
-            "ratio",
-            [series.get(c.a).key, series.get(c.b).key],
-            `Pearson correlation of the aligned daily ${m.base} returns`
-          );
-      }
-    }
-  }
-  const cryptoPct = hs.filter((h) => h.assetClass === "crypto").reduce((s, h) => s + h.weightPct, 0);
-  const checks = limitChecks(m.profile.limits, {
-    positions: hs.map((h) => ({ label: h.symbol, weight: h.weightPct })),
-    sectors: bySector.filter((s) => s.label !== "unclassified"),
-    cryptoPct,
-    cashPct: cashW
-  });
-  for (const c of checks) {
-    const from = c.kind === "position" ? [hs.find((h) => h.symbol === c.subject).keys.weight] : c.kind === "sector" ? [`${P}.sector.${keySlug(c.subject)}`] : c.kind === "crypto" ? [...hs.filter((h) => h.assetClass === "crypto").map((h) => h.keys.weight), m.keys.total] : [m.keys.cash, m.keys.total];
-    f3.derive(
-      "profile limits",
-      `${P}.limit.${c.kind}.${keySlug(c.subject)}`,
-      `${c.kind} limit${c.kind === "position" || c.kind === "sector" ? ` \u2014 ${c.subject}` : ""}`,
-      c.breach ? "BREACH" : "ok",
-      void 0,
-      from,
-      c.reason
-    );
-    if (c.breach) result.breaches.push({ kind: c.kind, subject: c.subject, reason: c.reason });
-  }
-  return result;
-}
-var PROXIES = { equity: ["CW8.PA", "SPY"], bond: ["AGG"], crypto: ["BTCUSDT"] };
-var CRYPTO_START = "2017-08-17";
-var STRESS_MAX_HOLDINGS = 15;
-async function stressAnalysis(m, f3) {
-  const P = `PORTFOLIO.${m.bookName}.stress`;
-  const hs = valued(m).sort((a, b) => b.valueBase - a.valueBase).slice(0, STRESS_MAX_HOLDINGS);
-  if (valued(m).length > hs.length) f3.note(`only the ${STRESS_MAX_HOLDINGS} largest holdings are replayed; the others count as uncovered`);
-  const windowCache = /* @__PURE__ */ new Map();
-  const windowOf2 = (symbol, resolved, from, to, id) => {
-    const k = `${symbol}|${id}`;
-    if (!windowCache.has(k))
-      windowCache.set(
-        k,
-        (async () => {
-          const r3 = resolved ?? await resolveSymbol(symbol);
-          if (r3.instrument.market === "crypto" && to < CRYPTO_START) return void 0;
-          const a = new Date(Date.parse(`${from}T00:00:00Z`) - 10 * DAY10);
-          const b = new Date(Date.parse(`${to}T00:00:00Z`) + 10 * DAY10);
-          const s = r3.instrument.market === "crypto" ? await getHistory(r3, { from: a, to: b, interval: "1d" }) : await dailyHistory(r3, a, b, m.now);
-          const w = windowCloses(closesOf2(s), from, to);
-          return w ? { symbol, id, ...w, key: `${symbol}.stress.${id}`, series: s } : void 0;
-        })().catch(() => void 0)
-      );
-    return windowCache.get(k);
-  };
-  const register = (w) => f3.input({
-    kind: "history",
-    title: `${w.symbol} over the ${w.id} window`,
-    subject: w.symbol,
-    points: [
-      {
-        key: `${w.key}.start`,
-        label: `${w.symbol} close at the start of the ${w.id} window`,
-        value: w.start.close,
-        unit: w.series.instrument.currency,
-        asOf: w.start.date
-      },
-      {
-        key: `${w.key}.end`,
-        label: `${w.symbol} close at the end of the ${w.id} window`,
-        value: w.end.close,
-        unit: w.series.instrument.currency,
-        asOf: w.end.date
-      }
-    ],
-    provenance: { ...w.series.provenance, asOf: w.end.date },
-    notes: w.series.notes
-  });
-  const result = { scenarios: [], shocks: [] };
-  for (const sc of SCENARIOS) {
-    const section = `${sc.label} (${sc.from} \u2192 ${sc.to})`;
-    const found = await mapLimit(hs, 4, async (h) => {
-      const own = await windowOf2(h.symbol, h.resolved, sc.from, sc.to, sc.id);
-      if (own) return { win: own, proxy: void 0 };
-      const chain2 = h.assetClass === "crypto" ? PROXIES.crypto : looksLikeBondFund(h.instrument?.name) ? PROXIES.bond : PROXIES.equity;
-      for (const p of chain2) {
-        const w = await windowOf2(p, void 0, sc.from, sc.to, sc.id);
-        if (w) return { win: w, proxy: p };
-      }
-      return { win: void 0, proxy: void 0 };
-    });
-    const lines = [];
-    const from = [];
-    hs.forEach((h, i) => {
-      const { win, proxy } = found[i];
-      const line = { symbol: h.symbol, weight: h.weightPct / 100, basis: "none" };
-      if (win) {
-        register(win);
-        line.basis = proxy ? "proxy" : "own";
-        if (proxy) line.proxy = proxy;
-        line.move = win.end.close / win.start.close - 1;
-        const key = f3.derive(
-          section,
-          `${P}.${sc.id}.${h.symbol}.move`,
-          `${h.symbol} move over the ${sc.label} window${proxy ? ` (proxy ${proxy})` : ""}`,
-          pct9(line.move),
-          "%",
-          [`${win.key}.start`, `${win.key}.end`],
-          `end close \xF7 start close \u2212 1, in the series' own currency${proxy ? `; ${h.symbol} had no prices then \u2014 ${proxy} stands in` : ""}`
-        );
-        if (key) from.push(key, h.keys.weight);
-      } else if (h.assetClass === "crypto" && sc.to < CRYPTO_START) {
-        line.move = SHOCKS.crypto;
-        line.basis = "shock";
-        const key = f3.derive(
-          section,
-          `${P}.${sc.id}.${h.symbol}.move`,
-          `${h.symbol} move over the ${sc.label} window (no crypto market then: the crypto shock stands in)`,
-          pct9(SHOCKS.crypto),
-          "%",
-          [h.keys.weight],
-          "parametric crypto shock (no crypto prices exist for the window)"
-        );
-        if (key) from.push(key, h.keys.weight);
-      }
-      lines.push(line);
-    });
-    const rp = replay(lines);
-    if (!from.length) {
-      f3.note(`${sc.label}: no holding or proxy has prices over ${sc.from} \u2192 ${sc.to}`);
-      continue;
-    }
-    const proxied = lines.filter((l) => l.basis === "proxy").map((l) => `${l.symbol} \u2192 ${l.proxy}`);
-    const k = f3.derive(
-      section,
-      `${P}.${sc.id}.impact`,
-      `portfolio move if the ${sc.label} replayed on today's weights`,
-      pct9(rp.portfolio),
-      "%",
-      from,
-      `\u03A3 weight\u1D62 \xD7 move\u1D62; cash 0 %; moves in each series' currency (currency moves not included)${proxied.length ? `; proxies: ${proxied.join(", ")}` : ""}`
-    );
-    if (k)
-      f3.derive(
-        section,
-        `${P}.${sc.id}.loss`,
-        `portfolio gain/loss in ${m.base} in the ${sc.label} replay`,
-        money3(rp.portfolio * m.totalBase),
-        m.base,
-        [k, m.keys.total],
-        "move \xD7 portfolio total"
-      );
-    if (rp.uncovered > 0)
-      f3.note(`${sc.label}: ${(rp.uncovered * 100).toFixed(2)} % of the portfolio has neither its own prices nor a proxy for the window and is left at 0 %`);
-    if (proxied.length) f3.note(`${sc.label}: proxies used \u2014 ${proxied.join(", ")}`);
-    result.scenarios.push({ id: sc.id, label: sc.label, from: sc.from, to: sc.to, impactPct: rp.portfolio * 100, coveredPct: rp.covered * 100, lines });
-  }
-  const cashLines = m.cash.filter((c) => c.amountBase !== void 0 && c.currency !== m.base && m.totalBase > 0).map((c) => ({ symbol: `cash:${c.account}:${c.currency}`, weight: c.amountBase / m.totalBase, assetClass: "cash", currency: c.currency }));
-  for (const s of parametricShocks([
-    ...valued(m).map((h) => ({ symbol: h.symbol, weight: h.weightPct / 100, assetClass: h.assetClass, currency: h.currency, name: h.instrument?.name })),
-    ...cashLines
-  ])) {
-    const hit = valued(m).filter((h) => s.hit.includes(h.symbol));
-    const hitCash = cashLines.some((c) => s.hit.includes(c.symbol));
-    if (!hit.length && !hitCash) {
-      f3.note(`shock "${s.label}": no holding concerned`);
-      result.shocks.push({ id: s.id, label: s.label, impactPct: 0 });
-      continue;
-    }
-    const k = f3.derive(
-      "parametric shocks",
-      `${P}.shock.${s.id}`,
-      `portfolio move under the shock: ${s.label}`,
-      pct9(s.impact),
-      "%",
-      [...hit.map((h) => h.keys.weight), ...hitCash ? [m.keys.cash, m.keys.total] : []],
-      `${s.formula} (lines: ${s.hit.join(", ")})`
-    );
-    if (k)
-      f3.derive(
-        "parametric shocks",
-        `${P}.shock.${s.id}.loss`,
-        `portfolio loss in ${m.base} under the shock: ${s.label}`,
-        money3(s.impact * m.totalBase),
-        m.base,
-        [k, m.keys.total],
-        "move \xD7 portfolio total"
-      );
-    result.shocks.push({ id: s.id, label: s.label, impactPct: s.impact * 100 });
-  }
-  if (valued(m).some((h) => looksLikeBondFund(h.instrument?.name)))
-    f3.note("bond funds are read from their names; durations are assumed (2 for 1\u20133-year funds, 6 otherwise), not read from the fund");
-  f3.note("historical windows use each holding's own prices when it was listed then (Yahoo when the primary source keeps less history), else the stated proxy");
-  return result;
 }
 
 // src/alerts/alerts.ts

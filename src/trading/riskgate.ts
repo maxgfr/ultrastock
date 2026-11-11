@@ -44,7 +44,9 @@ export interface GateContext {
   positionValueBase: number;
   /** Units held of this symbol in this account. */
   heldQuantity: number;
-  /** Value in base of open positions and pending buys by sector, and crypto in total. */
+  /** The order's sector, when the order does not name one (looked up for the gate). */
+  sector?: string;
+  /** Value in base of the open positions and pending buys in the order's sector. */
   sectorValueBase?: number;
   cryptoValueBase: number;
   /** Symbols currently held, plus pending buys. */
@@ -189,9 +191,10 @@ export function riskGate(o: Order, c: GateContext): GateResult {
       posPct > L.maxPositionPct + 1e-9 ? "block" : "pass",
       `position after the order ${pct(posPct)} of the portfolio (limit ${pct(L.maxPositionPct)})`,
     );
-    if (c.sectorValueBase !== undefined && o.sector) {
+    const sector = o.sector ?? c.sector;
+    if (c.sectorValueBase !== undefined && sector) {
       const secPct = ((c.sectorValueBase + notionalBase) / c.equityBase) * 100;
-      add("SECTOR_PCT", secPct > L.maxSectorPct + 1e-9 ? "block" : "pass", `${o.sector} after the order ${pct(secPct)} (limit ${pct(L.maxSectorPct)})`);
+      add("SECTOR_PCT", secPct > L.maxSectorPct + 1e-9 ? "block" : "pass", `${sector} after the order ${pct(secPct)} (limit ${pct(L.maxSectorPct)})`);
     }
     if (o.assetKind === "crypto") {
       const cPct = ((c.cryptoValueBase + notionalBase) / c.equityBase) * 100;

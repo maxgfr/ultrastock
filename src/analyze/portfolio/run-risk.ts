@@ -22,7 +22,7 @@ const money = (x: number) => Number(x.toFixed(2));
 export const benchmarkFor = (base: string) => (base === "EUR" ? "CW8.PA" : "SPY");
 
 /** The TradingView ticker of a holding: the Yahoo-style mapping, or EXCHANGE:TICKER from a US listing's exchange. */
-function tvTicker(h: Holding): string | undefined {
+export function tvTicker(h: Pick<Holding, "instrument" | "symbol">): string | undefined {
   const i = h.instrument;
   if (!i) return undefined;
   if (i.market !== "us") return h.symbol;
