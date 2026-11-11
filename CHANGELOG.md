@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.20](https://github.com/maxgfr/ultrastock/compare/v1.13.19...v1.13.20) (2026-11-11)
+
+
+### Bug Fixes
+
+* **ledger:** keep two genuine identical fills apart by the broker's trade id ([9504f30](https://github.com/maxgfr/ultrastock/commit/9504f30442aa7653f486cc13870967860dfb7e82))
+
 ## [1.13.19](https://github.com/maxgfr/ultrastock/compare/v1.13.18...v1.13.19) (2026-11-11)
 
 
