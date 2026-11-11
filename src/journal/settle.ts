@@ -11,7 +11,9 @@
 // past that end; then the horizon settles on the last close there is, marked
 // `partial` — the symbol's last close when its own history stops, the raw
 // return when the benchmark's does.
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { withFileLockSync } from "../core/lock.js";
+import { readJsonl, sealJsonlTail, type Warn } from "../portfolio/jsonl.js";
 import { join } from "node:path";
 import { type Decision, journalDir } from "../analyze/decision.js";
 import { defaultBenchmark } from "../analyze/technicals.js";
@@ -50,23 +52,13 @@ export interface Settlement {
 /** Sessions a short history is waited for past a horizon's end, before the horizon settles on its last close. */
 export const SETTLE_GRACE_SESSIONS = 10;
 
-export function readDecisions(): Array<Decision & { id: string }> {
-  const f = join(journalDir(), "decisions.jsonl");
-  if (!existsSync(f)) return [];
-  return readFileSync(f, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l))
-    .filter((d) => d.id);
+/** The journal's decisions; a last line cut short by a crash is skipped with a warning (see portfolio/jsonl.ts). */
+export function readDecisions(warn?: Warn): Array<Decision & { id: string }> {
+  return readJsonl<Decision & { id: string }>(join(journalDir(), "decisions.jsonl"), warn).filter((d) => d.id);
 }
 
-export function readSettlements(): Settlement[] {
-  const f = join(journalDir(), "settlements.jsonl");
-  if (!existsSync(f)) return [];
-  return readFileSync(f, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l) as Settlement);
+export function readSettlements(warn?: Warn): Settlement[] {
+  return readJsonl<Settlement>(join(journalDir(), "settlements.jsonl"), warn);
 }
 
 const closeAtOrBefore = (bars: readonly Bar[], date: string) => {
@@ -194,7 +186,12 @@ export async function settleDecisions(now = clockNow()): Promise<{ settled: Sett
   }
   if (settled.length) {
     mkdirSync(journalDir(), { recursive: true });
-    appendFileSync(join(journalDir(), "settlements.jsonl"), settled.map((s) => `${JSON.stringify(s)}\n`).join(""), { mode: 0o600 });
+    const file = join(journalDir(), "settlements.jsonl");
+    // Under the file's lock, a line a crashed append cut short is set aside first, so it never sits mid-file.
+    withFileLockSync(`${file}.lock`, () => {
+      sealJsonlTail(file);
+      appendFileSync(file, settled.map((s) => `${JSON.stringify(s)}\n`).join(""), { mode: 0o600 });
+    });
     appendFileSync(
       join(journalDir(), "decisions.md"),
       settled

@@ -4,9 +4,11 @@
 // evidence it rests on, what would prove it wrong, and (optionally) a trade
 // plan. `decide` refuses a decision that cites evidence the run does not hold,
 // has no falsifier, or plans a trade without a stop.
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { EvidenceStore } from "../core/evidence.js";
+import { withFileLockSync } from "../core/lock.js";
+import { readJsonl, sealJsonlTail } from "../portfolio/jsonl.js";
 import { homeDir } from "../core/paths.js";
 import { contentHash, writeFileAtomic } from "../engine.js";
 
@@ -115,7 +117,11 @@ export function recordDecision(input: Decision, runDir: string): { file: string;
   writeFileAtomic(file, `${JSON.stringify(d, null, 2)}\n`);
   const dir = journalDir();
   mkdirSync(dir, { recursive: true });
-  appendFileSync(join(dir, "decisions.jsonl"), `${JSON.stringify({ ...d, status: "pending" })}\n`, { mode: 0o600 });
+  const jsonl = join(dir, "decisions.jsonl");
+  withFileLockSync(`${jsonl}.lock`, () => {
+    sealJsonlTail(jsonl);
+    appendFileSync(jsonl, `${JSON.stringify({ ...d, status: "pending" })}\n`, { mode: 0o600 });
+  });
   const md = join(dir, "decisions.md");
   const entry = [
     `## [${d.decidedAt.slice(0, 10)} | ${d.symbol} | ${d.rating} | conviction ${d.conviction} | pending | ${d.id}]`,
@@ -135,12 +141,7 @@ export function recordDecision(input: Decision, runDir: string): { file: string;
 
 /** Previous decisions on a symbol, newest first — what the PM should read before deciding again. */
 export function pastDecisions(symbol: string, limit = 5): Array<Decision & { status?: string; settlement?: unknown }> {
-  const f = join(journalDir(), "decisions.jsonl");
-  if (!existsSync(f)) return [];
-  return readFileSync(f, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l) as Decision & { status?: string })
+  return readJsonl<Decision & { status?: string }>(join(journalDir(), "decisions.jsonl"))
     .filter((d) => d.symbol === symbol)
     .reverse()
     .slice(0, limit);

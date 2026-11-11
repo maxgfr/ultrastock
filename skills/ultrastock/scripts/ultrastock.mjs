@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { readFileSync as readFileSync50, realpathSync as realpathSync5 } from "fs";
+import { readFileSync as readFileSync48, realpathSync as realpathSync5 } from "fs";
 import { resolve as resolve20 } from "path";
 import { pathToFileURL } from "url";
 
@@ -14626,7 +14626,7 @@ function readBrief(dir2) {
 }
 
 // src/analyze/full.ts
-import { existsSync as existsSync24, readFileSync as readFileSync27 } from "fs";
+import { existsSync as existsSync24, readFileSync as readFileSync26 } from "fs";
 import { join as join32 } from "path";
 
 // src/commands/emit.ts
@@ -23038,12 +23038,68 @@ async function researchRound(dir2, todo, notes, opts = {}) {
 }
 
 // src/journal/journal.ts
-import { appendFileSync as appendFileSync4, existsSync as existsSync22, mkdirSync as mkdirSync15, readdirSync as readdirSync9, readFileSync as readFileSync25 } from "fs";
+import { appendFileSync as appendFileSync4, existsSync as existsSync22, mkdirSync as mkdirSync15, readdirSync as readdirSync9, readFileSync as readFileSync24 } from "fs";
 import { join as join26 } from "path";
 
 // src/analyze/decision.ts
-import { appendFileSync as appendFileSync2, existsSync as existsSync18, mkdirSync as mkdirSync13, readFileSync as readFileSync22 } from "fs";
+import { appendFileSync as appendFileSync3, existsSync as existsSync19, mkdirSync as mkdirSync13 } from "fs";
 import { join as join23 } from "path";
+
+// src/portfolio/jsonl.ts
+import { appendFileSync as appendFileSync2, closeSync as closeSync4, existsSync as existsSync18, openSync as openSync4, readFileSync as readFileSync22, readSync as readSync2, statSync as statSync10, truncateSync } from "fs";
+var warnOnStderr = (m) => void process.stderr.write(`ultrastock: warning: ${m}
+`);
+function readJsonl(path2, warn = warnOnStderr) {
+  if (!existsSync18(path2)) return [];
+  const lines = readFileSync22(path2, "utf8").split("\n");
+  const tail = lines.pop() ?? "";
+  const out = [];
+  lines.forEach((l, i) => {
+    if (!l) return;
+    try {
+      out.push(JSON.parse(l));
+    } catch (e) {
+      throw new Error(
+        `${path2}, line ${i + 1}: unreadable (${e.message}). It was written whole and changed since \u2014 corruption, not an interrupted write: repair or remove that line by hand`
+      );
+    }
+  });
+  if (tail.trim()) {
+    try {
+      out.push(JSON.parse(tail));
+    } catch {
+      warn(`${path2}: the last line is cut short (an append interrupted by a crash) and was skipped; it is moved to ${path2}.torn on the next write`);
+    }
+  }
+  return out;
+}
+function sealJsonlTail(path2) {
+  if (!existsSync18(path2)) return;
+  const size = statSync10(path2).size;
+  if (!size) return;
+  const fd = openSync4(path2, "r");
+  const last2 = Buffer.alloc(1);
+  try {
+    readSync2(fd, last2, 0, 1, size - 1);
+  } finally {
+    closeSync4(fd);
+  }
+  if (last2[0] === 10) return;
+  const bytes = readFileSync22(path2);
+  const cut = bytes.lastIndexOf(10) + 1;
+  const tail = bytes.subarray(cut).toString("utf8");
+  try {
+    JSON.parse(tail);
+    appendFileSync2(path2, "\n");
+    return;
+  } catch {
+    appendFileSync2(`${path2}.torn`, `${tail}
+`, { mode: 384 });
+    truncateSync(path2, cut);
+  }
+}
+
+// src/analyze/decision.ts
 var RATINGS = ["buy", "overweight", "hold", "underweight", "sell"];
 var HORIZONS = ["days", "weeks", "months", "years"];
 var DECISION_SCHEMA = 1;
@@ -23097,8 +23153,12 @@ function recordDecision(input, runDir2) {
 `);
   const dir2 = journalDir();
   mkdirSync13(dir2, { recursive: true });
-  appendFileSync2(join23(dir2, "decisions.jsonl"), `${JSON.stringify({ ...d, status: "pending" })}
+  const jsonl = join23(dir2, "decisions.jsonl");
+  withFileLockSync(`${jsonl}.lock`, () => {
+    sealJsonlTail(jsonl);
+    appendFileSync3(jsonl, `${JSON.stringify({ ...d, status: "pending" })}
 `, { mode: 384 });
+  });
   const md = join23(dir2, "decisions.md");
   const entry2 = [
     `## [${d.decidedAt.slice(0, 10)} | ${d.symbol} | ${d.rating} | conviction ${d.conviction} | pending | ${d.id}]`,
@@ -23111,73 +23171,17 @@ function recordDecision(input, runDir2) {
     "<!-- ENTRY_END -->",
     ""
   ].join("\n");
-  if (!existsSync18(md)) writeFileAtomic(md, "# Decision journal\n\nAppend-only. Each entry is settled later against the price (`journal settle`).\n\n");
-  appendFileSync2(md, entry2);
+  if (!existsSync19(md)) writeFileAtomic(md, "# Decision journal\n\nAppend-only. Each entry is settled later against the price (`journal settle`).\n\n");
+  appendFileSync3(md, entry2);
   return { file, journal: md, id: d.id };
 }
 function pastDecisions(symbol, limit = 5) {
-  const f3 = join23(journalDir(), "decisions.jsonl");
-  if (!existsSync18(f3)) return [];
-  return readFileSync22(f3, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((d) => d.symbol === symbol).reverse().slice(0, limit);
+  return readJsonl(join23(journalDir(), "decisions.jsonl")).filter((d) => d.symbol === symbol).reverse().slice(0, limit);
 }
 
 // src/trading/tickets.ts
-import { closeSync as closeSync5, existsSync as existsSync21, fsyncSync as fsyncSync2, mkdirSync as mkdirSync14, openSync as openSync5, readdirSync as readdirSync7, readFileSync as readFileSync24, writeSync as writeSync3 } from "fs";
+import { closeSync as closeSync5, existsSync as existsSync21, fsyncSync as fsyncSync2, mkdirSync as mkdirSync14, openSync as openSync5, readdirSync as readdirSync7, readFileSync as readFileSync23, writeSync as writeSync3 } from "fs";
 import { join as join25 } from "path";
-
-// src/portfolio/jsonl.ts
-import { appendFileSync as appendFileSync3, closeSync as closeSync4, existsSync as existsSync19, openSync as openSync4, readFileSync as readFileSync23, readSync as readSync2, statSync as statSync10, truncateSync } from "fs";
-var warnOnStderr = (m) => void process.stderr.write(`ultrastock: warning: ${m}
-`);
-function readJsonl(path2, warn = warnOnStderr) {
-  if (!existsSync19(path2)) return [];
-  const lines = readFileSync23(path2, "utf8").split("\n");
-  const tail = lines.pop() ?? "";
-  const out = [];
-  lines.forEach((l, i) => {
-    if (!l) return;
-    try {
-      out.push(JSON.parse(l));
-    } catch (e) {
-      throw new Error(
-        `${path2}, line ${i + 1}: unreadable (${e.message}). It was written whole and changed since \u2014 corruption, not an interrupted write: repair or remove that line by hand`
-      );
-    }
-  });
-  if (tail.trim()) {
-    try {
-      out.push(JSON.parse(tail));
-    } catch {
-      warn(`${path2}: the last line is cut short (an append interrupted by a crash) and was skipped; it is moved to ${path2}.torn on the next write`);
-    }
-  }
-  return out;
-}
-function sealJsonlTail(path2) {
-  if (!existsSync19(path2)) return;
-  const size = statSync10(path2).size;
-  if (!size) return;
-  const fd = openSync4(path2, "r");
-  const last2 = Buffer.alloc(1);
-  try {
-    readSync2(fd, last2, 0, 1, size - 1);
-  } finally {
-    closeSync4(fd);
-  }
-  if (last2[0] === 10) return;
-  const bytes = readFileSync23(path2);
-  const cut = bytes.lastIndexOf(10) + 1;
-  const tail = bytes.subarray(cut).toString("utf8");
-  try {
-    JSON.parse(tail);
-    appendFileSync3(path2, "\n");
-    return;
-  } catch {
-    appendFileSync3(`${path2}.torn`, `${tail}
-`, { mode: 384 });
-    truncateSync(path2, cut);
-  }
-}
 
 // src/trading/riskgate.ts
 import { existsSync as existsSync20 } from "fs";
@@ -23334,7 +23338,7 @@ function readAudit(warn) {
 function loadTicket(id) {
   const p = ticketPath(id);
   if (!existsSync21(p)) throw new Error(`no ticket ${id}`);
-  return JSON.parse(readFileSync24(p, "utf8"));
+  return JSON.parse(readFileSync23(p, "utf8"));
 }
 function save(t) {
   mkdirSync14(ticketsDir(), { recursive: true });
@@ -23343,7 +23347,7 @@ function save(t) {
 }
 function listTickets(filter) {
   if (!existsSync21(ticketsDir())) return [];
-  return readdirSync7(ticketsDir()).filter((f3) => f3.endsWith(".json")).map((f3) => JSON.parse(readFileSync24(join25(ticketsDir(), f3), "utf8"))).filter((t) => !filter || filter(t)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return readdirSync7(ticketsDir()).filter((f3) => f3.endsWith(".json")).map((f3) => JSON.parse(readFileSync23(join25(ticketsDir(), f3), "utf8"))).filter((t) => !filter || filter(t)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 async function transition(id, to, why2, mutate, now = /* @__PURE__ */ new Date(), from, refused) {
   return withFileLock(`${ticketPath(id)}.lock`, async () => {
@@ -23434,11 +23438,11 @@ function saveThesis(t) {
 function loadThesis(id) {
   const f3 = join26(thesesDir(), `${id}.json`);
   if (!/^th-[a-z0-9.-]+$/.test(id) || id.includes("..") || !existsSync22(f3)) throw new Error(`no thesis ${id}`);
-  return JSON.parse(readFileSync25(f3, "utf8"));
+  return JSON.parse(readFileSync24(f3, "utf8"));
 }
 function listTheses() {
   if (!existsSync22(thesesDir())) return [];
-  return readdirSync9(thesesDir()).filter((f3) => f3.endsWith(".json")).map((f3) => JSON.parse(readFileSync25(join26(thesesDir(), f3), "utf8"))).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return readdirSync9(thesesDir()).filter((f3) => f3.endsWith(".json")).map((f3) => JSON.parse(readFileSync24(join26(thesesDir(), f3), "utf8"))).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 function addThesis(input, now = /* @__PURE__ */ new Date()) {
   if (input.thesis.trim().length < 20) throw new Error("a thesis says why, in a sentence or more");
@@ -23595,7 +23599,7 @@ function addLesson(text2, tags = [], now = /* @__PURE__ */ new Date()) {
 function readLessons(tag) {
   const f3 = join26(knowledgeDir(), "lessons.md");
   if (!existsSync22(f3)) return [];
-  return readFileSync25(f3, "utf8").split("\n").filter((l) => l.startsWith("- ") && (!tag || l.includes(`[${tag}`) || l.includes(`, ${tag}`)));
+  return readFileSync24(f3, "utf8").split("\n").filter((l) => l.startsWith("- ") && (!tag || l.includes(`[${tag}`) || l.includes(`, ${tag}`)));
 }
 function importSource(title, body, origin, now = /* @__PURE__ */ new Date()) {
   const dir2 = join26(knowledgeDir(), "sources");
@@ -23625,7 +23629,7 @@ import { appendFileSync as appendFileSync5, mkdirSync as mkdirSync17 } from "fs"
 import { join as join28 } from "path";
 
 // src/core/db.ts
-import { chmodSync as chmodSync2, closeSync as closeSync6, existsSync as existsSync23, mkdirSync as mkdirSync16, openSync as openSync6, readFileSync as readFileSync26 } from "fs";
+import { chmodSync as chmodSync2, closeSync as closeSync6, existsSync as existsSync23, mkdirSync as mkdirSync16, openSync as openSync6, readFileSync as readFileSync25 } from "fs";
 import { createRequire } from "module";
 import { join as join27 } from "path";
 var SQLITE_UNAVAILABLE = "the SQLite store needs Node \u2265 22.5 (unflagged from 22.13) with node:sqlite \u2014 the JSONL ledger keeps working; upgrade Node to use `portfolio db`";
@@ -23800,7 +23804,7 @@ function ledgerBackend() {
   const p = markerPath();
   if (!existsSync23(p)) return "jsonl";
   try {
-    return JSON.parse(readFileSync26(p, "utf8")).ledger === "sqlite" ? "sqlite" : "jsonl";
+    return JSON.parse(readFileSync25(p, "utf8")).ledger === "sqlite" ? "sqlite" : "jsonl";
   } catch {
     throw new Error(`${p} is not valid JSON \u2014 fix it or delete it (the ledger then reads JSONL)`);
   }
@@ -34530,7 +34534,7 @@ async function analyzeFull(raw, dir2, opts = {}) {
     }
   }
   const store = EvidenceStore.load(dir2);
-  const brief = readFileSync27(join32(dir2, "BRIEF.md"), "utf8");
+  const brief = readFileSync26(join32(dir2, "BRIEF.md"), "utf8");
   writeArtifact(join32(dir2, "BRIEF.md"), fullBrief(brief, slices, sections, notes, depth));
   writeArtifact(join32(dir2, "RUNBOOK.md"), debateRunbook(dir2, sym3, depth, pc.state, slices, crypto, us2, etf));
   return { dir: dir2, symbol: sym3, name: inst.name, asOf: base2.asOf, depth, evidence: store.items.length, portfolioContext: pc.state, slices, notes, delta };
@@ -35182,11 +35186,11 @@ function promoted(store, dir2, docId, written, opts) {
 }
 
 // src/commands/report.ts
-import { existsSync as existsSync26, readFileSync as readFileSync29, writeFileSync as writeFileSync10 } from "fs";
+import { existsSync as existsSync26, readFileSync as readFileSync28, writeFileSync as writeFileSync10 } from "fs";
 import { join as join34, resolve as resolve7 } from "path";
 
 // src/report/html.ts
-import { existsSync as existsSync25, readdirSync as readdirSync10, readFileSync as readFileSync28 } from "fs";
+import { existsSync as existsSync25, readdirSync as readdirSync10, readFileSync as readFileSync27 } from "fs";
 import { join as join33 } from "path";
 var esc2 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 function inline(text2) {
@@ -35296,7 +35300,7 @@ svg{width:100%;height:auto;background:var(--card);border:1px solid var(--rule);m
 function decisionHtml(runDir2) {
   const f3 = join33(runDir2, "decision.json");
   if (!existsSync25(f3)) return "";
-  const d = JSON.parse(readFileSync28(f3, "utf8"));
+  const d = JSON.parse(readFileSync27(f3, "utf8"));
   const row = (k, v) => v === void 0 || v === "" ? "" : `<tr><th>${esc2(k)}</th><td>${esc2(Array.isArray(v) ? v.join("; ") : String(v))}</td></tr>`;
   return `<h2>Decision</h2><table><tbody>${row("rating", d.rating)}${row("horizon", d.horizon)}${row("conviction", d.conviction)}${row("thesis", d.thesis)}${row("falsifiers", d.falsifiers)}${row("risks", d.risks)}${row("portfolio context", d.portfolioContext)}${d.plan ? row(
     "plan",
@@ -35309,7 +35313,7 @@ function notesHtml(runDir2) {
   const order = ["market", "fundamentals", "news", "bull", "bear", "judge", "trader", "risk"];
   const files = readdirSync10(dir2).filter((f3) => f3.endsWith(".md")).sort((a, b) => (order.indexOf(a.replace(/\.md$/, "")) + 1 || 99) - (order.indexOf(b.replace(/\.md$/, "")) + 1 || 99) || a.localeCompare(b));
   if (!files.length) return "";
-  return `<h2>The debate</h2>${files.map((f3) => `<details><summary>${esc2(f3.replace(/\.md$/, ""))}</summary>${markdownToHtml(readFileSync28(join33(dir2, f3), "utf8"))}</details>`).join("\n")}`;
+  return `<h2>The debate</h2>${files.map((f3) => `<details><summary>${esc2(f3.replace(/\.md$/, ""))}</summary>${markdownToHtml(readFileSync27(join33(dir2, f3), "utf8"))}</details>`).join("\n")}`;
 }
 function renderReport(runDir2, answerMd, opts = {}) {
   const store = EvidenceStore.load(runDir2);
@@ -35317,7 +35321,7 @@ function renderReport(runDir2, answerMd, opts = {}) {
   const cited = new Set([...answerMd.matchAll(/\[(E\d+)\]/g)].map((m) => m[1]));
   const rows = store.items.filter((i) => cited.has(i.id));
   const barsFile = join33(runDir2, "bars.json");
-  const bars = existsSync25(barsFile) ? JSON.parse(readFileSync28(barsFile, "utf8")) : [];
+  const bars = existsSync25(barsFile) ? JSON.parse(readFileSync27(barsFile, "utf8")) : [];
   const title = opts.title ?? /^#\s+(.+)$/m.exec(answerMd)?.[1] ?? store.subject ?? "ultrastock report";
   const evidenceTable = rows.length ? `<h2>Evidence cited</h2><table><thead><tr><th>Id</th><th>What</th><th>Value</th><th>Source</th><th>As of</th></tr></thead><tbody>${rows.map(
     (i) => (
@@ -35345,7 +35349,7 @@ async function reportCommand(args, asJson) {
   const dir2 = resolve7(run3);
   const answerFile = resolve7(argValue(args, "answer") ?? join34(dir2, "answer.md"));
   if (!existsSync26(answerFile)) throw new UsageError(`no answer at ${answerFile}: write it first (see RUNBOOK.md), or pass --answer`);
-  const answer = readFileSync29(answerFile, "utf8");
+  const answer = readFileSync28(answerFile, "utf8");
   const check = checkAnswer(dir2, answer);
   if ("error" in check) throw new UsageError(check.error);
   const failing = check.problems.filter((p) => !NOTE_KINDS.has(p.kind));
@@ -36478,7 +36482,7 @@ async function eventsCommand(args, asJson) {
 }
 
 // src/commands/research.ts
-import { existsSync as existsSync27, readFileSync as readFileSync30 } from "fs";
+import { existsSync as existsSync27, readFileSync as readFileSync29 } from "fs";
 import { join as join36, resolve as resolve9 } from "path";
 function oneOf(v, all, flag) {
   if (v === void 0) return void 0;
@@ -36509,7 +36513,7 @@ function printTodo(todo, dir2, notes) {
 }
 function readWebResults(file) {
   try {
-    return JSON.parse(file === "-" ? readFileSync30(0, "utf8") : readFileSync30(file, "utf8"));
+    return JSON.parse(file === "-" ? readFileSync29(0, "utf8") : readFileSync29(file, "utf8"));
   } catch (e) {
     throw new UsageError(`cannot read ${file === "-" ? "stdin" : file} as JSON: ${e.message}`);
   }
@@ -36646,7 +36650,7 @@ async function stackCommand(args, asJson) {
 
 // src/commands/analytics.ts
 import { resolve as resolve10 } from "path";
-import { readFileSync as readFileSync31 } from "fs";
+import { readFileSync as readFileSync30 } from "fs";
 import { join as join38 } from "path";
 var pct6 = (v, flag) => {
   if (v === void 0) return void 0;
@@ -36660,7 +36664,7 @@ async function valuationCommand(args, asJson) {
   const dir2 = argValue(args, "out") ? resolve10(argValue(args, "out")) : runDirFor(void 0, `${sym3.toUpperCase().replace(/[^A-Z0-9.-]/g, "_")}-valuation-${runId()}`);
   const r3 = await valuationRun(sym3, dir2, { erp: pct6(argValue(args, "erp"), "erp"), terminalGrowth: pct6(argValue(args, "terminal"), "terminal") });
   if (asJson) process.stdout.write(jsonLine(r3));
-  else process.stdout.write(`${readFileSync31(join38(dir2, "VALUATION.md"), "utf8")}
+  else process.stdout.write(`${readFileSync30(join38(dir2, "VALUATION.md"), "utf8")}
 run: ${dir2}
 `);
 }
@@ -36676,7 +36680,7 @@ async function technicalsCommand(args, asJson) {
   const dir2 = argValue(args, "out") ? resolve10(argValue(args, "out")) : runDirFor(void 0, `${sym3.toUpperCase().replace(/[^A-Z0-9.-]/g, "_")}-technicals-${runId()}`);
   const r3 = await technicalsRun(sym3, dir2, { interval, extra: argList(args, "indicators"), benchmark: argValue(args, "benchmark") });
   if (asJson) process.stdout.write(jsonLine(r3));
-  else process.stdout.write(`${readFileSync31(join38(dir2, "TECHNICALS.md"), "utf8")}
+  else process.stdout.write(`${readFileSync30(join38(dir2, "TECHNICALS.md"), "utf8")}
 run: ${dir2}
 `);
 }
@@ -39227,7 +39231,7 @@ async function predictOrder(args, asJson) {
 }
 
 // src/commands/backtest.ts
-import { existsSync as existsSync30, mkdirSync as mkdirSync23, readFileSync as readFileSync35, writeFileSync as writeFileSync11 } from "fs";
+import { existsSync as existsSync29, mkdirSync as mkdirSync23, readFileSync as readFileSync33, writeFileSync as writeFileSync11 } from "fs";
 import { join as join44, resolve as resolve11 } from "path";
 
 // src/analytics/portfolio.ts
@@ -39565,7 +39569,7 @@ function allocationBacktest(kind, bars, dates, opts) {
 }
 
 // src/backtest/catalog.ts
-import { existsSync as existsSync28, readdirSync as readdirSync11, readFileSync as readFileSync32 } from "fs";
+import { existsSync as existsSync28, readdirSync as readdirSync11, readFileSync as readFileSync31 } from "fs";
 import { join as join40 } from "path";
 
 // assets/strategies/adaptive-momentum-reversal.json
@@ -41702,7 +41706,7 @@ function listStrategies() {
     for (const f3 of readdirSync11(dir2).filter((x) => x.endsWith(".json"))) {
       const path2 = join40(dir2, f3);
       try {
-        const raw = JSON.parse(readFileSync32(path2, "utf8"));
+        const raw = JSON.parse(readFileSync31(path2, "utf8"));
         const v = validateStrategy(raw);
         out.set(raw?.name ?? f3, { name: raw?.name ?? f3, description: String(raw?.description ?? ""), origin: "user", path: path2, valid: v.valid, errors: v.errors });
       } catch (e) {
@@ -41714,10 +41718,10 @@ function listStrategies() {
 function findStrategy(ref) {
   if (ref.endsWith(".json") || ref.includes("/")) {
     if (!existsSync28(ref)) return void 0;
-    return { raw: JSON.parse(readFileSync32(ref, "utf8")), origin: ref };
+    return { raw: JSON.parse(readFileSync31(ref, "utf8")), origin: ref };
   }
   const user = join40(userStrategyDir(), `${ref}.json`);
-  if (existsSync28(user)) return { raw: JSON.parse(readFileSync32(user, "utf8")), origin: user };
+  if (existsSync28(user)) return { raw: JSON.parse(readFileSync31(user, "utf8")), origin: user };
   const b = BUILTIN_STRATEGIES.find((s) => s.name === ref);
   return b ? { raw: structuredClone(b), origin: "builtin" } : void 0;
 }
@@ -41813,7 +41817,7 @@ import { mkdirSync as mkdirSync21 } from "fs";
 import { join as join42 } from "path";
 
 // src/providers/external/binance-historical.ts
-import { mkdtempSync as mkdtempSync4, readdirSync as readdirSync12, readFileSync as readFileSync33, rmSync as rmSync9 } from "fs";
+import { mkdtempSync as mkdtempSync4, readdirSync as readdirSync12, readFileSync as readFileSync32, rmSync as rmSync9 } from "fs";
 import { tmpdir as tmpdir5 } from "os";
 import { join as join41 } from "path";
 var SOURCE34 = "binance-historical";
@@ -41879,7 +41883,7 @@ async function bulkKlines(req) {
       throw new ProviderError(SOURCE34, `${req.pair}: ${e?.code ?? "FAILED"} ${e?.message ?? ""}`.trim(), e?.httpStatus ?? 0);
     }
     const file = res.outputPath ?? join41(out, readdirSync12(out).find((f3) => f3.endsWith(".jsonl")) ?? "");
-    const bars = readFileSync33(file, "utf8").split("\n").filter(Boolean).map((line) => {
+    const bars = readFileSync32(file, "utf8").split("\n").filter(Boolean).map((line) => {
       const k = JSON.parse(line);
       const iso4 = new Date(k.openTime).toISOString();
       return {
@@ -43370,19 +43374,15 @@ function equityJson(sim) {
 }
 
 // src/journal/settle.ts
-import { appendFileSync as appendFileSync7, existsSync as existsSync29, mkdirSync as mkdirSync22, readFileSync as readFileSync34 } from "fs";
+import { appendFileSync as appendFileSync7, mkdirSync as mkdirSync22 } from "fs";
 import { join as join43 } from "path";
 var HORIZONS2 = [5, 20, 60];
 var SETTLE_GRACE_SESSIONS = 10;
-function readDecisions() {
-  const f3 = join43(journalDir(), "decisions.jsonl");
-  if (!existsSync29(f3)) return [];
-  return readFileSync34(f3, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((d) => d.id);
+function readDecisions(warn) {
+  return readJsonl(join43(journalDir(), "decisions.jsonl"), warn).filter((d) => d.id);
 }
-function readSettlements() {
-  const f3 = join43(journalDir(), "settlements.jsonl");
-  if (!existsSync29(f3)) return [];
-  return readFileSync34(f3, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+function readSettlements(warn) {
+  return readJsonl(join43(journalDir(), "settlements.jsonl"), warn);
 }
 var closeAtOrBefore = (bars, date) => {
   let v;
@@ -43478,8 +43478,12 @@ async function settleDecisions(now = clockNow()) {
   }
   if (settled.length) {
     mkdirSync22(journalDir(), { recursive: true });
-    appendFileSync7(join43(journalDir(), "settlements.jsonl"), settled.map((s) => `${JSON.stringify(s)}
+    const file = join43(journalDir(), "settlements.jsonl");
+    withFileLockSync(`${file}.lock`, () => {
+      sealJsonlTail(file);
+      appendFileSync7(file, settled.map((s) => `${JSON.stringify(s)}
 `).join(""), { mode: 384 });
+    });
     appendFileSync7(
       join43(journalDir(), "decisions.md"),
       settled.map(
@@ -43616,7 +43620,7 @@ function loadDef(ref, usage2) {
 var runDir = (args, name) => argValue(args, "out") ? resolve11(argValue(args, "out")) : runDirFor(void 0, `${name.toUpperCase().replace(/[^A-Z0-9.+-]/g, "_")}-${runId()}`);
 function finish(asJson, dir2, evidence, summary) {
   if (asJson) process.stdout.write(jsonLine({ dir: dir2, evidence, ...summary }));
-  else process.stdout.write(`${readFileSync35(join44(dir2, "BACKTEST.md"), "utf8")}
+  else process.stdout.write(`${readFileSync33(join44(dir2, "BACKTEST.md"), "utf8")}
 run: ${dir2}
 `);
 }
@@ -44056,7 +44060,7 @@ ${v.warnings.map((w) => `warning: ${w}
       const def2 = { ...base2, name: ref };
       const dir2 = userStrategyDir();
       const path2 = join44(dir2, `${ref}.json`);
-      if (existsSync30(path2)) throw new UsageError(`${path2} already exists \u2014 edit it, or pick another name`);
+      if (existsSync29(path2)) throw new UsageError(`${path2} already exists \u2014 edit it, or pick another name`);
       mkdirSync23(dir2, { recursive: true });
       writeFileSync11(path2, `${JSON.stringify(def2, null, 2)}
 `);
@@ -44072,7 +44076,7 @@ edit it, then: ultrastock strategy validate ${ref} && ultrastock backtest run ${
 }
 
 // src/commands/broker.ts
-import { existsSync as existsSync34, mkdirSync as mkdirSync27, writeFileSync as writeFileSync12 } from "fs";
+import { existsSync as existsSync33, mkdirSync as mkdirSync27, writeFileSync as writeFileSync12 } from "fs";
 import { dirname as dirname7 } from "path";
 
 // src/trading/brokers/binance.ts
@@ -44495,7 +44499,7 @@ function coinbaseAdapter(opts) {
 }
 
 // src/trading/brokers/ibkr.ts
-import { readFileSync as readFileSync36 } from "fs";
+import { readFileSync as readFileSync34 } from "fs";
 import { request as httpsRequest } from "https";
 import { timingSafeEqual as timingSafeEqual2, X509Certificate } from "crypto";
 var IBKR_DEFAULT_BASE = "https://localhost:5000/v1/api";
@@ -44602,7 +44606,7 @@ function ibkrAdapter(opts) {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS4;
   let http3 = opts.http;
   if (!http3) {
-    const pem = opts.tls?.caPem ?? (opts.tls?.caFile ? readFileSync36(opts.tls.caFile, "utf8") : void 0);
+    const pem = opts.tls?.caPem ?? (opts.tls?.caFile ? readFileSync34(opts.tls.caFile, "utf8") : void 0);
     if (!pem) throw new BrokerError("ibkr", "the gateway certificate is required (tls.caFile or tls.caPem): TLS is never disabled");
     http3 = pinnedHttps(pem, opts.tls?.fingerprint256);
   }
@@ -45063,7 +45067,7 @@ function krakenAdapter(opts) {
 }
 
 // src/trading/limits.ts
-import { existsSync as existsSync31, mkdirSync as mkdirSync24, readFileSync as readFileSync37 } from "fs";
+import { existsSync as existsSync30, mkdirSync as mkdirSync24, readFileSync as readFileSync35 } from "fs";
 import { join as join45 } from "path";
 var LOOSEN_DELAY_MS = 24 * 36e5;
 var TIERS = [
@@ -45077,8 +45081,8 @@ function tierFor(liveFills) {
 var path = () => join45(homeDir(), "state", "live-limits.json");
 var DEFAULT = { maxOrder: TIERS[0].maxOrder, maxDaily: TIERS[0].maxDaily, venues: [], attestedNoWithdraw: [] };
 function load() {
-  if (!existsSync31(path())) return { current: { ...DEFAULT }, history: [] };
-  return JSON.parse(readFileSync37(path(), "utf8"));
+  if (!existsSync30(path())) return { current: { ...DEFAULT }, history: [] };
+  return JSON.parse(readFileSync35(path(), "utf8"));
 }
 function save2(s) {
   mkdirSync24(join45(homeDir(), "state"), { recursive: true });
@@ -45139,7 +45143,7 @@ function liveEverApproved() {
 }
 
 // src/trading/live.ts
-import { existsSync as existsSync33, mkdirSync as mkdirSync26, readFileSync as readFileSync39, rmSync as rmSync11 } from "fs";
+import { existsSync as existsSync32, mkdirSync as mkdirSync26, readFileSync as readFileSync37, rmSync as rmSync11 } from "fs";
 import { dirname as dirname6, join as join48 } from "path";
 import { createHash as createHash5 } from "crypto";
 
@@ -45559,7 +45563,7 @@ function chronological(txs) {
 // src/trading/otp.ts
 import { execFileSync } from "child_process";
 import { randomBytes as randomBytes3, randomInt, scryptSync, timingSafeEqual as timingSafeEqual3 } from "crypto";
-import { closeSync as closeSync7, existsSync as existsSync32, mkdirSync as mkdirSync25, openSync as openSync7, readFileSync as readFileSync38, rmSync as rmSync10, writeSync as writeSync4 } from "fs";
+import { closeSync as closeSync7, existsSync as existsSync31, mkdirSync as mkdirSync25, openSync as openSync7, readFileSync as readFileSync36, rmSync as rmSync10, writeSync as writeSync4 } from "fs";
 import { join as join46 } from "path";
 var CODE_TTL_MS = 12e4;
 var MAX_TRIES = 3;
@@ -45649,8 +45653,8 @@ function verifyCode(subject, binding, code, now = /* @__PURE__ */ new Date()) {
   return codesLock(() => verifyLocked(f3, binding, code, now));
 }
 function verifyLocked(f3, binding, code, now) {
-  if (!existsSync32(f3)) return { ok: false, reason: "no code was issued for this \u2014 run the code step first" };
-  const p = JSON.parse(readFileSync38(f3, "utf8"));
+  if (!existsSync31(f3)) return { ok: false, reason: "no code was issued for this \u2014 run the code step first" };
+  const p = JSON.parse(readFileSync36(f3, "utf8"));
   if (now.getTime() > Date.parse(p.expiresAt)) {
     rmSync10(f3, { force: true });
     return { ok: false, reason: "the code expired (2 minutes): issue a new one" };
@@ -45912,7 +45916,7 @@ var LIVE_SWITCH_SUBJECT = "live-switch";
 var LIVE_SWITCH_BINDING = "live-switch|on";
 function liveSwitchOn() {
   try {
-    return JSON.parse(readFileSync39(liveSwitchPath(), "utf8")).on === true;
+    return JSON.parse(readFileSync37(liveSwitchPath(), "utf8")).on === true;
   } catch {
     return false;
   }
@@ -45985,7 +45989,7 @@ async function preconditions(p) {
         `${p.venue} is not an authorised MiCA crypto-asset service provider for ${profile.jurisdiction} in ESMA's register: no live orders there`
       );
   }
-  if (existsSync33(killSwitchPath())) no("KILL_SWITCH", `the kill switch is on (${killSwitchPath()})`);
+  if (existsSync32(killSwitchPath())) no("KILL_SWITCH", `the kill switch is on (${killSwitchPath()})`);
   if (profile) {
     const book3 = p.env === "live" ? "real" : "live-test";
     const b = breakerState(readEquity(book3), closedTradeResults(readLedger(book3)), profile.limits, now);
@@ -46164,7 +46168,7 @@ async function submitLocked(p, now) {
     at: now.toISOString()
   };
   const killed = () => {
-    if (!existsSync33(killSwitchPath())) return void 0;
+    if (!existsSync32(killSwitchPath())) return void 0;
     const refusals2 = [{ code: "KILL_SWITCH", reason: `the kill switch was set while the order was being checked (${killSwitchPath()}): nothing was sent` }];
     audit({ event: "live-refused", ticket: t.id, venue: p.venue, env: p.env, refusals: refusals2 });
     return { ticket: loadTicket(t.id), refusals: refusals2 };
@@ -46182,7 +46186,7 @@ async function submitLocked(p, now) {
     void 0,
     ["checked"]
   );
-  if (existsSync33(killSwitchPath())) {
+  if (existsSync32(killSwitchPath())) {
     await transition(
       t.id,
       "blocked",
@@ -46545,7 +46549,7 @@ async function brokerCommand(args, asJson) {
   }
   if (sub === "panic") {
     mkdirSync27(dirname7(killSwitchPath()), { recursive: true });
-    if (!existsSync34(killSwitchPath())) writeFileSync12(killSwitchPath(), `kill switch set by \`broker panic\` at ${now.toISOString()}
+    if (!existsSync33(killSwitchPath())) writeFileSync12(killSwitchPath(), `kill switch set by \`broker panic\` at ${now.toISOString()}
 `);
     audit({ event: "panic" });
     const results = [];
@@ -46591,7 +46595,7 @@ async function brokerCommand(args, asJson) {
       asJson,
       {
         env: env3,
-        kill: existsSync34(killSwitchPath()),
+        kill: existsSync33(killSwitchPath()),
         limits: lim,
         liveFills: fills,
         todayNotional,
@@ -46600,7 +46604,7 @@ async function brokerCommand(args, asJson) {
         liveEnv: process.env.ULTRASTOCK_LIVE === "1"
       },
       [
-        `env ${env3} \xB7 kill switch ${existsSync34(killSwitchPath()) ? "ON" : "off"} \xB7 live switch ${liveSwitchOn() ? "on" : "off"} \xB7 ULTRASTOCK_LIVE ${process.env.ULTRASTOCK_LIVE === "1" ? "on" : "off"} \xB7 tier "${lim.tier}" (${lim.limits.maxOrder}/order, ${lim.limits.maxDaily}/day, ${todayNotional.toFixed(2)} used today)`,
+        `env ${env3} \xB7 kill switch ${existsSync33(killSwitchPath()) ? "ON" : "off"} \xB7 live switch ${liveSwitchOn() ? "on" : "off"} \xB7 ULTRASTOCK_LIVE ${process.env.ULTRASTOCK_LIVE === "1" ? "on" : "off"} \xB7 tier "${lim.tier}" (${lim.limits.maxOrder}/order, ${lim.limits.maxDaily}/day, ${todayNotional.toFixed(2)} used today)`,
         ...rows.map(
           (r3) => `  ${String(r3.venue).padEnd(9)} key: ${r3.key}${r3.on ? "" : " \xB7 not switched on"}${r3.mica ? ` \xB7 MiCA: ${r3.mica}` : ""}${r3.permissions ? ` \xB7 ${r3.permissions}` : ""}`
         )
@@ -47363,9 +47367,9 @@ function peaDeposits(txs, peaAccounts) {
 }
 
 // src/analyze/portfolio/rebalance.ts
-import { existsSync as existsSync35, readFileSync as readFileSync40 } from "fs";
+import { existsSync as existsSync34, readFileSync as readFileSync38 } from "fs";
 function parseTargets(raw) {
-  const text2 = raw.trim().startsWith("{") ? raw : existsSync35(raw) ? readFileSync40(raw, "utf8") : void 0;
+  const text2 = raw.trim().startsWith("{") ? raw : existsSync34(raw) ? readFileSync38(raw, "utf8") : void 0;
   if (text2 === void 0) throw new UsageError(`--targets is a JSON object of weights in % or a path to one, not "${raw}"`);
   let parsed;
   try {
@@ -47971,11 +47975,11 @@ async function incomeAnalysis(m, f3) {
 }
 
 // src/alerts/alerts.ts
-import { existsSync as existsSync36, mkdirSync as mkdirSync28, readFileSync as readFileSync41 } from "fs";
+import { existsSync as existsSync35, mkdirSync as mkdirSync28, readFileSync as readFileSync39 } from "fs";
 import { join as join50 } from "path";
 var statePath = () => join50(homeDir(), "state", "alerts.json");
 function loadRules() {
-  return existsSync36(statePath()) ? JSON.parse(readFileSync41(statePath(), "utf8")) : [];
+  return existsSync35(statePath()) ? JSON.parse(readFileSync39(statePath(), "utf8")) : [];
 }
 function saveRules(rules) {
   mkdirSync28(join50(homeDir(), "state"), { recursive: true });
@@ -48245,7 +48249,7 @@ async function notify(events) {
 }
 
 // src/commands/import.ts
-import { existsSync as existsSync37, readFileSync as readFileSync42 } from "fs";
+import { existsSync as existsSync36, readFileSync as readFileSync40 } from "fs";
 import { resolve as resolve13 } from "path";
 
 // src/portfolio/import/shared.ts
@@ -49550,7 +49554,7 @@ function resolveMapOption(format, raw) {
 var USAGE2 = "usage: ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name>] [--dry-run]";
 var LIST_CAP = 60;
 function readStatement(path2) {
-  const buf = readFileSync42(path2);
+  const buf = readFileSync40(path2);
   try {
     return { text: new TextDecoder("utf-8", { fatal: true }).decode(buf) };
   } catch {
@@ -49579,8 +49583,8 @@ async function importCommand(args, asJson) {
   if (book2 !== "real" && book2 !== "paper") throw new UsageError("--book is real or paper");
   const dryRun = args.bools.has("dry-run");
   let mapRaw = argValue(args, "map");
-  if (mapRaw !== void 0 && !mapRaw.trim().startsWith("{") && /\.json$/i.test(mapRaw) && existsSync37(resolve13(mapRaw)))
-    mapRaw = readFileSync42(resolve13(mapRaw), "utf8");
+  if (mapRaw !== void 0 && !mapRaw.trim().startsWith("{") && /\.json$/i.test(mapRaw) && existsSync36(resolve13(mapRaw)))
+    mapRaw = readFileSync40(resolve13(mapRaw), "utf8");
   let mapOpt;
   try {
     mapOpt = resolveMapOption(format, mapRaw);
@@ -49590,7 +49594,7 @@ async function importCommand(args, asJson) {
   if (format === "generic" && !mapOpt.map)
     throw new UsageError("--format generic needs --map (a JSON column map, a .json file holding one, or boursorama|fortuneo|trade-republic)");
   const path2 = resolve13(file);
-  if (!existsSync37(path2)) throw new Error(`no such file: ${path2}`);
+  if (!existsSync36(path2)) throw new Error(`no such file: ${path2}`);
   const { text: text2, warning } = readStatement(path2);
   const res = parseStatement(format, text2, { account, quote: mapOpt.quote, map: mapOpt.map, presetName: mapOpt.presetName });
   const warnings = [...warning ? [warning] : [], ...res.warnings];
@@ -50088,11 +50092,11 @@ async function portfolioAnalyticsCommand(args, asJson) {
 import { resolve as resolve14 } from "path";
 
 // src/portfolio/store.ts
-import { existsSync as existsSync38, mkdirSync as mkdirSync29, readdirSync as readdirSync13, statSync as statSync11 } from "fs";
+import { existsSync as existsSync37, mkdirSync as mkdirSync29, readdirSync as readdirSync13, statSync as statSync11 } from "fs";
 import { join as join51 } from "path";
 function jsonlBooks() {
   const dir2 = join51(homeDir(), "ledger");
-  if (!existsSync38(dir2)) return [];
+  if (!existsSync37(dir2)) return [];
   return readdirSync13(dir2).filter((f3) => /^[a-z0-9-]{1,40}\.jsonl$/.test(f3)).map((f3) => f3.replace(/\.jsonl$/, "")).sort();
 }
 function storeBooks() {
@@ -50123,7 +50127,7 @@ async function exportBook(book2) {
     const file = readJsonlLedger(book2);
     const have2 = new Set(file.map((t) => t.id));
     const missing = stored.filter((t) => !have2.has(t.id));
-    if (missing.length || !existsSync38(path2)) writeFileAtomic(path2, [...file, ...missing].map((t) => `${JSON.stringify(t)}
+    if (missing.length || !existsSync37(path2)) writeFileAtomic(path2, [...file, ...missing].map((t) => `${JSON.stringify(t)}
 `).join(""), 384);
     return { book: book2, path: path2, inStore: stored.length, inFileBefore: file.length, appended: missing.length };
   });
@@ -50135,13 +50139,13 @@ async function exportStore(book2) {
   return out;
 }
 async function storeOff(now = /* @__PURE__ */ new Date()) {
-  const exported = existsSync38(storePath()) ? await exportStore() : [];
+  const exported = existsSync37(storePath()) ? await exportStore() : [];
   setLedgerBackend("jsonl", now);
   return { backend: "jsonl", exported };
 }
 function storeStatus() {
   const path2 = storePath();
-  const exists = existsSync38(path2);
+  const exists = existsSync37(path2);
   const base2 = { backend: ledgerBackend(), path: path2, exists, expectedSchemaVersion: SCHEMA_VERSION, jsonlBooks: jsonlBooks() };
   if (!sqliteSupported()) return { ...base2, unavailable: new StoreUnavailableError().message };
   if (!exists) return base2;
@@ -51246,11 +51250,11 @@ async function paperCommand(args, asJson) {
 }
 
 // src/portfolio/watchlist.ts
-import { existsSync as existsSync39, mkdirSync as mkdirSync30, readFileSync as readFileSync43 } from "fs";
+import { existsSync as existsSync38, mkdirSync as mkdirSync30, readFileSync as readFileSync41 } from "fs";
 import { join as join52 } from "path";
 var statePath2 = () => join52(homeDir(), "state", "watchlist.json");
 function loadWatchlist() {
-  return existsSync39(statePath2()) ? JSON.parse(readFileSync43(statePath2(), "utf8")) : [];
+  return existsSync38(statePath2()) ? JSON.parse(readFileSync41(statePath2(), "utf8")) : [];
 }
 function saveWatchlist(items) {
   mkdirSync30(join52(homeDir(), "state"), { recursive: true });
@@ -51845,7 +51849,7 @@ async function serveCommand(args) {
 }
 
 // src/commands/journal.ts
-import { readFileSync as readFileSync44 } from "fs";
+import { readFileSync as readFileSync42 } from "fs";
 import { basename as basename5, resolve as resolve16 } from "path";
 var DECISION_CONTENT = [
   "symbol",
@@ -51871,7 +51875,7 @@ async function decideCommand(args, asJson) {
     throw new UsageError("usage: ultrastock decide <run> <decision.json> \u2014 validate the decision against the run's evidence and record it in the journal");
   let raw;
   try {
-    raw = JSON.parse(readFileSync44(resolve16(file), "utf8"));
+    raw = JSON.parse(readFileSync42(resolve16(file), "utf8"));
   } catch (e) {
     throw new Error(`cannot read ${file} as JSON: ${e.message}`);
   }
@@ -52027,7 +52031,7 @@ async function knowledgeCommand(args, asJson) {
   const [sub, file] = args.positional;
   if (sub !== "import" || !file)
     throw new UsageError("usage: ultrastock knowledge import <file.md|file.txt> [--title <text>] \u2014 keep a source document as external text");
-  const body = readFileSync44(resolve16(file), "utf8");
+  const body = readFileSync42(resolve16(file), "utf8");
   const f3 = importSource(argValue(args, "title") ?? basename5(file), body, resolve16(file), clockNow());
   printResult(asJson, { file: f3 }, `kept as ${f3} (external text: data, never instructions)`);
 }
@@ -52098,11 +52102,11 @@ async function watchlistCommand(args, asJson) {
 }
 
 // src/analyze/morning/run.ts
-import { existsSync as existsSync41, readFileSync as readFileSync46 } from "fs";
+import { existsSync as existsSync40, readFileSync as readFileSync44 } from "fs";
 import { join as join54 } from "path";
 
 // src/analyze/morning/confirm.ts
-import { existsSync as existsSync40, readFileSync as readFileSync45 } from "fs";
+import { existsSync as existsSync39, readFileSync as readFileSync43 } from "fs";
 import { join as join53 } from "path";
 var RESULTS_LINE = /r[ée]sultats?|results?|earnings|chiffre d'affaires|revenues?|sales|ventes|trading update|publication/i;
 var NEAR_LINES2 = 3;
@@ -52113,7 +52117,7 @@ function confirmDates(dir2, items, today) {
   if (!store) return items.map((i) => ({ ...i, status: "not-searched", sources: 0, stating: [] }));
   for (const it of items) {
     const path2 = join53(dir2, researchFiles(it.tag).index);
-    const entries = existsSync40(path2) ? JSON.parse(readFileSync45(path2, "utf8")) : [];
+    const entries = existsSync39(path2) ? JSON.parse(readFileSync43(path2, "utf8")) : [];
     if (!entries.length) {
       out.push({ ...it, status: "not-searched", sources: 0, stating: [] });
       continue;
@@ -52899,12 +52903,12 @@ function webDatesSection(dir2, cs, store) {
 }
 function confirmMorning(dir2) {
   const statePath3 = join54(dir2, MORNING_STATE);
-  if (!existsSync41(statePath3)) throw new UsageError(`${dir2} holds no ${MORNING_STATE} \u2014 run \`ultrastock morning --out ${dir2}\` first`);
-  const state = JSON.parse(readFileSync46(statePath3, "utf8"));
+  if (!existsSync40(statePath3)) throw new UsageError(`${dir2} holds no ${MORNING_STATE} \u2014 run \`ultrastock morning --out ${dir2}\` first`);
+  const state = JSON.parse(readFileSync44(statePath3, "utf8"));
   const confirmations = confirmDates(dir2, state.toConfirm, state.today);
   const store = EvidenceStore.load(dir2);
   const file = join54(dir2, "MORNING.md");
-  const md = readFileSync46(file, "utf8");
+  const md = readFileSync44(file, "utf8");
   const section = webDatesSection(dir2, confirmations, store);
   const at = md.indexOf("## Dates on the web");
   const close = md.indexOf(WEB_CLOSE);
@@ -53073,7 +53077,7 @@ async function morningCommand(args, asJson) {
 }
 
 // src/commands/profile.ts
-import { readFileSync as readFileSync47 } from "fs";
+import { readFileSync as readFileSync45 } from "fs";
 import { resolve as resolve17 } from "path";
 
 // src/core/suitability.ts
@@ -53447,7 +53451,7 @@ async function profileCommand(args, asJson) {
       ].join("\n");
       return printResult(asJson, { questions: QUESTIONS }, text2);
     }
-    const answers = JSON.parse(readFileSync47(resolve17(answersFile), "utf8"));
+    const answers = JSON.parse(readFileSync45(resolve17(answersFile), "utf8"));
     const r3 = scoreSuitability(answers);
     const now = clockNow();
     const ratchet = profileRatchetOn();
@@ -55768,7 +55772,7 @@ async function screenCommand(args, asJson) {
 }
 
 // src/commands/etf.ts
-import { readFileSync as readFileSync48 } from "fs";
+import { readFileSync as readFileSync46 } from "fs";
 import { join as join57, resolve as resolve19 } from "path";
 
 // src/analyze/etf-propose.ts
@@ -56728,7 +56732,7 @@ ${USAGE6}`);
       throw e;
     }
     if (asJson) process.stdout.write(jsonLine(r3));
-    else process.stdout.write(`${readFileSync48(join57(dir2, "PROPOSAL.md"), "utf8")}
+    else process.stdout.write(`${readFileSync46(join57(dir2, "PROPOSAL.md"), "utf8")}
 run: ${dir2}
 `);
     return;
@@ -56737,7 +56741,7 @@ run: ${dir2}
 }
 
 // src/commands/value.ts
-import { readFileSync as readFileSync49 } from "fs";
+import { readFileSync as readFileSync47 } from "fs";
 import { join as join59 } from "path";
 
 // src/analyze/value/run.ts
@@ -57899,7 +57903,7 @@ async function valueCommand(args, asJson) {
 `)
   });
   if (asJson) process.stdout.write(jsonLine(r3));
-  else process.stdout.write(`${readFileSync49(join59(dir2, "VALUE.md"), "utf8")}
+  else process.stdout.write(`${readFileSync47(join59(dir2, "VALUE.md"), "utf8")}
 run: ${dir2}
 `);
 }
@@ -59202,7 +59206,7 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
     const maxAge = argValue(args, "max-age");
     let answer;
     try {
-      answer = readFileSync50(file, "utf8");
+      answer = readFileSync48(file, "utf8");
     } catch {
       return fail(`cannot read ${file}`);
     }
