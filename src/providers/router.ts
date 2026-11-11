@@ -30,7 +30,14 @@ export interface Resolved {
   notes: string[];
   /** A crypto pair the first venue prices against another quote than the one written (BTC-USD → BTCUSDT on Binance): the pair as written, and the note in `notes` that says so. */
   substituted?: { written: string; note: string };
+  /**
+   * The crypto book that answered the first read of this pair (set by getHistory or getQuote): a later read of the
+   * same Resolved is taken from that book's pair only, so a quote and a history never mix USDT and USD under one label.
+   */
+  answered?: { venue: CryptoVenue; instrument: Instrument };
 }
+
+type CryptoVenue = "binance" | "kraken" | "coinbase";
 
 const ISIN = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
 
@@ -96,25 +103,69 @@ function stamp<T extends { provenance: { source: string; fallbackFrom?: string }
  * substitution, which would be false of their answer.
  */
 function asWritten(r: Resolved): { symbol: string; notes: string[] } {
+  const pinned = r.answered;
+  // Once a book answered, the others are asked for its pair: Binance's (BTCUSDT, its note true of a USDT answer), or the
+  // written one.
+  if (pinned) return samePair(pinned.instrument, r.instrument) ? { symbol: r.instrument.symbol, notes: r.notes } : asWrittenPair(r);
+  return asWrittenPair(r);
+}
+
+function asWrittenPair(r: Resolved): { symbol: string; notes: string[] } {
   const sub = r.substituted;
   return sub ? { symbol: sub.written, notes: r.notes.filter((n) => n !== sub.note) } : { symbol: r.instrument.symbol, notes: r.notes };
+}
+
+/** One pair, whatever the venue writes it as: BTCUSDT on Binance is BTC-USDT on Kraken. */
+function samePair(a: Instrument, b: Instrument): boolean {
+  const bare = (i: Instrument) => i.symbol.toUpperCase().replace(/[-/_]/g, "");
+  return a.currency === b.currency && bare(a) === bare(b);
+}
+
+/**
+ * Read a crypto pair from the first venue that answers. The first answer pins the pair for this Resolved: a later
+ * read asks that venue first and takes no other pair — a dollar quote is never registered beside a USDT history.
+ */
+async function cryptoRead<T extends { instrument: Instrument; provenance: { source: string; fallbackFrom?: string }; notes: string[] }>(
+  r: Resolved,
+  ask: (venue: CryptoVenue, other: { symbol: string; notes: string[] }) => Promise<T>,
+): Promise<T> {
+  const pinned = r.answered;
+  const other = asWritten(r);
+  const venues: CryptoVenue[] = (["binance", "kraken", "coinbase"] as const).filter(
+    (v) => !pinned || v !== "binance" || samePair(pinned.instrument, r.instrument),
+  );
+  if (pinned) venues.sort((a, b) => Number(b === pinned.venue) - Number(a === pinned.venue));
+  const res = await firstAnswer<T>(
+    venues.map((v) => ({
+      source: v,
+      run: async () => {
+        const got = await ask(v, other);
+        if (pinned && !samePair(got.instrument, pinned.instrument))
+          throw new ProviderError(
+            v,
+            `answers ${got.instrument.symbol} in ${got.instrument.currency}, not the ${pinned.instrument.symbol} book already read`,
+            409,
+          );
+        return got;
+      },
+    })),
+    { fallThroughAll: true },
+  );
+  r.answered ??= { venue: res.source as CryptoVenue, instrument: res.value.instrument };
+  return stamp(res.value, res.failures);
 }
 
 export async function getHistory(r: Resolved, req: HistoryRequest): Promise<PriceSeries> {
   const interval = req.interval ?? "1d";
   const { instrument } = r;
-  if (instrument.market === "crypto") {
-    const other = asWritten(r);
-    const res = await firstAnswer<PriceSeries>(
-      [
-        { source: "binance", run: () => binanceHistory(instrument, interval, req.from, req.to, r.notes) },
-        { source: "kraken", run: async () => krakenHistory(await resolveKraken(other.symbol), interval, req.from, req.to, other.notes) },
-        { source: "coinbase", run: () => coinbaseHistory(resolveCoinbase(other.symbol), interval, req.from, req.to, other.notes) },
-      ],
-      { fallThroughAll: true },
+  if (instrument.market === "crypto")
+    return cryptoRead<PriceSeries>(r, async (venue, other) =>
+      venue === "binance"
+        ? binanceHistory(instrument, interval, req.from, req.to, r.notes)
+        : venue === "kraken"
+          ? krakenHistory(await resolveKraken(other.symbol), interval, req.from, req.to, other.notes)
+          : coinbaseHistory(resolveCoinbase(other.symbol), interval, req.from, req.to, other.notes),
     );
-    return stamp(res.value, res.failures);
-  }
   if (instrument.market === "fund") {
     if (interval !== "1d") throw new ProviderError("ft", `a fund has one price a day: only daily bars for ${instrument.symbol}`);
     const series = await ftFundHistory(instrument, req.from, req.to);
@@ -138,18 +189,14 @@ export async function getHistory(r: Resolved, req: HistoryRequest): Promise<Pric
 /** The latest price: a live quote for US, European and crypto listings, the last official close for Euronext. */
 export async function getQuote(r: Resolved, now = clockNow()): Promise<QuoteResult> {
   const { instrument } = r;
-  if (instrument.market === "crypto") {
-    const other = asWritten(r);
-    const res = await firstAnswer<QuoteResult>(
-      [
-        { source: "binance", run: () => binanceQuote(instrument, r.notes) },
-        { source: "kraken", run: async () => krakenQuote(await resolveKraken(other.symbol), other.notes) },
-        { source: "coinbase", run: () => coinbaseQuote(resolveCoinbase(other.symbol), other.notes) },
-      ],
-      { fallThroughAll: true },
+  if (instrument.market === "crypto")
+    return cryptoRead<QuoteResult>(r, async (venue, other) =>
+      venue === "binance"
+        ? binanceQuote(instrument, r.notes)
+        : venue === "kraken"
+          ? krakenQuote(await resolveKraken(other.symbol), other.notes)
+          : coinbaseQuote(resolveCoinbase(other.symbol), other.notes),
     );
-    return stamp(res.value, res.failures);
-  }
   if (viaYahoo(instrument)) return yahooQuote(instrument, now);
   if (instrument.market === "fund") {
     const series = await ftFundHistory(instrument, new Date(now.getTime() - 21 * 86400_000), now);

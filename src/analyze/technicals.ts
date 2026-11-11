@@ -187,11 +187,12 @@ export interface TechnicalsResult {
 export async function technicalsRun(raw: string, dir: string, opts: TechnicalsOptions = {}): Promise<TechnicalsResult> {
   const now = opts.now ?? clockNow();
   const resolved = await resolveSymbol(raw);
-  const inst = resolved.instrument;
-  const sym = inst.symbol;
   const interval = opts.interval ?? "1d";
   const days = interval === "1d" ? 729 : interval === "1w" ? 3650 : interval === "4h" ? 330 : interval === "1h" ? 80 : 20;
   const series = await getHistory(resolved, { from: new Date(now.getTime() - days * 86_400_000), to: now, interval });
+  // A crypto pair is labelled by the book that answered (Kraken's BTC-USD in USD when Binance did not answer BTCUSDT).
+  const inst = resolved.instrument.market === "crypto" ? series.instrument : resolved.instrument;
+  const sym = inst.symbol;
   const bars = series.bars;
   if (bars.length < 60) throw new Error(`only ${bars.length} bars for ${sym}: technicals need at least 60`);
   const at = bars.length - 1;

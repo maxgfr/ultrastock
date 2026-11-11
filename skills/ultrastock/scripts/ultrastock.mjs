@@ -14353,24 +14353,52 @@ function stamp(value2, failures) {
   };
 }
 function asWritten(r3) {
+  const pinned = r3.answered;
+  if (pinned) return samePair(pinned.instrument, r3.instrument) ? { symbol: r3.instrument.symbol, notes: r3.notes } : asWrittenPair(r3);
+  return asWrittenPair(r3);
+}
+function asWrittenPair(r3) {
   const sub = r3.substituted;
   return sub ? { symbol: sub.written, notes: r3.notes.filter((n2) => n2 !== sub.note) } : { symbol: r3.instrument.symbol, notes: r3.notes };
+}
+function samePair(a, b) {
+  const bare = (i) => i.symbol.toUpperCase().replace(/[-/_]/g, "");
+  return a.currency === b.currency && bare(a) === bare(b);
+}
+async function cryptoRead(r3, ask) {
+  const pinned = r3.answered;
+  const other = asWritten(r3);
+  const venues = ["binance", "kraken", "coinbase"].filter(
+    (v) => !pinned || v !== "binance" || samePair(pinned.instrument, r3.instrument)
+  );
+  if (pinned) venues.sort((a, b) => Number(b === pinned.venue) - Number(a === pinned.venue));
+  const res = await firstAnswer(
+    venues.map((v) => ({
+      source: v,
+      run: async () => {
+        const got = await ask(v, other);
+        if (pinned && !samePair(got.instrument, pinned.instrument))
+          throw new ProviderError(
+            v,
+            `answers ${got.instrument.symbol} in ${got.instrument.currency}, not the ${pinned.instrument.symbol} book already read`,
+            409
+          );
+        return got;
+      }
+    })),
+    { fallThroughAll: true }
+  );
+  r3.answered ??= { venue: res.source, instrument: res.value.instrument };
+  return stamp(res.value, res.failures);
 }
 async function getHistory(r3, req) {
   const interval = req.interval ?? "1d";
   const { instrument } = r3;
-  if (instrument.market === "crypto") {
-    const other = asWritten(r3);
-    const res2 = await firstAnswer(
-      [
-        { source: "binance", run: () => binanceHistory(instrument, interval, req.from, req.to, r3.notes) },
-        { source: "kraken", run: async () => krakenHistory(await resolveKraken(other.symbol), interval, req.from, req.to, other.notes) },
-        { source: "coinbase", run: () => coinbaseHistory(resolveCoinbase(other.symbol), interval, req.from, req.to, other.notes) }
-      ],
-      { fallThroughAll: true }
+  if (instrument.market === "crypto")
+    return cryptoRead(
+      r3,
+      async (venue, other) => venue === "binance" ? binanceHistory(instrument, interval, req.from, req.to, r3.notes) : venue === "kraken" ? krakenHistory(await resolveKraken(other.symbol), interval, req.from, req.to, other.notes) : coinbaseHistory(resolveCoinbase(other.symbol), interval, req.from, req.to, other.notes)
     );
-    return stamp(res2.value, res2.failures);
-  }
   if (instrument.market === "fund") {
     if (interval !== "1d") throw new ProviderError("ft", `a fund has one price a day: only daily bars for ${instrument.symbol}`);
     const series = await ftFundHistory(instrument, req.from, req.to);
@@ -14387,18 +14415,11 @@ async function getHistory(r3, req) {
 }
 async function getQuote(r3, now = clockNow()) {
   const { instrument } = r3;
-  if (instrument.market === "crypto") {
-    const other = asWritten(r3);
-    const res2 = await firstAnswer(
-      [
-        { source: "binance", run: () => binanceQuote(instrument, r3.notes) },
-        { source: "kraken", run: async () => krakenQuote(await resolveKraken(other.symbol), other.notes) },
-        { source: "coinbase", run: () => coinbaseQuote(resolveCoinbase(other.symbol), other.notes) }
-      ],
-      { fallThroughAll: true }
+  if (instrument.market === "crypto")
+    return cryptoRead(
+      r3,
+      async (venue, other) => venue === "binance" ? binanceQuote(instrument, r3.notes) : venue === "kraken" ? krakenQuote(await resolveKraken(other.symbol), other.notes) : coinbaseQuote(resolveCoinbase(other.symbol), other.notes)
     );
-    return stamp(res2.value, res2.failures);
-  }
   if (viaYahoo(instrument)) return yahooQuote(instrument, now);
   if (instrument.market === "fund") {
     const series = await ftFundHistory(instrument, new Date(now.getTime() - 21 * 864e5), now);
@@ -14456,8 +14477,8 @@ async function analyzeSymbol(raw, dir2, opts = {}) {
   const series = await getHistory(resolved, { from, to: now, interval: "1d" });
   const quote2 = await getQuote(resolved, now);
   const store = EvidenceStore.open(dir2, { run: dir2, subject: instrument.symbol, createdAt: now.toISOString() });
-  const sym3 = instrument.symbol;
-  const ccy = instrument.currency;
+  const sym3 = (instrument.market === "crypto" ? series.instrument : instrument).symbol;
+  const ccy = (instrument.market === "crypto" ? series.instrument : instrument).currency;
   const bars = series.bars;
   const last2 = bars[bars.length - 1];
   const closes = bars.map((b) => b.close);
@@ -21096,7 +21117,8 @@ async function fetchBars(raw, from, now) {
     const r3 = await resolveSymbol(raw);
     const series = await getHistory(r3, { from, to: now, interval: "1d" });
     const crypto = r3.instrument.market === "crypto";
-    return { sym: r3.instrument.symbol, series, bars: closedBars(series.bars, r3.instrument.market, now), crypto, us: r3.instrument.market === "us" };
+    const sym3 = (crypto ? series.instrument : r3.instrument).symbol;
+    return { sym: sym3, series, bars: closedBars(series.bars, r3.instrument.market, now), crypto, us: r3.instrument.market === "us" };
   } catch (e) {
     return { sym: raw.toUpperCase(), bars: [], crypto: false, us: false, error: e.message };
   }
@@ -32232,11 +32254,11 @@ function bullishScore(bars) {
 async function technicalsRun(raw, dir2, opts = {}) {
   const now = opts.now ?? clockNow();
   const resolved = await resolveSymbol(raw);
-  const inst = resolved.instrument;
-  const sym3 = inst.symbol;
   const interval = opts.interval ?? "1d";
   const days = interval === "1d" ? 729 : interval === "1w" ? 3650 : interval === "4h" ? 330 : interval === "1h" ? 80 : 20;
   const series = await getHistory(resolved, { from: new Date(now.getTime() - days * 864e5), to: now, interval });
+  const inst = resolved.instrument.market === "crypto" ? series.instrument : resolved.instrument;
+  const sym3 = inst.symbol;
   const bars = series.bars;
   if (bars.length < 60) throw new Error(`only ${bars.length} bars for ${sym3}: technicals need at least 60`);
   const at = bars.length - 1;

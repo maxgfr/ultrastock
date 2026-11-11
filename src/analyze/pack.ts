@@ -35,8 +35,9 @@ export async function analyzeSymbol(raw: string, dir: string, opts: { now?: Date
   const series = await getHistory(resolved, { from, to: now, interval: "1d" });
   const quote = await getQuote(resolved, now);
   const store = EvidenceStore.open(dir, { run: dir, subject: instrument.symbol, createdAt: now.toISOString() });
-  const sym = instrument.symbol;
-  const ccy = instrument.currency;
+  // A crypto pair is labelled by the book that answered (Kraken's BTC-USD in USD when Binance did not answer BTCUSDT).
+  const sym = (instrument.market === "crypto" ? series.instrument : instrument).symbol;
+  const ccy = (instrument.market === "crypto" ? series.instrument : instrument).currency;
   const bars = series.bars;
   const last = bars[bars.length - 1]!;
   const closes = bars.map((b) => b.close);

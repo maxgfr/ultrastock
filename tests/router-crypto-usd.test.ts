@@ -104,4 +104,27 @@ describe("a crypto pair written against the dollar", () => {
     expect(venues.asked).toEqual(["kraken BTCUSDT"]);
     expect(q.instrument.currency).toBe("USDT");
   });
+
+  it("reads a quote from the book the history came from: never a USDT quote beside a USD history", async () => {
+    const r = await resolveSymbol("BTC-USD");
+    const s = await getHistory(r, window);
+    expect(s.instrument).toMatchObject({ symbol: "BTC-USD", currency: "USD" });
+    // Binance answers again: its BTCUSDT book is another unit — the quote stays on Kraken's dollar book.
+    venues.binanceUp = true;
+    const q = await getQuote(r);
+    expect(q.instrument).toMatchObject({ symbol: "BTC-USD", currency: "USD" });
+    expect(q.provenance.source).toBe("kraken");
+  });
+
+  it("asks the other venues for Binance's own pair once Binance gave the history", async () => {
+    venues.binanceUp = true;
+    const r = await resolveSymbol("BTC-USD");
+    expect((await getHistory(r, window)).instrument).toMatchObject({ symbol: "BTCUSDT", currency: "USDT" });
+    // Binance stops answering: Kraken is asked for BTC/USDT, the book the history was read on, with Binance's note.
+    venues.binanceUp = false;
+    const q = await getQuote(r);
+    expect(venues.asked).toEqual(["kraken BTCUSDT"]);
+    expect(q.instrument).toMatchObject({ symbol: "BTC-USDT", currency: "USDT" });
+    expect(q.notes.join(" ")).toMatch(/priced against USDT/);
+  });
 });

@@ -166,7 +166,9 @@ async function fetchBars(raw: string, from: Date, now: Date): Promise<Fetched> {
     const r = await resolveSymbol(raw);
     const series = await getHistory(r, { from, to: now, interval: "1d" });
     const crypto = r.instrument.market === "crypto";
-    return { sym: r.instrument.symbol, series, bars: closedBars(series.bars, r.instrument.market, now), crypto, us: r.instrument.market === "us" };
+    // A crypto pair is labelled by the book that answered (Kraken's BTC-USD when Binance did not answer BTCUSDT).
+    const sym = (crypto ? series.instrument : r.instrument).symbol;
+    return { sym, series, bars: closedBars(series.bars, r.instrument.market, now), crypto, us: r.instrument.market === "us" };
   } catch (e) {
     return { sym: raw.toUpperCase(), bars: [], crypto: false, us: false, error: (e as Error).message };
   }
