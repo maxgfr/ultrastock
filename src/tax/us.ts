@@ -7,7 +7,9 @@
 //   anniversary of the acquisition), short-term otherwise.
 // - A transfer between the user's own accounts is not a disposal: a
 //   transfer-in without a price takes the lots (basis and acquisition date)
-//   that a transfer-out of the same symbol from another account gave up.
+//   that a transfer-out of the same symbol from another account gave up —
+//   except out of an IRA into a taxable account: a distribution, valued at its
+//   date (Pub. 590-B).
 // - Wash sales (§1091, stocks and securities): a loss is disallowed when
 //   substantially identical shares are bought within 30 days before or after
 //   the sale — in any account, an IRA included (then permanently) — and added
@@ -207,9 +209,20 @@ export class UsRegime extends TaxRegime {
       if (!pieces.length) return false;
       const rest = need > 1e-12 ? { ...into, quantity: need, remaining: need } : undefined;
       pieces.forEach(({ from, qty }, i) => {
+        const piece = i === 0 ? into : { ...into, id: lots.length };
+        if (from.sheltered && !into.sheltered) {
+          // Out of an IRA into a taxable account: a distribution, not a move. The shares take their fair market value on
+          // that date as basis and their holding period starts then (IRS Pub. 590-B) — a value the ledger does not hold.
+          Object.assign(piece, { quantity: qty, remaining: qty });
+          warnings.push(
+            `${into.symbol} moved out of ${from.account} (${envelopeOf(from.account, input.envelopes).type}) into ${into.account} on ${into.bought}: a distribution, whose basis is the fair market value on that date (IRS Pub. 590-B) — give the transfer-in that value as its price (basis 0 until then)`,
+          );
+          if (i > 0) lots.push(piece);
+          active.add(piece);
+          return;
+        }
         // The same shares, not a new purchase (never a replacement themselves): they keep the basis, the holding period
         // and whether they already are replacement shares, and a wash sale matched to their purchase later lands here.
-        const piece = i === 0 ? into : { ...into, id: lots.length };
         const origin = from.origin ?? from;
         Object.assign(piece, {
           quantity: qty,

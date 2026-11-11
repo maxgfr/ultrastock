@@ -102,6 +102,29 @@ describe("US: a transfer between own accounts and the wash-sale rule", () => {
   });
 });
 
+describe("US: shares taken out of an IRA in kind", () => {
+  it("do not arrive in the taxable account with the IRA's purchase price and date", () => {
+    // IRS Pub. 590-B: property distributed from an IRA takes its fair market value on the distribution date as basis,
+    // and its holding period starts then. Without a price on the transfer-in the basis is unknown (said so) — what it
+    // can never be is the 150 $ paid inside the IRA in 2022, with a long-term holding period.
+    const IRA: Envelope = { id: "ira", type: "IRA", broker: "Schwab", currency: "USD" };
+    const txs = [
+      tx({ date: "2022-03-02", type: "buy", account: "ira", symbol: "X", quantity: 10, price: 150 }),
+      tx({ date: "2025-06-01", type: "transfer-out", account: "ira", symbol: "X", quantity: 10 }),
+      tx({ date: "2025-06-01", type: "transfer-in", account: "a", symbol: "X", quantity: 10 }),
+      tx({ date: "2025-12-01", type: "sell", account: "a", symbol: "X", quantity: 10, price: 190 }),
+    ];
+    const s = new UsRegime(2025).annualSummary(input(txs, { envelopes: [A, IRA] }));
+    const ev = s.events.filter((e) => e.kind === "securities-disposal");
+    expect(ev.map((e) => [e.acquired, e.term])).toEqual([["2025-06-01", "short"]]);
+    expect(ev[0]!.cost).not.toBe(1500);
+    expect(s.warnings.join(" ")).toMatch(/X .*ira.*fair market value.*590-B/);
+    // The value on the distribution date given as the transfer-in's price: 10 × 170 = 1 700, a 200 $ short-term gain.
+    const priced = [...txs.slice(0, 2), tx({ ...txs[2]!, price: 170 }), txs[3]!];
+    expect(disposals(priced, { envelopes: [A, IRA] }).map((e) => [e.cost, e.gain, e.term])).toEqual([[1700, 200, "short"]]);
+  });
+});
+
 describe("US: a trade quoted in a crypto-asset", () => {
   it("buying ETH with BTC disposes of the BTC given, at its fair value", async () => {
     // IRS Notice 2014-21 (Q&A 6): a crypto-to-crypto trade disposes of the asset given at fair value.
