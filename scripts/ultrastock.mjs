@@ -13032,6 +13032,7 @@ function looksLikeCryptoPair(symbol) {
 function resolveBinance(symbol) {
   const s = symbol.toUpperCase();
   const notes = [];
+  let substituted;
   let base2;
   let quote2;
   const sep3 = /^([A-Z0-9]+)[-/]([A-Z0-9]+)$/.exec(s);
@@ -13044,12 +13045,14 @@ function resolveBinance(symbol) {
   }
   if (quote2 === "USD") {
     quote2 = "USDT";
-    notes.push(`${base2}-USD priced against USDT: Binance spot has no USD book`);
+    substituted = { written: `${base2}-USD`, note: `${base2}-USD priced against USDT: Binance spot has no USD book` };
+    notes.push(substituted.note);
   }
   const pair = `${base2}${quote2}`;
   return {
     instrument: { symbol: pair, market: "crypto", kind: "crypto", name: `${base2}/${quote2}`, currency: quote2, venueId: pair },
-    notes
+    notes,
+    ...substituted ? { substituted } : {}
   };
 }
 function parseKlines(rows, interval) {
@@ -14132,15 +14135,20 @@ function stamp(value, failures) {
     notes: [...value.notes, ...failures.map((f3) => failureNote(f3, value.provenance.source))]
   };
 }
+function asWritten(r3) {
+  const sub = r3.substituted;
+  return sub ? { symbol: sub.written, notes: r3.notes.filter((n2) => n2 !== sub.note) } : { symbol: r3.instrument.symbol, notes: r3.notes };
+}
 async function getHistory(r3, req) {
   const interval = req.interval ?? "1d";
   const { instrument } = r3;
   if (instrument.market === "crypto") {
+    const other = asWritten(r3);
     const res2 = await firstAnswer(
       [
         { source: "binance", run: () => binanceHistory(instrument, interval, req.from, req.to, r3.notes) },
-        { source: "kraken", run: async () => krakenHistory(await resolveKraken(instrument.symbol), interval, req.from, req.to, r3.notes) },
-        { source: "coinbase", run: () => coinbaseHistory(resolveCoinbase(instrument.symbol), interval, req.from, req.to, r3.notes) }
+        { source: "kraken", run: async () => krakenHistory(await resolveKraken(other.symbol), interval, req.from, req.to, other.notes) },
+        { source: "coinbase", run: () => coinbaseHistory(resolveCoinbase(other.symbol), interval, req.from, req.to, other.notes) }
       ],
       { fallThroughAll: true }
     );
@@ -14163,11 +14171,12 @@ async function getHistory(r3, req) {
 async function getQuote(r3, now = clockNow()) {
   const { instrument } = r3;
   if (instrument.market === "crypto") {
+    const other = asWritten(r3);
     const res2 = await firstAnswer(
       [
         { source: "binance", run: () => binanceQuote(instrument, r3.notes) },
-        { source: "kraken", run: async () => krakenQuote(await resolveKraken(instrument.symbol), r3.notes) },
-        { source: "coinbase", run: () => coinbaseQuote(resolveCoinbase(instrument.symbol), r3.notes) }
+        { source: "kraken", run: async () => krakenQuote(await resolveKraken(other.symbol), other.notes) },
+        { source: "coinbase", run: () => coinbaseQuote(resolveCoinbase(other.symbol), other.notes) }
       ],
       { fallThroughAll: true }
     );
@@ -21730,7 +21739,7 @@ var CRIBLE_FIELDS2 = [
   ["ttm_revenue", "revenue (trailing 12 months)"],
   ["ttm_net_income", "net income (trailing 12 months)"]
 ];
-function asWritten(v) {
+function asWritten2(v) {
   const a = Math.abs(v);
   const scale = a >= 1e9 ? 1e9 : a >= 1e6 ? 1e6 : 1;
   return { raw: String(v), value: v, percent: false, decimals: 1, scale };
@@ -21765,7 +21774,7 @@ async function cribleCrossCheck(dir2, symbol, docs) {
       delay: "filing",
       official: provider === "edgar" || provider === "esef"
     });
-    const f3 = asWritten(v);
+    const f3 = asWritten2(v);
     rows.push({ id, label: label2, value: v, unit: ccy, period: period2, foundIn: docFigures.filter((d) => figureMatches(f3, d.figures)).map((d) => d.id) });
   }
   store.save();

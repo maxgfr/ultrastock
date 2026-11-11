@@ -24,11 +24,13 @@ export function looksLikeCryptoPair(symbol: string): boolean {
 
 /**
  * The Binance pair for a user symbol. "-USD" becomes USDT, with a note: Binance
- * spot has no USD book, and a dollar stablecoin is not the dollar.
+ * spot has no USD book, and a dollar stablecoin is not the dollar. `substituted`
+ * then keeps the pair as written (and that note), for the venues that do have the book.
  */
-export function resolveBinance(symbol: string): { instrument: Instrument; notes: string[] } {
+export function resolveBinance(symbol: string): { instrument: Instrument; notes: string[]; substituted?: { written: string; note: string } } {
   const s = symbol.toUpperCase();
   const notes: string[] = [];
+  let substituted: { written: string; note: string } | undefined;
   let base: string;
   let quote: string;
   const sep = /^([A-Z0-9]+)[-/]([A-Z0-9]+)$/.exec(s);
@@ -41,12 +43,14 @@ export function resolveBinance(symbol: string): { instrument: Instrument; notes:
   }
   if (quote === "USD") {
     quote = "USDT";
-    notes.push(`${base}-USD priced against USDT: Binance spot has no USD book`);
+    substituted = { written: `${base}-USD`, note: `${base}-USD priced against USDT: Binance spot has no USD book` };
+    notes.push(substituted.note);
   }
   const pair = `${base}${quote}`;
   return {
     instrument: { symbol: pair, market: "crypto", kind: "crypto", name: `${base}/${quote}`, currency: quote, venueId: pair },
     notes,
+    ...(substituted ? { substituted } : {}),
   };
 }
 

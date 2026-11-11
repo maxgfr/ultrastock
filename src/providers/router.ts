@@ -7,6 +7,8 @@
 //   PETR4.SA, 7203.T, 0700.HK, BHP.AX, NPN.JO, … → Yahoo (unofficial; the rest of the world)
 //   NVDA, QQQ, BRK.B, NVDA.US       → Nasdaq API (unofficial, US)          → Yahoo
 //   BTCUSDT, ETH-EUR, SOL/USDC      → Binance spot (official, real time)   → Kraken → Coinbase
+//   BTC-USD                         → Binance prices it against USDT (said); Kraken and Coinbase, which
+//                                     have a dollar book, are asked for BTC-USD when they stand in
 //
 // Fallbacks are explicit: the answer's provenance says "fallback for euronext"
 // when Euronext did not answer, and a definitive refusal ("no such listing")
@@ -26,6 +28,8 @@ import { type Instrument, type Interval, type PriceSeries, ProviderError, type Q
 export interface Resolved {
   instrument: Instrument;
   notes: string[];
+  /** A crypto pair the first venue prices against another quote than the one written (BTC-USD → BTCUSDT on Binance): the pair as written, and the note in `notes` that says so. */
+  substituted?: { written: string; note: string };
 }
 
 const ISIN = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
@@ -86,15 +90,26 @@ function stamp<T extends { provenance: { source: string; fallbackFrom?: string }
   };
 }
 
+/**
+ * What the venues after Binance are asked: the pair the user wrote. When Binance had to price it against another
+ * quote, they get the written pair — Kraken and Coinbase have real USD books — and not the note about Binance's
+ * substitution, which would be false of their answer.
+ */
+function asWritten(r: Resolved): { symbol: string; notes: string[] } {
+  const sub = r.substituted;
+  return sub ? { symbol: sub.written, notes: r.notes.filter((n) => n !== sub.note) } : { symbol: r.instrument.symbol, notes: r.notes };
+}
+
 export async function getHistory(r: Resolved, req: HistoryRequest): Promise<PriceSeries> {
   const interval = req.interval ?? "1d";
   const { instrument } = r;
   if (instrument.market === "crypto") {
+    const other = asWritten(r);
     const res = await firstAnswer<PriceSeries>(
       [
         { source: "binance", run: () => binanceHistory(instrument, interval, req.from, req.to, r.notes) },
-        { source: "kraken", run: async () => krakenHistory(await resolveKraken(instrument.symbol), interval, req.from, req.to, r.notes) },
-        { source: "coinbase", run: () => coinbaseHistory(resolveCoinbase(instrument.symbol), interval, req.from, req.to, r.notes) },
+        { source: "kraken", run: async () => krakenHistory(await resolveKraken(other.symbol), interval, req.from, req.to, other.notes) },
+        { source: "coinbase", run: () => coinbaseHistory(resolveCoinbase(other.symbol), interval, req.from, req.to, other.notes) },
       ],
       { fallThroughAll: true },
     );
@@ -124,11 +139,12 @@ export async function getHistory(r: Resolved, req: HistoryRequest): Promise<Pric
 export async function getQuote(r: Resolved, now = clockNow()): Promise<QuoteResult> {
   const { instrument } = r;
   if (instrument.market === "crypto") {
+    const other = asWritten(r);
     const res = await firstAnswer<QuoteResult>(
       [
         { source: "binance", run: () => binanceQuote(instrument, r.notes) },
-        { source: "kraken", run: async () => krakenQuote(await resolveKraken(instrument.symbol), r.notes) },
-        { source: "coinbase", run: () => coinbaseQuote(resolveCoinbase(instrument.symbol), r.notes) },
+        { source: "kraken", run: async () => krakenQuote(await resolveKraken(other.symbol), other.notes) },
+        { source: "coinbase", run: () => coinbaseQuote(resolveCoinbase(other.symbol), other.notes) },
       ],
       { fallThroughAll: true },
     );
