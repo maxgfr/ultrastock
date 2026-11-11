@@ -227,6 +227,43 @@ export function envelopeOf(account: string, envelopes: readonly Envelope[], symb
   return { type: "CTO", guessed: true };
 }
 
+/** Coins a stockbroker lists against a fiat (IBKR: BTCUSD) — what an unmarked pair in an ordinary account is read by. */
+const KNOWN_COINS = new Set([
+  "BTC",
+  "ETH",
+  "LTC",
+  "BCH",
+  "SOL",
+  "ADA",
+  "XRP",
+  "DOGE",
+  "AVAX",
+  "LINK",
+  "DOT",
+  "MATIC",
+  "POL",
+  "UNI",
+  "XLM",
+  "BNB",
+  "TRX",
+  "ETC",
+]);
+
+/**
+ * Whether a row moves a crypto-asset, whatever account holds it: crypto bought at a stockbroker is taxed as crypto, not
+ * as a security. Read in order: the importer's marker (`assetClass: "crypto"`, IBKR's CRYPTO category); a CRYPTO
+ * envelope (or an account guessed as one); and for rows written before the marker existed, the symbol — a pair with
+ * no ISIN and no exchange suffix whose base is a well-known coin (BTCUSD, ETHEUR, ETHBTC) or whose quote is a
+ * stablecoin (SOLUSDT). A listed product (an ETP has an ISIN or a suffix: BTCE.DE) stays a security.
+ */
+export function isCryptoTx(t: Pick<Transaction, "account" | "symbol" | "currency" | "isin" | "assetClass">, envelopes: readonly Envelope[]): boolean {
+  if (t.assetClass === "crypto" || envelopeOf(t.account, envelopes, t.symbol).type === "CRYPTO") return true;
+  if (!t.symbol || t.isin || t.symbol.includes(".")) return false;
+  const { base, quote } = splitPair(t.symbol, t.currency);
+  if (!quote) return false;
+  return KNOWN_COINS.has(base) || (isStablecoin(quote) && base.length > 1);
+}
+
 export const round2 = (v: number) => Math.round(v * 100) / 100;
 export const yearOf = (d: string) => Number(d.slice(0, 4));
 export const day = (d: string) => d.slice(0, 10);

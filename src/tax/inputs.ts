@@ -9,7 +9,7 @@ import { fetchJson } from "../core/net.js";
 import type { Envelope } from "../core/profile.js";
 import type { Transaction } from "../portfolio/ledger.js";
 import { getHistory, getQuote, resolveSymbol } from "../providers/router.js";
-import { chronological, day, envelopeOf, type Fx, gross, isFiat, isStablecoin, splitPair } from "./regime.js";
+import { chronological, day, type Fx, gross, isCryptoTx, isFiat, isStablecoin, splitPair } from "./regime.js";
 
 const FRANKFURTER = "https://api.frankfurter.dev/v1";
 
@@ -125,7 +125,7 @@ function cryptoMoves(txs: readonly Transaction[], envelopes: readonly Envelope[]
   if (held && held.envelopes === envelopes && held.length === txs.length) return held.moves;
   const moves: CryptoMove[] = [];
   for (const t of chronological(txs)) {
-    if (envelopeOf(t.account, envelopes, t.symbol).type !== "CRYPTO") continue;
+    if (!isCryptoTx(t, envelopes)) continue;
     const changes: CryptoMove["changes"] = [];
     const q = t.quantity ?? 0;
     const cur = t.currency.toUpperCase();
@@ -172,7 +172,7 @@ export async function cryptoValuer(
   if (!dates.length) return { value: () => undefined, notes };
   const assets = new Set<string>();
   for (const t of txs) {
-    if (envelopeOf(t.account, envelopes, t.symbol).type !== "CRYPTO") continue;
+    if (!isCryptoTx(t, envelopes)) continue;
     const base = t.symbol ? splitPair(t.symbol, t.currency).base : undefined;
     if (base && !isFiat(base)) assets.add(base);
     if (!isFiat(t.currency)) assets.add(t.currency.toUpperCase());

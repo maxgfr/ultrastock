@@ -30,6 +30,7 @@ import {
   type FormLine,
   gross,
   type HarvestCandidate,
+  isCryptoTx,
   isStablecoin,
   round2,
   splitPair,
@@ -90,7 +91,7 @@ export class UsRegime extends TaxRegime {
     for (const t of history) {
       if (t.type !== "buy" && t.type !== "transfer-in") continue;
       const env = envelopeOf(t.account, input.envelopes, t.symbol);
-      const crypto = env.type === "CRYPTO";
+      const crypto = isCryptoTx(t, input.envelopes);
       if (crypto && isStablecoin(splitPair(t.symbol ?? "", t.currency).base)) continue;
       const q = t.quantity ?? 0;
       const cost = t.price !== undefined ? this.toBase(t, gross(t), input) + this.toBase(t, t.fee ?? 0, input) : 0;
@@ -161,6 +162,7 @@ export class UsRegime extends TaxRegime {
     for (const t of history) {
       const env = envelopeOf(t.account, input.envelopes, t.symbol);
       const sym = (t.symbol ?? "").toUpperCase();
+      const crypto = isCryptoTx(t, input.envelopes);
       const base = { date: day(t.date), account: t.account, envelope: env.type, symbol: t.symbol, notes: [] as string[] };
       const lot = byTx.get(t);
       if (lot) {
@@ -181,7 +183,7 @@ export class UsRegime extends TaxRegime {
         continue;
       }
       if (t.type === "sell" || t.type === "transfer-out") {
-        if (env.type === "CRYPTO" && isStablecoin(splitPair(sym, t.currency).base)) {
+        if (crypto && isStablecoin(splitPair(sym, t.currency).base)) {
           if (!stableNoted) warnings.push("stablecoins are treated as dollars: their (small) gains and losses are ignored");
           stableNoted = true;
           continue;
@@ -226,7 +228,7 @@ export class UsRegime extends TaxRegime {
               basis: 0,
               replaced: 0,
               sheltered: false,
-              crypto: env.type === "CRYPTO",
+              crypto,
             },
             qty: left,
           });

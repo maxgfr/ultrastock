@@ -223,6 +223,43 @@ describe("France", () => {
     expect(g.find((e) => e.kind === "crypto-disposal")!.lines).toMatchObject({ "220": 1_200, "224": 48.75 });
   });
 
+  it("crypto held at a stockbroker is taxed as crypto, not as a security", () => {
+    // IBKR books crypto in the same account as the shares: a CTO in the profile.
+    const k = (t: Partial<Transaction> & Pick<Transaction, "date" | "type">) =>
+      tx({ account: "ibkr", currency: "USD", symbol: "BTCUSD", origin: "import:ibkr-flex", assetClass: "crypto", ...t });
+    const txs = [
+      k({ date: "2025-01-10", type: "buy", quantity: 0.1, price: 50_000 }),
+      k({ date: "2025-06-10", type: "sell", quantity: 0.1, price: 60_000 }),
+      tx({ date: "2025-01-10", type: "buy", account: "ibkr", currency: "USD", symbol: "AAPL", isin: "US0378331005", quantity: 10, price: 200 }),
+      tx({ date: "2025-06-10", type: "sell", account: "ibkr", currency: "USD", symbol: "AAPL", isin: "US0378331005", quantity: 10, price: 210 }),
+    ];
+    const kinds = (rows: Transaction[]) =>
+      new FranceRegime(2025)
+        .realize(input(rows, [IBKR], { cryptoValue: () => 6_000 }))
+        .map((e) => [e.kind, e.symbol, e.gain])
+        .sort();
+    const expected = [
+      ["crypto-disposal", "BTCUSD", 1_000],
+      ["securities-disposal", "AAPL", 100],
+    ];
+    expect(kinds(txs)).toEqual(expected);
+    // A ledger imported before the marker existed: a well-known coin against a fiat, with no ISIN, reads as crypto too.
+    const legacy = txs.map(({ assetClass: _, ...t }) => t as Transaction);
+    expect(kinds(legacy)).toEqual(expected);
+    // The United States: crypto rules too — a disposal of a digital asset, no wash sale on the repurchase.
+    const us = new UsRegime(2025).realize(
+      input(
+        [
+          k({ date: "2025-01-10", type: "buy", quantity: 1, price: 100 }),
+          k({ date: "2025-02-01", type: "sell", quantity: 1, price: 80 }),
+          k({ date: "2025-02-02", type: "buy", quantity: 1, price: 81 }),
+        ],
+        [{ ...IBKR, type: "TAXABLE", currency: "USD" }],
+      ),
+    );
+    expect(us.map((e) => [e.kind, e.gain, e.washSaleDisallowed])).toEqual([["crypto-disposal", -20, undefined]]);
+  });
+
   it("crypto: 305 € or less of disposals in the year is exempt; an unknown portfolio value is named", () => {
     const txs = [
       tx({ date: "2025-01-10", type: "buy", account: "kraken", symbol: "ETHEUR", quantity: 1, price: 200 }),

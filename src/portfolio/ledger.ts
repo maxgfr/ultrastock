@@ -38,6 +38,11 @@ export interface Transaction {
   /** Exchange rate to the base currency at the date (units of base per 1 currency), when known. */
   fxToBase?: number;
   note?: string;
+  /**
+   * "crypto" when the importer knows the instrument is a crypto-asset whatever the account (IBKR's CRYPTO category, held
+   * beside shares). Not part of the id. Absent on older rows: the tax engine then reads the account and the symbol.
+   */
+  assetClass?: "crypto";
   /** Where the transaction came from: "manual", "import:ibkr-flex", "paper", "ticket:<id>". */
   origin: string;
 }

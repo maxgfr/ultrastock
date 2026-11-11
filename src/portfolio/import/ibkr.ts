@@ -22,9 +22,11 @@
 // header/trailer records and section codes:
 // https://www.ibkrguides.com/reportingreference/reportguide/delivery%20configuration%20and%20general%20configuration.htm
 //
-// Mapping. Buys and sells of stocks, ETFs, funds and crypto (commission and
-// transaction taxes → `fee`, positive; a commission charged in another currency
-// becomes its own `fee` transaction in that currency). Options, futures, bonds
+// Mapping. Buys and sells of stocks, ETFs, funds and crypto (crypto marked
+// `assetClass: "crypto"`, so the tax engine applies the crypto rules in an
+// account of shares; commission and transaction taxes → `fee`, positive; a
+// commission charged in another currency becomes its own `fee` transaction in
+// that currency). Options, futures, bonds
 // and FX conversions are skipped with a reason: the ledger has no contract
 // multiplier, no clean-price convention and no FX transaction. Cash
 // transactions: dividends (and payments in lieu), withholding tax → `tax` with
@@ -401,6 +403,8 @@ export function parseIbkr(text: string, opts: ImportOptions): ImportResult {
       currency,
       fxToBase: fx && fx > 0 ? fx : undefined,
       note: tradeId ? `IBKR trade ${tradeId}` : undefined,
+      // Crypto sits in the same account as the shares: the tax engine needs to know it is crypto.
+      assetClass: cat.startsWith("CRYPTO") ? "crypto" : undefined,
       origin: ORIGIN,
     });
     if (separateCommission)

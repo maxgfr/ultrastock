@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ibkrSymbol, parseStatement, xmlElementAttrs } from "../src/portfolio/import/index.js";
-import { appendTransactions, readLedger } from "../src/portfolio/ledger.js";
+import { appendTransactions, readLedger, transactionId } from "../src/portfolio/ledger.js";
 import { bySymbol, replay, sample } from "./helpers/import.js";
 
 const parse = (file: string) => parseStatement("ibkr-flex", sample(file), { account: "ibkr" });
@@ -21,6 +21,20 @@ describe("IBKR symbols", () => {
     expect(ibkrSymbol({ symbol: "XYZ", listingExchange: "TSE", currency: "JPY" }, (w) => warnings.push(w))).toBe("XYZ");
     expect(warnings).toHaveLength(2);
     expect(warnings[0]).toMatch(/kept as its ISIN/);
+  });
+  it("marks crypto as crypto, outside the transaction id", () => {
+    const xml = [
+      "<FlexQueryResponse><FlexStatements><FlexStatement><Trades>",
+      '<Trade currency="USD" assetCategory="CRYPTO" symbol="BTC" tradeID="7001" dateTime="20260105;153000" quantity="0.1" tradePrice="90000" buySell="BUY" levelOfDetail="EXECUTION" />',
+      '<Trade currency="USD" assetCategory="STK" symbol="AAPL" listingExchange="NASDAQ" tradeID="7002" dateTime="20260105;153000" quantity="1" tradePrice="190" buySell="BUY" levelOfDetail="EXECUTION" />',
+      "</Trades></FlexStatement></FlexStatements></FlexQueryResponse>",
+    ].join("\n");
+    const [btc, aapl] = parseStatement("ibkr-flex", xml, { account: "ibkr" }).transactions;
+    expect(btc).toMatchObject({ symbol: "BTCUSD", assetClass: "crypto" });
+    expect(aapl!.assetClass).toBeUndefined();
+    // The marker is not part of the id: a row imported before it existed is the same transaction.
+    const { assetClass: _, ...legacy } = btc!;
+    expect(transactionId(btc!)).toBe(transactionId(legacy));
   });
   it("reads XML attributes with entities, skipping comments, with line numbers", () => {
     const xml = '<a>\n<!-- <Trade symbol="NO"/> -->\n<Trade symbol="S&amp;P" q=\'1\'/>\n<Trades><TradeConfirm symbol="X"/></Trades>\n<Trade\n symbol="B" />';

@@ -44850,6 +44850,33 @@ function envelopeOf2(account, envelopes, symbol) {
     return { type: "CRYPTO", guessed: true };
   return { type: "CTO", guessed: true };
 }
+var KNOWN_COINS = /* @__PURE__ */ new Set([
+  "BTC",
+  "ETH",
+  "LTC",
+  "BCH",
+  "SOL",
+  "ADA",
+  "XRP",
+  "DOGE",
+  "AVAX",
+  "LINK",
+  "DOT",
+  "MATIC",
+  "POL",
+  "UNI",
+  "XLM",
+  "BNB",
+  "TRX",
+  "ETC"
+]);
+function isCryptoTx(t, envelopes) {
+  if (t.assetClass === "crypto" || envelopeOf2(t.account, envelopes, t.symbol).type === "CRYPTO") return true;
+  if (!t.symbol || t.isin || t.symbol.includes(".")) return false;
+  const { base: base2, quote: quote2 } = splitPair(t.symbol, t.currency);
+  if (!quote2) return false;
+  return KNOWN_COINS.has(base2) || isStablecoin(quote2) && base2.length > 1;
+}
 var round22 = (v) => Math.round(v * 100) / 100;
 var yearOf2 = (d) => Number(d.slice(0, 4));
 var day3 = (d) => d.slice(0, 10);
@@ -48311,6 +48338,8 @@ function parseIbkr(text2, opts) {
       currency,
       fxToBase: fx && fx > 0 ? fx : void 0,
       note: tradeId ? `IBKR trade ${tradeId}` : void 0,
+      // Crypto sits in the same account as the shares: the tax engine needs to know it is crypto.
+      assetClass: cat.startsWith("CRYPTO") ? "crypto" : void 0,
       origin: ORIGIN4
     });
     if (separateCommission)
@@ -49866,7 +49895,7 @@ function cryptoMoves(txs, envelopes) {
   if (held && held.envelopes === envelopes && held.length === txs.length) return held.moves;
   const moves = [];
   for (const t of chronological(txs)) {
-    if (envelopeOf2(t.account, envelopes, t.symbol).type !== "CRYPTO") continue;
+    if (!isCryptoTx(t, envelopes)) continue;
     const changes = [];
     const q = t.quantity ?? 0;
     const cur = t.currency.toUpperCase();
@@ -49899,7 +49928,7 @@ async function cryptoValuer(txs, envelopes, dates, fx) {
   if (!dates.length) return { value: () => void 0, notes };
   const assets = /* @__PURE__ */ new Set();
   for (const t of txs) {
-    if (envelopeOf2(t.account, envelopes, t.symbol).type !== "CRYPTO") continue;
+    if (!isCryptoTx(t, envelopes)) continue;
     const base2 = t.symbol ? splitPair(t.symbol, t.currency).base : void 0;
     if (base2 && !isFiat(base2)) assets.add(base2);
     if (!isFiat(t.currency)) assets.add(t.currency.toUpperCase());
@@ -52673,9 +52702,10 @@ var FranceRegime = class extends TaxRegime {
         );
       }
       const base2 = { date: day3(t.date), account: t.account, envelope: env2.type, symbol: t.symbol, notes: [] };
-      const cryptoQuoted = env2.type === "CRYPTO" && !isFiat(t.currency) && !isStablecoin(t.currency);
+      const crypto = isCryptoTx(t, input.envelopes);
+      const cryptoQuoted = crypto && !isFiat(t.currency) && !isStablecoin(t.currency);
       const fee = cryptoQuoted ? 0 : this.toBase(t, t.fee ?? 0, input);
-      if (env2.type === "CRYPTO") {
+      if (crypto) {
         this.crypto(t, st, input, base2, fee, inYear(t));
         continue;
       }
@@ -53302,7 +53332,7 @@ var UsRegime = class extends TaxRegime {
     for (const t of history) {
       if (t.type !== "buy" && t.type !== "transfer-in") continue;
       const env2 = envelopeOf2(t.account, input.envelopes, t.symbol);
-      const crypto = env2.type === "CRYPTO";
+      const crypto = isCryptoTx(t, input.envelopes);
       if (crypto && isStablecoin(splitPair(t.symbol ?? "", t.currency).base)) continue;
       const q = t.quantity ?? 0;
       const cost = t.price !== void 0 ? this.toBase(t, gross2(t), input) + this.toBase(t, t.fee ?? 0, input) : 0;
@@ -53368,6 +53398,7 @@ var UsRegime = class extends TaxRegime {
     for (const t of history) {
       const env2 = envelopeOf2(t.account, input.envelopes, t.symbol);
       const sym3 = (t.symbol ?? "").toUpperCase();
+      const crypto = isCryptoTx(t, input.envelopes);
       const base2 = { date: day3(t.date), account: t.account, envelope: env2.type, symbol: t.symbol, notes: [] };
       const lot = byTx.get(t);
       if (lot) {
@@ -53388,7 +53419,7 @@ var UsRegime = class extends TaxRegime {
         continue;
       }
       if (t.type === "sell" || t.type === "transfer-out") {
-        if (env2.type === "CRYPTO" && isStablecoin(splitPair(sym3, t.currency).base)) {
+        if (crypto && isStablecoin(splitPair(sym3, t.currency).base)) {
           if (!stableNoted) warnings.push("stablecoins are treated as dollars: their (small) gains and losses are ignored");
           stableNoted = true;
           continue;
@@ -53431,7 +53462,7 @@ var UsRegime = class extends TaxRegime {
               basis: 0,
               replaced: 0,
               sheltered: false,
-              crypto: env2.type === "CRYPTO"
+              crypto
             },
             qty: left
           });
@@ -53826,7 +53857,7 @@ async function buildInput(args, regime, year, opts = {}) {
     }
   }
   if (regime.id === "fr") {
-    const isCrypto = (t) => envelopeOf2(t.account, envelopes, t.symbol).type === "CRYPTO";
+    const isCrypto = (t) => isCryptoTx(t, envelopes);
     const dates = txs.filter((t) => isCrypto(t) && cryptoTradeKind(t) === "disposal" && yearOf2(t.date) === year).map((t) => day3(t.date));
     if (opts.asOf && txs.some(isCrypto)) dates.push(opts.asOf);
     if (dates.length) {
@@ -53996,7 +54027,7 @@ ${pn.join("\n")}` : ""}`
     const events = format === "koinly" ? [] : regime.realize(input);
     const csv = format === "8949" ? export8949(events) : format === "2086" ? export2086(events) : format === "2074" ? export2074(events) : exportKoinly(
       input.transactions.filter((t) => yearOf2(t.date) === year),
-      (t) => envelopeOf2(t.account, input.envelopes, t.symbol).type === "CRYPTO"
+      (t) => isCryptoTx(t, input.envelopes)
     );
     const out = argValue(args, "out");
     if (!out) return void process.stdout.write(csv);

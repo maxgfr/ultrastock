@@ -10,7 +10,7 @@ import { buildBook, readLedger, type Transaction } from "../portfolio/ledger.js"
 import { EXPORT_FORMATS, type ExportFormat, export2074, export2086, export8949, exportKoinly } from "../tax/export.js";
 import { regimeFor } from "../tax/index.js";
 import { cryptoValuer, currentPrices, historicalFx, withCryptoQuotes } from "../tax/inputs.js";
-import { cryptoTradeKind, day, envelopeOf, type TaxInput, type TaxRegime, type TaxSummary, yearOf } from "../tax/regime.js";
+import { cryptoTradeKind, day, isCryptoTx, type TaxInput, type TaxRegime, type TaxSummary, yearOf } from "../tax/regime.js";
 import { emitDatasets, printResult as print } from "./emit.js";
 
 const USAGE =
@@ -92,7 +92,7 @@ async function buildInput(args: CommandArgs, regime: TaxRegime, year: number, op
     }
   }
   if (regime.id === "fr") {
-    const isCrypto = (t: Transaction) => envelopeOf(t.account, envelopes, t.symbol).type === "CRYPTO";
+    const isCrypto = (t: Transaction) => isCryptoTx(t, envelopes);
     // The disposals the formula needs a portfolio value for: crypto given for fiat (a sale of BTCEUR, a purchase of
     // EURUSDT), a convert's leg priced in fiat excepted.
     const dates = txs.filter((t) => isCrypto(t) && cryptoTradeKind(t) === "disposal" && yearOf(t.date) === year).map((t) => day(t.date));
@@ -275,7 +275,7 @@ export async function taxCommand(args: CommandArgs, asJson: boolean): Promise<vo
             ? export2074(events)
             : exportKoinly(
                 input.transactions.filter((t) => yearOf(t.date) === year),
-                (t) => envelopeOf(t.account, input.envelopes, t.symbol).type === "CRYPTO",
+                (t) => isCryptoTx(t, input.envelopes),
               );
     const out = argValue(args, "out");
     if (!out) return void process.stdout.write(csv);
