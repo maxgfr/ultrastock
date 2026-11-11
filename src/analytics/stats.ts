@@ -497,7 +497,7 @@ export interface HmmResult {
   means: [number, number];
   vols: [number, number];
   transition: [[number, number], [number, number]];
-  /** P(state 1 | data up to t), filtered — no look-ahead. */
+  /** P(state 1 | data up to t, parameters fitted on the whole series): filtered, but see hmm2 — only the last value is free of look-ahead. */
   turbulentProbability: number[];
   logLikelihood: number;
   iterations: number;
@@ -505,8 +505,14 @@ export interface HmmResult {
 
 /**
  * Two-state Gaussian hidden Markov model fitted by Baum–Welch. The reported
- * probabilities are FILTERED (forward pass only): the value at t uses returns
- * up to t, never after, so it can drive a backtest.
+ * probabilities are FILTERED (forward pass only), but the means, volatilities
+ * and transitions they are filtered with are fitted on the WHOLE series: the
+ * value at t was computed knowing the returns after t. Only the last value —
+ * "the regime now", which `analyze` reports — is free of look-ahead.
+ *
+ * It must not drive a backtest. No strategy can reference it: it is not in the
+ * indicator registry, and no backtest module imports it (a test checks both).
+ * A causal version would refit on returns up to t at every bar.
  */
 export function hmm2(returns: readonly number[], maxIter = 200): HmmResult {
   const n = returns.length;

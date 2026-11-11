@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILTIN_STRATEGIES, findStrategy, listStrategies, loadStrategy, strategyTemplate } from "../src/backtest/catalog.js";
 import { simulate } from "../src/backtest/simulate.js";
@@ -53,6 +55,22 @@ describe("the source catalog maps onto the registry", () => {
     const listed = new Set(listIndicators().map((i) => i.name));
     expect(listed.has("zScore")).toBe(true);
     expect(typeof resolveIndicator("z", { _type: "zScore", period: 20 })).toBe("object");
+  });
+
+  it("offers no regime model a strategy could trade on: hmm2 is fitted on the whole series", () => {
+    // Its parameters are learned from every return, later ones included: at bar i it knows bars after i.
+    const names = [...listIndicators().map((i) => i.name), ...Object.keys(SOURCE_INDICATORS)];
+    expect(names.filter((n) => /hmm|markov|regime/i.test(n))).toEqual([]);
+    for (const type of ["hmm2", "hmm", "regime"]) expect(resolveIndicator("r", { _type: type })).toMatch(/unknown indicator/);
+    // Nor does any backtest or indicator module import it.
+    const root = join(import.meta.dirname, "..", "src");
+    const sources = ["backtest", "analytics/indicators"].flatMap((d) =>
+      readdirSync(join(root, d), { recursive: true, encoding: "utf8" })
+        .filter((f) => f.endsWith(".ts"))
+        .map((f) => join(root, d, f)),
+    );
+    expect(sources.length).toBeGreaterThan(5);
+    expect(sources.filter((f) => /\bhmm2\b/.test(readFileSync(f, "utf8")))).toEqual([]);
   });
 });
 
