@@ -24,4 +24,16 @@ describe("csv", () => {
     expect(parseLooseNumber("")).toBeUndefined();
     expect(parseLooseNumber("-")).toBeUndefined();
   });
+  it("reads a comma after a lone leading zero as the decimal mark", () => {
+    // No thousands group follows a lone 0: "0,123" is 0.123, never 123.
+    expect(parseLooseNumber("0,123")).toBe(0.123);
+    expect(parseLooseNumber("-0,123")).toBe(-0.123);
+    // The neighbours keep their reading.
+    expect(parseLooseNumber("0,5")).toBe(0.5);
+    expect(parseLooseNumber("1,234")).toBe(1234);
+    expect(parseLooseNumber("10,123")).toBe(10123);
+    expect(parseLooseNumber("1,23")).toBe(1.23);
+    expect(parseLooseNumber("12,345.67")).toBe(12345.67);
+    expect(parseLooseNumber("1.234,56")).toBe(1234.56);
+  });
 });

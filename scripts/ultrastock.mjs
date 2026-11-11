@@ -13278,7 +13278,7 @@ function parseLooseNumber(raw) {
   const comma = s.lastIndexOf(",");
   const dot2 = s.lastIndexOf(".");
   if (comma > -1 && dot2 > -1) s = comma > dot2 ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
-  else if (comma > -1) s = /,\d{3}(?!\d)/.test(s) && !/,\d{1,2}$/.test(s) ? s.replace(/,/g, "") : s.replace(",", ".");
+  else if (comma > -1) s = /,\d{3}(?!\d)/.test(s) && !/,\d{1,2}$/.test(s) && !/^-?0,\d{3}$/.test(s) ? s.replace(/,/g, "") : s.replace(",", ".");
   const n2 = Number(s);
   return Number.isFinite(n2) ? n2 : void 0;
 }
