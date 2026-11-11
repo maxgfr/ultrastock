@@ -338,8 +338,10 @@ export function computeValuation(
         );
   };
   const all = (sp?: SourcedPeriod) => (sp ? (Object.values(sp.ids) as string[]) : []);
-  const pio = prev ? piotroski(cur.period, prev.period) : undefined;
-  if (pio) addScore("piotroski", pio, [...all(cur), ...all(prev)]);
+  // The year before `prev` gives the paper's beginning-of-year assets for ROA and asset turnover.
+  const prior = periods[2];
+  const pio = prev ? piotroski(cur.period, prev.period, prior?.period) : undefined;
+  if (pio) addScore("piotroski", pio, [...all(cur), ...all(prev), ...ids(prior, "totalAssets")]);
   const shares = cur.period.sharesOutstanding;
   const mcap = shares ? price * shares : undefined;
   const alt = altmanZ(cur.period, mcap, "non-manufacturer");

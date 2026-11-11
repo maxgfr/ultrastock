@@ -79,7 +79,11 @@ export function piotroski(cur: FinancialPeriod, prev: FinancialPeriod, prior?: F
   const beginning = prior?.totalAssets !== undefined && prev.totalAssets !== undefined;
   const assetsCur = beginning ? prev.totalAssets : cur.totalAssets;
   const assetsPrev = beginning ? prior?.totalAssets : prev.totalAssets;
-  const basis = beginning ? "on beginning-of-year assets" : "on end-of-year assets (no third year for beginning-of-year)";
+  const basis = beginning
+    ? "on beginning-of-year assets"
+    : prior
+      ? "on end-of-year assets (beginning-of-year assets not reported)"
+      : "on end-of-year assets (no third year for beginning-of-year)";
   const roa = div(cur.netIncome, assetsCur);
   const roaPrev = div(prev.netIncome, assetsPrev);
   const lev = div(cur.longTermDebt, cur.totalAssets);

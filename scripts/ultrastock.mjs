@@ -32696,7 +32696,7 @@ function piotroski(cur, prev, prior) {
   const beginning = prior?.totalAssets !== void 0 && prev.totalAssets !== void 0;
   const assetsCur = beginning ? prev.totalAssets : cur.totalAssets;
   const assetsPrev = beginning ? prior?.totalAssets : prev.totalAssets;
-  const basis = beginning ? "on beginning-of-year assets" : "on end-of-year assets (no third year for beginning-of-year)";
+  const basis = beginning ? "on beginning-of-year assets" : prior ? "on end-of-year assets (beginning-of-year assets not reported)" : "on end-of-year assets (no third year for beginning-of-year)";
   const roa = div(cur.netIncome, assetsCur);
   const roaPrev = div(prev.netIncome, assetsPrev);
   const lev = div(cur.longTermDebt, cur.totalAssets);
@@ -33688,8 +33688,9 @@ function computeValuation(store, ctx) {
         );
   };
   const all = (sp) => sp ? Object.values(sp.ids) : [];
-  const pio = prev ? piotroski(cur.period, prev.period) : void 0;
-  if (pio) addScore("piotroski", pio, [...all(cur), ...all(prev)]);
+  const prior = periods[2];
+  const pio = prev ? piotroski(cur.period, prev.period, prior?.period) : void 0;
+  if (pio) addScore("piotroski", pio, [...all(cur), ...all(prev), ...ids(prior, "totalAssets")]);
   const shares = cur.period.sharesOutstanding;
   const mcap = shares ? price * shares : void 0;
   const alt = altmanZ(cur.period, mcap, "non-manufacturer");

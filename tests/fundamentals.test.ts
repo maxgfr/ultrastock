@@ -90,6 +90,10 @@ describe("scores", () => {
     expect(find(three, "dturn").pass).toBe(false);
     expect(find(three, "dturn").reason).toMatch(/2\.000 → 1\.150.*beginning-of-year assets/);
     expect(find(three, "roa").value).toBeCloseTo(110 / 1000, 12);
+    // A third year on file without total assets: end-of-year assets, and the reason does not claim there is no third year.
+    const noAssets = piotroski(grown, prev, { end: "2023-12-31", revenue: 900 });
+    expect(find(noAssets, "droa").reason).toMatch(/end-of-year assets \(beginning-of-year assets not reported\)/);
+    expect(find(noAssets, "droa").reason).not.toMatch(/no third year/);
   });
   it("Altman Z″ and Z, with zones", () => {
     const z = altmanZ(cur, 2000, "non-manufacturer");
