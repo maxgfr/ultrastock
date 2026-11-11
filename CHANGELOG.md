@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.44](https://github.com/maxgfr/ultrastock/compare/v1.13.43...v1.13.44) (2026-11-11)
+
+
+### Bug Fixes
+
+* **alerts:** alert on a stop once per protecting ticket and line opening ([eae8c3e](https://github.com/maxgfr/ultrastock/commit/eae8c3e74cb09bbf73545829326630f52f80023a))
+* **alerts:** read a line's stop from its own book's tickets, the one filled last ([dde958b](https://github.com/maxgfr/ultrastock/commit/dde958bea7d0417cce1bb9bd28b241f7e797165a))
+* **check:** a header row's whole number is a label only in a row of labels; its dates label columns ([d85f6f5](https://github.com/maxgfr/ultrastock/commit/d85f6f5e9e3f9cc81322eda4f557284d15b97d31))
+* **check:** a horizon or period label heading a column or a section is no figure ([f7eaabb](https://github.com/maxgfr/ultrastock/commit/f7eaabb28424fcc8028cbef833c4d66d178267a8))
+* **check:** a value after an indicator or index name is a figure; filing forms are labels ([9155c07](https://github.com/maxgfr/ultrastock/commit/9155c07460c78a0a011f66450ab8e11aa7e83ca9))
+* **check:** blank a number as a date only when it is a valid date ([6126d05](https://github.com/maxgfr/ultrastock/commit/6126d052057d004d9ef5d746602810cffefcff4f))
+* **check:** know a heading's section number by its form, not by the figure reader ([f053cae](https://github.com/maxgfr/ultrastock/commit/f053caeceac4ba6436cec759bd4245215ee1e63e))
+* **check:** read a bracketed number or date, in one pass over the brackets ([ebeaa2b](https://github.com/maxgfr/ultrastock/commit/ebeaa2b4c94031bb23efc4cb925427c6cada8881))
+* **check:** read figures behind emphasis, entities and non-ASCII digits ([e35c30e](https://github.com/maxgfr/ultrastock/commit/e35c30ea272777963c0bd2a284e51d552c863135)), closes [#x34](https://github.com/maxgfr/ultrastock/issues/x34) [#x35](https://github.com/maxgfr/ultrastock/issues/x35)
+* **check:** set aside only a list of ids or links under an exact sources title ([d562cb8](https://github.com/maxgfr/ultrastock/commit/d562cb84bbf743d65675fc053eb4ad82dca8042d))
+* **datasets:** clean a dataset's title and a point's as-of day before printing them ([b34b5d6](https://github.com/maxgfr/ultrastock/commit/b34b5d66640318096225420303f5461418da5a3f))
+* **decide:** say "already recorded" only of the same decision ([5c74127](https://github.com/maxgfr/ultrastock/commit/5c74127e50c937bd1c64ab0c79a51cad129392a6))
+* **journal:** say a short history settles partial, not that it stays pending ([13e9763](https://github.com/maxgfr/ultrastock/commit/13e976384b2c27d9914d154599676a878b956dc4))
+
 ## [1.13.43](https://github.com/maxgfr/ultrastock/compare/v1.13.42...v1.13.43) (2026-11-11)
 
 
