@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type Decision, journalDir, recordDecision } from "../src/analyze/decision.js";
-import { settleDecisions } from "../src/journal/settle.js";
+import { hitRates, readSettlements, readUnresolved, settleDecisions } from "../src/journal/settle.js";
 import type { Bar } from "../src/providers/types.js";
 import { bar } from "./helpers/series.js";
 
@@ -52,12 +52,12 @@ describe("journal settle", () => {
     // The provider's history stops on the decision day: a 0 % return, and a hold scored right, for good.
     histories.bars = { STALE: weekdays("2026-02-16", "2026-03-02", 100), SPY: weekdays("2026-02-16", "2026-06-30", 500) };
     const id = decide("STALE");
-    const r = await settleDecisions(now);
+    // 5 April: +5 and +20 have matured, fewer than 30 days ago; +60 has not.
+    const r = await settleDecisions(new Date("2026-04-05T12:00:00Z"));
     expect(r.settled).toEqual([]);
     expect(r.waiting.map((w) => [w.decisionId, w.horizon, w.endDate, w.series, w.lastBar])).toEqual([
       [id, 5, "2026-03-09", "STALE", "2026-03-02"],
       [id, 20, "2026-03-30", "STALE", "2026-03-02"],
-      [id, 60, "2026-05-27", "STALE", "2026-03-02"],
     ]);
     // The history catches up: each horizon is scored on its own end session.
     histories.bars.STALE = weekdays("2026-02-16", "2026-06-30", 100);
@@ -114,5 +114,47 @@ describe("journal settle", () => {
     });
     // Settled once: the next run finds nothing to do.
     expect((await settleDecisions(now)).settled).toEqual([]);
+  });
+
+  it("leaves a horizon unresolved, unscored, 30 days after its end with no bar after the decision", async () => {
+    // Quoted up to the decision day, never after (delisted, or renamed under another ticker); EMPTY was never quoted.
+    histories.bars = { DELISTED: weekdays("2026-02-16", "2026-03-02", 100), EMPTY: [], SPY: weekdays("2026-02-16", "2026-06-30", 500) };
+    const gone = decide("DELISTED");
+    const never = decide("EMPTY");
+    // 6 April: the +5 horizon ended 9 March, 28 days ago; it still waits.
+    const early = await settleDecisions(new Date("2026-04-06T12:00:00Z"));
+    expect(early.settled).toEqual([]);
+    expect(early.unresolved).toEqual([]);
+    expect(early.waiting.map((w) => [w.decisionId, w.horizon, w.then])).toEqual([
+      [gone, 5, "unresolved"],
+      [gone, 20, "unresolved"],
+      [never, 5, "unresolved"],
+      [never, 20, "unresolved"],
+    ]);
+    // 20 June: more than 30 days past +5 (9 March) and +20 (30 March), not past +60 (27 May).
+    const june20 = new Date("2026-06-20T12:00:00Z");
+    const r = await settleDecisions(june20);
+    expect(r.settled).toEqual([]);
+    expect(r.unresolved.map((u) => [u.decisionId, u.horizon, u.endDate, u.reason])).toEqual([
+      [gone, 5, "2026-03-09", "DELISTED's history stops at 2026-03-02, the decision day: no close after it to measure"],
+      [gone, 20, "2026-03-30", "DELISTED's history stops at 2026-03-02, the decision day: no close after it to measure"],
+      [never, 5, "2026-03-09", "EMPTY has no price history"],
+      [never, 20, "2026-03-30", "EMPTY has no price history"],
+    ]);
+    expect(r.waiting.map((w) => [w.decisionId, w.horizon])).toEqual([
+      [gone, 60],
+      [never, 60],
+    ]);
+    // Recorded once, out of the hit rates and of every reader of the settled calls.
+    expect(readUnresolved()).toHaveLength(4);
+    expect(readSettlements()).toEqual([]);
+    expect(hitRates(readSettlements())).toEqual([]);
+    const again = await settleDecisions(june20);
+    expect(again.unresolved).toEqual([]);
+    expect(readUnresolved()).toHaveLength(4);
+    // A horizon measured meanwhile stays measured: the quote comes back before +60 is 30 days old.
+    histories.bars.DELISTED = [...weekdays("2026-02-16", "2026-03-02", 100), ...weekdays("2026-03-03", "2026-06-30", 110)];
+    const back = await settleDecisions(june20);
+    expect(back.settled.map((s) => [s.decisionId, s.horizon, s.returnPct])).toEqual([[gone, 60, 10]]);
   });
 });

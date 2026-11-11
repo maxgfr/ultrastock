@@ -10,7 +10,10 @@
 // benchmark that cannot be read) is waited for SETTLE_GRACE_SESSIONS sessions
 // past that end; then the horizon settles on the last close there is, marked
 // `partial` — the symbol's last close when its own history stops, the raw
-// return when the benchmark's does.
+// return when the benchmark's does. A symbol with no close after the decision
+// day (or none at all) has nothing to measure: UNRESOLVED_AFTER_DAYS calendar
+// days past the horizon's end, the horizon is recorded `unresolved` with the
+// reason, once, and stays out of the hit rates and every reader of settled calls.
 import { appendFileSync, mkdirSync } from "node:fs";
 import { withFileLockSync } from "../core/lock.js";
 import { readJsonl, sealJsonlTail, type Warn } from "../portfolio/jsonl.js";
@@ -52,13 +55,46 @@ export interface Settlement {
 /** Sessions a short history is waited for past a horizon's end, before the horizon settles on its last close. */
 export const SETTLE_GRACE_SESSIONS = 10;
 
+/** Calendar days past a horizon's end after which a horizon with nothing to measure is recorded unresolved. */
+export const UNRESOLVED_AFTER_DAYS = 30;
+
+/**
+ * A horizon that could not be measured: the symbol has no close after the
+ * decision day, or none on or before it, UNRESOLVED_AFTER_DAYS days past the
+ * horizon's end. Written to settlements.jsonl so it is not tried again; never
+ * scored, so no hit rate counts it.
+ */
+export interface Unresolved {
+  decisionId: string;
+  symbol: string;
+  rating: Decision["rating"];
+  horizon: number;
+  decidedAt: string;
+  /** The horizon's end. */
+  endDate: string;
+  unresolved: true;
+  reason: string;
+  settledAt: string;
+}
+
+const isUnresolved = (s: Settlement | Unresolved): s is Unresolved => (s as Unresolved).unresolved === true;
+const settlementKey = (s: { decisionId: string; horizon: number }) => `${s.decisionId}|${s.horizon}`;
+
 /** The journal's decisions; a last line cut short by a crash is skipped with a warning (see portfolio/jsonl.ts). */
 export function readDecisions(warn?: Warn): Array<Decision & { id: string }> {
   return readJsonl<Decision & { id: string }>(join(journalDir(), "decisions.jsonl"), warn).filter((d) => d.id);
 }
 
+const readSettlementLines = (warn?: Warn) => readJsonl<Settlement | Unresolved>(join(journalDir(), "settlements.jsonl"), warn);
+
+/** The measured settlements: the unresolved horizons are left out. */
 export function readSettlements(warn?: Warn): Settlement[] {
-  return readJsonl<Settlement>(join(journalDir(), "settlements.jsonl"), warn);
+  return readSettlementLines(warn).filter((s): s is Settlement => !isUnresolved(s));
+}
+
+/** The horizons recorded unresolved, with their reasons. */
+export function readUnresolved(warn?: Warn): Unresolved[] {
+  return readSettlementLines(warn).filter(isUnresolved);
 }
 
 const closeAtOrBefore = (bars: readonly Bar[], date: string) => {
@@ -102,12 +138,22 @@ export interface Waiting {
   series: string;
   /** Its last bar's day; none when it has no history at all. */
   lastBar?: string;
+  /**
+   * What happens once the wait is over: `partial` settles on the last close
+   * there is (SETTLE_GRACE_SESSIONS past the end); `unresolved` records the
+   * horizon unmeasured (UNRESOLVED_AFTER_DAYS past the end), the symbol having
+   * no close after the decision day.
+   */
+  then: "partial" | "unresolved";
 }
 
 /** Settle every decision horizon that has matured and is not settled yet. */
-export async function settleDecisions(now = clockNow()): Promise<{ settled: Settlement[]; pending: number; waiting: Waiting[]; errors: string[] }> {
-  const done = new Set(readSettlements().map((s) => `${s.decisionId}|${s.horizon}`));
+export async function settleDecisions(
+  now = clockNow(),
+): Promise<{ settled: Settlement[]; unresolved: Unresolved[]; pending: number; waiting: Waiting[]; errors: string[] }> {
+  const done = new Set(readSettlementLines().map(settlementKey));
   let settled: Settlement[] = [];
+  let unresolved: Unresolved[] = [];
   const waiting: Waiting[] = [];
   const errors: string[] = [];
   let pending = 0;
@@ -129,6 +175,19 @@ export async function settleDecisions(now = clockNow()): Promise<{ settled: Sett
       const bench = benchSym ? await getHistory(await resolveSymbol(benchSym), { from, to: now }).catch(() => undefined) : undefined;
       for (const h of matured) {
         const endDate = horizonEnd(market, start, h);
+        const unresolvable = new Date(Date.parse(endDate) + UNRESOLVED_AFTER_DAYS * 86_400_000).toISOString().slice(0, 10) < today;
+        const giveUp = (reason: string) =>
+          unresolved.push({
+            decisionId: d.id,
+            symbol: d.symbol,
+            rating: d.rating,
+            horizon: h,
+            decidedAt: d.decidedAt,
+            endDate,
+            unresolved: true,
+            reason,
+            settledAt: now.toISOString(),
+          });
         // A history that stops before the end session — stale, lagging, or a name no longer quoted — would score the call
         // on an earlier close, and a settlement is never re-scored: the horizon waits for a bar on or after its end.
         const histories: Array<[string, readonly Bar[]]> = [[d.symbol, series.bars]];
@@ -140,9 +199,26 @@ export async function settleDecisions(now = clockNow()): Promise<{ settled: Sett
         if (short) {
           // Past the grace, the last close settles it — unless the symbol has none after the decision: a 0 % return
           // would be no measure at all, and a hold scored right on it for good.
+          // Nothing after the decision day is no measure: UNRESOLVED_AFTER_DAYS past the end, it is recorded unresolved.
           const symbolLast = lastDay(series.bars);
+          if (symbolLast <= start && unresolvable) {
+            giveUp(
+              symbolLast
+                ? `${d.symbol}'s history stops at ${symbolLast}, ${symbolLast === start ? "the decision day" : "before the decision day"}: no close after it to measure`
+                : `${d.symbol} has no price history`,
+            );
+            continue;
+          }
           if (!(horizonEnd(market, endDate, SETTLE_GRACE_SESSIONS) < today) || symbolLast <= start) {
-            waiting.push({ decisionId: d.id, symbol: d.symbol, horizon: h, endDate, series: short[0], lastBar: short[1].at(-1)?.date.slice(0, 10) });
+            waiting.push({
+              decisionId: d.id,
+              symbol: d.symbol,
+              horizon: h,
+              endDate,
+              series: short[0],
+              lastBar: short[1].at(-1)?.date.slice(0, 10),
+              then: symbolLast <= start ? "unresolved" : "partial",
+            });
             continue;
           }
           partial = true;
@@ -153,7 +229,9 @@ export async function settleDecisions(now = clockNow()): Promise<{ settled: Sett
         const s0 = closeAtOrBefore(series.bars, start);
         const s1 = closeAtOrBefore(series.bars, used);
         if (!s0 || !s1) {
-          errors.push(`${d.symbol} ${h}: no close around ${start} or ${endDate}`);
+          // A history that starts after the decision (a name quoted again under a new listing) has no starting close.
+          if (unresolvable) giveUp(`${d.symbol} has no close on or before the decision day ${start}`);
+          else errors.push(`${d.symbol} ${h}: no close around ${start} or ${endDate}`);
           continue;
         }
         const ret = (s1.close / s0.close - 1) * 100;
@@ -184,31 +262,36 @@ export async function settleDecisions(now = clockNow()): Promise<{ settled: Sett
       errors.push(`${d.symbol}: ${(e as Error).message}`);
     }
   }
-  if (settled.length) {
+  if (settled.length || unresolved.length) {
     mkdirSync(journalDir(), { recursive: true });
     const file = join(journalDir(), "settlements.jsonl");
     // Under the file's lock, a line a crashed append cut short is set aside first, so it never sits mid-file. The
     // settlements are read again there: another settle that ran meanwhile (a scheduled one and one typed by hand) may
     // have settled the same horizons, and a settlement is written once, never twice.
-    settled = withFileLockSync(`${file}.lock`, () => {
+    [settled, unresolved] = withFileLockSync(`${file}.lock`, () => {
       sealJsonlTail(file);
-      const already = new Set(readSettlements().map((s) => `${s.decisionId}|${s.horizon}`));
-      const fresh = settled.filter((s) => !already.has(`${s.decisionId}|${s.horizon}`));
-      if (!fresh.length) return fresh;
-      appendFileSync(file, fresh.map((s) => `${JSON.stringify(s)}\n`).join(""), { mode: 0o600 });
+      const already = new Set(readSettlementLines().map(settlementKey));
+      const fresh = settled.filter((s) => !already.has(settlementKey(s)));
+      const freshUnresolved = unresolved.filter((s) => !already.has(settlementKey(s)));
+      const lines = [...fresh, ...freshUnresolved];
+      if (!lines.length) return [fresh, freshUnresolved] as const;
+      appendFileSync(file, lines.map((s) => `${JSON.stringify(s)}\n`).join(""), { mode: 0o600 });
       appendFileSync(
         join(journalDir(), "decisions.md"),
-        fresh
-          .map(
+        [
+          ...fresh.map(
             (s) =>
               `SETTLED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions → ${s.endDate}]: return ${s.returnPct} %${s.alphaPct !== undefined ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} — ${s.hit ? "right" : "wrong"}${s.partial ? " (partial: the history stops short)" : ""}\n`,
-          )
-          .join(""),
+          ),
+          ...freshUnresolved.map(
+            (s) => `UNRESOLVED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions → ${s.endDate}]: ${s.reason} — not scored\n`,
+          ),
+        ].join(""),
       );
-      return fresh;
+      return [fresh, freshUnresolved] as const;
     });
   }
-  return { settled, pending, waiting, errors };
+  return { settled, unresolved, pending, waiting, errors };
 }
 
 /** Hit rate and mean alpha by rating and horizon — how good the calls have been. */

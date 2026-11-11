@@ -22,7 +22,7 @@ import {
   THESIS_STATES,
   type ThesisState,
 } from "../journal/journal.js";
-import { hitRates, readSettlements, settleDecisions } from "../journal/settle.js";
+import { hitRates, readSettlements, SETTLE_GRACE_SESSIONS, settleDecisions, UNRESOLVED_AFTER_DAYS } from "../journal/settle.js";
 import { readLedger } from "../portfolio/ledger.js";
 import { addToWatchlist, loadWatchlist, removeFromWatchlist } from "../portfolio/watchlist.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
@@ -117,16 +117,24 @@ export async function journalCommand(args: CommandArgs, asJson: boolean): Promis
       asJson,
       r,
       [
-        `${r.settled.length} settlement(s), ${r.pending} horizon(s) not matured yet${r.waiting.length ? `, ${r.waiting.length} waiting for the price history` : ""}`,
+        `${r.settled.length} settlement(s), ${r.pending} horizon(s) not matured yet${r.waiting.length ? `, ${r.waiting.length} waiting for the price history` : ""}${r.unresolved.length ? `, ${r.unresolved.length} unresolved` : ""}`,
         ...r.settled.map(
           (s) =>
             `  ${s.symbol} ${s.rating} +${s.horizon} → ${s.endDate}: ${s.returnPct} %${s.alphaPct !== undefined ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} — ${s.hit ? "right" : "wrong"}`,
         ),
+        ...r.unresolved.map(
+          (u) => `  unresolved: ${u.symbol} ${u.rating} +${u.horizon} (${u.decisionId}) ended ${u.endDate}: ${u.reason} — not scored, out of the hit rates`,
+        ),
         // A history that stops short is waited for; ten sessions past the horizon's end, the horizon settles on the last
-        // close there is, marked partial — a delisted or renamed name included.
+        // close there is, marked partial — a delisted or renamed name included. A symbol with no close after the
+        // decision has nothing to settle on: 30 days past the end, the horizon is recorded unresolved.
         ...r.waiting.map(
           (w) =>
-            `  waiting: ${w.symbol} +${w.horizon} (${w.decisionId}) ends ${w.endDate}, but ${w.series === w.symbol ? "its" : `the benchmark ${w.series}'s`} history ${w.lastBar ? `stops at ${w.lastBar}` : "is empty"} — pending until it holds a bar on or after ${w.endDate}; 10 sessions past that day (calendar days for crypto), it settles on the last close there is, marked partial`,
+            `  waiting: ${w.symbol} +${w.horizon} (${w.decisionId}) ends ${w.endDate}, but ${w.series === w.symbol ? "its" : `the benchmark ${w.series}'s`} history ${w.lastBar ? `stops at ${w.lastBar}` : "is empty"} — pending until it holds a bar on or after ${w.endDate}; ${
+              w.then === "unresolved"
+                ? `${UNRESOLVED_AFTER_DAYS} days past that day with no close after the decision, it is recorded unresolved and not scored`
+                : `${SETTLE_GRACE_SESSIONS} sessions past that day (calendar days for crypto), it settles on the last close there is, marked partial`
+            }`,
         ),
         ...r.errors.map((e) => `  error: ${e}`),
       ].join("\n"),

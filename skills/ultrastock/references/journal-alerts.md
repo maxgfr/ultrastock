@@ -17,7 +17,10 @@
   `settle` lists it under `waiting`, with the history that falls short and its
   last bar. Ten sessions after the end with no such bar (a delisted or renamed
   name, a benchmark that never answers), it settles on the last close
-  available, marked `partial`.
+  available, marked `partial`. A symbol with no close after the decision day,
+  or none at all, has nothing to settle on: 30 days after the end, the horizon
+  is recorded `unresolved` with its reason. It is not scored, so it counts in
+  no hit rate, and it is not tried again.
   - A buy or overweight is right when the alpha is positive.
   - A sell or underweight is right when it is negative.
   - A hold is right when |alpha| stays under a band of 2 % a month.

@@ -43663,11 +43663,15 @@ import { appendFileSync as appendFileSync7, mkdirSync as mkdirSync22 } from "fs"
 import { join as join43 } from "path";
 var HORIZONS2 = [5, 20, 60];
 var SETTLE_GRACE_SESSIONS = 10;
+var UNRESOLVED_AFTER_DAYS = 30;
+var isUnresolved = (s) => s.unresolved === true;
+var settlementKey = (s) => `${s.decisionId}|${s.horizon}`;
 function readDecisions(warn) {
   return readJsonl(join43(journalDir(), "decisions.jsonl"), warn).filter((d) => d.id);
 }
+var readSettlementLines = (warn) => readJsonl(join43(journalDir(), "settlements.jsonl"), warn);
 function readSettlements(warn) {
-  return readJsonl(join43(journalDir(), "settlements.jsonl"), warn);
+  return readSettlementLines(warn).filter((s) => !isUnresolved(s));
 }
 var closeAtOrBefore = (bars, date) => {
   let v;
@@ -43689,8 +43693,9 @@ function maturedHorizons(market, start, due, today) {
   return due.filter((h) => horizonEnd(market, start, h) < today);
 }
 async function settleDecisions(now = clockNow()) {
-  const done = new Set(readSettlements().map((s) => `${s.decisionId}|${s.horizon}`));
+  const done = new Set(readSettlementLines().map(settlementKey));
   let settled = [];
+  let unresolved = [];
   const waiting = [];
   const errors = [];
   let pending = 0;
@@ -43711,6 +43716,18 @@ async function settleDecisions(now = clockNow()) {
       const bench = benchSym ? await getHistory(await resolveSymbol(benchSym), { from, to: now }).catch(() => void 0) : void 0;
       for (const h of matured) {
         const endDate = horizonEnd(market, start, h);
+        const unresolvable = new Date(Date.parse(endDate) + UNRESOLVED_AFTER_DAYS * 864e5).toISOString().slice(0, 10) < today;
+        const giveUp = (reason) => unresolved.push({
+          decisionId: d.id,
+          symbol: d.symbol,
+          rating: d.rating,
+          horizon: h,
+          decidedAt: d.decidedAt,
+          endDate,
+          unresolved: true,
+          reason,
+          settledAt: now.toISOString()
+        });
         const histories = [[d.symbol, series.bars]];
         if (benchSym) histories.push([benchSym, bench?.bars ?? []]);
         const lastDay = (bars) => bars.at(-1)?.date.slice(0, 10) ?? "";
@@ -43719,8 +43736,22 @@ async function settleDecisions(now = clockNow()) {
         let partial = false;
         if (short) {
           const symbolLast = lastDay(series.bars);
+          if (symbolLast <= start && unresolvable) {
+            giveUp(
+              symbolLast ? `${d.symbol}'s history stops at ${symbolLast}, ${symbolLast === start ? "the decision day" : "before the decision day"}: no close after it to measure` : `${d.symbol} has no price history`
+            );
+            continue;
+          }
           if (!(horizonEnd(market, endDate, SETTLE_GRACE_SESSIONS) < today) || symbolLast <= start) {
-            waiting.push({ decisionId: d.id, symbol: d.symbol, horizon: h, endDate, series: short[0], lastBar: short[1].at(-1)?.date.slice(0, 10) });
+            waiting.push({
+              decisionId: d.id,
+              symbol: d.symbol,
+              horizon: h,
+              endDate,
+              series: short[0],
+              lastBar: short[1].at(-1)?.date.slice(0, 10),
+              then: symbolLast <= start ? "unresolved" : "partial"
+            });
             continue;
           }
           partial = true;
@@ -43730,7 +43761,8 @@ async function settleDecisions(now = clockNow()) {
         const s0 = closeAtOrBefore(series.bars, start);
         const s1 = closeAtOrBefore(series.bars, used);
         if (!s0 || !s1) {
-          errors.push(`${d.symbol} ${h}: no close around ${start} or ${endDate}`);
+          if (unresolvable) giveUp(`${d.symbol} has no close on or before the decision day ${start}`);
+          else errors.push(`${d.symbol} ${h}: no close around ${start} or ${endDate}`);
           continue;
         }
         const ret2 = (s1.close / s0.close - 1) * 100;
@@ -43761,27 +43793,35 @@ async function settleDecisions(now = clockNow()) {
       errors.push(`${d.symbol}: ${e.message}`);
     }
   }
-  if (settled.length) {
+  if (settled.length || unresolved.length) {
     mkdirSync22(journalDir(), { recursive: true });
     const file = join43(journalDir(), "settlements.jsonl");
-    settled = withFileLockSync(`${file}.lock`, () => {
+    [settled, unresolved] = withFileLockSync(`${file}.lock`, () => {
       sealJsonlTail(file);
-      const already = new Set(readSettlements().map((s) => `${s.decisionId}|${s.horizon}`));
-      const fresh = settled.filter((s) => !already.has(`${s.decisionId}|${s.horizon}`));
-      if (!fresh.length) return fresh;
-      appendFileSync7(file, fresh.map((s) => `${JSON.stringify(s)}
+      const already = new Set(readSettlementLines().map(settlementKey));
+      const fresh = settled.filter((s) => !already.has(settlementKey(s)));
+      const freshUnresolved = unresolved.filter((s) => !already.has(settlementKey(s)));
+      const lines = [...fresh, ...freshUnresolved];
+      if (!lines.length) return [fresh, freshUnresolved];
+      appendFileSync7(file, lines.map((s) => `${JSON.stringify(s)}
 `).join(""), { mode: 384 });
       appendFileSync7(
         join43(journalDir(), "decisions.md"),
-        fresh.map(
-          (s) => `SETTLED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions \u2192 ${s.endDate}]: return ${s.returnPct} %${s.alphaPct !== void 0 ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} \u2014 ${s.hit ? "right" : "wrong"}${s.partial ? " (partial: the history stops short)" : ""}
+        [
+          ...fresh.map(
+            (s) => `SETTLED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions \u2192 ${s.endDate}]: return ${s.returnPct} %${s.alphaPct !== void 0 ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} \u2014 ${s.hit ? "right" : "wrong"}${s.partial ? " (partial: the history stops short)" : ""}
 `
-        ).join("")
+          ),
+          ...freshUnresolved.map(
+            (s) => `UNRESOLVED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions \u2192 ${s.endDate}]: ${s.reason} \u2014 not scored
+`
+          )
+        ].join("")
       );
-      return fresh;
+      return [fresh, freshUnresolved];
     });
   }
-  return { settled, pending, waiting, errors };
+  return { settled, unresolved, pending, waiting, errors };
 }
 function hitRates(settlements) {
   const groups = /* @__PURE__ */ new Map();
@@ -52423,14 +52463,18 @@ async function journalCommand(args, asJson) {
       asJson,
       r3,
       [
-        `${r3.settled.length} settlement(s), ${r3.pending} horizon(s) not matured yet${r3.waiting.length ? `, ${r3.waiting.length} waiting for the price history` : ""}`,
+        `${r3.settled.length} settlement(s), ${r3.pending} horizon(s) not matured yet${r3.waiting.length ? `, ${r3.waiting.length} waiting for the price history` : ""}${r3.unresolved.length ? `, ${r3.unresolved.length} unresolved` : ""}`,
         ...r3.settled.map(
           (s) => `  ${s.symbol} ${s.rating} +${s.horizon} \u2192 ${s.endDate}: ${s.returnPct} %${s.alphaPct !== void 0 ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} \u2014 ${s.hit ? "right" : "wrong"}`
         ),
+        ...r3.unresolved.map(
+          (u) => `  unresolved: ${u.symbol} ${u.rating} +${u.horizon} (${u.decisionId}) ended ${u.endDate}: ${u.reason} \u2014 not scored, out of the hit rates`
+        ),
         // A history that stops short is waited for; ten sessions past the horizon's end, the horizon settles on the last
-        // close there is, marked partial — a delisted or renamed name included.
+        // close there is, marked partial — a delisted or renamed name included. A symbol with no close after the
+        // decision has nothing to settle on: 30 days past the end, the horizon is recorded unresolved.
         ...r3.waiting.map(
-          (w) => `  waiting: ${w.symbol} +${w.horizon} (${w.decisionId}) ends ${w.endDate}, but ${w.series === w.symbol ? "its" : `the benchmark ${w.series}'s`} history ${w.lastBar ? `stops at ${w.lastBar}` : "is empty"} \u2014 pending until it holds a bar on or after ${w.endDate}; 10 sessions past that day (calendar days for crypto), it settles on the last close there is, marked partial`
+          (w) => `  waiting: ${w.symbol} +${w.horizon} (${w.decisionId}) ends ${w.endDate}, but ${w.series === w.symbol ? "its" : `the benchmark ${w.series}'s`} history ${w.lastBar ? `stops at ${w.lastBar}` : "is empty"} \u2014 pending until it holds a bar on or after ${w.endDate}; ${w.then === "unresolved" ? `${UNRESOLVED_AFTER_DAYS} days past that day with no close after the decision, it is recorded unresolved and not scored` : `${SETTLE_GRACE_SESSIONS} sessions past that day (calendar days for crypto), it settles on the last close there is, marked partial`}`
         ),
         ...r3.errors.map((e) => `  error: ${e}`)
       ].join("\n")
