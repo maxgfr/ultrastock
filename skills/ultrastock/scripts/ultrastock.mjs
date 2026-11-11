@@ -43771,6 +43771,7 @@ var fileFor = (subject) => {
   if (!/^[a-z0-9-]{3,90}$/.test(subject)) throw new Error(`"${subject}" cannot hold an approval code`);
   return join46(dir(), `${subject}.json`);
 };
+var codesLock = (fn) => withFileLockSync(join46(homeDir(), "state", "codes.lock"), fn);
 var digest2 = (code, binding, salt) => scryptSync(`${binding}|${code}`, salt, 32, { N: 1 << 16, r: 8, p: 1, maxmem: 128 * 1024 * 1024 }).toString("hex");
 var desktopChannel = (message) => {
   try {
@@ -43842,12 +43843,15 @@ async function issueCode(subject, binding, what, channels2 = DEFAULT_CHANNELS, n
     );
   mkdirSync25(dir(), { recursive: true, mode: 448 });
   const p = { subject, binding, salt, hash: digest2(code, binding, salt), expiresAt, tries: 0 };
-  writeFileAtomic(fileFor(subject), `${JSON.stringify(p)}
-`, 384);
+  codesLock(() => writeFileAtomic(fileFor(subject), `${JSON.stringify(p)}
+`, 384));
   return { sentTo, expiresAt };
 }
 function verifyCode(subject, binding, code, now = /* @__PURE__ */ new Date()) {
   const f3 = fileFor(subject);
+  return codesLock(() => verifyLocked(f3, binding, code, now));
+}
+function verifyLocked(f3, binding, code, now) {
   if (!existsSync33(f3)) return { ok: false, reason: "no code was issued for this \u2014 run the code step first" };
   const p = JSON.parse(readFileSync39(f3, "utf8"));
   if (now.getTime() > Date.parse(p.expiresAt)) {

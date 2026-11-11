@@ -11,6 +11,7 @@ import { execFileSync } from "node:child_process";
 import { randomBytes, randomInt, scryptSync, timingSafeEqual } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeSync } from "node:fs";
 import { join } from "node:path";
+import { withFileLockSync } from "../core/lock.js";
 import { homeDir } from "../core/paths.js";
 import { env, writeFileAtomic } from "../engine.js";
 
@@ -31,6 +32,9 @@ const fileFor = (subject: string) => {
   if (!/^[a-z0-9-]{3,90}$/.test(subject)) throw new Error(`"${subject}" cannot hold an approval code`);
   return join(dir(), `${subject}.json`);
 };
+// A code's file is read, changed and written as one step: two processes guessing at
+// once must each use up a try. Its own lock, so a caller holding the live lock cannot deadlock on it.
+const codesLock = <T>(fn: () => T): T => withFileLockSync(join(homeDir(), "state", "codes.lock"), fn);
 // scrypt, not a bare hash: a six-digit code under SHA-256 falls to brute force in a
 // second; at this cost a million guesses take hours, far beyond the 2-minute life.
 // (A process running as the user can still read this file: the code guards against
@@ -124,13 +128,17 @@ export async function issueCode(
     );
   mkdirSync(dir(), { recursive: true, mode: 0o700 });
   const p: Pending = { subject, binding, salt, hash: digest(code, binding, salt), expiresAt, tries: 0 };
-  writeFileAtomic(fileFor(subject), `${JSON.stringify(p)}\n`, 0o600);
+  codesLock(() => writeFileAtomic(fileFor(subject), `${JSON.stringify(p)}\n`, 0o600));
   return { sentTo, expiresAt };
 }
 
 /** Check and consume a code. A wrong binding (the order changed) or an expired code fails. */
 export function verifyCode(subject: string, binding: string, code: string | undefined, now = new Date()): { ok: true } | { ok: false; reason: string } {
   const f = fileFor(subject);
+  return codesLock(() => verifyLocked(f, binding, code, now));
+}
+
+function verifyLocked(f: string, binding: string, code: string | undefined, now: Date): { ok: true } | { ok: false; reason: string } {
   if (!existsSync(f)) return { ok: false, reason: "no code was issued for this — run the code step first" };
   const p = JSON.parse(readFileSync(f, "utf8")) as Pending;
   if (now.getTime() > Date.parse(p.expiresAt)) {

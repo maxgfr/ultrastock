@@ -1,5 +1,8 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { build } from "tsup";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { homeDir } from "../src/core/paths.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
@@ -113,6 +116,35 @@ describe("approval codes", () => {
     expect(verifyCode("t-abc123", "fp1", codeFrom(), new Date(Date.now() + 121_000))).toMatchObject({ ok: false, reason: expect.stringMatching(/expired/) });
     await expect(issueCode("t-abc123", "fp1", "x", [["none", () => false]])).rejects.toThrow(/no out-of-band channel/);
   }, 30_000);
+
+  it("count every wrong guess when several processes guess at once", async () => {
+    // verifyCode is synchronous: only separate processes can race on the tries counter. Bundle it for them.
+    const dir = mkdtempSync(join(tmpdir(), "us-otp-race-"));
+    const entry = join(dir, "guess.ts");
+    writeFileSync(
+      entry,
+      `import { verifyCode } from ${JSON.stringify(join(process.cwd(), "src/trading/otp.ts"))};
+const [subject, binding, code, startAt] = process.argv.slice(2);
+while (Date.now() < Number(startAt)) {} // start together
+process.stdout.write(JSON.stringify(verifyCode(subject, binding, code)));
+`,
+    );
+    await build({ entry: { guess: entry }, outDir: dir, format: ["esm"], platform: "node", target: "node18", config: false, silent: true });
+    await issueCode("t-race01", "fp1", "a test", [["capture", capture]]);
+    const right = codeFrom();
+    const wrong = right === "000000" ? "111111" : "000000";
+    const startAt = String(Date.now() + 1500);
+    const guess = () =>
+      new Promise<string>((resolve, reject) =>
+        execFile(process.execPath, [join(dir, "guess.js"), "t-race01", "fp1", wrong, startAt], { env: process.env }, (err, stdout) =>
+          err ? reject(err) : resolve(JSON.parse(stdout).reason),
+        ),
+      );
+    const reasons = await Promise.all([guess(), guess(), guess()]);
+    expect(reasons.sort()).toEqual(["wrong code (1 tries left)", "wrong code (2 tries left)", "wrong code 3 times: void, issue a new one"]);
+    // Three wrong guesses void the code: the right one comes too late.
+    expect(verifyCode("t-race01", "fp1", right)).toMatchObject({ ok: false, reason: expect.stringMatching(/no code/) });
+  }, 60_000);
 });
 
 describe("live limits", () => {
