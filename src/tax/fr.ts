@@ -115,6 +115,8 @@ export class FranceRegime extends TaxRegime {
       const isin = t.isin?.toUpperCase() ?? isinOf.get((t.symbol ?? "").toUpperCase());
       return isin ? poolOf(isin) : (t.symbol ?? "");
     };
+    /** Splits already applied to the household's pool, by security, day and ratio: the ledger books one per account. */
+    const splitDone = new Set<string>();
     for (const t of this.history(input)) {
       const env = envelopeOf(t.account, input.envelopes, t.symbol);
       if (env.guessed && !guessed.has(t.account)) {
@@ -200,6 +202,10 @@ export class FranceRegime extends TaxRegime {
           });
         if (pos.quantity <= 1e-12) st.securities.delete(key);
       } else if (t.type === "split") {
+        // One corporate action on the security: the household's pool divides once, however many accounts record it.
+        const once = `${key}|${day(t.date)}|${t.quantity ?? 1}`;
+        if (splitDone.has(once)) continue;
+        splitDone.add(once);
         pos.quantity *= t.quantity ?? 1;
         st.securities.set(key, pos);
       } else if (t.type === "transfer-out") {

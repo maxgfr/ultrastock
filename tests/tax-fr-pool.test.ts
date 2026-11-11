@@ -17,6 +17,34 @@ const run = (txs: Transaction[]) => {
   return { sales: st.events.filter((e) => e.kind === "securities-disposal"), warnings: st.warnings };
 };
 
+describe("FR: a split recorded in each of two accounts that hold the same security", () => {
+  // The ledger keeps a position per account, so a 2-for-1 is one split row per account (buildBook needs both).
+  //   cto1: 10 X @ 100, cto2: 10 X @ 100 → 20 shares, 2 000 €. After the split: 40 shares, PMP 50 €.
+  //   cto1 sells its 20 @ 60 → 1 200 − 20 × 50 = +200 €.
+  const txs = [
+    tx({ date: "2024-01-02", type: "buy", account: "cto1", symbol: "X.PA", quantity: 10, price: 100 }),
+    tx({ date: "2024-01-03", type: "buy", account: "cto2", symbol: "X.PA", quantity: 10, price: 100 }),
+    tx({ date: "2025-03-01", type: "split", account: "cto1", symbol: "X.PA", quantity: 2 }),
+    tx({ date: "2025-03-01", type: "split", account: "cto2", symbol: "X.PA", quantity: 2 }),
+    tx({ date: "2025-06-02", type: "sell", account: "cto1", symbol: "X.PA", quantity: 20, price: 60 }),
+  ];
+  it("the book needs both split rows: 20 shares in each account before the sale", () => {
+    const book = buildBook(txs.slice(0, 4));
+    expect(book.positions.map((p) => [p.account, p.quantity, p.averageCost])).toEqual([
+      ["cto1", 20, 50],
+      ["cto2", 20, 50],
+    ]);
+  });
+  it("the tax pool splits once: cost 1 000 €, gain 200 €", () => {
+    const { sales } = run(txs);
+    expect(sales.map((e) => [e.cost, e.gain])).toEqual([[1000, 200]]);
+  });
+  it("a split recorded in one account only still splits the household's pool", () => {
+    const { sales } = run([...txs.slice(0, 3), txs[4]!]);
+    expect(sales.map((e) => [e.cost, e.gain])).toEqual([[1000, 200]]);
+  });
+});
+
 describe("FR: a security whose ISIN changes (reverse split, new ISIN) under the same ticker", () => {
   it("the sale still finds the cost of the shares bought under the old ISIN", () => {
     // 100 X bought @ 10 (ISIN US1111111116), 1-for-10 reverse split with a new ISIN, 10 X sold @ 150 under it.

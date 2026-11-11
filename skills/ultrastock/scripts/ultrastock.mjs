@@ -53849,6 +53849,7 @@ var FranceRegime = class extends TaxRegime {
       const isin = t.isin?.toUpperCase() ?? isinOf.get((t.symbol ?? "").toUpperCase());
       return isin ? poolOf(isin) : t.symbol ?? "";
     };
+    const splitDone = /* @__PURE__ */ new Set();
     for (const t of this.history(input)) {
       const env2 = envelopeOf2(t.account, input.envelopes, t.symbol);
       if (env2.guessed && !guessed.has(t.account)) {
@@ -53927,6 +53928,9 @@ var FranceRegime = class extends TaxRegime {
           });
         if (pos2.quantity <= 1e-12) st.securities.delete(key);
       } else if (t.type === "split") {
+        const once = `${key}|${day3(t.date)}|${t.quantity ?? 1}`;
+        if (splitDone.has(once)) continue;
+        splitDone.add(once);
         pos2.quantity *= t.quantity ?? 1;
         st.securities.set(key, pos2);
       } else if (t.type === "transfer-out") {
