@@ -43,3 +43,40 @@ describe("US wash sale: the 30 days AFTER a December loss sale run into January"
     expect(r.events.every((e) => e.date <= "2025-12-31")).toBe(true);
   });
 });
+
+describe("US wash sale: a replacement lot the same sale also dips into", () => {
+  it("the loss on the old lot is disallowed against the replacement shares still held", () => {
+    // Lot A: 10 X bought 2024-01-02 @ 100. Lot B: 100 X bought 2025-02-20 @ 90. 2025-03-01: 15 sold @ 80, FIFO:
+    // 10 from A (loss 200) and 5 from B (loss 50). 95 shares of B, bought 9 days before the sale, are still held:
+    // they are replacement shares for the 10 of A (§1091(a); Reg. §1.1091-1(a)) → the 200 $ are disallowed.
+    const txs = [
+      tx({ date: "2024-01-02", type: "buy", account: "a", symbol: "X", quantity: 10, price: 100 }),
+      tx({ date: "2025-02-20", type: "buy", account: "a", symbol: "X", quantity: 100, price: 90 }),
+      tx({ date: "2025-03-01", type: "sell", account: "a", symbol: "X", quantity: 15, price: 80 }),
+    ];
+    const ev = disposals(2025, txs);
+    const oldLot = ev.find((e) => e.acquired === "2024-01-02")!;
+    expect(oldLot.washSaleDisallowed).toBe(200);
+    expect(oldLot.gain).toBe(0);
+  });
+  it("control: with the sale stopping at the old lot the engine does see the wash sale", () => {
+    const txs = [
+      tx({ date: "2024-01-02", type: "buy", account: "a", symbol: "X", quantity: 10, price: 100 }),
+      tx({ date: "2025-02-20", type: "buy", account: "a", symbol: "X", quantity: 100, price: 90 }),
+      tx({ date: "2025-03-01", type: "sell", account: "a", symbol: "X", quantity: 10, price: 80 }),
+    ];
+    expect(disposals(2025, txs)[0]!.washSaleDisallowed).toBe(200);
+  });
+  it("a lot the sale empties is no replacement for the others it sells", () => {
+    // A (10 @ 100, 2024) and B (10 @ 90, 9 days before) both sold whole at 80: nothing bought is still held.
+    const txs = [
+      tx({ date: "2024-01-02", type: "buy", account: "a", symbol: "X", quantity: 10, price: 100 }),
+      tx({ date: "2025-02-20", type: "buy", account: "a", symbol: "X", quantity: 10, price: 90 }),
+      tx({ date: "2025-03-01", type: "sell", account: "a", symbol: "X", quantity: 20, price: 80 }),
+    ];
+    expect(disposals(2025, txs).map((e) => [e.gain, e.washSaleDisallowed])).toEqual([
+      [-200, undefined],
+      [-100, undefined],
+    ]);
+  });
+});

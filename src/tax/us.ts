@@ -326,10 +326,11 @@ export class UsRegime extends TaxRegime {
         const notes: string[] = [...extra];
         if (gain < 0 && (!l.crypto || washCrypto)) {
           // Replacement shares bought within ±30 days (any account), not the shares sold, not already used — bought: a
-          // transfer-in, even one replayed before its transfer-out, acquires nothing.
+          // transfer-in, even one replayed before its transfer-out, acquires nothing. A purchase this same sale dips
+          // into still replaces with the shares it keeps (its `remaining`, already net of this sale): only the lot of
+          // the loss itself is never its own replacement.
           const from = addDays(day(t.date), -window);
           const to = addDays(day(t.date), window);
-          const soldIds = new Set(consumed.map((c) => c.lot.id));
           let need = qty;
           const lossPerShare = -gain / qty;
           const held = Date.parse(`${day(t.date)}T00:00:00Z`) - Date.parse(`${l.acquired}T00:00:00Z`);
@@ -351,7 +352,7 @@ export class UsRegime extends TaxRegime {
           };
           for (const r of lots) {
             if (need <= 1e-12) break;
-            if (!r.purchase || r.asset !== asset || soldIds.has(r.id) || r.bought < from || r.bought > to || r.id === l.id) continue;
+            if (!r.purchase || r.asset !== asset || r.bought < from || r.bought > to || r.id === l.id) continue;
             // Only replacement shares that still exist can take the loss into their basis: those already sold (or used
             // by an earlier wash sale) are not counted, and the loss they cannot take stays allowed.
             const here = r.replaced >= r.quantity - 1e-12 ? 0 : active.has(r) ? r.remaining : r.quantity;

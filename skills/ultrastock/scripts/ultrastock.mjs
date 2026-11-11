@@ -54679,7 +54679,6 @@ var UsRegime = class extends TaxRegime {
         if (gain < 0 && (!l.crypto || washCrypto)) {
           const from = addDays2(day3(t.date), -window);
           const to = addDays2(day3(t.date), window);
-          const soldIds = new Set(consumed.map((c) => c.lot.id));
           let need = qty2;
           const lossPerShare = -gain / qty2;
           const held = Date.parse(`${day3(t.date)}T00:00:00Z`) - Date.parse(`${l.acquired}T00:00:00Z`);
@@ -54699,7 +54698,7 @@ var UsRegime = class extends TaxRegime {
           };
           for (const r3 of lots) {
             if (need <= 1e-12) break;
-            if (!r3.purchase || r3.asset !== asset || soldIds.has(r3.id) || r3.bought < from || r3.bought > to || r3.id === l.id) continue;
+            if (!r3.purchase || r3.asset !== asset || r3.bought < from || r3.bought > to || r3.id === l.id) continue;
             const here = r3.replaced >= r3.quantity - 1e-12 ? 0 : active2.has(r3) ? r3.remaining : r3.quantity;
             const carried = (carriedOf.get(r3) ?? []).filter((c) => active2.has(c) && c.replaced < c.quantity - 1e-12 && c.remaining > 1e-12);
             const avail = r3.sheltered ? r3.quantity - r3.replaced : here + carried.reduce((a, c) => a + c.remaining, 0);
