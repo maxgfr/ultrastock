@@ -290,7 +290,11 @@ export class UsRegime extends TaxRegime {
             for (const r of lots) {
               if (need <= 1e-12) break;
               if (!r.purchase || r.symbol !== sym || soldIds.has(r.id) || r.bought < from || r.bought > to || r.id === l.id) continue;
-              const avail = r.quantity - r.replaced;
+              // Only replacement shares that still exist can take the loss into their basis: those already sold (or used
+              // by an earlier wash sale) are not counted, and the loss they cannot take stays allowed.
+              const here = r.replaced >= r.quantity - 1e-12 ? 0 : active.has(r) ? r.remaining : r.quantity;
+              const carried = (carriedOf.get(r) ?? []).filter((c) => active.has(c) && c.replaced < c.quantity - 1e-12 && c.remaining > 1e-12);
+              const avail = r.sheltered ? r.quantity - r.replaced : here + carried.reduce((a, c) => a + c.remaining, 0);
               if (avail <= 1e-12) continue;
               const q = Math.min(need, avail);
               const loss = lossPerShare * q;
@@ -306,17 +310,12 @@ export class UsRegime extends TaxRegime {
               // to another of the user's accounts (the lots carried from it).
               const holders: Array<[UsLot, number]> = [];
               let left = q;
-              const here = Math.min(left, active.has(r) ? r.remaining : r.quantity);
-              if (here > 1e-12) holders.push([r, here]);
-              left -= here;
-              for (const c of carriedOf.get(r) ?? []) {
+              for (const [h, has] of [[r, here] as const, ...carried.map((c) => [c, c.remaining] as const)]) {
                 if (left <= 1e-12) break;
-                if (!active.has(c) || c.replaced >= c.quantity - 1e-12 || c.remaining <= 1e-12) continue;
-                const n = Math.min(left, c.remaining);
-                holders.push([c, n]);
+                const n = Math.min(left, has);
+                if (n > 1e-12) holders.push([h, n]);
                 left -= n;
               }
-              if (left > 1e-12) holders.push([r, left]);
               for (const [h, n] of holders) {
                 const w = take(h, n);
                 // Shares carried from r count as r's: r has that many fewer left to be a replacement.

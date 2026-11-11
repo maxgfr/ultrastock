@@ -53714,7 +53714,9 @@ var UsRegime = class extends TaxRegime {
             for (const r3 of lots) {
               if (need <= 1e-12) break;
               if (!r3.purchase || r3.symbol !== sym3 || soldIds.has(r3.id) || r3.bought < from || r3.bought > to || r3.id === l.id) continue;
-              const avail = r3.quantity - r3.replaced;
+              const here = r3.replaced >= r3.quantity - 1e-12 ? 0 : active2.has(r3) ? r3.remaining : r3.quantity;
+              const carried = (carriedOf.get(r3) ?? []).filter((c) => active2.has(c) && c.replaced < c.quantity - 1e-12 && c.remaining > 1e-12);
+              const avail = r3.sheltered ? r3.quantity - r3.replaced : here + carried.reduce((a, c) => a + c.remaining, 0);
               if (avail <= 1e-12) continue;
               const q = Math.min(need, avail);
               const loss = lossPerShare * q;
@@ -53727,17 +53729,12 @@ var UsRegime = class extends TaxRegime {
               }
               const holders = [];
               let left2 = q;
-              const here = Math.min(left2, active2.has(r3) ? r3.remaining : r3.quantity);
-              if (here > 1e-12) holders.push([r3, here]);
-              left2 -= here;
-              for (const c of carriedOf.get(r3) ?? []) {
+              for (const [h, has] of [[r3, here], ...carried.map((c) => [c, c.remaining])]) {
                 if (left2 <= 1e-12) break;
-                if (!active2.has(c) || c.replaced >= c.quantity - 1e-12 || c.remaining <= 1e-12) continue;
-                const n2 = Math.min(left2, c.remaining);
-                holders.push([c, n2]);
+                const n2 = Math.min(left2, has);
+                if (n2 > 1e-12) holders.push([h, n2]);
                 left2 -= n2;
               }
-              if (left2 > 1e-12) holders.push([r3, left2]);
               for (const [h, n2] of holders) {
                 const w = take(h, n2);
                 if (h !== r3) r3.quantity -= n2;

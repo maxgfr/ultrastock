@@ -84,3 +84,29 @@ describe("US: a transfer between own accounts and the wash-sale rule", () => {
     expect(total(ev)).toBe(-150);
   });
 });
+
+describe("US: wash sale against a replacement lot partly sold before the loss sale", () => {
+  it("a disallowed loss is deferred into shares still held, never dropped", () => {
+    //   2024-01-02 buy 10 @ 100 in c                       cost 1 000
+    //   2025-02-20 buy 100 @ 90 in a                       cost 9 000
+    //   2025-02-25 sell 96 @ 91 in a                       proceeds 8 736 (gain 96)
+    //   2025-03-01 sell 10 @ 80 in c                       proceeds 800 (loss 200)
+    //   2025-11-01 sell the last 4 @ 95 in a               proceeds 380
+    // Only the 4 shares still held can carry the loss: 80 $ disallowed (4 × 20, into their basis), 120 $ allowed.
+    // The year's net result is the money made: 8 736 + 800 + 380 − 10 000 = −84.
+    const txs = [
+      tx({ date: "2024-01-02", type: "buy", account: "c", symbol: "X", quantity: 10, price: 100 }),
+      tx({ date: "2025-02-20", type: "buy", account: "a", symbol: "X", quantity: 100, price: 90 }),
+      tx({ date: "2025-02-25", type: "sell", account: "a", symbol: "X", quantity: 96, price: 91 }),
+      tx({ date: "2025-03-01", type: "sell", account: "c", symbol: "X", quantity: 10, price: 80 }),
+      tx({ date: "2025-11-01", type: "sell", account: "a", symbol: "X", quantity: 4, price: 95 }),
+    ];
+    const ev = disposals(txs);
+    expect(ev.map((e) => [e.date, e.cost, e.gain, e.washSaleDisallowed])).toEqual([
+      ["2025-02-25", 8640, 96, undefined],
+      ["2025-03-01", 1000, -120, 80],
+      ["2025-11-01", 440, -60, undefined],
+    ]);
+    expect(total(ev)).toBe(-84);
+  });
+});
