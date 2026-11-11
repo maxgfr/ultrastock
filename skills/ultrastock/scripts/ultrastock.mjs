@@ -54489,6 +54489,11 @@ var SHELTERED = /* @__PURE__ */ new Set(["IRA", "ROTH-IRA", "401K"]);
 var TRANSIT_DAYS = 30;
 var NON_US_BROKERS = /degiro|trade ?republic|bourso|fortuneo|bourse ?direct|saxo|scalable|xtb|lightyear|trading ?212|revolut|bitpanda|bitstamp|binance(?!\.?us)|bnp|cr[eé]dit|soci[eé]t[eé]|lcl|linxea|bforbank|hello ?bank|freedom ?24/i;
 var assetOf = (t, crypto) => crypto ? splitPair(t.symbol ?? "", t.currency).base : (t.symbol ?? "").toUpperCase();
+var dollarLike = (t, crypto) => {
+  if (!crypto) return false;
+  const base2 = splitPair(t.symbol ?? "", t.currency).base;
+  return isStablecoin(base2) || isFiat(base2) && (isStablecoin(t.currency) || isFiat(t.currency));
+};
 function cryptoQuote(t, crypto) {
   if (!crypto || t.type !== "buy" && t.type !== "sell") return void 0;
   const c = t.currency.toUpperCase();
@@ -54544,7 +54549,7 @@ var UsRegime = class extends TaxRegime {
         received.set(t, lot2);
       }
       if (t.type !== "buy" && t.type !== "transfer-in") continue;
-      if (crypto && isStablecoin(splitPair(t.symbol ?? "", t.currency).base)) continue;
+      if (dollarLike(t, crypto)) continue;
       const q = t.quantity ?? 0;
       const cost = t.price !== void 0 ? this.toBase(t, gross2(t), input) + this.toBase(t, t.fee ?? 0, input) : 0;
       const lot = {
@@ -54810,7 +54815,7 @@ var UsRegime = class extends TaxRegime {
         continue;
       }
       if (t.type === "sell" || t.type === "transfer-out") {
-        if (crypto && isStablecoin(splitPair(sym3, t.currency).base)) {
+        if (dollarLike(t, crypto)) {
           if (!stableNoted) warnings.push("stablecoins are treated as dollars: their (small) gains and losses are ignored");
           stableNoted = true;
           continue;

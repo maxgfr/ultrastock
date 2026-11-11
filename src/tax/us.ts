@@ -89,6 +89,17 @@ const NON_US_BROKERS =
 const assetOf = (t: Transaction, crypto: boolean) => (crypto ? splitPair(t.symbol ?? "", t.currency).base : (t.symbol ?? "").toUpperCase());
 
 /**
+ * A crypto row that moves no virtual currency the engine taxes: a stablecoin traded as such (dollars here), or fiat
+ * changed into a stablecoin or back on a fiat-base pair (EURUSDT) — a currency exchange, not a disposal of virtual
+ * currency (IRS Notice 2014-21); a foreign-currency gain on the euros is §988's, not Form 8949's.
+ */
+const dollarLike = (t: Transaction, crypto: boolean): boolean => {
+  if (!crypto) return false;
+  const base = splitPair(t.symbol ?? "", t.currency).base;
+  return isStablecoin(base) || (isFiat(base) && (isStablecoin(t.currency) || isFiat(t.currency)));
+};
+
+/**
  * The crypto-asset a trade is priced in (BTC in ETHBTC): a buy gives it, a sale receives it — a disposal and an
  * acquisition at fair value of their own (IRS Notice 2014-21). Fiat and stablecoins (dollars here) are not.
  */
@@ -154,7 +165,7 @@ export class UsRegime extends TaxRegime {
         received.set(t, lot);
       }
       if (t.type !== "buy" && t.type !== "transfer-in") continue;
-      if (crypto && isStablecoin(splitPair(t.symbol ?? "", t.currency).base)) continue;
+      if (dollarLike(t, crypto)) continue;
       const q = t.quantity ?? 0;
       const cost = t.price !== undefined ? this.toBase(t, gross(t), input) + this.toBase(t, t.fee ?? 0, input) : 0;
       const lot: UsLot = {
@@ -453,7 +464,7 @@ export class UsRegime extends TaxRegime {
         continue;
       }
       if (t.type === "sell" || t.type === "transfer-out") {
-        if (crypto && isStablecoin(splitPair(sym, t.currency).base)) {
+        if (dollarLike(t, crypto)) {
           if (!stableNoted) warnings.push("stablecoins are treated as dollars: their (small) gains and losses are ignored");
           stableNoted = true;
           continue;
