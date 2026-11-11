@@ -21625,8 +21625,9 @@ var SCALES = [
   [/^(?:T|tn|trillion|trillions)$/, 1e12]
 ];
 var unbracket = (text2) => text2.replace(/!?\[([^\]]*)\]\([^)]*\)/g, " $1 ").replace(/\[\^?[\w-]*\]/g, " ").replace(/\[([^\]]*)\]/g, " $1 ");
+var INDICATOR_NAMES = "SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA|VWAP|OBV|Stoch|Stochastic|Bollinger|Ichimoku|Supertrend";
 function stripNonFigures(text2) {
-  return unbracket(text2.replace(/`[^`]*`/g, " ")).replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ").replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ").replace(new RegExp(`\\b\\d{1,2}(?:er)?\\s+(?:${MONTH_WORD})(?!\\p{L})\\.?(?:\\s+\\d{4})?`, "giu"), " ").replace(new RegExp(`(?<!\\p{L})(?:${MONTH_WORD})(?!\\p{L})\\.?\\s+\\d{1,2}(?:,\\s*\\d{4}(?!\\p{N}))?(?!\\p{N}|[.,]\\d)`, "giu"), " ").replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ").replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ").replace(/\b(?:SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA)\s?\d+\b/gi, " ").replace(/(?:S&P|\b(?:CAC|SBF|STOXX|Stoxx|Nasdaq|NASDAQ|Russell|DAX|MDAX|FTSE|AEX|BEL|IBEX|MIB|PSI|OBX|ISEQ|Nikkei|Top|top|Dow Jones))\s?\d+\b/g, " ");
+  return unbracket(text2.replace(/`[^`]*`/g, " ")).replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ").replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ").replace(new RegExp(`\\b\\d{1,2}(?:er)?\\s+(?:${MONTH_WORD})(?!\\p{L})\\.?(?:\\s+\\d{4})?`, "giu"), " ").replace(new RegExp(`(?<!\\p{L})(?:${MONTH_WORD})(?!\\p{L})\\.?\\s+\\d{1,2}(?:,\\s*\\d{4}(?!\\p{N}))?(?!\\p{N}|[.,]\\d)`, "giu"), " ").replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ").replace(new RegExp(`\\b\\d{1,2}[mhdwM]\\s?(?=(?:${INDICATOR_NAMES})(?![A-Za-z]))`, "gi"), " ").replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ").replace(/\b(?:SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA)\s?\d+\b/gi, " ").replace(/\b(?:weeks?|wk|semaines?|sem\.)\s?\d{1,2}\b(?![.,]\d|\s?[%$€£])/gi, " ").replace(/(?<![\p{N}.,/])\d{1,3}(?:\/\d{1,3})+(?![\p{N}/]|[.,]\d)/gu, (m) => m.split("/").reduce((a, b) => a + Number(b), 0) === 100 ? " " : m).replace(/(?:S&P|\b(?:CAC|SBF|STOXX|Stoxx|Nasdaq|NASDAQ|Russell|DAX|MDAX|FTSE|AEX|BEL|IBEX|MIB|PSI|OBX|ISEQ|Nikkei|Top|top|Dow Jones))\s?\d+\b/g, " ");
 }
 var FIGURE_RE = /(?<![\p{L}\p{N}_.,])([+\-−–]?)\s?([$€£]\s?)?(\d{1,3}(?:[ ,.  ']\d{3})+(?!\d)(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(\s?(?:%|pts?|bps|x|×)|\s?(?:k|K|M|m|mn|Mn|mio|Md|Mds|md|mds|bn|Bn|B|T|tn|million|millions|milliard|milliards|billion|billions|trillion|trillions|mille)\b)?(\s?(?:[$€£]|EUR|USD|USDT|USDC|GBP|CHF|NOK|BTC|ETH)\b|\s?[$€£])?/gu;
 var PARAMETER_AFTER = /^[-\s]?(?:days?|d|jours?|j|weeks?|wks?|w|semaines?|months?|mo|mois|years?|yrs?|y|ans?|années?|bars?|séances?|sessions?|hours?|h|heures?|min|minutes?|périodes?|periods?|ème|e|er|re|st|nd|rd|th)\b/iu;
@@ -21763,8 +21764,7 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
       d.dates ??= datesIn(d.text);
       return d.dates;
     }
-    if (!itemDates.has(item.id))
-      itemDates.set(item.id, datesIn([String(item.value), item.label, item.key, item.asOf ?? "", item.fetchedAt.slice(0, 10)].join(" ")));
+    if (!itemDates.has(item.id)) itemDates.set(item.id, datesIn([String(item.value), item.label, item.key, item.asOf ?? ""].join(" ")));
     return itemDates.get(item.id);
   };
   const headings = [];

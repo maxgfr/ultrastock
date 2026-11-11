@@ -85,7 +85,9 @@ const unbracket = (text: string): string =>
     .replace(/\[\^?[\w-]*\]/g, " ")
     .replace(/\[([^\]]*)\]/g, " $1 ");
 
-/** What is not a figure: dates, times, citation tokens, inline code, link targets. */
+const INDICATOR_NAMES = "SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA|VWAP|OBV|Stoch|Stochastic|Bollinger|Ichimoku|Supertrend";
+
+/** What is not a figure: dates, times, citation tokens, inline code, link targets, labels. */
 function stripNonFigures(text: string): string {
   return (
     unbracket(text.replace(/`[^`]*`/g, " "))
@@ -95,9 +97,14 @@ function stripNonFigures(text: string): string {
       .replace(new RegExp(`\\b\\d{1,2}(?:er)?\\s+(?:${MONTH_WORD})(?!\\p{L})\\.?(?:\\s+\\d{4})?`, "giu"), " ")
       .replace(new RegExp(`(?<!\\p{L})(?:${MONTH_WORD})(?!\\p{L})\\.?\\s+\\d{1,2}(?:,\\s*\\d{4}(?!\\p{N}))?(?!\\p{N}|[.,]\\d)`, "giu"), " ")
       .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ")
+      // A chart timeframe before an indicator is its label: the 15m RSI, the 4h MACD — not 15 million.
+      .replace(new RegExp(`\\b\\d{1,2}[mhdwM]\\s?(?=(?:${INDICATOR_NAMES})(?![A-Za-z]))`, "gi"), " ")
       // Indicator parameters and index names are labels, not claims: RSI(14), MACD(12,26,9), SMA 200, MM50, CAC 40, S&P 500.
       .replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ")
       .replace(/\b(?:SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA)\s?\d+\b/gi, " ")
+      // So is a week number ("Week 46", "semaine 46") and an allocation split summing to 100 ("60/40", "70/20/10").
+      .replace(/\b(?:weeks?|wk|semaines?|sem\.)\s?\d{1,2}\b(?![.,]\d|\s?[%$€£])/gi, " ")
+      .replace(/(?<![\p{N}.,/])\d{1,3}(?:\/\d{1,3})+(?![\p{N}/]|[.,]\d)/gu, (m) => (m.split("/").reduce((a, b) => a + Number(b), 0) === 100 ? " " : m))
       .replace(/(?:S&P|\b(?:CAC|SBF|STOXX|Stoxx|Nasdaq|NASDAQ|Russell|DAX|MDAX|FTSE|AEX|BEL|IBEX|MIB|PSI|OBX|ISEQ|Nikkei|Top|top|Dow Jones))\s?\d+\b/g, " ")
   );
 }
@@ -312,7 +319,8 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
     }
     return docs.get(item.id) ?? undefined;
   };
-  // The dates an item holds: a data point's value, label, key and days; a document's text.
+  // The dates an item holds: a data point's value, label, key and as-of day; a document's text. The day it was read
+  // (fetchedAt) is not one: a close as of the 22nd fetched on the 23rd says nothing about the 23rd.
   const itemDates = new Map<string, Set<string>>();
   const datesOf = (item: EvidenceItem): Set<string> => {
     if (item.doc) {
@@ -321,8 +329,7 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
       d.dates ??= datesIn(d.text);
       return d.dates;
     }
-    if (!itemDates.has(item.id))
-      itemDates.set(item.id, datesIn([String(item.value), item.label, item.key, item.asOf ?? "", item.fetchedAt.slice(0, 10)].join(" ")));
+    if (!itemDates.has(item.id)) itemDates.set(item.id, datesIn([String(item.value), item.label, item.key, item.asOf ?? ""].join(" ")));
     return itemDates.get(item.id)!;
   };
 

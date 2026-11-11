@@ -28,13 +28,15 @@ A **figure** is any number written as a quantity: `383,00 €`, `−1.24 %`,
 `$1.6 trillion`, `188,6 Md€`, `31.4x`, `12 bps`, `39,539,690 shares`. These are
 not figures: dates (`2026-10-23`, `23/10/2026`, `Oct 23, 2026`), times, years
 on their own, indicator settings (`RSI(14)`, `MACD(12,26,9)`, `SMA 200`,
-`MM50`), index names (`CAC 40`, `S&P 500`), spans (`52 weeks`, `3 mois`,
-`5-day`), labels glued to letters (`Q3`, `FY2025`, `J+5`), and whole numbers
+`MM50`), a chart timeframe before an indicator (`15m RSI`, `4h MACD`), index
+names (`CAC 40`, `S&P 500`), spans (`52 weeks`, `3 mois`, `5-day`), week
+numbers (`Week 46`, `semaine 46`), an allocation split summing to 100 (`60/40`,
+`70/20/10`), labels glued to letters (`Q3`, `FY2025`, `J+5`), and whole numbers
 under ten (`3 positions`).
 
 A **date** is checked on its own terms. In a claim that cites evidence, every
-calendar date must be one a cited `[E#]` holds — its value, label or as-of day,
-or the text of a cited document — in any usual form: `2026-11-17`,
+calendar date must be one a cited `[E#]` holds — its value, label or as-of day
+(not the day it was read), or the text of a cited document — in any usual form: `2026-11-17`,
 `17/11/2026`, `17 novembre 2026`, `Nov 17, 2026`, `le 17 novembre` (no year:
 matched on the day). A results date copied wrong is refused even next to the
 right `[E#]`. A date **ahead** stated with no `[E#]` at all is refused too (the

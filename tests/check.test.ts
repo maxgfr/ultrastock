@@ -29,6 +29,16 @@ describe("extractFigures", () => {
     expect(values("in 2028 [E5] with 3 positions")).toEqual([]);
     expect(values("see [E12] and `price = 99.5`")).toEqual([]);
   });
+  it("reads a chart timeframe before an indicator as a label, not a scale", () => {
+    expect(values("the 15m RSI, the 1m MACD, the 5m EMA20, the 4h ATR, the 1h VWAP and the 1d SMA 200")).toEqual([]);
+    expect(values("15m RSI at 72.5")).toEqual([72.5]);
+    expect(values("revenue of 15m EUR")).toEqual([15e6]);
+  });
+  it("reads a week number and an allocation split as labels", () => {
+    expect(values("Week 46 review, semaine 46, wk 12")).toEqual([]);
+    expect(values("a 60/40 portfolio, a 70/20/10 split, 50/50")).toEqual([]);
+    expect(values("383/400 of the target, 12 weeks")).toEqual([383, 400]);
+  });
 });
 
 describe("figureMatches", () => {
@@ -148,6 +158,7 @@ describe("checkAnswer", () => {
     const headings =
       "# LVMH — Q3 2026 results, FY2025\n\n## 1. Thesis\n\n### 2.3 Risks\n\n#### 2.3.1 Detail\n\n## 10) CAC 40, S&P 500, RSI(14), SMA 200\n\n## The 2nd quarter, the week of 2099-12-07\n";
     expect(kinds(`${headings}\nClose 383 € [E1].\n`)).toEqual([]);
+    expect(kinds("## Week 46 — a 60/40 book\n\nClose 383 € [E1].\n")).toEqual([]);
     // Nor are horizons and years heading the columns.
     expect(
       kinds("| Horizon | +5 | +20 | +60 | 5 d | 20 sessions | J+20 | 2026 |\n|---|---|---|---|---|---|---|---|\n| close | 383 € [E1] | | | | | | |\n"),
@@ -172,6 +183,24 @@ describe("checkAnswer", () => {
   it("fails figures read longer ago than --max-age", () => {
     const r = checkAnswer(run(), "Close 383 € [E1].\n", { maxAgeMs: 3600_000, now: new Date("2026-10-25T00:00:00Z") });
     expect(failing(r)).toEqual(["stale"]);
+  });
+  it("holds a date to an item's value, label and as-of day, not to the day it was read", () => {
+    // E1 is a close as of 2026-10-22, read on 2026-10-23.
+    const dir = mkdtempSync(join(tmpdir(), "us-check-"));
+    const s = EvidenceStore.open(dir);
+    s.add({
+      key: "t.close",
+      label: "close",
+      value: 383,
+      unit: "EUR",
+      source: "euronext",
+      fetchedAt: "2026-10-23T18:00:00Z",
+      official: true,
+      asOf: "2026-10-22",
+    });
+    s.save();
+    expect(failing(checkAnswer(dir, "Close 383 € [E1] on 2026-10-22.\n"))).toEqual([]);
+    expect(failing(checkAnswer(dir, "Close 383 € [E1] on 2026-10-23.\n"))).toEqual(["unsupported"]);
   });
   it("refuses a directory with no evidence", () => {
     const dir = mkdtempSync(join(tmpdir(), "us-empty-"));
