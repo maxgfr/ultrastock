@@ -41,11 +41,16 @@ export interface Variant {
   atr?: Array<number | undefined>;
 }
 
+/**
+ * The strategy with the command line's risk rules over its own, then the
+ * swept parameters over both: a grid on `risk.stopLossPct` run with `--stop`
+ * sweeps the stop, the flag holding for every rule the grid leaves alone.
+ */
 export function prepareVariant(bt: Backtester, def: StrategyDef, params: Record<string, number> = {}): Variant {
-  let d = def;
+  let d: StrategyDef = bt.riskOverride ? { ...def, risk: { ...(def.risk ?? {}), ...bt.riskOverride } } : def;
   for (const [k, v] of Object.entries(params)) d = withParam(d, k, v);
   const signals = compileStrategy(d, bt.bars, bt.interval);
-  const atrRule = { ...(d.risk ?? {}), ...(bt.riskOverride ?? {}) }.atrStop;
+  const atrRule = d.risk?.atrStop;
   const atr = atrRule ? indicatorRows(bt.bars, "atr", { period: atrRule.period }).map((r) => r?.value) : undefined;
   return { params, def: d, signals, atr };
 }
@@ -54,7 +59,7 @@ export function runVariant(bt: Backtester, v: Variant, range: { start?: number; 
   return simulate(bt.bars, v.signals, {
     ...bt.base,
     costs: costs ?? bt.base.costs,
-    risk: { ...(v.def.risk ?? {}), ...(bt.riskOverride ?? {}) },
+    risk: v.def.risk ?? {},
     execution: { ...(v.def.execution ?? {}), ...(bt.executionOverride ?? {}) },
     atr: v.atr,
     ...range,

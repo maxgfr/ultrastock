@@ -101,6 +101,8 @@ describe("walk-forward, sweep, CPCV, PBO", () => {
     const sharpes = series.map((s) => s.reduce((a, b) => a + b, 0) / s.length / 0.0058);
     const best = series[sharpes.indexOf(Math.max(...sharpes))]!;
     expect(deflatedSharpeOf(best, sharpes, 50)).toBeLessThan(deflatedSharpeOf(best, sharpes, 1));
+    // One variant run, 99 declared with --trials: the variance across variants is unknown, not zero.
+    expect(deflatedSharpeOf(best, [Math.max(...sharpes)], 100)).toBeLessThan(deflatedSharpeOf(best, [Math.max(...sharpes)], 1) - 0.1);
     expect(objectiveOfReturns([0.01], "sharpe", 252)).toBe(Number.NEGATIVE_INFINITY);
   });
 });

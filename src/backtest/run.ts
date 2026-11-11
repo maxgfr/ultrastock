@@ -355,7 +355,7 @@ export interface SweepReport {
   cpcv?: ReturnType<typeof cpcv>;
   medianSharpe: number;
   positiveSharePct: number;
-  /** Per-period Sharpe of every variant (0 for a flat one), for deflation. */
+  /** Per-period Sharpe of every distinct variant (0 for a flat one), for deflation. */
   variantSharpes: number[];
   dataset: Dataset;
   notes: string[];
@@ -383,8 +383,10 @@ export function sweepReport(
   rows.forEach((r, i) => {
     if (r.objective > rows[bi]!.objective) bi = i;
   });
-  const sharpes = sims.map((s) => periodSharpe(s.returns));
-  const nTrials = combos.length + (opts.trials ?? 0);
+  // Variants whose returns are the same bar for bar (a parameter that changes nothing) are one trial, not several.
+  const distinct = [...new Map(sims.map((s) => [s.returns.join(","), s] as const)).values()];
+  const sharpes = distinct.map((s) => periodSharpe(s.returns));
+  const nTrials = distinct.length + (opts.trials ?? 0);
   const dsr = deflatedSharpeOf(sims[bi]!.returns, sharpes, nTrials);
   const returns = sims.map((s) => s.returns);
   const labels = combos.map(
@@ -415,7 +417,13 @@ export function sweepReport(
     "count",
     dims.map((d) => `${d.path} ∈ {${d.values.join(", ")}}`).join(" × ") || "as written",
   );
-  P.add("trials", `${def.name}: trials counted for deflation`, nTrials, "count", "variants swept + --trials declared beforehand");
+  P.add(
+    "trials",
+    `${def.name}: trials counted for deflation`,
+    nTrials,
+    "count",
+    "distinct variants swept (identical returns count once) + --trials declared beforehand",
+  );
   P.add("best", `${def.name}: best variant by ${objective}`, labels[bi]!, undefined, `argmax ${objective} over the grid`);
   P.add("bestSharpe", `${def.name}: best variant's Sharpe`, rows[bi]!.sharpe, "ratio", "annualised per-bar Sharpe of the best variant");
   P.add("medianSharpe", `${def.name}: median variant Sharpe`, medianSharpe, "ratio", "median annualised Sharpe across the grid (sensitivity)");

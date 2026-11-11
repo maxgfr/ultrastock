@@ -41693,7 +41693,8 @@ function deflatedSharpeOf(chosen, variantSharpes, nTrials) {
   if (!(stdev(chosen) > 0)) return 0;
   const sr = periodSharpe(chosen);
   const finite4 = variantSharpes.filter(Number.isFinite);
-  const v = finite4.length > 1 ? variance(finite4) : 0;
+  const across = finite4.length > 1 ? variance(finite4) : 0;
+  const v = across > 0 ? across : 1 / Math.max(1, chosen.length - 1);
   return deflatedSharpe(sr, chosen.length, skewness(chosen), excessKurtosis(chosen), Math.max(1, nTrials), v);
 }
 
@@ -42004,10 +42005,10 @@ function simulate(bars, signals, cfg) {
 // src/backtest/validation.ts
 var MAX_RUNS = 500;
 function prepareVariant(bt, def2, params = {}) {
-  let d = def2;
+  let d = bt.riskOverride ? { ...def2, risk: { ...def2.risk ?? {}, ...bt.riskOverride } } : def2;
   for (const [k, v] of Object.entries(params)) d = withParam(d, k, v);
   const signals = compileStrategy(d, bt.bars, bt.interval);
-  const atrRule = { ...d.risk ?? {}, ...bt.riskOverride ?? {} }.atrStop;
+  const atrRule = d.risk?.atrStop;
   const atr2 = atrRule ? indicatorRows(bt.bars, "atr", { period: atrRule.period }).map((r3) => r3?.value) : void 0;
   return { params, def: d, signals, atr: atr2 };
 }
@@ -42015,7 +42016,7 @@ function runVariant(bt, v, range = {}, costs) {
   return simulate(bt.bars, v.signals, {
     ...bt.base,
     costs: costs ?? bt.base.costs,
-    risk: { ...v.def.risk ?? {}, ...bt.riskOverride ?? {} },
+    risk: v.def.risk ?? {},
     execution: { ...v.def.execution ?? {}, ...bt.executionOverride ?? {} },
     atr: v.atr,
     ...range
@@ -42571,8 +42572,9 @@ function sweepReport(m, def2, dims, objective, opts = {}) {
   rows.forEach((r3, i) => {
     if (r3.objective > rows[bi].objective) bi = i;
   });
-  const sharpes = sims.map((s) => periodSharpe(s.returns));
-  const nTrials = combos.length + (opts.trials ?? 0);
+  const distinct = [...new Map(sims.map((s) => [s.returns.join(","), s])).values()];
+  const sharpes = distinct.map((s) => periodSharpe(s.returns));
+  const nTrials = distinct.length + (opts.trials ?? 0);
   const dsr = deflatedSharpeOf(sims[bi].returns, sharpes, nTrials);
   const returns = sims.map((s) => s.returns);
   const labels = combos.map(
@@ -42600,7 +42602,13 @@ function sweepReport(m, def2, dims, objective, opts = {}) {
     "count",
     dims.map((d) => `${d.path} \u2208 {${d.values.join(", ")}}`).join(" \xD7 ") || "as written"
   );
-  P.add("trials", `${def2.name}: trials counted for deflation`, nTrials, "count", "variants swept + --trials declared beforehand");
+  P.add(
+    "trials",
+    `${def2.name}: trials counted for deflation`,
+    nTrials,
+    "count",
+    "distinct variants swept (identical returns count once) + --trials declared beforehand"
+  );
   P.add("best", `${def2.name}: best variant by ${objective}`, labels[bi], void 0, `argmax ${objective} over the grid`);
   P.add("bestSharpe", `${def2.name}: best variant's Sharpe`, rows[bi].sharpe, "ratio", "annualised per-bar Sharpe of the best variant");
   P.add("medianSharpe", `${def2.name}: median variant Sharpe`, medianSharpe, "ratio", "median annualised Sharpe across the grid (sensitivity)");

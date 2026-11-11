@@ -123,6 +123,24 @@ describe("backtest command on a recorded year of BTCUSDT", () => {
     });
   });
 
+  it("sweeps the grid's stop over the command line's, and counts identical variants as one trial", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "us-bt-trials-"));
+    await withFixture("backtest-btc-1y", async () => {
+      const sweepOf = async (name: string, values: Record<string, string>) => {
+        await run(backtestCommand, cmd("backtest", ["sweep", "supertrend", "BTCUSDT"], { years: "1", out: join(dir, name), ...values }), true);
+        return JSON.parse(readFileSync(join(dir, name, "sweep.json"), "utf8")) as { rows: Array<{ sharpe: number; trades: number }>; nTrials: number };
+      };
+      // --stop 10 is the stop of every run, except the one the grid sweeps: a 2 % and a 50 % stop are two strategies.
+      const stops = await sweepOf("stops", { stop: "10", grid: "risk.stopLossPct=2,50" });
+      expect(stops.rows[0]!.sharpe).not.toBe(stops.rows[1]!.sharpe);
+      expect(stops.nTrials).toBe(2);
+      // A time stop no trade of the year reaches changes nothing: two identical runs are one trial, plus the 5 declared.
+      const same = await sweepOf("same", { grid: "risk.timeStopBars=100000,200000", trials: "5" });
+      expect(same.rows[0]!.sharpe).toBe(same.rows[1]!.sharpe);
+      expect(same.nTrials).toBe(6);
+    });
+  });
+
   it("refuses bad invocations with usage errors, before any request", async () => {
     setNetMode({ kind: "fixture", dir: join(tmpdir(), "ultrastock-no-such-fixture") });
     await expect(backtestCommand(cmd("backtest", []), false)).rejects.toThrow(/usage: ultrastock backtest run/);
