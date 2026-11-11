@@ -278,17 +278,24 @@ const tradeCash = (t: Transaction) => {
 };
 
 /**
- * When a transaction takes effect, for ordering: its date, the time of day included when it has one. A row with a
- * date only sorts at the start of its day — except a split imported from IBKR: IBKR posts it on the evening before
- * the shares trade split and the importer keeps that day, without the time (the id depends on the stored date), so it
- * takes effect at the end of that day, after the day's trades.
+ * The note the IBKR importer gives a split dated by its report date (the statement has no Date/Time for it): that day
+ * is the first one the shares trade split, so the split takes effect at its start. Not part of the id.
  */
-function effectiveDate(t: Pick<Transaction, "date" | "type" | "origin">): string {
-  return t.type === "split" && t.origin === "import:ibkr-flex" && t.date.length === 10 ? `${t.date}T23:59:59.999` : t.date;
+export const SPLIT_REPORT_DATE_NOTE = "split dated by its report date: the first day the shares trade split";
+
+/**
+ * When a transaction takes effect, for ordering: its date, the time of day included when it has one. A row with a
+ * date only sorts at the start of its day — except a split imported from IBKR dated by its Date/Time: IBKR posts it
+ * on the evening before the shares trade split and the importer keeps that day, without the time (the id depends on
+ * the stored date), so it takes effect at the end of that day, after the day's trades. One dated by its report date
+ * (`SPLIT_REPORT_DATE_NOTE`) is already on the first split day and stays at its start.
+ */
+function effectiveDate(t: Pick<Transaction, "date" | "type" | "origin" | "note">): string {
+  return t.type === "split" && t.origin === "import:ibkr-flex" && t.date.length === 10 && t.note !== SPLIT_REPORT_DATE_NOTE ? `${t.date}T23:59:59.999` : t.date;
 }
 
 /** Transactions in the order they take effect (`effectiveDate`), ledger order between equals: the order every replay uses. */
-export function inReplayOrder<T extends Pick<Transaction, "date" | "type" | "origin">>(txs: readonly T[]): T[] {
+export function inReplayOrder<T extends Pick<Transaction, "date" | "type" | "origin" | "note">>(txs: readonly T[]): T[] {
   return txs
     .map((t, i) => ({ t, i, at: effectiveDate(t) }))
     .sort((a, b) => a.at.localeCompare(b.at) || a.i - b.i)

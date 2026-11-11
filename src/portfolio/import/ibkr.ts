@@ -43,6 +43,7 @@
 // exchange is not in the table, a non-US ISIN stands in as the symbol (the
 // router resolves EU ISINs) and a warning says so.
 import { decodeEntities } from "../../engine.js";
+import { SPLIT_REPORT_DATE_NOTE } from "../ledger.js";
 import {
   accept,
   type CsvRow,
@@ -491,6 +492,10 @@ export function parseIbkr(text: string, opts: ImportOptions): ImportResult {
     const key = `${date.slice(0, 10)}|${symbol}|${ratio}`;
     if (splits.has(key)) continue;
     splits.add(key);
+    // Dated by its Date/Time, the split is the evening before the first split day (replayed after that day's trades);
+    // dated by its report date, it is that first day (replayed before its trades). The stored date is the day either
+    // way, so the id never changes: the note tells them apart.
+    const byTime = Boolean(dateOf(f, "datetime"));
     accept(res, r.line, {
       date: date.slice(0, 10),
       type: "split",
@@ -499,6 +504,7 @@ export function parseIbkr(text: string, opts: ImportOptions): ImportResult {
       isin,
       quantity: round(ratio),
       currency: (pick(f, "currency", "currencyprimary") ?? "").toUpperCase(),
+      note: byTime ? undefined : SPLIT_REPORT_DATE_NOTE,
       origin: ORIGIN,
     });
   }

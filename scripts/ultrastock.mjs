@@ -24103,8 +24103,9 @@ var tradeCash = (t) => {
   const gross3 = (t.quantity ?? 0) * (t.price ?? 0);
   return t.type === "buy" ? -(gross3 + (t.fee ?? 0)) : t.type === "sell" ? gross3 - (t.fee ?? 0) : 0;
 };
+var SPLIT_REPORT_DATE_NOTE = "split dated by its report date: the first day the shares trade split";
 function effectiveDate(t) {
-  return t.type === "split" && t.origin === "import:ibkr-flex" && t.date.length === 10 ? `${t.date}T23:59:59.999` : t.date;
+  return t.type === "split" && t.origin === "import:ibkr-flex" && t.date.length === 10 && t.note !== SPLIT_REPORT_DATE_NOTE ? `${t.date}T23:59:59.999` : t.date;
 }
 function inReplayOrder(txs) {
   return txs.map((t, i) => ({ t, i, at: effectiveDate(t) })).sort((a, b) => a.at.localeCompare(b.at) || a.i - b.i).map(({ t }) => t);
@@ -49363,6 +49364,7 @@ function parseIbkr(text2, opts) {
     const key = `${date.slice(0, 10)}|${symbol}|${ratio}`;
     if (splits.has(key)) continue;
     splits.add(key);
+    const byTime = Boolean(dateOf(f3, "datetime"));
     accept(res, r3.line, {
       date: date.slice(0, 10),
       type: "split",
@@ -49371,6 +49373,7 @@ function parseIbkr(text2, opts) {
       isin,
       quantity: round3(ratio),
       currency: (pick2(f3, "currency", "currencyprimary") ?? "").toUpperCase(),
+      note: byTime ? void 0 : SPLIT_REPORT_DATE_NOTE,
       origin: ORIGIN4
     });
   }
