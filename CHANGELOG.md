@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.17](https://github.com/maxgfr/ultrastock/compare/v1.13.16...v1.13.17) (2026-11-11)
+
+
+### Bug Fixes
+
+* **tax:** pool the French average cost by security, not by ticker ([aa30b15](https://github.com/maxgfr/ultrastock/commit/aa30b15459c45d3afa98456305fd3ce90e4b3083))
+
 ## [1.13.16](https://github.com/maxgfr/ultrastock/compare/v1.13.15...v1.13.16) (2026-11-11)
 
 
