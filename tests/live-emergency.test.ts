@@ -1,6 +1,7 @@
 // The emergency paths of live trading: a cancel never waits on another ticket's operation, the kill switch is read again
 // right before the one request, and a cancel whose fills could not be read is settled by a later reconcile.
-import { rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { homeDir } from "../src/core/paths.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
@@ -107,4 +108,22 @@ describe("live emergency paths", () => {
     expect(outcome).toBe("cancelled");
     expect(v.calls.cancel).toBe(1);
   }, 40_000);
+
+  it("does not send an order when the kill switch is set while its preconditions are being read", async () => {
+    switchOn();
+    const t = await checkedTicket(order());
+    await issueCode(t.id, orderBinding(t.order, "kraken", "test", "SOLEUR"), "order", [["capture", capture]]);
+    // `broker panic` runs in another process while this submit is reading the venue (permissions, balances, book: up to 10 s each).
+    const v = fakeVenue({
+      bookTop: async () => {
+        mkdirSync(dirname(killSwitchPath()), { recursive: true });
+        writeFileSync(killSwitchPath(), "kill switch set by `broker panic`\n");
+        return { bid: 99.9, ask: 100, at: new Date().toISOString() };
+      },
+    });
+    const r = await liveSubmit({ ticket: t, venue: "kraken", env: "test", adapter: v.a, venueSym: "SOLEUR", code: codeFrom(), micaAuthorised: true });
+    // The panic listed the tickets "submitted" at that instant: this one was still "checked", so nothing will cancel it either.
+    expect(v.calls.submit).toBe(0);
+    expect(r.refusals.map((x) => x.code)).toContain("KILL_SWITCH");
+  });
 });

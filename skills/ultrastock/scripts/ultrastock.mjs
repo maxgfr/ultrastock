@@ -45965,6 +45965,14 @@ async function submitLocked(p, now) {
     state: "unknown",
     at: now.toISOString()
   };
+  const killed = () => {
+    if (!existsSync33(killSwitchPath())) return void 0;
+    const refusals2 = [{ code: "KILL_SWITCH", reason: `the kill switch was set while the order was being checked (${killSwitchPath()}): nothing was sent` }];
+    audit({ event: "live-refused", ticket: t.id, venue: p.venue, env: p.env, refusals: refusals2 });
+    return { ticket: loadTicket(t.id), refusals: refusals2 };
+  };
+  const before = killed();
+  if (before) return before;
   audit({ event: "live-intent", ticket: t.id, venue: p.venue, env: p.env, clientOrderId: order.clientOrderId, order, notional, fingerprint: t.fingerprint });
   await transition(
     t.id,
@@ -45976,6 +45984,19 @@ async function submitLocked(p, now) {
     void 0,
     ["checked"]
   );
+  if (existsSync33(killSwitchPath())) {
+    await transition(
+      t.id,
+      "blocked",
+      "the kill switch was set before the send: nothing was sent",
+      (x) => {
+        x.live = { ...rec, state: "rejected", message: "kill switch: never sent" };
+      },
+      void 0,
+      ["submitted"]
+    );
+    return killed();
+  }
   let result;
   try {
     result = await p.adapter.submit(order);

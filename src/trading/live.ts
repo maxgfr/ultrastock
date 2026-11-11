@@ -465,6 +465,15 @@ async function submitLocked(p: PreconditionInput, now: Date): Promise<{ ticket: 
     state: "unknown",
     at: now.toISOString(),
   };
+  // The kill switch was read before the slow reads of the venue: `broker panic` may have set it since.
+  const killed = (): { ticket: Ticket; refusals: Refusal[] } | undefined => {
+    if (!existsSync(killSwitchPath())) return undefined;
+    const refusals = [{ code: "KILL_SWITCH", reason: `the kill switch was set while the order was being checked (${killSwitchPath()}): nothing was sent` }];
+    audit({ event: "live-refused", ticket: t.id, venue: p.venue, env: p.env, refusals });
+    return { ticket: loadTicket(t.id), refusals };
+  };
+  const before = killed();
+  if (before) return before;
   audit({ event: "live-intent", ticket: t.id, venue: p.venue, env: p.env, clientOrderId: order.clientOrderId, order, notional, fingerprint: t.fingerprint });
   // Mark the ticket as submitted BEFORE the request: a crash in flight leaves it "unknown", never resendable.
   // Checked under the ticket's lock: a cancel by the user since the preconditions read it stops the send.
@@ -478,6 +487,21 @@ async function submitLocked(p: PreconditionInput, now: Date): Promise<{ ticket: 
     undefined,
     ["checked"],
   );
+  // Read once more now that the ticket is "submitted": a panic that set the switch after this read lists the ticket
+  // among those to cancel (and waits on its lock for the send to end); one that set it before is seen here.
+  if (existsSync(killSwitchPath())) {
+    await transition(
+      t.id,
+      "blocked",
+      "the kill switch was set before the send: nothing was sent",
+      (x) => {
+        (x as Ticket & { live?: LiveRecord }).live = { ...rec, state: "rejected", message: "kill switch: never sent" };
+      },
+      undefined,
+      ["submitted"],
+    );
+    return killed()!;
+  }
   let result: OrderResult;
   try {
     result = await p.adapter.submit(order);
