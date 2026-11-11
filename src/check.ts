@@ -75,13 +75,20 @@ const SCALES: Array<[RegExp, number]> = [
   [/^(?:T|tn|trillion|trillions)$/, 1e12],
 ];
 
+/**
+ * Citation tokens, footnote markers and link targets out; a link's text and a
+ * bracketed phrase stay, because what they say is a claim like any other.
+ */
+const unbracket = (text: string): string =>
+  text
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, " $1 ")
+    .replace(/\[\^?[\w-]*\]/g, " ")
+    .replace(/\[([^\]]*)\]/g, " $1 ");
+
 /** What is not a figure: dates, times, citation tokens, inline code, link targets. */
 function stripNonFigures(text: string): string {
   return (
-    text
-      .replace(/`[^`]*`/g, " ")
-      .replace(/\]\([^)]*\)/g, "] ")
-      .replace(/\[[^\]]*\]/g, " ")
+    unbracket(text.replace(/`[^`]*`/g, " "))
       .replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ")
       .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ")
       // A month is a whole word: "margin 45 %", "declined 12 %" and "marge 45 %" are figures, not "Mar 4", "Dec 12".
@@ -283,7 +290,7 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
     for (const text of unitTexts(unit)) {
       const tokens = citationTokensIn(text, isEvidenceCitation);
       const figs = extractFigures(text);
-      const dates = extractDates(text.replace(/`[^`]*`/g, " ").replace(/\[[^\]]*\]/g, " "));
+      const dates = extractDates(unbracket(text.replace(/`[^`]*`/g, " ")));
       const line = lineOf(text);
       if (!figs.length && !tokens.length) {
         // A date ahead is one the user acts on (results, a decision): it needs its [E#]. A past one is context (an as-of day).

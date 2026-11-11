@@ -113,6 +113,16 @@ describe("checkAnswer", () => {
     expect(kinds("Clôture à 383 € [E1] le 23 octobre 2026.\n")).toEqual([]);
     expect(kinds("Close 383 € [E1] on 23 Oct.\n")).toEqual([]);
   });
+  it("checks figures and dates written as a link's text or in brackets", () => {
+    // E1 is 383 EUR as of 2026-10-23: neither 45 % nor 1 December is in it.
+    const kinds = (answer: string) => failing(checkAnswer(run(), answer));
+    expect(kinds("LVMH [rose 45 %](https://example.com/a) this year, closing at 383 € [E1].\n")).toEqual(["unsupported"]);
+    expect(kinds("LVMH ![up 45 %](chart.png) closing at 383 € [E1].\n")).toEqual(["unsupported"]);
+    expect(kinds("LVMH [up 45 %] closing at 383 € [E1].\n")).toEqual(["unsupported"]);
+    expect(kinds("Closing at 383 € [E1], results on [2026-12-01](https://example.com/cal).\n")).toEqual(["unsupported"]);
+    // Citations, cited links and footnote markers are still not figures.
+    expect(kinds("Closing at [383 €](https://example.com/q) [E1](https://example.com/e) [12] [^3].\n")).toEqual([]);
+  });
   it("fails uncited, dangling and unsupported figures, each on its line", () => {
     const r = checkAnswer(run(), "A 383 € close [E1].\n\nTarget 450 € soon.\n\nPE of 22.5 [E9].\n\nUp 12% [E2].\n");
     expect(failing(r)).toEqual(["uncited", "dangling", "unsupported", "unsupported"]);
