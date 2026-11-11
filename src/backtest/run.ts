@@ -85,6 +85,9 @@ export async function loadMarket(symbol: string, opts: MarketOptions, def?: Stra
   const { resolved, series } = await loadBars(symbol, { from: opts.from, to: opts.to, interval: opts.interval });
   const inst = resolved.instrument;
   const crypto = inst.market === "crypto";
+  // A crypto pair is labelled with the book that answered (Kraken's BTC-USD in dollars when Binance refuses), as
+  // analyze, technicals and quant stats do; the Binance perpetual and the default benchmark still key on the pair.
+  const book = crypto ? series.instrument : inst;
   const notes = [...series.notes];
   let leverage = opts.leverage ?? def?.leverage ?? 1;
   if (!crypto && leverage > 1) {
@@ -114,10 +117,10 @@ export async function loadMarket(symbol: string, opts: MarketOptions, def?: Stra
       notes.push(`benchmark ${benchSym} unavailable (${(e as Error).message}) — no residual alpha`);
     }
   }
-  if (series.bars.length < 50) throw new Error(`only ${series.bars.length} bars for ${inst.symbol} in the window — a backtest needs at least 50`);
+  if (series.bars.length < 50) throw new Error(`only ${series.bars.length} bars for ${book.symbol} in the window — a backtest needs at least 50`);
   return {
-    symbol: inst.symbol,
-    instrument: inst,
+    symbol: book.symbol,
+    instrument: book,
     series,
     bars: series.bars,
     interval: opts.interval,

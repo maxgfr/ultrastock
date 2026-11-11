@@ -42727,6 +42727,7 @@ async function loadMarket(symbol, opts, def2) {
   const { resolved, series } = await loadBars(symbol, { from: opts.from, to: opts.to, interval: opts.interval });
   const inst = resolved.instrument;
   const crypto = inst.market === "crypto";
+  const book2 = crypto ? series.instrument : inst;
   const notes = [...series.notes];
   let leverage = opts.leverage ?? def2?.leverage ?? 1;
   if (!crypto && leverage > 1) {
@@ -42753,10 +42754,10 @@ async function loadMarket(symbol, opts, def2) {
       notes.push(`benchmark ${benchSym} unavailable (${e.message}) \u2014 no residual alpha`);
     }
   }
-  if (series.bars.length < 50) throw new Error(`only ${series.bars.length} bars for ${inst.symbol} in the window \u2014 a backtest needs at least 50`);
+  if (series.bars.length < 50) throw new Error(`only ${series.bars.length} bars for ${book2.symbol} in the window \u2014 a backtest needs at least 50`);
   return {
-    symbol: inst.symbol,
-    instrument: inst,
+    symbol: book2.symbol,
+    instrument: book2,
     series,
     bars: series.bars,
     interval: opts.interval,
@@ -47459,7 +47460,7 @@ async function rebalanceAnalysis(m, f3, o) {
       f3.note(`target ${s} left out: ${x.error}`);
       return;
     }
-    const key = `${x.r.instrument.symbol}.quote.price`;
+    const key = `${(x.r.instrument.market === "crypto" ? x.q.instrument : x.r.instrument).symbol}.quote.price`;
     f3.input({
       kind: "quote",
       title: `${s} quote`,

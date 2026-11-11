@@ -56,7 +56,8 @@ export async function rebalanceAnalysis(m: MarkedBook, f: Findings, o: Rebalance
       f.note(`target ${s} left out: ${x.error}`);
       return;
     }
-    const key = `${x.r.instrument.symbol}.quote.price`;
+    // A crypto pair is keyed by the book that answered (Kraken's BTC-USD in dollars when Binance refuses).
+    const key = `${(x.r.instrument.market === "crypto" ? x.q.instrument : x.r.instrument).symbol}.quote.price`;
     f.input({
       kind: "quote",
       title: `${s} quote`,
