@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.42](https://github.com/maxgfr/ultrastock/compare/v1.12.41...v1.12.42) (2026-11-11)
+
+
+### Bug Fixes
+
+* **valuation:** bring the price to the filing's currency before any ratio ([2e2ff5a](https://github.com/maxgfr/ultrastock/commit/2e2ff5a511ffe14fe542aa9ed7fc6551d8f2d4a8))
+
 ## [1.12.41](https://github.com/maxgfr/ultrastock/compare/v1.12.40...v1.12.41) (2026-11-11)
 
 
