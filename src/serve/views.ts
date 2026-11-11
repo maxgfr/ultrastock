@@ -13,6 +13,7 @@ import { riskAnalysis, stressAnalysis } from "../analyze/portfolio/run-risk.js";
 import { loadRules } from "../alerts/alerts.js";
 import { bookPerformance, flowRates } from "../commands/trading.js";
 import { sqliteSupported, storeAvailable, withStore } from "../core/db.js";
+import { dataCacheDir, homeDir } from "../core/paths.js";
 import { loadProfile } from "../core/profile.js";
 import { listTheses, overdueTheses, readLessons } from "../journal/journal.js";
 import { hitRates, readDecisions, readSettlements } from "../journal/settle.js";
@@ -29,6 +30,23 @@ export type AnalysisName = (typeof ANALYSES)[number];
 
 /** A request the dashboard refuses (an unknown filter value): a 400, never a path or a query run with it. */
 export class BadRequest extends Error {}
+
+/**
+ * A message as a page or its JSON shows it: the absolute paths of the cache and
+ * home directories said as `<cache>` and `<home>`. Messages from the core name
+ * the file at fault by its full path, which tells where the user's home is
+ * (often their login name); the file's own name is enough to act on.
+ */
+export function withoutLocalPaths(message: string): string {
+  let out = message;
+  // The cache first: by default it lives inside the home, and its longer path must not be cut at the home's end.
+  for (const [dir, name] of [
+    [dataCacheDir(), "<cache>"],
+    [homeDir(), "<home>"],
+  ] as const)
+    if (dir.length > 1) out = out.split(dir).join(name);
+  return out;
+}
 
 /** A page with nothing to show yet, and the command that changes that. */
 export interface Hint {
@@ -144,7 +162,7 @@ function historyOf(book: BookName, now: Date): PortfolioView["history"] {
       return { points, hint: `No snapshot of the ${book} book in the last year: run \`ultrastock portfolio track --book ${book}\` once a day.` };
     return { points, changePct: h.changePct, maxDrawdownPct: h.maxDrawdownPct };
   } catch (e) {
-    return { points: [], hint: `Value over time unavailable: ${(e as Error).message}` };
+    return { points: [], hint: `Value over time unavailable: ${withoutLocalPaths((e as Error).message)}` };
   }
 }
 

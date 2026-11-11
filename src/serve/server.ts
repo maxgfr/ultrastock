@@ -10,7 +10,8 @@
 //     `Authorization: Bearer`; compared in constant time;
 //   - GET and HEAD only, no CORS header, a CSP that allows no script and no
 //     external asset, no-store, no referrer;
-//   - an error shows its message, never a stack.
+//   - an error shows its message, never a stack, and never the absolute path of
+//     the home or cache directory.
 //
 // Nothing a route runs writes to ULTRASTOCK_HOME (see views.ts for how).
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
@@ -47,6 +48,7 @@ import {
   portfolioView,
   ticketsView,
   watchView,
+  withoutLocalPaths,
 } from "./views.js";
 
 export const DEFAULT_SERVE_PORT = 8766;
@@ -251,14 +253,14 @@ export async function startDashboard(opts: DashboardOptions = {}): Promise<Dashb
                   : ticketsPage(view as ReturnType<typeof ticketsView>, book);
       return { status: 200, type: "html", body };
     } catch (e) {
-      return failed(e instanceof BadRequest ? 400 : 500, (e as Error).message);
+      return failed(e instanceof BadRequest ? 400 : 500, withoutLocalPaths(e instanceof Error ? e.message : String(e)));
     }
   }
 
   const server = http.createServer((req, res) => {
     answer(req).then(
       (a) => send(req, res, a),
-      (e: Error) => send(req, res, text(500, `Internal error: ${e.message}`)),
+      (e: unknown) => send(req, res, text(500, `Internal error: ${withoutLocalPaths(e instanceof Error ? e.message : String(e))}`)),
     );
   });
   await new Promise<void>((resolve, reject) => {

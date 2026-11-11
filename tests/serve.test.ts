@@ -448,6 +448,19 @@ describe("serve: hints instead of errors", () => {
     expect(empty.body).toMatch(/The paper book is empty/);
   });
 
+  it("names the file an error is about without the home directory's absolute path, on the page and its JSON", async () => {
+    // The core names the file at fault by its full path, which says where the user's home is.
+    const h = newHome("schema");
+    writeFileSync(join(h, "profile.json"), JSON.stringify({ schema: 99 }));
+    const page = await call("/");
+    expect(page.status).toBe(500);
+    expect(page.body).toContain("&lt;home&gt;/profile.json has profile schema 99");
+    const api = await call("/api/portfolio");
+    expect(api.status).toBe(500);
+    expect(JSON.parse(api.body).error).toMatch(/^<home>\/profile\.json has profile schema 99/);
+    for (const r of [page, api]) expect(r.body).not.toContain(h);
+  });
+
   it("names the Node the store needs when node:sqlite is missing", async () => {
     setSqliteLoaderForTests(() => {
       throw new Error("No such built-in module: node:sqlite");

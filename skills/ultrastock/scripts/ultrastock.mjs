@@ -50548,6 +50548,15 @@ var BOOKS = ["real", "paper"];
 var ANALYSES = ["risk", "stress", "income", "location", "lookthrough"];
 var BadRequest = class extends Error {
 };
+function withoutLocalPaths(message) {
+  let out = message;
+  for (const [dir2, name] of [
+    [dataCacheDir(), "<cache>"],
+    [homeDir(), "<home>"]
+  ])
+    if (dir2.length > 1) out = out.split(dir2).join(name);
+  return out;
+}
 var isHint = (v) => typeof v === "object" && v !== null && "hint" in v;
 var sourcesOf = (f3) => f3.inputs.map((d) => ({
   title: d.title,
@@ -50603,7 +50612,7 @@ function historyOf(book2, now) {
       return { points, hint: `No snapshot of the ${book2} book in the last year: run \`ultrastock portfolio track --book ${book2}\` once a day.` };
     return { points, changePct: h.changePct, maxDrawdownPct: h.maxDrawdownPct };
   } catch (e) {
-    return { points: [], hint: `Value over time unavailable: ${e.message}` };
+    return { points: [], hint: `Value over time unavailable: ${withoutLocalPaths(e.message)}` };
   }
 }
 async function portfolioView(book2, now) {
@@ -51052,13 +51061,13 @@ async function startDashboard(opts = {}) {
       const body = page === "portfolio" ? portfolioPage(view) : page.startsWith("analysis/") ? analysisPage(view) : page === "ledger" ? ledgerPage(view) : page === "journal" ? journalPage(view, book2) : page === "watch" ? watchPage(view, book2) : ticketsPage(view, book2);
       return { status: 200, type: "html", body };
     } catch (e) {
-      return failed(e instanceof BadRequest ? 400 : 500, e.message);
+      return failed(e instanceof BadRequest ? 400 : 500, withoutLocalPaths(e instanceof Error ? e.message : String(e)));
     }
   }
   const server = http2.createServer((req, res) => {
     answer(req).then(
       (a) => send(req, res, a),
-      (e) => send(req, res, text(500, `Internal error: ${e.message}`))
+      (e) => send(req, res, text(500, `Internal error: ${withoutLocalPaths(e instanceof Error ? e.message : String(e))}`))
     );
   });
   await new Promise((resolve21, reject) => {
