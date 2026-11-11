@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.42](https://github.com/maxgfr/ultrastock/compare/v1.13.41...v1.13.42) (2026-11-11)
+
+
+### Bug Fixes
+
+* **backtest:** count trials that deflate, and sweep the grid's own stop ([7711935](https://github.com/maxgfr/ultrastock/commit/7711935faba52916e9732032a1d9a632b69adee6))
+* **cache:** bound the dataset cache by age and total size ([e3f4490](https://github.com/maxgfr/ultrastock/commit/e3f4490063e452886456d5c4bdfc1004845ecab0))
+* **catalysts:** count a closed `from` day as the next session, like the days after it ([bb4c5e3](https://github.com/maxgfr/ultrastock/commit/bb4c5e3c54e1e500d8c38d7ee53a87ab0098eb09))
+* **etf:** make the overlap of two funds independent of line order and direction ([51cac4c](https://github.com/maxgfr/ultrastock/commit/51cac4c10f2f6fe2ac48050d2a50c817c24d058f))
+* **etf:** never list a fund among its own peers; quote crible values by its rule ([4a7c29f](https://github.com/maxgfr/ultrastock/commit/4a7c29ff3111af89e8a458c7b28f1a8c9eed276f))
+* **insiders:** a 4/A replaces the line it corrects, not the first of its day ([a14f9bd](https://github.com/maxgfr/ultrastock/commit/a14f9bdb5faa7915dfa39eae720c2ecdf6cc2c4a))
+* **insiders:** apply two amendments filed the same day in accession order ([63f32e4](https://github.com/maxgfr/ultrastock/commit/63f32e422a31dc981d5a6b940566e9d1e8ce0015))
+* **journal:** settle a horizon whose history never reaches its end ([e596b9f](https://github.com/maxgfr/ultrastock/commit/e596b9f8586f3316e51d3c9dfbc46e4ff934a396))
+* **morning:** count a release once across calendars, and drop a same-day stale stop ([a45605f](https://github.com/maxgfr/ultrastock/commit/a45605fc31692cae33d8908e20cf8545f7988d56)), closes [hi#impact](https://github.com/hi/issues/impact) [hi#impact](https://github.com/hi/issues/impact)
+* **morning:** read a line's stop from its own book's tickets, the one filled last ([6a74cb0](https://github.com/maxgfr/ultrastock/commit/6a74cb0a5294c0b5cbefcc4c5a13a5c842a4593a))
+* **net:** keep a host's published pace across processes ([e501be6](https://github.com/maxgfr/ultrastock/commit/e501be68fb035ab5ac7f56e517e2896f8e213241))
+* **options:** discount the zero-volatility price, and price an expired American option ([cc9d5f9](https://github.com/maxgfr/ultrastock/commit/cc9d5f9d5c19d783a49ca5fcf58a7f52e9a6b1d4))
+* **regime:** wait until 17:00 UTC before reading today's European bar as final ([1c22372](https://github.com/maxgfr/ultrastock/commit/1c2237237f441c9de85b501561f290a6c2a7933e))
+* **research:** remember the URL a redirected page was asked by ([d835736](https://github.com/maxgfr/ultrastock/commit/d835736104448c867800c6b1676b106288feb362))
+* **router:** label a crypto figure with the book that answered it ([e7c3733](https://github.com/maxgfr/ultrastock/commit/e7c373344bbaf05e425a3df9f8914b2cec9d635a))
+* **screen:** use the one closed-bar rule in builtin screens ([31e6fa2](https://github.com/maxgfr/ultrastock/commit/31e6fa20b31921bc7b96503d2bf73cc45cca8d70))
+* **store:** refuse a recursive query in portfolio db query ([ae56cc5](https://github.com/maxgfr/ultrastock/commit/ae56cc50567e4137646a3767546d731c451a8c4f))
+* **valuation:** pass the third fiscal year to Piotroski for beginning-of-year assets ([44be95e](https://github.com/maxgfr/ultrastock/commit/44be95e8c10319b12208fcd9d8754f864933d977))
+
 ## [1.13.41](https://github.com/maxgfr/ultrastock/compare/v1.13.40...v1.13.41) (2026-11-11)
 
 
