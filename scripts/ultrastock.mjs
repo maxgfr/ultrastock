@@ -54554,7 +54554,11 @@ var UsRegime = class extends TaxRegime {
   /** Replay; returns the year's events and the open lots at the year's end (or at `until`). */
   replay(input, until) {
     const history = this.history(input).filter((t) => !until || day3(t.date) <= until);
-    const { lots, byTx, received } = this.lots(input, history);
+    const yearEnd = `${input.year}-12-31`;
+    const after = until ? [] : chronological(
+      input.transactions.filter((t) => t.type === "buy" && day3(t.date) > yearEnd && day3(t.date) <= addDays2(yearEnd, this.param("washSale.windowDays")))
+    );
+    const { lots, byTx, received } = this.lots(input, [...history, ...after]);
     const events = [];
     const warnings = [];
     const active2 = /* @__PURE__ */ new Set();

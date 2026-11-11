@@ -25,6 +25,7 @@
 import type { Transaction } from "../portfolio/ledger.js";
 import {
   addDays,
+  chronological,
   day,
   type EnvelopeRule,
   envelopeOf,
@@ -181,7 +182,15 @@ export class UsRegime extends TaxRegime {
   /** Replay; returns the year's events and the open lots at the year's end (or at `until`). */
   replay(input: TaxInput, until?: string): { events: TaxEvent[]; open: UsLot[]; warnings: string[]; lots: UsLot[] } {
     const history = this.history(input).filter((t) => !until || day(t.date) <= until);
-    const { lots, byTx, received } = this.lots(input, history);
+    // §1091(a): the window of a sale runs 30 days after it, past the year's end. The purchases of those days become
+    // lots up front — candidates to replace a December loss, nothing more: they are never replayed into this year.
+    const yearEnd = `${input.year}-12-31`;
+    const after = until
+      ? []
+      : chronological(
+          input.transactions.filter((t) => t.type === "buy" && day(t.date) > yearEnd && day(t.date) <= addDays(yearEnd, this.param("washSale.windowDays"))),
+        );
+    const { lots, byTx, received } = this.lots(input, [...history, ...after]);
     const events: TaxEvent[] = [];
     const warnings: string[] = [];
     const active = new Set<UsLot>();
