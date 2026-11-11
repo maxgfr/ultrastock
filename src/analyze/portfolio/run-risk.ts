@@ -4,6 +4,7 @@
 import { bootstrapVar, cornishFisherVar, drawdowns, equityCurve, historicalCvar, historicalVar, relativeTo } from "../../analytics/performance.js";
 import { stdev } from "../../analytics/stats.js";
 import { mapLimit } from "../../engine.js";
+import { parsePredictionSymbol } from "../../trading/prediction.js";
 import { tradingviewSnapshot } from "../../providers/markets/tradingview.js";
 import { getHistory, type Resolved, resolveSymbol } from "../../providers/router.js";
 import type { PriceSeries } from "../../providers/types.js";
@@ -153,7 +154,11 @@ export async function riskAnalysis(m: MarkedBook, f: Findings, opts: { benchmark
     countryRows.push({ label: country ?? "unknown", weight: h.weightPct!, from: [h.keys.weight!, ...(isinKey ? [isinKey] : [])] });
   });
   for (const h of hs.filter((x) => x.assetClass !== "equity"))
-    countryRows.push({ label: h.assetClass === "crypto" ? "crypto" : "funds", weight: h.weightPct!, from: [h.keys.weight!] });
+    countryRows.push({
+      label: parsePredictionSymbol(h.symbol) ? "prediction markets" : h.assetClass === "crypto" ? "crypto" : "funds",
+      weight: h.weightPct!,
+      from: [h.keys.weight!],
+    });
   if (allEquities.length > equities.length)
     f.note(
       `sector lookups are capped at 30 shares: ${allEquities
@@ -429,10 +434,15 @@ export async function stressAnalysis(m: MarkedBook, f: Findings): Promise<Stress
     });
 
   const result: StressResult = { scenarios: [], shocks: [] };
+  const contracts = hs.filter((h) => parsePredictionSymbol(h.symbol)).map((h) => h.symbol);
+  if (contracts.length)
+    f.note(`prediction-market contracts are not replayed (no history, no market stands in for them) and count as uncovered: ${contracts.join(", ")}`);
   for (const sc of SCENARIOS) {
     const section = `${sc.label} (${sc.from} → ${sc.to})`;
     // Fetch concurrently; register and derive in holding order (stable evidence ids).
     const found = await mapLimit(hs, 4, async (h) => {
+      // A prediction-market contract has no history and no market moves like it: no proxy, reported uncovered.
+      if (parsePredictionSymbol(h.symbol)) return { win: undefined, proxy: undefined };
       const own = await windowOf(h.symbol, h.resolved, sc.from, sc.to, sc.id);
       if (own) return { win: own, proxy: undefined };
       const chain = h.assetClass === "crypto" ? PROXIES.crypto : looksLikeBondFund(h.instrument?.name) ? PROXIES.bond : PROXIES.equity;

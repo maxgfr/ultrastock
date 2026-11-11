@@ -38415,7 +38415,11 @@ async function riskAnalysis(m, f3, opts = {}) {
     countryRows.push({ label: country2 ?? "unknown", weight: h.weightPct, from: [h.keys.weight, ...isinKey ? [isinKey] : []] });
   });
   for (const h of hs.filter((x) => x.assetClass !== "equity"))
-    countryRows.push({ label: h.assetClass === "crypto" ? "crypto" : "funds", weight: h.weightPct, from: [h.keys.weight] });
+    countryRows.push({
+      label: parsePredictionSymbol(h.symbol) ? "prediction markets" : h.assetClass === "crypto" ? "crypto" : "funds",
+      weight: h.weightPct,
+      from: [h.keys.weight]
+    });
   if (allEquities.length > equities.length)
     f3.note(
       `sector lookups are capped at 30 shares: ${allEquities.slice(30).map((h) => h.symbol).join(", ")} not classified`
@@ -38655,9 +38659,13 @@ async function stressAnalysis(m, f3) {
     notes: w.series.notes
   });
   const result = { scenarios: [], shocks: [] };
+  const contracts = hs.filter((h) => parsePredictionSymbol(h.symbol)).map((h) => h.symbol);
+  if (contracts.length)
+    f3.note(`prediction-market contracts are not replayed (no history, no market stands in for them) and count as uncovered: ${contracts.join(", ")}`);
   for (const sc of SCENARIOS) {
     const section = `${sc.label} (${sc.from} \u2192 ${sc.to})`;
     const found = await mapLimit(hs, 4, async (h) => {
+      if (parsePredictionSymbol(h.symbol)) return { win: void 0, proxy: void 0 };
       const own = await windowOf2(h.symbol, h.resolved, sc.from, sc.to, sc.id);
       if (own) return { win: own, proxy: void 0 };
       const chain2 = h.assetClass === "crypto" ? PROXIES.crypto : looksLikeBondFund(h.instrument?.name) ? PROXIES.bond : PROXIES.equity;
