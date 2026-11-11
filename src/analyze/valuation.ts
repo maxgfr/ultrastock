@@ -12,7 +12,7 @@ import { relativeTo, simpleReturns } from "../analytics/performance.js";
 import { altmanZ, beneishM, capm, dcf, multiples, piotroski, qualityMetrics, reverseDcf, type Score, scenarioValue } from "../analytics/fundamentals.js";
 import { fillGaps, growthOf, periodsFromCrible, periodsFromFilingEvidence, type SourcedPeriod } from "../analytics/statements.js";
 import { registerDatasets } from "../core/datasets.js";
-import { EvidenceStore, formatEvidence } from "../core/evidence.js";
+import { type EvidenceItem, EvidenceStore, formatEvidence } from "../core/evidence.js";
 import { clockNow } from "../core/net.js";
 import { writeArtifact } from "../engine.js";
 import { cribleCompany, cribleStaleWarning } from "../providers/external/crible.js";
@@ -62,6 +62,20 @@ export function reportingCurrencyOf(period: Record<string, unknown>): string | u
   return typeof r === "string" && /^[A-Z]{3}$/.test(r.trim().toUpperCase()) ? r.trim().toUpperCase() : undefined;
 }
 
+/**
+ * The currencies a filing's statements are in: the units of the evidence behind the periods' monetary fields
+ * ("USD", "EUR/shares" → the currency; "shares" is none). One for a consistent filing.
+ */
+export function statementCurrencies(periods: readonly SourcedPeriod[], items: readonly EvidenceItem[]): string[] {
+  const used = new Set(periods.flatMap((p) => Object.values(p.ids)));
+  const found = new Set<string>();
+  for (const it of items) {
+    const unit = used.has(it.id) ? it.unit?.split("/")[0] : undefined;
+    if (unit && /^[A-Z]{3}$/.test(unit)) found.add(unit);
+  }
+  return [...found];
+}
+
 export async function valuationRun(raw: string, dir: string, opts: ValuationOptions = {}): Promise<ValuationResult> {
   const now = opts.now ?? clockNow();
   const notes: string[] = [];
@@ -69,7 +83,7 @@ export async function valuationRun(raw: string, dir: string, opts: ValuationOpti
   const inst = resolved.instrument;
   const sym = inst.symbol;
   const quoteCcy = inst.currency;
-  /** The currency every per-share figure is computed in: the statements' (crible's reporting currency), else the quote's. */
+  /** The currency every per-share figure is computed in: the statements' (the filing's, else crible's reporting currency), else the quote's. */
   let ccy = quoteCcy;
   const store = opts.store ?? EvidenceStore.open(dir, { subject: sym, createdAt: now.toISOString() });
   const reg = (ds: Parameters<typeof registerDatasets>[1]) => registerDatasets(store, ds);
@@ -105,40 +119,60 @@ export async function valuationRun(raw: string, dir: string, opts: ValuationOpti
   } catch (e) {
     notes.push(`crible unavailable (${(e as Error).message})`);
   }
-  if (rows.length && !periods.length) {
-    // Statements from crible alone: in its reporting currency, which may not be the quote's (a Hong Kong
-    // line reporting in CNY). Outside the crible try: a missing rate fails the valuation, it never
-    // compares a CNY value with an HKD price.
-    const rep = reportingCurrencyOf(rows[0]!);
+  /**
+   * Statements in `rep`, a price quoted in another currency: the price is converted at the reference rate and every
+   * per-share figure is computed in `rep`. Without a rate the valuation is refused — a price is never divided by
+   * statements in another currency.
+   */
+  const priceInto = async (rep: string) => {
+    const fx = await referenceRates([quoteCcy, rep], "EUR");
+    const perEur = (c: string) => (c === "EUR" ? 1 : fx.rates[c] ? 1 / fx.rates[c]! : undefined);
+    const [a, b] = [perEur(quoteCcy), perEur(rep)];
+    if (a === undefined || b === undefined)
+      throw new Error(`${sym}: statements in ${rep}, price in ${quoteCcy}, and no ${quoteCcy}/${rep} rate to compare them — not valued`);
+    const fxIds = registerDatasets(store, fx.datasets).flatMap((r) =>
+      r.items.filter((i) => [quoteCcy, rep].some((c) => i.key === `EUR.fx.${c}`)).map((i) => i.id),
+    );
+    price = Number(((q.price * b) / a).toPrecision(10));
+    priceId = store.addDerived(
+      `${sym}.quote.price.${rep}`,
+      `${sym} latest price converted to ${rep}, the statements' currency`,
+      price,
+      rep,
+      [priceId, ...fxIds],
+      `price (${quoteCcy}) × (${rep} per EUR) / (${quoteCcy} per EUR)`,
+    );
+    ccy = rep;
+    notes.push(
+      ...fx.notes,
+      `${sym} reports in ${rep} and trades in ${quoteCcy}: the price is converted to ${rep} [${priceId}] and every per-share figure is in ${rep}`,
+    );
+  };
+  // Outside the try blocks above: a missing rate fails the valuation, it never compares a CNY value with an HKD price.
+  const rep = rows.length ? reportingCurrencyOf(rows[0]!) : undefined;
+  if (periods.length) {
+    // A filing keeps the issuer's reporting currency (an ESEF report of a Paris listing may be in USD): its
+    // statements are in the unit they were registered with, whatever the listing trades in.
+    const filed = statementCurrencies(periods, store.items);
+    if (filed.length > 1) throw new Error(`${sym}: the filing's statements are in ${filed.join(" and ")} — figures in more than one currency are not valued`);
+    const own = filed[0] ?? quoteCcy;
+    if (rows.length && (rep ? rep !== own : own !== quoteCcy)) {
+      notes.push(
+        rep
+          ? `crible holds ${sym}'s statements in ${rep}, the filing reports in ${own}: crible is not used to fill what the filing did not tag`
+          : `crible gives no reporting currency for ${sym}'s statements and the filing reports in ${own}, not in ${quoteCcy}, the quote's: crible is not used to fill what the filing did not tag`,
+      );
+      rows = [];
+    }
+    if (own !== quoteCcy) await priceInto(own);
+  } else if (rows.length) {
+    // Statements from crible alone: in its reporting currency, which may not be the quote's (a Hong Kong line reporting in CNY).
     if (!rep) {
       if (inst.market === "world")
         notes.push(
           `crible gives no reporting currency for ${sym}'s statements: they are taken to be in ${quoteCcy}, the quote's — check the annual report before using the DCF`,
         );
-    } else if (rep !== quoteCcy) {
-      const fx = await referenceRates([quoteCcy, rep], "EUR");
-      const perEur = (c: string) => (c === "EUR" ? 1 : fx.rates[c] ? 1 / fx.rates[c]! : undefined);
-      const [a, b] = [perEur(quoteCcy), perEur(rep)];
-      if (a === undefined || b === undefined)
-        throw new Error(`${sym}: statements in ${rep}, price in ${quoteCcy}, and no ${quoteCcy}/${rep} rate to compare them — not valued`);
-      const fxIds = registerDatasets(store, fx.datasets).flatMap((r) =>
-        r.items.filter((i) => [quoteCcy, rep].some((c) => i.key === `EUR.fx.${c}`)).map((i) => i.id),
-      );
-      price = Number(((q.price * b) / a).toPrecision(10));
-      priceId = store.addDerived(
-        `${sym}.quote.price.${rep}`,
-        `${sym} latest price converted to ${rep}, the statements' currency`,
-        price,
-        rep,
-        [priceId, ...fxIds],
-        `price (${quoteCcy}) × (${rep} per EUR) / (${quoteCcy} per EUR)`,
-      );
-      ccy = rep;
-      notes.push(
-        ...fx.notes,
-        `${sym} reports in ${rep} and trades in ${quoteCcy}: the price is converted to ${rep} [${priceId}] and every per-share figure is in ${rep}`,
-      );
-    }
+    } else if (rep !== quoteCcy) await priceInto(rep);
   }
   if (rows.length) {
     const fetchedAt = now.toISOString();

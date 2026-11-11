@@ -32998,6 +32998,15 @@ function reportingCurrencyOf(period2) {
   const r3 = period2.reporting_currency;
   return typeof r3 === "string" && /^[A-Z]{3}$/.test(r3.trim().toUpperCase()) ? r3.trim().toUpperCase() : void 0;
 }
+function statementCurrencies(periods, items) {
+  const used = new Set(periods.flatMap((p) => Object.values(p.ids)));
+  const found = /* @__PURE__ */ new Set();
+  for (const it of items) {
+    const unit = used.has(it.id) ? it.unit?.split("/")[0] : void 0;
+    if (unit && /^[A-Z]{3}$/.test(unit)) found.add(unit);
+  }
+  return [...found];
+}
 async function valuationRun(raw, dir2, opts = {}) {
   const now = opts.now ?? clockNow();
   const notes = [];
@@ -33031,37 +33040,49 @@ async function valuationRun(raw, dir2, opts = {}) {
   } catch (e) {
     notes.push(`crible unavailable (${e.message})`);
   }
-  if (rows.length && !periods.length) {
-    const rep = reportingCurrencyOf(rows[0]);
+  const priceInto = async (rep2) => {
+    const fx = await referenceRates([quoteCcy, rep2], "EUR");
+    const perEur = (c) => c === "EUR" ? 1 : fx.rates[c] ? 1 / fx.rates[c] : void 0;
+    const [a, b] = [perEur(quoteCcy), perEur(rep2)];
+    if (a === void 0 || b === void 0)
+      throw new Error(`${sym3}: statements in ${rep2}, price in ${quoteCcy}, and no ${quoteCcy}/${rep2} rate to compare them \u2014 not valued`);
+    const fxIds = registerDatasets(store, fx.datasets).flatMap(
+      (r3) => r3.items.filter((i) => [quoteCcy, rep2].some((c) => i.key === `EUR.fx.${c}`)).map((i) => i.id)
+    );
+    price = Number((q.price * b / a).toPrecision(10));
+    priceId = store.addDerived(
+      `${sym3}.quote.price.${rep2}`,
+      `${sym3} latest price converted to ${rep2}, the statements' currency`,
+      price,
+      rep2,
+      [priceId, ...fxIds],
+      `price (${quoteCcy}) \xD7 (${rep2} per EUR) / (${quoteCcy} per EUR)`
+    );
+    ccy = rep2;
+    notes.push(
+      ...fx.notes,
+      `${sym3} reports in ${rep2} and trades in ${quoteCcy}: the price is converted to ${rep2} [${priceId}] and every per-share figure is in ${rep2}`
+    );
+  };
+  const rep = rows.length ? reportingCurrencyOf(rows[0]) : void 0;
+  if (periods.length) {
+    const filed = statementCurrencies(periods, store.items);
+    if (filed.length > 1) throw new Error(`${sym3}: the filing's statements are in ${filed.join(" and ")} \u2014 figures in more than one currency are not valued`);
+    const own2 = filed[0] ?? quoteCcy;
+    if (rows.length && (rep ? rep !== own2 : own2 !== quoteCcy)) {
+      notes.push(
+        rep ? `crible holds ${sym3}'s statements in ${rep}, the filing reports in ${own2}: crible is not used to fill what the filing did not tag` : `crible gives no reporting currency for ${sym3}'s statements and the filing reports in ${own2}, not in ${quoteCcy}, the quote's: crible is not used to fill what the filing did not tag`
+      );
+      rows = [];
+    }
+    if (own2 !== quoteCcy) await priceInto(own2);
+  } else if (rows.length) {
     if (!rep) {
       if (inst.market === "world")
         notes.push(
           `crible gives no reporting currency for ${sym3}'s statements: they are taken to be in ${quoteCcy}, the quote's \u2014 check the annual report before using the DCF`
         );
-    } else if (rep !== quoteCcy) {
-      const fx = await referenceRates([quoteCcy, rep], "EUR");
-      const perEur = (c) => c === "EUR" ? 1 : fx.rates[c] ? 1 / fx.rates[c] : void 0;
-      const [a, b] = [perEur(quoteCcy), perEur(rep)];
-      if (a === void 0 || b === void 0)
-        throw new Error(`${sym3}: statements in ${rep}, price in ${quoteCcy}, and no ${quoteCcy}/${rep} rate to compare them \u2014 not valued`);
-      const fxIds = registerDatasets(store, fx.datasets).flatMap(
-        (r3) => r3.items.filter((i) => [quoteCcy, rep].some((c) => i.key === `EUR.fx.${c}`)).map((i) => i.id)
-      );
-      price = Number((q.price * b / a).toPrecision(10));
-      priceId = store.addDerived(
-        `${sym3}.quote.price.${rep}`,
-        `${sym3} latest price converted to ${rep}, the statements' currency`,
-        price,
-        rep,
-        [priceId, ...fxIds],
-        `price (${quoteCcy}) \xD7 (${rep} per EUR) / (${quoteCcy} per EUR)`
-      );
-      ccy = rep;
-      notes.push(
-        ...fx.notes,
-        `${sym3} reports in ${rep} and trades in ${quoteCcy}: the price is converted to ${rep} [${priceId}] and every per-share figure is in ${rep}`
-      );
-    }
+    } else if (rep !== quoteCcy) await priceInto(rep);
   }
   if (rows.length) {
     const fetchedAt = now.toISOString();
