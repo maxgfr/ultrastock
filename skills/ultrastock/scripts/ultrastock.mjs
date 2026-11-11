@@ -27611,6 +27611,13 @@ async function macroCalendar(days) {
   }
   return out;
 }
+function releaseIdentity(date, ccy, event) {
+  const e = event.toLowerCase().replace(/\(mom\)/g, "m/m").replace(/\(yoy\)/g, "y/y").replace(/\(qoq\)/g, "q/q").replace(/\((?:[a-z]{3}|q[1-4])\)/g, "").replace(/\b(?:advance|adv|prelim|preliminary|flash|final)\b/g, "").replace(/\bnon-?farm (?:employment change|payrolls)\b/g, "nonfarm payrolls").replace(
+    /^.*\b(?:federal funds rate|interest rate decision|main refinancing rate|deposit facility rate|official bank rate|cash rate|overnight rate|policy rate)\b.*$/,
+    "rate decision"
+  ).replace(/[^a-z0-9/]+/g, " ").trim();
+  return `${date}|${ccy}|${e}`;
+}
 async function macroAgenda(currencies, from, to, now, ns = "AGENDA") {
   const notes = [];
   const regions = [...new Set(currencies)].flatMap((c) => {
@@ -27636,17 +27643,19 @@ async function macroAgenda(currencies, from, to, now, ns = "AGENDA") {
   const datasets = [];
   const items = [];
   const perDay = /* @__PURE__ */ new Map();
+  const seen = /* @__PURE__ */ new Set();
   for (const { ds, match } of sources) {
     const points = [];
-    const seen = /* @__PURE__ */ new Set();
     for (const p of ds.points) {
       const m = /^CAL\.econ\.(\d{4}-\d{2}-\d{2})\.\d+$/.exec(p.key);
       if (!m || typeof p.value !== "string") continue;
       const date = m[1];
       const [country2 = "", event = ""] = p.value.split(" | ");
       const r3 = regions.find((x) => match(x, country2, event));
-      if (date < from || date > to || !r3 || seen.has(`${date}|${country2}|${event}`)) continue;
-      seen.add(`${date}|${country2}|${event}`);
+      if (date < from || date > to || !r3) continue;
+      const id = releaseIdentity(date, r3.ccy, event);
+      if (seen.has(id)) continue;
+      seen.add(id);
       const n2 = (perDay.get(date) ?? 0) + 1;
       perDay.set(date, n2);
       const key = `${ns}.macro.${date}.${n2}`;
@@ -51733,6 +51742,17 @@ function namesCompany(headline, name, symbol) {
   const ticker = symbol.replace(/[.-].*$/, "");
   return word(fold2(name)) || ticker.length >= 3 && word(fold2(ticker));
 }
+function filledSinceOpened(t, since, lineRows) {
+  const at = filledAt(t);
+  if (since.length > 10) return at >= since;
+  const day4 = lineRows.filter((r3) => r3.date.slice(0, 10) === since);
+  let lastExit = -1;
+  day4.forEach((r3, i) => {
+    if (r3.type === "sell" || r3.type === "transfer-out") lastExit = i;
+  });
+  if (lastExit < 0) return at >= since;
+  return at.slice(0, 10) > since || day4.slice(lastExit + 1).some((r3) => r3.origin === `ticket:${t.id}`);
+}
 async function morningRun(dir2, opts = {}) {
   const now = opts.now ?? clockNow();
   const today = isoDayOf(now);
@@ -51873,12 +51893,19 @@ async function morningRun(dir2, opts = {}) {
   const ticketPoints = [];
   const stopTickets = tickets.filter((t) => t.status === "filled" && t.order.side === "buy" && t.order.stop !== void 0);
   const stopFor = /* @__PURE__ */ new Map();
-  const opened = lineOpenedAt(marked?.book.transactions ?? []);
+  const txs = marked?.book.transactions ?? [];
+  const opened = lineOpenedAt(txs);
   const unprotected = [];
   for (const p of marked?.book.positions.filter((x) => x.quantity > 0) ?? []) {
     const since = opened.get(`${p.account}|${p.symbol}`) ?? "";
     const line = (x) => x.order.account === p.account && x.order.symbol.toUpperCase() === p.symbol.toUpperCase();
-    const t = stopTickets.find((x) => line(x) && filledAt(x) >= since);
+    const t = stopTickets.find(
+      (x) => line(x) && filledSinceOpened(
+        x,
+        since,
+        txs.filter((r3) => r3.account === p.account && r3.symbol === p.symbol)
+      )
+    );
     if (t && !stopFor.has(t.id)) stopFor.set(t.id, { ticket: t, symbol: p.symbol.toUpperCase() });
     else if (!t && stopTickets.some(line)) unprotected.push({ symbol: p.symbol.toUpperCase(), account: p.account, since: since.slice(0, 10) });
   }

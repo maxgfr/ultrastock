@@ -29,7 +29,7 @@ import { loadProfile } from "../../core/profile.js";
 import { sanitizeExternalText } from "../../core/untrusted.js";
 import { mapLimit, UsageError, writeArtifact, writeFileAtomic } from "../../engine.js";
 import { listTheses, type Thesis } from "../../journal/journal.js";
-import { lineOpenedAt } from "../../portfolio/ledger.js";
+import { lineOpenedAt, type Transaction } from "../../portfolio/ledger.js";
 import { loadWatchlist } from "../../portfolio/watchlist.js";
 import { newsSearch } from "../../providers/macro/news.js";
 import type { SearchDelegate } from "../../research/delegate.js";
@@ -355,6 +355,24 @@ interface Row {
   notes: string[];
 }
 
+/**
+ * Was the ticket filled since the line was last opened on `since`? A time
+ * compares as written. A date-only opening on a day the line was also sold
+ * out holds no hour: a fill that day may be the line sold, so only a later
+ * day counts — or the ticket's own row, booked after that day's last exit.
+ */
+function filledSinceOpened(t: Ticket, since: string, lineRows: readonly Transaction[]): boolean {
+  const at = filledAt(t);
+  if (since.length > 10) return at >= since;
+  const day = lineRows.filter((r) => r.date.slice(0, 10) === since);
+  let lastExit = -1;
+  day.forEach((r, i) => {
+    if (r.type === "sell" || r.type === "transfer-out") lastExit = i;
+  });
+  if (lastExit < 0) return at >= since;
+  return at.slice(0, 10) > since || day.slice(lastExit + 1).some((r) => r.origin === `ticket:${t.id}`);
+}
+
 export async function morningRun(dir: string, opts: MorningOptions = {}): Promise<MorningResult> {
   const now = opts.now ?? clockNow();
   const today = isoDay(now);
@@ -508,12 +526,21 @@ export async function morningRun(dir: string, opts: MorningOptions = {}): Promis
   const stopFor = new Map<string, { ticket: Ticket; symbol: string }>();
   // A stop protects the position its ticket built: once the line was sold out, that level was left behind with it, and
   // reading it as current would flag a level the user abandoned. Only a ticket filled since the line was last opened counts.
-  const opened = lineOpenedAt(marked?.book.transactions ?? []);
+  const txs = marked?.book.transactions ?? [];
+  const opened = lineOpenedAt(txs);
   const unprotected: MarkdownContext["unprotected"] = [];
   for (const p of marked?.book.positions.filter((x) => x.quantity > 0) ?? []) {
     const since = opened.get(`${p.account}|${p.symbol}`) ?? "";
     const line = (x: Ticket) => x.order.account === p.account && x.order.symbol.toUpperCase() === p.symbol.toUpperCase();
-    const t = stopTickets.find((x) => line(x) && filledAt(x) >= since);
+    const t = stopTickets.find(
+      (x) =>
+        line(x) &&
+        filledSinceOpened(
+          x,
+          since,
+          txs.filter((r) => r.account === p.account && r.symbol === p.symbol),
+        ),
+    );
     if (t && !stopFor.has(t.id)) stopFor.set(t.id, { ticket: t, symbol: p.symbol.toUpperCase() });
     else if (!t && stopTickets.some(line)) unprotected.push({ symbol: p.symbol.toUpperCase(), account: p.account, since: since.slice(0, 10) });
   }

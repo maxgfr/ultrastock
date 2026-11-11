@@ -323,4 +323,55 @@ describe("morning on a recorded fixture", () => {
       expect(md).not.toMatch(/stop 1000/);
     });
   }, 120_000);
+
+  it("shows no stop for a line closed and reopened on the ticket's own day, in a statement's date-only rows", async () => {
+    process.env.ULTRASTOCK_HOME = mkdtempSync(join(tmpdir(), "morning-same-day-"));
+    saveProfile(defaultProfile("FR", "EUR"));
+    const row = (type: "buy" | "sell", quantity: number) =>
+      ({ date: "2026-08-03", type, account: "pea", symbol: "ALO.PA", quantity, price: 20, fee: 0, currency: "EUR", origin: "import:broker" }) as const;
+    // The broker's statement: bought (the ticket's fill, at 09:00), sold out, bought again — all dated 3 August, no time.
+    await appendTransactions(
+      [
+        { date: "2026-06-01", type: "deposit", account: "pea", amount: 10_000, currency: "EUR", origin: "manual" },
+        row("buy", 100),
+        row("sell", 100),
+        row("buy", 80),
+      ],
+      "real",
+    );
+    mkdirSync(join(homeDir(), "tickets"), { recursive: true });
+    const at = "2026-08-03T09:00:00.000Z";
+    writeFileSync(
+      join(homeDir(), "tickets", "t-same-day-first.json"),
+      JSON.stringify({
+        id: "t-same-day-first",
+        createdAt: "2026-08-03T08:00:00.000Z",
+        updatedAt: at,
+        status: "filled",
+        order: {
+          account: "pea",
+          symbol: "ALO.PA",
+          side: "buy",
+          quantity: 100,
+          price: 20,
+          orderType: "limit",
+          currency: "EUR",
+          stop: 1000,
+          assetKind: "equity",
+          venue: "paper",
+        },
+        fingerprint: "test",
+        fills: [{ at, quantity: 100, price: 20, fee: 0, venue: "paper", method: "test" }],
+        history: [{ at, from: "working", to: "filled", why: "test" }],
+      }),
+    );
+    await withFixture("morning-alo", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "morning-same-day-run-"));
+      const r = await morningRun(dir, { markets: ["eu"] });
+      // "Opened on 2026-08-03" holds no hour: the 09:00 fill is not "since" it — the line it protected was sold that day.
+      expect(EvidenceStore.load(dir)!.byKey("TICKET.t-same-day-first.stop")).toBeUndefined();
+      expect(r.flags.filter((f) => f.kind === "stop")).toEqual([]);
+      expect(readFileSync(r.file, "utf8")).toMatch(/- ALO\.PA \(pea\): no stop on record since the line was last opened on 2026-08-03/);
+    });
+  }, 120_000);
 });

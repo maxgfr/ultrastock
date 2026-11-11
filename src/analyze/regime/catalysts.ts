@@ -218,6 +218,31 @@ export interface AgendaItem {
 }
 
 /**
+ * One release, whichever calendar lists it: ForexFactory writes "CPI m/m" and
+ * "Federal Funds Rate" where Nasdaq writes "CPI (MoM) (Oct)" and "Fed Interest
+ * Rate Decision". The period in brackets, the estimate's stage (advance,
+ * flash…) and a central bank's rate wording are set aside; what the figure
+ * measures (core or not, m/m or y/y) stays.
+ */
+function releaseIdentity(date: string, ccy: string, event: string): string {
+  const e = event
+    .toLowerCase()
+    .replace(/\(mom\)/g, "m/m")
+    .replace(/\(yoy\)/g, "y/y")
+    .replace(/\(qoq\)/g, "q/q")
+    .replace(/\((?:[a-z]{3}|q[1-4])\)/g, "")
+    .replace(/\b(?:advance|adv|prelim|preliminary|flash|final)\b/g, "")
+    .replace(/\bnon-?farm (?:employment change|payrolls)\b/g, "nonfarm payrolls")
+    .replace(
+      /^.*\b(?:federal funds rate|interest rate decision|main refinancing rate|deposit facility rate|official bank rate|cash rate|overnight rate|policy rate)\b.*$/,
+      "rate decision",
+    )
+    .replace(/[^a-z0-9/]+/g, " ")
+    .trim();
+  return `${date}|${ccy}|${e}`;
+}
+
+/**
  * The high-impact macro releases of several currencies from `from` to `to`,
  * read once for many instruments: ForexFactory's high-impact week and Nasdaq's
  * day-by-day calendar, filtered by MACRO_REGIONS as `catalysts` does. Keys
@@ -255,17 +280,20 @@ export async function macroAgenda(
   const datasets: Dataset[] = [];
   const items: AgendaItem[] = [];
   const perDay = new Map<string, number>();
+  // Across both calendars: a release the second lists too is not a second release (the high-impact count would double).
+  const seen = new Set<string>();
   for (const { ds, match } of sources) {
     const points: Point[] = [];
-    const seen = new Set<string>();
     for (const p of ds.points) {
       const m = /^CAL\.econ\.(\d{4}-\d{2}-\d{2})\.\d+$/.exec(p.key);
       if (!m || typeof p.value !== "string") continue;
       const date = m[1]!;
       const [country = "", event = ""] = p.value.split(" | ");
       const r = regions.find((x) => match(x, country, event));
-      if (date < from || date > to || !r || seen.has(`${date}|${country}|${event}`)) continue;
-      seen.add(`${date}|${country}|${event}`);
+      if (date < from || date > to || !r) continue;
+      const id = releaseIdentity(date, r.ccy, event);
+      if (seen.has(id)) continue;
+      seen.add(id);
       const n = (perDay.get(date) ?? 0) + 1;
       perDay.set(date, n);
       const key = `${ns}.macro.${date}.${n}`;
