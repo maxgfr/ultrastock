@@ -107,7 +107,7 @@ export interface Waiting {
 /** Settle every decision horizon that has matured and is not settled yet. */
 export async function settleDecisions(now = clockNow()): Promise<{ settled: Settlement[]; pending: number; waiting: Waiting[]; errors: string[] }> {
   const done = new Set(readSettlements().map((s) => `${s.decisionId}|${s.horizon}`));
-  const settled: Settlement[] = [];
+  let settled: Settlement[] = [];
   const waiting: Waiting[] = [];
   const errors: string[] = [];
   let pending = 0;
@@ -187,20 +187,26 @@ export async function settleDecisions(now = clockNow()): Promise<{ settled: Sett
   if (settled.length) {
     mkdirSync(journalDir(), { recursive: true });
     const file = join(journalDir(), "settlements.jsonl");
-    // Under the file's lock, a line a crashed append cut short is set aside first, so it never sits mid-file.
-    withFileLockSync(`${file}.lock`, () => {
+    // Under the file's lock, a line a crashed append cut short is set aside first, so it never sits mid-file. The
+    // settlements are read again there: another settle that ran meanwhile (a scheduled one and one typed by hand) may
+    // have settled the same horizons, and a settlement is written once, never twice.
+    settled = withFileLockSync(`${file}.lock`, () => {
       sealJsonlTail(file);
-      appendFileSync(file, settled.map((s) => `${JSON.stringify(s)}\n`).join(""), { mode: 0o600 });
+      const already = new Set(readSettlements().map((s) => `${s.decisionId}|${s.horizon}`));
+      const fresh = settled.filter((s) => !already.has(`${s.decisionId}|${s.horizon}`));
+      if (!fresh.length) return fresh;
+      appendFileSync(file, fresh.map((s) => `${JSON.stringify(s)}\n`).join(""), { mode: 0o600 });
+      appendFileSync(
+        join(journalDir(), "decisions.md"),
+        fresh
+          .map(
+            (s) =>
+              `SETTLED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions → ${s.endDate}]: return ${s.returnPct} %${s.alphaPct !== undefined ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} — ${s.hit ? "right" : "wrong"}${s.partial ? " (partial: the history stops short)" : ""}\n`,
+          )
+          .join(""),
+      );
+      return fresh;
     });
-    appendFileSync(
-      join(journalDir(), "decisions.md"),
-      settled
-        .map(
-          (s) =>
-            `SETTLED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions → ${s.endDate}]: return ${s.returnPct} %${s.alphaPct !== undefined ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} — ${s.hit ? "right" : "wrong"}${s.partial ? " (partial: the history stops short)" : ""}\n`,
-        )
-        .join(""),
-    );
   }
   return { settled, pending, waiting, errors };
 }

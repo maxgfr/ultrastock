@@ -11,7 +11,8 @@
   is not recorded twice (`alreadyRecorded`).
 - `journal settle` measures each call at **+5, +20 and +60 sessions**: the
   symbol's return, the benchmark's, and the **alpha** between them. A settled
-  horizon is final, never re-scored. A matured horizon stays pending until the
+  horizon is final, never re-scored, and written once even when two settles
+  run at once. A matured horizon stays pending until the
   symbol's and the benchmark's histories hold a bar on or after its end date:
   `settle` lists it under `waiting`, with the history that falls short and its
   last bar. Ten sessions after the end with no such bar (a delisted or renamed
@@ -36,7 +37,12 @@ open thesis past its `review-by` date shows as OVERDUE in `journal digest`.
 
 ## Reviews and lessons
 
-- `journal review [--book]` takes each closed round trip from the ledger:
+- `journal review [--book]` takes each closed round trip from the ledger,
+  paired FIFO by the ledger's own rules: units transferred in open a position
+  at their price (moved from another of the user's accounts, they keep their
+  entry; with no price at all, the trip is flagged and not scored), a split
+  rescales the open units and prices, and a sale opens a short only when the
+  ledger sells more than it holds:
   - the result in R (multiples of the planned risk);
   - whether there was a stop;
   - how far the price went against and for the trade;

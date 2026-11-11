@@ -8,7 +8,7 @@ import { journalDir } from "../analyze/decision.js";
 import { expectancy } from "../analytics/sizing.js";
 import { sanitizeExternalDocument, sanitizeExternalText, UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "../core/untrusted.js";
 import { contentHash, slugify, writeFileAtomic } from "../engine.js";
-import type { Transaction } from "../portfolio/ledger.js";
+import { inReplayOrder, type Transaction } from "../portfolio/ledger.js";
 import type { Bar } from "../providers/types.js";
 import { listTickets } from "../trading/tickets.js";
 
@@ -124,56 +124,125 @@ export interface RoundTrip {
   stop?: number;
   plan?: string;
   ticket?: string;
+  /**
+   * The units came in by a transfer with no price, and no transfer out of another account of the user's carried one:
+   * the entry price (NaN here) and the result are unknown, and the review says so instead of scoring it.
+   */
+  unpriced?: true;
+}
+
+/** An open lot of a line: what is left of one entry, in today's units (a split rescales it). */
+interface OpenLot {
+  t: Transaction;
+  left: number;
+  /** Per unit, in today's units; undefined for units transferred in with no price. */
+  price?: number;
+  fee: number;
 }
 
 /**
  * Pair buys and sells into closed round trips (FIFO), carrying the entry
- * ticket's stop and plan. A trade first closes what is open the other way; what
- * is left opens a position its way: a sell with nothing bought opens a short,
+ * ticket's stop and plan, replayed in the ledger's own order (`inReplayOrder`)
+ * and by its rules (`buildBook`): a transfer in opens a long lot at its price —
+ * or, with none, at the lots a transfer out of another account of the user's
+ * carried, keeping their entry; else it is flagged `unpriced` — a transfer out
+ * closes lots with no trip (the units moved, nothing was sold), and a split
+ * rescales the open lots' units and prices. A sell closes what is held; only
+ * what it sells beyond that — a ledger that is itself short — opens a short,
  * which the next buys cover.
  */
 export function roundTrips(txs: readonly Transaction[]): RoundTrip[] {
   const tickets = new Map(listTickets().map((t) => [t.id, t]));
   // Open lots per line; all of one side at a time (a trade closes the other side before it opens its own).
-  const open = new Map<string, { side: "long" | "short"; lots: Array<{ t: Transaction; left: number }> }>();
+  const open = new Map<string, { side: "long" | "short"; lots: OpenLot[] }>();
+  // Lots a transfer out took from a line, for a transfer in of the same symbol into another account to take over.
+  const inTransit: Array<{ account: string; symbol: string; lot: OpenLot }> = [];
   const out: RoundTrip[] = [];
-  for (const t of [...txs].sort((a, b) => a.date.localeCompare(b.date))) {
-    if (!t.symbol || (t.type !== "buy" && t.type !== "sell")) continue;
-    const k = `${t.account}|${t.symbol}`;
-    const side = t.type === "buy" ? "long" : "short";
-    const book = open.get(k) ?? { side, lots: [] };
-    let q = t.quantity!;
-    // Close the other side first.
-    while (book.side !== side && q > 1e-12 && book.lots.length) {
-      const lot = book.lots[0]!;
+  /** Take up to `q` units off the front of `lots`, FIFO; each piece taken, as a lot of its own. */
+  const takeFifo = (lots: OpenLot[], q: number): { pieces: OpenLot[]; left: number } => {
+    const pieces: OpenLot[] = [];
+    while (q > 1e-12 && lots.length) {
+      const lot = lots[0]!;
       const take = Math.min(q, lot.left);
+      pieces.push({ ...lot, left: take });
+      lot.left -= take;
+      q -= take;
+      if (lot.left <= 1e-12) lots.shift();
+    }
+    return { pieces, left: q };
+  };
+  for (const t of inReplayOrder(txs)) {
+    if (!t.symbol || !t.quantity) continue;
+    const k = `${t.account}|${t.symbol}`;
+    const book = open.get(k) ?? { side: "long" as const, lots: [] };
+    open.set(k, book);
+    if (t.type === "split") {
+      // quantity = ratio (2 for a 2-for-1): units multiply, per-unit prices and fees divide — on either side.
+      for (const lot of book.lots) {
+        lot.left *= t.quantity;
+        if (lot.price !== undefined) lot.price /= t.quantity;
+        lot.fee /= t.quantity;
+      }
+      continue;
+    }
+    if (t.type === "transfer-out") {
+      if (book.side !== "long") continue;
+      for (const lot of takeFifo(book.lots, t.quantity).pieces) inTransit.push({ account: t.account, symbol: t.symbol, lot });
+      continue;
+    }
+    if (t.type === "transfer-in") {
+      // Units delivered while the line is short cover it, with no trip: nothing was bought back.
+      let q = book.side === "short" ? takeFifo(book.lots, t.quantity).left : t.quantity;
+      if (q <= 1e-12) continue;
+      book.side = "long";
+      if (t.price !== undefined) {
+        book.lots.push({ t, left: q, price: t.price, fee: 0 });
+        continue;
+      }
+      // No price: the user's own units moved from another account keep the entry they left with.
+      for (const m of inTransit) {
+        if (q <= 1e-12) break;
+        if (m.symbol !== t.symbol || m.account === t.account || m.lot.left <= 1e-12) continue;
+        const take = Math.min(q, m.lot.left);
+        book.lots.push({ ...m.lot, left: take });
+        m.lot.left -= take;
+        q -= take;
+      }
+      if (q > 1e-12) book.lots.push({ t, left: q, price: undefined, fee: 0 });
+      continue;
+    }
+    if (t.type !== "buy" && t.type !== "sell") continue;
+    const side = t.type === "buy" ? "long" : "short";
+    // Close the other side first.
+    const closing = book.side !== side ? takeFifo(book.lots, t.quantity) : { pieces: [], left: t.quantity };
+    for (const lot of closing.pieces) {
+      const take = lot.left;
       const tk = lot.t.origin.startsWith("ticket:") ? tickets.get(lot.t.origin.slice(7)) : undefined;
-      const move = book.side === "long" ? t.price! - lot.t.price! : lot.t.price! - t.price!;
+      const entry = lot.price ?? Number.NaN;
+      const move = book.side === "long" ? t.price! - entry : entry - t.price!;
       out.push({
         account: t.account,
         symbol: t.symbol,
         side: book.side,
         entryDate: lot.t.date,
-        entryPrice: lot.t.price!,
+        entryPrice: entry,
         exitDate: t.date,
         exitPrice: t.price!,
         quantity: take,
-        pnl: move * take - ((lot.t.fee ?? 0) * take) / lot.t.quantity! - ((t.fee ?? 0) * take) / t.quantity!,
+        pnl: move * take - lot.fee * take - ((t.fee ?? 0) * take) / t.quantity,
         stop: tk?.order.stop,
         plan: tk?.note,
         ticket: tk?.id,
+        ...(lot.price === undefined ? { unpriced: true as const } : {}),
       });
-      lot.left -= take;
-      q -= take;
-      if (lot.left <= 1e-12) book.lots.shift();
     }
-    // What is left opens (or adds to) a position this way.
+    // What is left opens (or adds to) a position this way: for a sell, only a ledger short of units gets here.
+    const q = closing.left;
     if (q > 1e-12) {
       if (book.side !== side) book.lots = [];
       book.side = side;
-      book.lots.push({ t, left: q });
+      book.lots.push({ t, left: q, price: t.price!, fee: (t.fee ?? 0) / t.quantity });
     }
-    open.set(k, book);
   }
   return out;
 }
@@ -191,6 +260,11 @@ export interface Review {
 /** Review one round trip against the bars it was open for. The plan comes first: it was written before the outcome. */
 export function reviewTrip(trip: RoundTrip, bars: readonly Bar[]): Review {
   const findings: string[] = [];
+  if (trip.unpriced)
+    return {
+      trip,
+      findings: ["the units came in by a transfer with no price: the entry and the result are unknown — record the transfer's cost to review it"],
+    };
   const inside = bars.filter((b) => b.date.slice(0, 10) >= trip.entryDate.slice(0, 10) && b.date.slice(0, 10) <= trip.exitDate.slice(0, 10));
   // A short gains as the price falls: its stop is above the entry, and its best price the lowest.
   const dir = trip.side === "short" ? -1 : 1;
@@ -227,11 +301,11 @@ export function reviewMarkdown(rv: Review): string {
     "",
     "**The plan, as written before the outcome:**",
     "",
-    `- entry ${t.entryPrice}, stop ${t.stop ?? "none"}${t.plan ? ` — ${t.plan}` : ""}${t.ticket ? ` (ticket ${t.ticket})` : ""}`,
+    `- entry ${t.unpriced ? "unknown (transferred in with no price)" : t.entryPrice}, stop ${t.stop ?? "none"}${t.plan ? ` — ${t.plan}` : ""}${t.ticket ? ` (ticket ${t.ticket})` : ""}`,
     "",
     "**What happened:**",
     "",
-    `- exit ${t.exitPrice}, ${t.quantity} unit(s), result ${t.pnl.toFixed(2)} (${f(rv.rMultiple)}); best ${f(rv.mfeR)}, worst ${f(rv.maeR)} while open`,
+    `- exit ${t.exitPrice}, ${t.quantity} unit(s), result ${t.unpriced ? "unknown" : t.pnl.toFixed(2)} (${f(rv.rMultiple)}); best ${f(rv.mfeR)}, worst ${f(rv.maeR)} while open`,
     ...rv.findings.map((x) => `- ${x}`),
     "",
   ].join("\n");
@@ -240,7 +314,8 @@ export function reviewMarkdown(rv: Review): string {
 /** The digest: closed trades in R and in money, and how the settled calls fared. */
 export function digest(reviews: readonly Review[], hit: ReadonlyArray<{ rating: string; horizon: number; n: number; hitRate: number; meanAlphaPct?: number }>) {
   const rs = reviews.map((r) => r.rMultiple).filter((x): x is number => x !== undefined);
-  const money = reviews.map((r) => r.trip.pnl);
+  // An unpriced trip has no result to add up.
+  const money = reviews.filter((r) => !r.trip.unpriced).map((r) => r.trip.pnl);
   const e = expectancy(rs);
   return {
     trades: reviews.length,
