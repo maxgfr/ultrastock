@@ -134,18 +134,3 @@ export async function blsHeadlines(which: readonly BlsPreset[] = ["cpi", "coreCp
     ],
   };
 }
-
-/** Any BLS series id as a dataset of its monthly observations (last three years). */
-export async function blsSeries(id: string): Promise<Dataset> {
-  const { series, url, fetchedAt } = await fetchBls([id]);
-  const obs = series.get(id) ?? [];
-  if (!obs.length) throw new ProviderError(SOURCE, `no data for series ${id}`);
-  return {
-    kind: "macro",
-    title: `BLS series ${id}`,
-    subject: "US",
-    points: seriesPoints(`US.bls.${id}`, `BLS series ${id}`, undefined, obs, { history: true }),
-    provenance: { source: SOURCE, url, fetchedAt, official: true, asOf: obs[obs.length - 1]!.date },
-    notes: [],
-  };
-}

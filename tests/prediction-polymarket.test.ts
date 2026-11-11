@@ -9,7 +9,6 @@ import {
   parseClobBook,
   parseGammaMarket,
   polymarketBook,
-  polymarketEventPoints,
   polymarketFailure,
   polymarketMarketPoints,
   polymarketTrades,
@@ -62,19 +61,6 @@ describe("Polymarket parsers (synthetic inputs)", () => {
     const pts = polymarketMarketPoints(parseGammaMarket({ id: 7, outcomes: '["Team A", "Team B"]', outcomePrices: '["0.7", "0.3"]' }));
     expect(pts.find((p) => p.key === "POLYMARKET.7.outcome.0.name")).toMatchObject({ value: "Team A", untrusted: true });
     expect(pts.find((p) => p.key === "POLYMARKET.7.outcome.1.price")!.value).toBe(0.3);
-  });
-  it("reads an event with nested markets", () => {
-    // SYNTHETIC: a Gamma /events row.
-    const pts = polymarketEventPoints({
-      id: 900,
-      title: "Synthetic event",
-      volume: "5000",
-      endDate: "2027-01-01T00:00:00Z",
-      markets: [SYNTHETIC_GAMMA_MARKET],
-    });
-    expect(pts.find((p) => p.key === "POLYMARKET.event.900.title")!.untrusted).toBe(true);
-    expect(pts.find((p) => p.key === "POLYMARKET.event.900.markets")!.value).toBe(1);
-    expect(pts.some((p) => p.key === "POLYMARKET.500001.yes.price")).toBe(true);
   });
   it("sorts a CLOB book best-first", () => {
     // SYNTHETIC: a CLOB /book answer, levels deliberately out of order.

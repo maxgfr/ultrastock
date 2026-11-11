@@ -2,7 +2,6 @@
 // public, keyless APIs (official for their own venue):
 //
 //   Gamma  https://gamma-api.polymarket.com/markets?limit=…&active=…&closed=…&slug=…&order=…
-//          https://gamma-api.polymarket.com/events?limit=…&slug=…   (events nest their markets)
 //   CLOB   https://clob.polymarket.com/book?token_id=<outcome token>
 //   Data   https://data-api.polymarket.com/trades?market=<conditionId>&limit=…
 //
@@ -281,50 +280,6 @@ export async function polymarketMarkets(q: PolymarketMarketsQuery = {}): Promise
       notes: [NOTE_UNITS, "outcome prices are Gamma's displayed prices (the midpoint, or the last trade when the spread is wide)"],
     },
   };
-}
-
-interface GammaEventRaw {
-  id: string | number;
-  title?: string;
-  slug?: string;
-  endDate?: string;
-  volume?: number | string;
-  volume24hr?: number | string;
-  liquidity?: number | string;
-  markets?: GammaMarketRaw[];
-}
-
-/** Event-level points (title untrusted, volume, liquidity, end date, market count) followed by each nested market's. */
-export function polymarketEventPoints(e: GammaEventRaw): Point[] {
-  const p = `POLYMARKET.event.${e.id}`;
-  const s = `Polymarket event ${e.id}`;
-  const out: Point[] = [];
-  if (e.title) out.push({ key: `${p}.title`, label: `${s} title`, value: e.title, untrusted: true });
-  for (const [key, what, v] of [
-    ["volume", "volume (lifetime)", num(e.volume)],
-    ["volume24h", "volume (24h)", num(e.volume24hr)],
-    ["liquidity", "liquidity", num(e.liquidity)],
-  ] as const)
-    if (v !== undefined) out.push({ key: `${p}.${key}`, label: `${s} ${what}`, value: v, unit: "USDC" });
-  if (e.endDate) out.push({ key: `${p}.endDate`, label: `${s} end date`, value: e.endDate.slice(0, 10) });
-  const markets = (e.markets ?? []).map(parseGammaMarket);
-  out.push({ key: `${p}.markets`, label: `${s} number of markets`, value: markets.length, unit: "count" });
-  return [...out, ...markets.flatMap(polymarketMarketPoints)];
-}
-
-/** Events from Gamma (each with its markets), one dataset per event. */
-export async function polymarketEvents(q: { limit?: number; slug?: string; closed?: boolean; order?: string } = {}): Promise<Dataset[]> {
-  const res = await fetchJson<GammaEventRaw[]>(`${GAMMA}/events?${gammaParams(q)}`, PACE);
-  if (!res.ok || !Array.isArray(res.data)) throw polymarketFailure(res, "event list");
-  if (!res.data.length) throw new ProviderError(SOURCE, "no event matches the query", 404);
-  return res.data.map((e) => ({
-    kind: "prediction",
-    title: `Polymarket event ${e.id}`,
-    subject: `POLYMARKET.event.${e.id}`,
-    points: polymarketEventPoints(e),
-    provenance: prov(res),
-    notes: [NOTE_UNITS],
-  }));
 }
 
 /** The CLOB book of one outcome token: best bid/ask, spread, mid, depth, imbalance. */
