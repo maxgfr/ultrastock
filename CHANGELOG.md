@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.32](https://github.com/maxgfr/ultrastock/compare/v1.13.31...v1.13.32) (2026-11-11)
+
+
+### Bug Fixes
+
+* **tax/us:** a transfer-in is never a wash-sale replacement purchase ([3aa0bf9](https://github.com/maxgfr/ultrastock/commit/3aa0bf965fa6633daf9f855fb7eea38252e73ac7))
+
 ## [1.13.31](https://github.com/maxgfr/ultrastock/compare/v1.13.30...v1.13.31) (2026-11-11)
 
 
