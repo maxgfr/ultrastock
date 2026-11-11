@@ -8,22 +8,37 @@ import {
   defaultProfile,
   type EnvelopeType,
   loadProfile,
+  loosens,
   type Profile,
+  parseProfileValue,
+  profileChangeBinding,
   profilePath,
-  saveProfile,
-  setProfileField,
+  profileValue,
+  requestProfileChange,
   SETTABLE_PATHS,
+  saveProfile,
   upsertEnvelope,
 } from "../core/profile.js";
-import { applySuitability, QUESTIONS, scoreSuitability } from "../core/suitability.js";
+import { applySuitability, QUESTIONS, scoreSuitability, suitabilityBinding } from "../core/suitability.js";
+import { currentLimits } from "../trading/limits.js";
+import { issueCode, verifyCode } from "../trading/otp.js";
 import { clockNow } from "../core/net.js";
 import { argValue, type CommandArgs, UsageError } from "../engine.js";
 import { printResult as out } from "./emit.js";
 
 const ENVELOPES: EnvelopeType[] = ["PEA", "PEA-PME", "CTO", "AV", "PER", "CRYPTO", "TAXABLE", "IRA", "ROTH-IRA", "401K", "OTHER"];
 
+/**
+ * The profile ratchets once live trading has been switched on for any venue:
+ * from then on its limits and its jurisdiction guard real money, and lowering
+ * them takes a code and 24 hours, like the live limits themselves.
+ */
+export function profileRatchetOn(): boolean {
+  return currentLimits().venues.length > 0;
+}
+
 function requireProfile() {
-  const p = loadProfile();
+  const p = loadProfile(clockNow());
   if (!p) throw new Error(`no profile yet — run \`ultrastock profile init --jurisdiction FR --currency EUR\` (it lives in ${profilePath()})`);
   return p;
 }
@@ -59,17 +74,42 @@ export async function profileCommand(args: CommandArgs, asJson: boolean): Promis
     const p = requireProfile();
     return out(asJson, p, JSON.stringify({ ...p, history: `${p.history.length} change(s)` }, null, 2));
   }
-  if (sub === "set") {
+  if (sub === "set" || sub === "code") {
     const [path, ...value] = rest;
-    if (!path || !value.length) throw new UsageError(`usage: ultrastock profile set <field> <value> — fields: ${SETTABLE_PATHS.join(", ")}`);
-    let from: unknown;
-    const p = changeProfile((x) => {
-      from = setProfileField(x, path, value.join(" "), clockNow());
+    if (!path || !value.length)
+      throw new UsageError(`usage: ultrastock profile ${sub} <field> <value>${sub === "set" ? " [--code <code>]" : ""} — fields: ${SETTABLE_PATHS.join(", ")}`);
+    const to = parseProfileValue(path, value.join(" "));
+    const now = clockNow();
+    if (sub === "code") {
+      const p = requireProfile();
+      if (!profileRatchetOn() || !loosens(path, profileValue(p, path), to))
+        return out(asJson, { needed: false }, `${path}: no code needed — \`profile set ${path} ${value.join(" ")}\` applies it now`);
+      const r = await issueCode(
+        "profile",
+        profileChangeBinding(path, to),
+        `profile ${path}: ${JSON.stringify(profileValue(p, path))} → ${JSON.stringify(to)} (in force 24 hours after approval)`,
+      );
+      return out(
+        asJson,
+        r,
+        `approval code sent to ${r.sentTo.join(", ")} (valid until ${r.expiresAt}). Then: ultrastock profile set ${path} ${value.join(" ")} --code <code>`,
+      );
+    }
+    const code = argValue(args, "code");
+    const approved = code ? verifyCode("profile", profileChangeBinding(path, to), code, now).ok : false;
+    if (code && !approved) throw new Error(`the approval code does not match this change (or expired): run \`profile code ${path} ${value.join(" ")}\` again`);
+    let o!: ReturnType<typeof requestProfileChange>;
+    changeProfile((x) => {
+      o = requestProfileChange(x, path, to, { ratchet: profileRatchetOn(), approved, now });
     });
     return out(
       asJson,
-      { path, from, to: p.history[p.history.length - 1]!.to },
-      `${path}: ${JSON.stringify(from)} → ${JSON.stringify(p.history[p.history.length - 1]!.to)}`,
+      o,
+      o.applied
+        ? `${path}: ${JSON.stringify(o.from)} → ${JSON.stringify(o.to)}`
+        : o.effectiveAt
+          ? `${path}: ${JSON.stringify(o.from)} → ${JSON.stringify(o.to)} approved — in force from ${o.effectiveAt}`
+          : `${path}: not changed — ${o.reason}`,
     );
   }
   if (sub === "envelope") {
@@ -103,7 +143,22 @@ export async function profileCommand(args: CommandArgs, asJson: boolean): Promis
     }
     const answers = JSON.parse(readFileSync(resolve(answersFile), "utf8")) as Record<string, string | number>;
     const r = scoreSuitability(answers);
-    changeProfile((p) => applySuitability(p, r, clockNow()));
+    const now = clockNow();
+    const ratchet = profileRatchetOn();
+    const code = argValue(args, "code");
+    const approved = code ? verifyCode("profile", suitabilityBinding(r), code, now).ok : false;
+    if (code && !approved) throw new Error("the approval code does not match these answers' limits (or expired)");
+    if (ratchet && !code && args.bools.has("request-code")) {
+      const c = await issueCode("profile", suitabilityBinding(r), `the questionnaire's limits (risk score ${r.score}/7), in force 24 hours after approval`);
+      return out(
+        asJson,
+        c,
+        `approval code sent to ${c.sentTo.join(", ")} (valid until ${c.expiresAt}). Then: ultrastock profile suitability --answers ${answersFile} --code <code>`,
+      );
+    }
+    let waiting: ReturnType<typeof applySuitability>["waiting"] = [];
+    let held: ReturnType<typeof applySuitability>["held"] = [];
+    changeProfile((p) => ({ waiting, held } = applySuitability(p, r, now, { ratchet, approved })));
     return out(
       asJson,
       r,
@@ -111,11 +166,17 @@ export async function profileCommand(args: CommandArgs, asJson: boolean): Promis
         `risk score ${r.score}/7 — ${r.label} (${r.points}/${r.maxPoints} points)`,
         ...r.reasons.map((x) => `  ${x}`),
         ...r.warnings.map((w) => `  WARNING: ${w}`),
-        `limits now: position ≤ ${r.limits.maxPositionPct} %, sector ≤ ${r.limits.maxSectorPct} %, crypto ≤ ${r.limits.maxCryptoPct} %, risk per trade ${r.limits.riskPerTradePct} %, daily loss stop ${r.limits.maxDailyLossPct} %`,
+        `limits from the answers: position ≤ ${r.limits.maxPositionPct} %, sector ≤ ${r.limits.maxSectorPct} %, crypto ≤ ${r.limits.maxCryptoPct} %, risk per trade ${r.limits.riskPerTradePct} %, daily loss stop ${r.limits.maxDailyLossPct} %`,
+        ...waiting.map((w) => `  ${w.path} → ${JSON.stringify(w.to)}: approved, in force from ${w.effectiveAt}`),
+        ...(held.length
+          ? [
+              `  NOT applied (live trading is on: lowering a guard needs a code and 24 hours): ${held.map((h) => h.path).join(", ")} — \`profile suitability --answers ${answersFile} --request-code\`, then the same with --code <code>`,
+            ]
+          : []),
       ].join("\n"),
     );
   }
-  throw new UsageError(`unknown profile action "${sub}" — init, show, set, envelope, suitability`);
+  throw new UsageError(`unknown profile action "${sub}" — init, show, set, code, envelope, suitability`);
 }
 
 export async function jurisdictionCommand(args: CommandArgs, asJson: boolean): Promise<void> {

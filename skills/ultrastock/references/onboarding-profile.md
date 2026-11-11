@@ -21,6 +21,14 @@
 lists them); every change is kept in the profile's history. Loosening a limit
 is the user's decision, never the agent's: say what it changes, then ask.
 
+Once live trading has been switched on for a venue, the profile ratchets:
+tightening applies at once, but raising a limit, lifting a constraint,
+dropping an exclusion or changing the jurisdiction needs an out-of-band code
+and takes effect 24 hours later. `profile code <field> <value>` sends the
+code to the user; they run `profile set <field> <value> --code <code>`. A
+questionnaire answered again goes through the same rule
+(`profile suitability --answers <file> --request-code`, then `--code`).
+
 ## The jurisdiction
 
 `ultrastock jurisdiction show` lists the rules for the profile's country, each

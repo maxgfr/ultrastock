@@ -4,10 +4,14 @@
 //
 // It lives in ULTRASTOCK_HOME/profile.json, never in the skill directory, and
 // every change is appended to its history. Limits are where the risk gate
-// reads its rules: changing one is recorded, and that is all — a profile limit
-// or the jurisdiction can be loosened at once, with no out-of-band
-// confirmation and no cooling-off delay. Only the live limits (per order, per
-// day, venues: trading/limits.ts) ratchet that way.
+// reads its rules, and the jurisdiction decides which venues may take a real
+// order. Once live trading has been switched on for a venue, they ratchet like
+// the live limits do (trading/limits.ts): tightening applies at once;
+// loosening a limit, lifting a constraint or changing the jurisdiction needs
+// an out-of-band code and takes effect 24 hours later — no instruction slipped
+// into a conversation can widen the loss limits, or move the investor to
+// another country, and use it at once. Before that (paper only), a change
+// applies when it is made.
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { writeFileAtomic } from "../engine.js";
@@ -72,8 +76,20 @@ export interface Profile {
     exclusions: string[];
   };
   limits: Limits;
+  /** Loosenings approved by code and waiting out their 24 hours. */
+  pending?: PendingChange[];
   history: Array<{ at: string; path: string; from: unknown; to: unknown }>;
 }
+
+export interface PendingChange {
+  path: string;
+  to: unknown;
+  requestedAt: string;
+  effectiveAt: string;
+}
+
+/** How long an approved loosening waits before it is in force. */
+export const PROFILE_LOOSEN_DELAY_MS = 24 * 3_600_000;
 
 /** Conservative defaults: a profile that has not been through suitability yet. */
 export function defaultProfile(jurisdiction = "FR", currency = "EUR", now = new Date()): Profile {
@@ -107,11 +123,18 @@ export function profilePath(): string {
   return join(homeDir(), "profile.json");
 }
 
-export function loadProfile(): Profile | undefined {
+/** The profile in force now: a loosening whose 24 hours are over is applied on the way (kept by the next write). */
+export function loadProfile(now = new Date()): Profile | undefined {
   const path = profilePath();
   if (!existsSync(path)) return undefined;
   const p = JSON.parse(readFileSync(path, "utf8")) as Profile;
   if (p.schema !== PROFILE_SCHEMA) throw new Error(`${path} has profile schema ${p.schema}; this ultrastock reads schema ${PROFILE_SCHEMA}`);
+  const matured = (p.pending ?? []).filter((c) => now.getTime() >= Date.parse(c.effectiveAt));
+  if (matured.length) {
+    for (const c of matured) write(p, c.path, c.to, now);
+    p.pending = (p.pending ?? []).filter((c) => !matured.includes(c));
+    if (!p.pending.length) delete p.pending;
+  }
   return p;
 }
 
@@ -178,11 +201,22 @@ function experience(v: string): Experience {
   throw new Error(`experience is none, basic or experienced, not "${v}"`);
 }
 
-/** Set one field, recording the change. Returns the previous value. */
-export function setProfileField(p: Profile, path: string, raw: string, now = new Date()): unknown {
+/** The value a settable field would take from what was typed; throws on an unknown field or a value out of range. */
+export function parseProfileValue(path: string, raw: string): unknown {
   const setter = SETTERS[path];
   if (!setter) throw new Error(`"${path}" is not a profile field you can set — one of: ${SETTABLE_PATHS.join(", ")}`);
-  const value = setter(raw);
+  return setter(raw);
+}
+
+/** The value at a dotted path of the profile. */
+export function profileValue(p: Profile, path: string): unknown {
+  let target: any = p;
+  for (const k of path.split(".")) target = target?.[k];
+  return target;
+}
+
+/** Write a value at a dotted path, recording the change. Returns the previous value. */
+function write(p: Profile, path: string, value: unknown, now: Date): unknown {
   const parts = path.split(".");
   let target: any = p;
   for (const k of parts.slice(0, -1)) target = target[k];
@@ -192,6 +226,88 @@ export function setProfileField(p: Profile, path: string, raw: string, now = new
   p.history.push({ at: now.toISOString(), path, from, to: value });
   p.updatedAt = now.toISOString();
   return from;
+}
+
+/** Set one field now, recording the change. Returns the previous value. */
+export function setProfileField(p: Profile, path: string, raw: string, now = new Date()): unknown {
+  return write(p, path, parseProfileValue(path, raw), now);
+}
+
+/** Limits where a larger number allows more: a bigger position, a deeper loss before the breaker, more orders a day. */
+const LOOSER_WHEN_HIGHER = new Set([
+  "limits.maxPositionPct",
+  "limits.maxSectorPct",
+  "limits.maxCryptoPct",
+  "limits.riskPerTradePct",
+  "limits.maxDailyLossPct",
+  "limits.maxWeeklyLossPct",
+  "limits.maxMonthlyLossPct",
+  "limits.maxOrdersPerDay",
+  "limits.maxOpenPositions",
+]);
+
+/**
+ * Does this change lower a guard? A limit moved the permissive way, a
+ * constraint lifted, an exclusion dropped — and any change of jurisdiction,
+ * since the country decides which venues may take a real order. Everything
+ * else (the horizon, the tax residence, an experience level) guards nothing.
+ */
+export function loosens(path: string, from: unknown, to: unknown): boolean {
+  if (path === "jurisdiction") return from !== to;
+  if (LOOSER_WHEN_HIGHER.has(path)) return Number(to) > Number(from);
+  if (path === "limits.cashBufferPct") return Number(to) < Number(from);
+  if (path === "constraints.exclusions") {
+    const kept = new Set((Array.isArray(to) ? to : []).map((x) => String(x).toLowerCase()));
+    return (Array.isArray(from) ? from : []).some((x) => !kept.has(String(x).toLowerCase()));
+  }
+  if (path.startsWith("constraints.allow")) return from !== true && to === true;
+  return false;
+}
+
+/** What an approval code for a profile change approves: that field, that value. */
+export const profileChangeBinding = (path: string, to: unknown) => `profile|${path}|${JSON.stringify(to)}`;
+
+export interface ChangeOutcome {
+  path: string;
+  from: unknown;
+  to: unknown;
+  /** In force now. */
+  applied: boolean;
+  /** Approved and waiting: in force from this instant. */
+  effectiveAt?: string;
+  /** Neither: why. */
+  reason?: string;
+}
+
+/**
+ * Change one field under the ratchet. With `ratchet` off (live trading never
+ * switched on) every change applies now. With it on, a change that lowers a
+ * guard needs `approved` — a verified out-of-band code — and waits 24 hours;
+ * a tightening applies now and cancels a loosening of the same field still waiting.
+ */
+export function requestProfileChange(p: Profile, path: string, to: unknown, opts: { ratchet: boolean; approved?: boolean; now?: Date }): ChangeOutcome {
+  const now = opts.now ?? new Date();
+  const from = profileValue(p, path);
+  if (!opts.ratchet || !loosens(path, from, to)) {
+    write(p, path, to, now);
+    if (p.pending) {
+      p.pending = p.pending.filter((c) => c.path !== path);
+      if (!p.pending.length) delete p.pending;
+    }
+    return { path, from, to, applied: true };
+  }
+  if (!opts.approved)
+    return {
+      path,
+      from,
+      to,
+      applied: false,
+      reason: "live trading has been switched on: lowering this guard needs an approval code (`profile code …`) and takes effect 24 hours later",
+    };
+  const effectiveAt = new Date(now.getTime() + PROFILE_LOOSEN_DELAY_MS).toISOString();
+  p.pending = [...(p.pending ?? []).filter((c) => c.path !== path), { path, to, requestedAt: now.toISOString(), effectiveAt }];
+  p.updatedAt = now.toISOString();
+  return { path, from, to, applied: false, effectiveAt };
 }
 
 /** Add or replace an envelope (a PEA, a CTO at IBKR, a crypto account at Kraken…). */

@@ -79,7 +79,7 @@ USAGE
   ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
   ultrastock report <run> [--answer <answer.md>] [--json]
   ultrastock profile init [--jurisdiction FR] [--currency EUR] [--json]
-  ultrastock profile show|suitability [--answers <file>]|set <field> <value>|envelope <id> --type PEA [--broker <name>] [--json]
+  ultrastock profile show|suitability [--answers <file>] [--request-code|--code <code>]|set <field> <value> [--code <code>]|code <field> <value>|envelope <id> --type PEA [--broker <name>] [--json]
   ultrastock jurisdiction show|verify [--jurisdiction FR] [--venues binance,kraken,coinbase] [--out <dir>] [--json]
   ultrastock calendar sessions|holidays|verify [--market XPAR|XNYS|XMIL|XOSL|CRYPTO] [--days <n>] [--year <yyyy>] [--json]
   ultrastock calendar econ|earnings|dividends [<date>] [--limit <n>] [--out <dir>] [--json]
@@ -754,6 +754,7 @@ export const BOOL_FLAGS = [
   "leveraged",
   "hedged",
   "not-placed",
+  "request-code",
 ];
 export const COMMANDS = [
   "analyze",
@@ -836,7 +837,7 @@ const SPEC: CliSpec = {
     evidence: ["json"],
     check: ["max-age", "json"],
     report: ["answer", "json"],
-    profile: ["jurisdiction", "currency", "answers", "type", "broker", "json"],
+    profile: ["jurisdiction", "currency", "answers", "type", "broker", "code", "request-code", "json"],
     jurisdiction: ["jurisdiction", "venues", "out", ...NET],
     calendar: ["market", "days", "year", "limit", "out", ...NET],
     macro: ["days", "out", ...NET],

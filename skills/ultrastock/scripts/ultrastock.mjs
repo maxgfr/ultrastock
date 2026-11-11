@@ -17315,6 +17315,7 @@ function verifyChecklist(code) {
 import { existsSync as existsSync14, mkdirSync as mkdirSync10, readFileSync as readFileSync17 } from "fs";
 import { dirname as dirname4, join as join17 } from "path";
 var PROFILE_SCHEMA = 1;
+var PROFILE_LOOSEN_DELAY_MS = 24 * 36e5;
 function defaultProfile(jurisdiction = "FR", currency = "EUR", now = /* @__PURE__ */ new Date()) {
   return {
     schema: PROFILE_SCHEMA,
@@ -17344,11 +17345,17 @@ function defaultProfile(jurisdiction = "FR", currency = "EUR", now = /* @__PURE_
 function profilePath() {
   return join17(homeDir(), "profile.json");
 }
-function loadProfile() {
+function loadProfile(now = /* @__PURE__ */ new Date()) {
   const path2 = profilePath();
   if (!existsSync14(path2)) return void 0;
   const p = JSON.parse(readFileSync17(path2, "utf8"));
   if (p.schema !== PROFILE_SCHEMA) throw new Error(`${path2} has profile schema ${p.schema}; this ultrastock reads schema ${PROFILE_SCHEMA}`);
+  const matured = (p.pending ?? []).filter((c) => now.getTime() >= Date.parse(c.effectiveAt));
+  if (matured.length) {
+    for (const c of matured) write(p, c.path, c.to, now);
+    p.pending = (p.pending ?? []).filter((c) => !matured.includes(c));
+    if (!p.pending.length) delete p.pending;
+  }
   return p;
 }
 function saveProfile(p) {
@@ -17406,10 +17413,17 @@ function experience(v) {
   if (v === "none" || v === "basic" || v === "experienced") return v;
   throw new Error(`experience is none, basic or experienced, not "${v}"`);
 }
-function setProfileField(p, path2, raw, now = /* @__PURE__ */ new Date()) {
+function parseProfileValue(path2, raw) {
   const setter = SETTERS[path2];
   if (!setter) throw new Error(`"${path2}" is not a profile field you can set \u2014 one of: ${SETTABLE_PATHS.join(", ")}`);
-  const value = setter(raw);
+  return setter(raw);
+}
+function profileValue(p, path2) {
+  let target = p;
+  for (const k of path2.split(".")) target = target?.[k];
+  return target;
+}
+function write(p, path2, value, now) {
   const parts = path2.split(".");
   let target = p;
   for (const k of parts.slice(0, -1)) target = target[k];
@@ -17419,6 +17433,53 @@ function setProfileField(p, path2, raw, now = /* @__PURE__ */ new Date()) {
   p.history.push({ at: now.toISOString(), path: path2, from, to: value });
   p.updatedAt = now.toISOString();
   return from;
+}
+var LOOSER_WHEN_HIGHER = /* @__PURE__ */ new Set([
+  "limits.maxPositionPct",
+  "limits.maxSectorPct",
+  "limits.maxCryptoPct",
+  "limits.riskPerTradePct",
+  "limits.maxDailyLossPct",
+  "limits.maxWeeklyLossPct",
+  "limits.maxMonthlyLossPct",
+  "limits.maxOrdersPerDay",
+  "limits.maxOpenPositions"
+]);
+function loosens(path2, from, to) {
+  if (path2 === "jurisdiction") return from !== to;
+  if (LOOSER_WHEN_HIGHER.has(path2)) return Number(to) > Number(from);
+  if (path2 === "limits.cashBufferPct") return Number(to) < Number(from);
+  if (path2 === "constraints.exclusions") {
+    const kept = new Set((Array.isArray(to) ? to : []).map((x) => String(x).toLowerCase()));
+    return (Array.isArray(from) ? from : []).some((x) => !kept.has(String(x).toLowerCase()));
+  }
+  if (path2.startsWith("constraints.allow")) return from !== true && to === true;
+  return false;
+}
+var profileChangeBinding = (path2, to) => `profile|${path2}|${JSON.stringify(to)}`;
+function requestProfileChange(p, path2, to, opts) {
+  const now = opts.now ?? /* @__PURE__ */ new Date();
+  const from = profileValue(p, path2);
+  if (!opts.ratchet || !loosens(path2, from, to)) {
+    write(p, path2, to, now);
+    if (p.pending) {
+      p.pending = p.pending.filter((c) => c.path !== path2);
+      if (!p.pending.length) delete p.pending;
+    }
+    return { path: path2, from, to, applied: true };
+  }
+  if (!opts.approved)
+    return {
+      path: path2,
+      from,
+      to,
+      applied: false,
+      reason: "live trading has been switched on: lowering this guard needs an approval code (`profile code \u2026`) and takes effect 24 hours later"
+    };
+  const effectiveAt = new Date(now.getTime() + PROFILE_LOOSEN_DELAY_MS).toISOString();
+  p.pending = [...(p.pending ?? []).filter((c) => c.path !== path2), { path: path2, to, requestedAt: now.toISOString(), effectiveAt }];
+  p.updatedAt = now.toISOString();
+  return { path: path2, from, to, applied: false, effectiveAt };
 }
 function upsertEnvelope(p, env2, now = /* @__PURE__ */ new Date()) {
   const i = p.envelopes.findIndex((e) => e.id === env2.id);
@@ -46978,25 +47039,39 @@ function scoreSuitability(answers) {
     horizonYears: typeof answers.horizon === "string" ? HORIZON_YEARS[answers.horizon] : void 0
   };
 }
-function applySuitability(p, r3, now = /* @__PURE__ */ new Date()) {
+var suitabilityBinding = (r3) => `profile|suitability|${JSON.stringify([r3.limits, r3.constraints])}`;
+function applySuitability(p, r3, now = /* @__PURE__ */ new Date(), opts = {}) {
   const record = (path2, from, to) => p.history.push({ at: now.toISOString(), path: path2, from, to });
   record("riskScore", p.riskScore, r3.score);
   p.riskScore = r3.score;
   p.riskLabel = r3.label;
-  record("limits", p.limits, r3.limits);
-  p.limits = r3.limits;
-  p.constraints = { ...p.constraints, ...r3.constraints };
+  const waiting = [];
+  const held = [];
+  const changes = [
+    ...Object.entries(r3.limits).map(([k, v]) => [`limits.${k}`, v]),
+    ...Object.entries(r3.constraints).map(([k, v]) => [`constraints.${k}`, v])
+  ];
+  for (const [path2, to] of changes) {
+    if (JSON.stringify(profileValue(p, path2)) === JSON.stringify(to)) continue;
+    const o = requestProfileChange(p, path2, to, { ratchet: !!opts.ratchet, approved: opts.approved, now });
+    if (o.effectiveAt) waiting.push(o);
+    else if (!o.applied) held.push(o);
+  }
   p.experience = r3.experience;
   if (r3.emergencyFundMonths !== void 0) p.emergencyFundMonths = r3.emergencyFundMonths;
   if (r3.lossTolerancePct !== void 0) p.lossTolerancePct = r3.lossTolerancePct;
   if (r3.horizonYears !== void 0) p.horizonYears = r3.horizonYears;
   p.updatedAt = now.toISOString();
+  return { waiting, held };
 }
 
 // src/commands/profile.ts
 var ENVELOPES = ["PEA", "PEA-PME", "CTO", "AV", "PER", "CRYPTO", "TAXABLE", "IRA", "ROTH-IRA", "401K", "OTHER"];
+function profileRatchetOn() {
+  return currentLimits().venues.length > 0;
+}
 function requireProfile() {
-  const p = loadProfile();
+  const p = loadProfile(clockNow());
   if (!p) throw new Error(`no profile yet \u2014 run \`ultrastock profile init --jurisdiction FR --currency EUR\` (it lives in ${profilePath()})`);
   return p;
 }
@@ -47029,17 +47104,38 @@ async function profileCommand(args, asJson) {
     const p = requireProfile();
     return printResult(asJson, p, JSON.stringify({ ...p, history: `${p.history.length} change(s)` }, null, 2));
   }
-  if (sub === "set") {
+  if (sub === "set" || sub === "code") {
     const [path2, ...value] = rest;
-    if (!path2 || !value.length) throw new UsageError(`usage: ultrastock profile set <field> <value> \u2014 fields: ${SETTABLE_PATHS.join(", ")}`);
-    let from;
-    const p = changeProfile((x) => {
-      from = setProfileField(x, path2, value.join(" "), clockNow());
+    if (!path2 || !value.length)
+      throw new UsageError(`usage: ultrastock profile ${sub} <field> <value>${sub === "set" ? " [--code <code>]" : ""} \u2014 fields: ${SETTABLE_PATHS.join(", ")}`);
+    const to = parseProfileValue(path2, value.join(" "));
+    const now = clockNow();
+    if (sub === "code") {
+      const p = requireProfile();
+      if (!profileRatchetOn() || !loosens(path2, profileValue(p, path2), to))
+        return printResult(asJson, { needed: false }, `${path2}: no code needed \u2014 \`profile set ${path2} ${value.join(" ")}\` applies it now`);
+      const r3 = await issueCode(
+        "profile",
+        profileChangeBinding(path2, to),
+        `profile ${path2}: ${JSON.stringify(profileValue(p, path2))} \u2192 ${JSON.stringify(to)} (in force 24 hours after approval)`
+      );
+      return printResult(
+        asJson,
+        r3,
+        `approval code sent to ${r3.sentTo.join(", ")} (valid until ${r3.expiresAt}). Then: ultrastock profile set ${path2} ${value.join(" ")} --code <code>`
+      );
+    }
+    const code = argValue(args, "code");
+    const approved = code ? verifyCode("profile", profileChangeBinding(path2, to), code, now).ok : false;
+    if (code && !approved) throw new Error(`the approval code does not match this change (or expired): run \`profile code ${path2} ${value.join(" ")}\` again`);
+    let o;
+    changeProfile((x) => {
+      o = requestProfileChange(x, path2, to, { ratchet: profileRatchetOn(), approved, now });
     });
     return printResult(
       asJson,
-      { path: path2, from, to: p.history[p.history.length - 1].to },
-      `${path2}: ${JSON.stringify(from)} \u2192 ${JSON.stringify(p.history[p.history.length - 1].to)}`
+      o,
+      o.applied ? `${path2}: ${JSON.stringify(o.from)} \u2192 ${JSON.stringify(o.to)}` : o.effectiveAt ? `${path2}: ${JSON.stringify(o.from)} \u2192 ${JSON.stringify(o.to)} approved \u2014 in force from ${o.effectiveAt}` : `${path2}: not changed \u2014 ${o.reason}`
     );
   }
   if (sub === "envelope") {
@@ -47074,7 +47170,22 @@ async function profileCommand(args, asJson) {
     }
     const answers = JSON.parse(readFileSync45(resolve13(answersFile), "utf8"));
     const r3 = scoreSuitability(answers);
-    changeProfile((p) => applySuitability(p, r3, clockNow()));
+    const now = clockNow();
+    const ratchet = profileRatchetOn();
+    const code = argValue(args, "code");
+    const approved = code ? verifyCode("profile", suitabilityBinding(r3), code, now).ok : false;
+    if (code && !approved) throw new Error("the approval code does not match these answers' limits (or expired)");
+    if (ratchet && !code && args.bools.has("request-code")) {
+      const c = await issueCode("profile", suitabilityBinding(r3), `the questionnaire's limits (risk score ${r3.score}/7), in force 24 hours after approval`);
+      return printResult(
+        asJson,
+        c,
+        `approval code sent to ${c.sentTo.join(", ")} (valid until ${c.expiresAt}). Then: ultrastock profile suitability --answers ${answersFile} --code <code>`
+      );
+    }
+    let waiting = [];
+    let held = [];
+    changeProfile((p) => ({ waiting, held } = applySuitability(p, r3, now, { ratchet, approved })));
     return printResult(
       asJson,
       r3,
@@ -47082,11 +47193,15 @@ async function profileCommand(args, asJson) {
         `risk score ${r3.score}/7 \u2014 ${r3.label} (${r3.points}/${r3.maxPoints} points)`,
         ...r3.reasons.map((x) => `  ${x}`),
         ...r3.warnings.map((w) => `  WARNING: ${w}`),
-        `limits now: position \u2264 ${r3.limits.maxPositionPct} %, sector \u2264 ${r3.limits.maxSectorPct} %, crypto \u2264 ${r3.limits.maxCryptoPct} %, risk per trade ${r3.limits.riskPerTradePct} %, daily loss stop ${r3.limits.maxDailyLossPct} %`
+        `limits from the answers: position \u2264 ${r3.limits.maxPositionPct} %, sector \u2264 ${r3.limits.maxSectorPct} %, crypto \u2264 ${r3.limits.maxCryptoPct} %, risk per trade ${r3.limits.riskPerTradePct} %, daily loss stop ${r3.limits.maxDailyLossPct} %`,
+        ...waiting.map((w) => `  ${w.path} \u2192 ${JSON.stringify(w.to)}: approved, in force from ${w.effectiveAt}`),
+        ...held.length ? [
+          `  NOT applied (live trading is on: lowering a guard needs a code and 24 hours): ${held.map((h) => h.path).join(", ")} \u2014 \`profile suitability --answers ${answersFile} --request-code\`, then the same with --code <code>`
+        ] : []
       ].join("\n")
     );
   }
-  throw new UsageError(`unknown profile action "${sub}" \u2014 init, show, set, envelope, suitability`);
+  throw new UsageError(`unknown profile action "${sub}" \u2014 init, show, set, code, envelope, suitability`);
 }
 async function jurisdictionCommand(args, asJson) {
   const [sub = "show"] = args.positional;
@@ -55913,7 +56028,7 @@ USAGE
   ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
   ultrastock report <run> [--answer <answer.md>] [--json]
   ultrastock profile init [--jurisdiction FR] [--currency EUR] [--json]
-  ultrastock profile show|suitability [--answers <file>]|set <field> <value>|envelope <id> --type PEA [--broker <name>] [--json]
+  ultrastock profile show|suitability [--answers <file>] [--request-code|--code <code>]|set <field> <value> [--code <code>]|code <field> <value>|envelope <id> --type PEA [--broker <name>] [--json]
   ultrastock jurisdiction show|verify [--jurisdiction FR] [--venues binance,kraken,coinbase] [--out <dir>] [--json]
   ultrastock calendar sessions|holidays|verify [--market XPAR|XNYS|XMIL|XOSL|CRYPTO] [--days <n>] [--year <yyyy>] [--json]
   ultrastock calendar econ|earnings|dividends [<date>] [--limit <n>] [--out <dir>] [--json]
@@ -56586,7 +56701,8 @@ var BOOL_FLAGS = [
   "watch",
   "leveraged",
   "hedged",
-  "not-placed"
+  "not-placed",
+  "request-code"
 ];
 var COMMANDS = [
   "analyze",
@@ -56668,7 +56784,7 @@ var SPEC = {
     evidence: ["json"],
     check: ["max-age", "json"],
     report: ["answer", "json"],
-    profile: ["jurisdiction", "currency", "answers", "type", "broker", "json"],
+    profile: ["jurisdiction", "currency", "answers", "type", "broker", "code", "request-code", "json"],
     jurisdiction: ["jurisdiction", "venues", "out", ...NET],
     calendar: ["market", "days", "year", "limit", "out", ...NET],
     macro: ["days", "out", ...NET],

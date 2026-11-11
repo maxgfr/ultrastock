@@ -4,7 +4,7 @@
 // suitability --answers <file>` turns them into a risk score from 1 to 7 and
 // the limits the risk gate will enforce. Deterministic: the same answers give
 // the same score, and the score's reasons are printed.
-import type { Experience, Limits, Profile } from "./profile.js";
+import { type ChangeOutcome, type Experience, type Limits, type Profile, profileValue, requestProfileChange } from "./profile.js";
 
 export interface Question {
   id: string;
@@ -280,17 +280,43 @@ export function scoreSuitability(answers: Record<string, string | number>): Suit
 }
 
 /** Apply a suitability result to a profile, recording every change. */
-export function applySuitability(p: Profile, r: SuitabilityResult, now = new Date()): void {
+/** What an approval code for a questionnaire's limits approves: those limits and constraints, as a whole. */
+export const suitabilityBinding = (r: Pick<SuitabilityResult, "limits" | "constraints">) => `profile|suitability|${JSON.stringify([r.limits, r.constraints])}`;
+
+/**
+ * Write a questionnaire's result into the profile. The score, the experience
+ * and the answers always apply. The limits and constraints it leads to go
+ * through the profile's ratchet, field by field: with `ratchet` on (live
+ * trading has been switched on), the ones that lower a guard wait for a code
+ * and 24 hours — a questionnaire answered again must not be a way round it.
+ * Returns what did not apply now.
+ */
+export function applySuitability(
+  p: Profile,
+  r: SuitabilityResult,
+  now = new Date(),
+  opts: { ratchet?: boolean; approved?: boolean } = {},
+): { waiting: ChangeOutcome[]; held: ChangeOutcome[] } {
   const record = (path: string, from: unknown, to: unknown) => p.history.push({ at: now.toISOString(), path, from, to });
   record("riskScore", p.riskScore, r.score);
   p.riskScore = r.score;
   p.riskLabel = r.label;
-  record("limits", p.limits, r.limits);
-  p.limits = r.limits;
-  p.constraints = { ...p.constraints, ...r.constraints };
+  const waiting: ChangeOutcome[] = [];
+  const held: ChangeOutcome[] = [];
+  const changes: Array<[string, unknown]> = [
+    ...Object.entries(r.limits).map(([k, v]) => [`limits.${k}`, v] as [string, unknown]),
+    ...Object.entries(r.constraints).map(([k, v]) => [`constraints.${k}`, v] as [string, unknown]),
+  ];
+  for (const [path, to] of changes) {
+    if (JSON.stringify(profileValue(p, path)) === JSON.stringify(to)) continue;
+    const o = requestProfileChange(p, path, to, { ratchet: !!opts.ratchet, approved: opts.approved, now });
+    if (o.effectiveAt) waiting.push(o);
+    else if (!o.applied) held.push(o);
+  }
   p.experience = r.experience;
   if (r.emergencyFundMonths !== undefined) p.emergencyFundMonths = r.emergencyFundMonths;
   if (r.lossTolerancePct !== undefined) p.lossTolerancePct = r.lossTolerancePct;
   if (r.horizonYears !== undefined) p.horizonYears = r.horizonYears;
   p.updatedAt = now.toISOString();
+  return { waiting, held };
 }
