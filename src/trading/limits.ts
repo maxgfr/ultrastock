@@ -25,7 +25,11 @@ export interface LiveLimits {
 interface Stored {
   current: LiveLimits;
   pending?: { limits: LiveLimits; requestedAt: string; effectiveAt: string };
-  history: Array<{ at: string; from: LiveLimits; to: LiveLimits; how: "tightened" | "loosened" }>;
+  /**
+   * Every change. "pending tightened" / "pending dropped": a tightening also cut down (or emptied) a loosening
+   * still waiting out its 24 hours — `from` is what was approved, `to` what still waits (or the limits in force).
+   */
+  history: Array<{ at: string; from: LiveLimits; to: LiveLimits; how: "tightened" | "loosened" | "pending tightened" | "pending dropped" }>;
 }
 
 /** Experience tiers by live fills so far: small at first, whatever the profile says. */
@@ -56,16 +60,20 @@ function save(s: Stored): void {
  */
 const limitsLock = <T>(fn: () => T): T => withFileLockSync(`${path()}.lock`, fn);
 
+/** Apply a loosening whose 24 hours are over; true when `s` changed. */
+function mature(s: Stored, now: Date): boolean {
+  if (!s.pending || now.getTime() < Date.parse(s.pending.effectiveAt)) return false;
+  s.history.push({ at: now.toISOString(), from: s.current, to: s.pending.limits, how: "loosened" });
+  s.current = s.pending.limits;
+  s.pending = undefined;
+  return true;
+}
+
 /** The limits in force now (a matured loosening is applied), capped by the tier. */
 export function effectiveLimits(liveFills: number, now = new Date()): { limits: LiveLimits; tier: string; pending?: Stored["pending"] } {
   const s = limitsLock(() => {
     const s = load();
-    if (s.pending && now.getTime() >= Date.parse(s.pending.effectiveAt)) {
-      s.history.push({ at: now.toISOString(), from: s.current, to: s.pending.limits, how: "loosened" });
-      s.current = s.pending.limits;
-      s.pending = undefined;
-      save(s);
-    }
+    if (mature(s, now)) save(s);
     return s;
   });
   const t = tierFor(liveFills);
@@ -84,6 +92,18 @@ export function isTightening(cur: LiveLimits, next: LiveLimits): boolean {
     next.venues.every((v) => cur.venues.includes(v)) &&
     next.attestedNoWithdraw.every((v) => cur.attestedNoWithdraw.includes(v))
   );
+}
+
+/** `l` with each limit `set` names made no looser than `set` says: the lower amount, the venues in both. */
+function tightenedBy(l: LiveLimits, set: Partial<LiveLimits>): LiveLimits {
+  const out = { ...l };
+  if (set.maxOrder !== undefined) out.maxOrder = Math.min(l.maxOrder, set.maxOrder);
+  if (set.maxDaily !== undefined) out.maxDaily = Math.min(l.maxDaily, set.maxDaily);
+  if (set.venues) out.venues = l.venues.filter((v) => set.venues!.includes(v));
+  if (set.attestedNoWithdraw) out.attestedNoWithdraw = l.attestedNoWithdraw.filter((v) => set.attestedNoWithdraw!.includes(v));
+  // A day never holds less than one order.
+  out.maxOrder = Math.min(out.maxOrder, out.maxDaily);
+  return out;
 }
 
 /** A stable binding for the approval code of a loosening. */
@@ -111,16 +131,34 @@ function changeLimits(
   now: Date,
 ): { applied: boolean; effectiveAt?: string; reason?: string } {
   const s = load();
-  const next: LiveLimits = { ...s.current, ...Object.fromEntries(Object.entries(change).filter(([, v]) => v !== undefined)) };
-  if (!(next.maxOrder >= 0 && next.maxDaily >= next.maxOrder)) return { applied: false, reason: "the daily limit must be at least the order limit, both ≥ 0" };
+  // A loosening whose 24 hours are over is in force: the change is made over it, not over the limits before it.
+  const matured = mature(s, now);
+  const set = Object.fromEntries(Object.entries(change).filter(([, v]) => v !== undefined)) as Partial<LiveLimits>;
+  const next: LiveLimits = { ...s.current, ...set };
+  if (!(next.maxOrder >= 0 && next.maxDaily >= next.maxOrder)) {
+    if (matured) save(s);
+    return { applied: false, reason: "the daily limit must be at least the order limit, both ≥ 0" };
+  }
   if (isTightening(s.current, next)) {
     s.history.push({ at: now.toISOString(), from: s.current, to: next, how: "tightened" });
     s.current = next;
-    // A pending loosening beyond the new limits is dropped.
-    if (s.pending && !isTightening(next, s.pending.limits)) s.pending = undefined;
+    if (s.pending) {
+      // A loosening still waiting keeps waiting, cut down by what this change tightens (and only that):
+      // `--max-order 249` lowers its order limit too, and leaves the venue it switches on alone.
+      const waiting = tightenedBy(s.pending.limits, set);
+      if (isTightening(next, waiting)) {
+        // Nothing is left of it beyond the limits now in force.
+        s.history.push({ at: now.toISOString(), from: s.pending.limits, to: next, how: "pending dropped" });
+        s.pending = undefined;
+      } else if (limitsBinding(waiting) !== limitsBinding(s.pending.limits)) {
+        s.history.push({ at: now.toISOString(), from: s.pending.limits, to: waiting, how: "pending tightened" });
+        s.pending = { ...s.pending, limits: waiting };
+      }
+    }
     save(s);
     return { applied: true };
   }
+  if (matured) save(s);
   if (!(typeof approved === "function" ? approved(next) : approved))
     return { applied: false, reason: "loosening a limit needs an approval code (`broker code limits …`) and takes effect 24 hours later" };
   const effectiveAt = new Date(now.getTime() + LOOSEN_DELAY_MS).toISOString();

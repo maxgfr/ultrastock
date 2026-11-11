@@ -45295,15 +45295,17 @@ function save2(s) {
 `, 384);
 }
 var limitsLock = (fn) => withFileLockSync(`${path()}.lock`, fn);
+function mature(s, now) {
+  if (!s.pending || now.getTime() < Date.parse(s.pending.effectiveAt)) return false;
+  s.history.push({ at: now.toISOString(), from: s.current, to: s.pending.limits, how: "loosened" });
+  s.current = s.pending.limits;
+  s.pending = void 0;
+  return true;
+}
 function effectiveLimits(liveFills, now = /* @__PURE__ */ new Date()) {
   const s = limitsLock(() => {
     const s2 = load();
-    if (s2.pending && now.getTime() >= Date.parse(s2.pending.effectiveAt)) {
-      s2.history.push({ at: now.toISOString(), from: s2.current, to: s2.pending.limits, how: "loosened" });
-      s2.current = s2.pending.limits;
-      s2.pending = void 0;
-      save2(s2);
-    }
+    if (mature(s2, now)) save2(s2);
     return s2;
   });
   const t = tierFor(liveFills);
@@ -45316,21 +45318,45 @@ function effectiveLimits(liveFills, now = /* @__PURE__ */ new Date()) {
 function isTightening(cur, next2) {
   return next2.maxOrder <= cur.maxOrder && next2.maxDaily <= cur.maxDaily && next2.venues.every((v) => cur.venues.includes(v)) && next2.attestedNoWithdraw.every((v) => cur.attestedNoWithdraw.includes(v));
 }
+function tightenedBy(l, set) {
+  const out = { ...l };
+  if (set.maxOrder !== void 0) out.maxOrder = Math.min(l.maxOrder, set.maxOrder);
+  if (set.maxDaily !== void 0) out.maxDaily = Math.min(l.maxDaily, set.maxDaily);
+  if (set.venues) out.venues = l.venues.filter((v) => set.venues.includes(v));
+  if (set.attestedNoWithdraw) out.attestedNoWithdraw = l.attestedNoWithdraw.filter((v) => set.attestedNoWithdraw.includes(v));
+  out.maxOrder = Math.min(out.maxOrder, out.maxDaily);
+  return out;
+}
 var limitsBinding = (l) => JSON.stringify([l.maxOrder, l.maxDaily, [...l.venues].sort(), [...l.attestedNoWithdraw].sort()]);
 function requestLimits(change, approved, now = /* @__PURE__ */ new Date()) {
   return limitsLock(() => changeLimits(change, approved, now));
 }
 function changeLimits(change, approved, now) {
   const s = load();
-  const next2 = { ...s.current, ...Object.fromEntries(Object.entries(change).filter(([, v]) => v !== void 0)) };
-  if (!(next2.maxOrder >= 0 && next2.maxDaily >= next2.maxOrder)) return { applied: false, reason: "the daily limit must be at least the order limit, both \u2265 0" };
+  const matured = mature(s, now);
+  const set = Object.fromEntries(Object.entries(change).filter(([, v]) => v !== void 0));
+  const next2 = { ...s.current, ...set };
+  if (!(next2.maxOrder >= 0 && next2.maxDaily >= next2.maxOrder)) {
+    if (matured) save2(s);
+    return { applied: false, reason: "the daily limit must be at least the order limit, both \u2265 0" };
+  }
   if (isTightening(s.current, next2)) {
     s.history.push({ at: now.toISOString(), from: s.current, to: next2, how: "tightened" });
     s.current = next2;
-    if (s.pending && !isTightening(next2, s.pending.limits)) s.pending = void 0;
+    if (s.pending) {
+      const waiting = tightenedBy(s.pending.limits, set);
+      if (isTightening(next2, waiting)) {
+        s.history.push({ at: now.toISOString(), from: s.pending.limits, to: next2, how: "pending dropped" });
+        s.pending = void 0;
+      } else if (limitsBinding(waiting) !== limitsBinding(s.pending.limits)) {
+        s.history.push({ at: now.toISOString(), from: s.pending.limits, to: waiting, how: "pending tightened" });
+        s.pending = { ...s.pending, limits: waiting };
+      }
+    }
     save2(s);
     return { applied: true };
   }
+  if (matured) save2(s);
   if (!(typeof approved === "function" ? approved(next2) : approved))
     return { applied: false, reason: "loosening a limit needs an approval code (`broker code limits \u2026`) and takes effect 24 hours later" };
   const effectiveAt = new Date(now.getTime() + LOOSEN_DELAY_MS).toISOString();
