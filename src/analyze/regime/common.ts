@@ -24,18 +24,21 @@ export const round4 = (x: number) => Number(x.toFixed(4));
 
 /**
  * Minute of the UTC day after which a market's bar dated today is final, after
- * the close in both DST regimes: US 21:15 (16:00 EST = 21:00 UTC); Euronext,
- * other European venues and their once-a-day funds 16:45 (17:30 CET = 16:30
- * UTC); "world" 21:15, its last venues being Toronto, Mexico and São Paulo.
- * A crypto candle dated today is still open: never final.
+ * the close in both DST regimes and behind a feed delayed by 15 minutes: US
+ * 21:15 (16:00 EST = 21:00 UTC); Euronext, other European venues and their
+ * once-a-day funds 17:00 (the closing auction uncrosses about 17:35 CET =
+ * 16:35 UTC, so a 15-minute-late feed shows the final price from 16:50 —
+ * before that, today's bar may hold the pre-auction price); "world" 21:15, its
+ * last venues being Toronto, Mexico and São Paulo. A crypto candle dated
+ * today is still open: never final.
  */
 const SESSION_FINAL_UTC: Record<Market, number | undefined> = {
   crypto: undefined,
   us: 21 * 60 + 15,
   world: 21 * 60 + 15,
-  euronext: 16 * 60 + 45,
-  europe: 16 * 60 + 45,
-  fund: 16 * 60 + 45,
+  euronext: 17 * 60,
+  europe: 17 * 60,
+  fund: 17 * 60,
 };
 
 /**

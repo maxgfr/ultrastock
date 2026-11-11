@@ -27,6 +27,9 @@ describe("regime plumbing", () => {
     expect(closedBars(bars, "us", noon)).toHaveLength(2);
     expect(closedBars(bars, "us", new Date("2026-10-24T21:30:00Z"))).toHaveLength(3);
     expect(closedBars(bars, "euronext", new Date("2026-10-24T17:00:00Z"))).toHaveLength(3);
+    // Winter: the closing auction uncrosses about 16:35 UTC; a feed 15 minutes late still shows the pre-auction price at 16:50.
+    expect(closedBars(bars, "euronext", new Date("2026-10-24T16:50:00Z"))).toHaveLength(2);
+    expect(closedBars(bars, "europe", new Date("2026-10-24T16:50:00Z"))).toHaveLength(2);
     expect(closedBars(bars, "euronext", new Date("2026-10-23T23:00:00Z"))).toHaveLength(2);
     // "world" spans Tokyo to Toronto and São Paulo: its last venues close near 21:00 UTC.
     expect(closedBars(bars, "world", new Date("2026-10-24T17:00:00Z"))).toHaveLength(2);

@@ -19157,9 +19157,9 @@ var SESSION_FINAL_UTC = {
   crypto: void 0,
   us: 21 * 60 + 15,
   world: 21 * 60 + 15,
-  euronext: 16 * 60 + 45,
-  europe: 16 * 60 + 45,
-  fund: 16 * 60 + 45
+  euronext: 17 * 60,
+  europe: 17 * 60,
+  fund: 17 * 60
 };
 function closedBars(bars, market, now) {
   const today = isoDayOf(now);
