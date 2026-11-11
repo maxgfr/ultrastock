@@ -166,7 +166,7 @@ export async function brokerCommand(args: CommandArgs, asJson: boolean): Promise
     if (args.bools.has("not-placed")) {
       // The user, who can read the venue's own order history, declares a lost order never placed: only then may it be sent again.
       const rec = liveRecordOf(t);
-      if (!rec || rec.state !== "unknown")
+      if (rec?.state !== "unknown")
         throw new Error(`ticket ${id} has no order of unknown fate: --not-placed is for an order whose answer was lost and that the venue does not list`);
       const r = await issueCode(
         t.id,

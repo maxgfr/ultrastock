@@ -44615,7 +44615,7 @@ async function brokerCommand(args, asJson) {
     const t2 = loadTicket(id);
     if (args.bools.has("not-placed")) {
       const rec = liveRecordOf(t2);
-      if (!rec || rec.state !== "unknown")
+      if (rec?.state !== "unknown")
         throw new Error(`ticket ${id} has no order of unknown fate: --not-placed is for an order whose answer was lost and that the venue does not list`);
       const r4 = await issueCode(
         t2.id,
