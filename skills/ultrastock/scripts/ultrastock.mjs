@@ -23538,9 +23538,7 @@ function parseGdelt(js) {
 var words2 = (t) => new Set(
   t.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").split(" ").filter((w) => w.length > 1)
 );
-function titleSimilarity(a, b) {
-  const A = words2(a);
-  const B = words2(b);
+function jaccard(A, B) {
   if (!A.size || !B.size) return 0;
   let inter = 0;
   for (const w of A) if (B.has(w)) inter++;
@@ -23549,8 +23547,11 @@ function titleSimilarity(a, b) {
 function dedupeArticles(articles, threshold = 0.75) {
   const sorted = [...articles].sort((a, b) => (b.published ?? "").localeCompare(a.published ?? ""));
   const kept = [];
-  for (const a of sorted) if (!kept.some((k) => k.url === a.url || titleSimilarity(k.title, a.title) >= threshold)) kept.push(a);
-  return kept;
+  for (const a of sorted) {
+    const w = words2(a.title);
+    if (!kept.some((k) => k.article.url === a.url || jaccard(k.words, w) >= threshold)) kept.push({ article: a, words: w });
+  }
+  return kept.map((k) => k.article);
 }
 var GN_LOCALE = { en: "hl=en-US&gl=US&ceid=US:en", fr: "hl=fr&gl=FR&ceid=FR:fr" };
 async function googleNewsArticles(query2, lang = "en", days = 7) {

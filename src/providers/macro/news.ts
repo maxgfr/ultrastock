@@ -75,22 +75,29 @@ const words = (t: string) =>
       .filter((w) => w.length > 1),
   );
 
-/** Word-set Jaccard similarity of two titles, 0–1. */
-export function titleSimilarity(a: string, b: string): number {
-  const A = words(a);
-  const B = words(b);
+/** Jaccard similarity of two word sets, 0–1. */
+function jaccard(A: ReadonlySet<string>, B: ReadonlySet<string>): number {
   if (!A.size || !B.size) return 0;
   let inter = 0;
   for (const w of A) if (B.has(w)) inter++;
   return inter / (A.size + B.size - inter);
 }
 
+/** Word-set Jaccard similarity of two titles, 0–1. */
+export function titleSimilarity(a: string, b: string): number {
+  return jaccard(words(a), words(b));
+}
+
 /** Newest first, near-duplicate titles (similarity ≥ `threshold`) collapsed onto the newest copy. */
 export function dedupeArticles(articles: readonly Article[], threshold = 0.75): Article[] {
   const sorted = [...articles].sort((a, b) => (b.published ?? "").localeCompare(a.published ?? ""));
-  const kept: Article[] = [];
-  for (const a of sorted) if (!kept.some((k) => k.url === a.url || titleSimilarity(k.title, a.title) >= threshold)) kept.push(a);
-  return kept;
+  // Each title is split into words once, not once per pair compared.
+  const kept: Array<{ article: Article; words: Set<string> }> = [];
+  for (const a of sorted) {
+    const w = words(a.title);
+    if (!kept.some((k) => k.article.url === a.url || jaccard(k.words, w) >= threshold)) kept.push({ article: a, words: w });
+  }
+  return kept.map((k) => k.article);
 }
 
 export type NewsLang = "en" | "fr";

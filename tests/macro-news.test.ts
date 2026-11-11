@@ -22,6 +22,7 @@ import {
 } from "../src/providers/macro/universe.js";
 import { ProviderError } from "../src/providers/types.js";
 import { withFixture } from "./helpers/fixtures.js";
+import { prng } from "./helpers/series.js";
 
 afterEach(() => setNetMode({ kind: "live" }));
 
@@ -56,6 +57,33 @@ describe("news", () => {
       a("Fed holds rates steady", "2026-10-22T10:00:00Z", "u3"),
     ]);
     expect(out.map((x) => x.url)).toEqual(["u2", "u3"]);
+  });
+  it("deduplicates exactly as comparing every pair of titles afresh does", () => {
+    // The pairwise reference: each comparison splits both titles into words again.
+    const reference = (articles: readonly Article[], threshold = 0.75): Article[] => {
+      const sorted = [...articles].sort((x, y) => (y.published ?? "").localeCompare(x.published ?? ""));
+      const kept: Article[] = [];
+      for (const x of sorted) if (!kept.some((k) => k.url === x.url || titleSimilarity(k.title, x.title) >= threshold)) kept.push(x);
+      return kept;
+    };
+    const r = prng(42);
+    const pick = <T>(xs: readonly T[]): T => xs[Math.floor(r() * xs.length)]!;
+    // A small vocabulary with case, accents, punctuation and one-letter words, so titles collide often.
+    const vocab = "Nvidia NVIDIA beats Q3 estimates Fed holds rates élève eleve a I — AI 2026 ! chip demand".split(" ");
+    for (let round = 0; round < 300; round++) {
+      const n = Math.floor(r() * 40);
+      const articles: Article[] = Array.from({ length: n }, () => ({
+        title: Array.from({ length: Math.floor(r() * 7) }, () => pick(vocab)).join(pick([" ", "  ", ", ", "-"])),
+        url: `u${Math.floor(r() * n * 1.5)}`,
+        published: r() < 0.2 ? undefined : `2026-10-${String(1 + Math.floor(r() * 5)).padStart(2, "0")}T10:00:00Z`,
+        via: "gdelt",
+      }));
+      const threshold = pick([undefined, 0, 0.3, 0.5, 0.75, 0.9, 1]);
+      const got = dedupeArticles(articles, threshold);
+      const want = reference(articles, threshold);
+      expect(got.length).toBe(want.length);
+      got.forEach((x, i) => expect(x).toBe(want[i])); // the very same articles, in the same order
+    }
   });
   it("replays a merged search as untrusted, URL-carrying points", async () => {
     const [ds, yahoo] = await withFixture(
