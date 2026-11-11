@@ -16,7 +16,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { datesIn, extractDates, holdsDate, isoOf } from "../../core/dates.js";
 import { EvidenceStore, readDocText } from "../../core/evidence.js";
-import { researchFiles } from "../../research/dossier.js";
+import { registrableDomain, researchFiles } from "../../research/dossier.js";
 
 export interface DateToConfirm {
   symbol: string;
@@ -55,6 +55,9 @@ const RESULTS_LINE = /r[ée]sultats?|results?|earnings|chiffre d'affaires|revenu
 /** Lines after a date that still label it. */
 const NEAR_LINES = 3;
 
+/** Is the page on the domain of the feed the date came from ("nasdaq" → nasdaq.com)? */
+const fromFeed = (host: string, source: string) => registrableDomain(host).split(".")[0] === source.toLowerCase();
+
 /** Look for each date in the name's pages, and register what was found. */
 export function confirmDates(dir: string, items: readonly DateToConfirm[], today: string): Confirmation[] {
   const store = EvidenceStore.load(dir);
@@ -70,7 +73,9 @@ export function confirmDates(dir: string, items: readonly DateToConfirm[], today
     const want = extractDates(it.date)[0]!;
     const stating: Confirmation["stating"] = [];
     let issuerDate: Confirmation["issuerDate"];
-    for (const e of entries) {
+    // The feed's own pages restate the feed (nasdaq.com shows the Zacks date the brief read): no confirmation, either way.
+    const pages = entries.filter((e) => !fromFeed(e.host, it.source));
+    for (const e of pages) {
       const item = store.get(e.id);
       const text = item ? readDocText(dir, item) : undefined;
       if (!text) continue;
@@ -97,7 +102,7 @@ export function confirmDates(dir: string, items: readonly DateToConfirm[], today
         : stating.length
           ? "press-only"
           : "unconfirmed";
-    const c: Confirmation = { ...it, status, sources: entries.length, stating, ...(status === "differs" && issuerDate ? { issuerDate } : {}) };
+    const c: Confirmation = { ...it, status, sources: pages.length, stating, ...(status === "differs" && issuerDate ? { issuerDate } : {}) };
     const feed = store.byKey(it.key);
     if (feed && (status === "confirmed" || status === "press-only")) {
       const k = `MORNING.confirm.${it.symbol}.${it.date}`;

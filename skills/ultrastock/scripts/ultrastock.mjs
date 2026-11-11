@@ -45711,6 +45711,7 @@ import { existsSync as existsSync38, readFileSync as readFileSync43 } from "fs";
 import { join as join52 } from "path";
 var RESULTS_LINE = /r[ée]sultats?|results?|earnings|chiffre d'affaires|revenues?|sales|ventes|trading update|publication/i;
 var NEAR_LINES2 = 3;
+var fromFeed = (host, source2) => registrableDomain(host).split(".")[0] === source2.toLowerCase();
 function confirmDates(dir2, items, today) {
   const store = EvidenceStore.load(dir2);
   const out = [];
@@ -45725,7 +45726,8 @@ function confirmDates(dir2, items, today) {
     const want = extractDates(it.date)[0];
     const stating = [];
     let issuerDate;
-    for (const e of entries) {
+    const pages = entries.filter((e) => !fromFeed(e.host, it.source));
+    for (const e of pages) {
       const item = store.get(e.id);
       const text = item ? readDocText(dir2, item) : void 0;
       if (!text) continue;
@@ -45744,7 +45746,7 @@ function confirmDates(dir2, items, today) {
     stating.sort((a, b) => Number(b.official) - Number(a.official));
     const byIssuer = stating.some((s) => s.official);
     const status = byIssuer ? "confirmed" : issuerDate && issuerDate.date !== it.date ? "differs" : stating.length ? "press-only" : "unconfirmed";
-    const c = { ...it, status, sources: entries.length, stating, ...status === "differs" && issuerDate ? { issuerDate } : {} };
+    const c = { ...it, status, sources: pages.length, stating, ...status === "differs" && issuerDate ? { issuerDate } : {} };
     const feed = store.byKey(it.key);
     if (feed && (status === "confirmed" || status === "press-only")) {
       const k = `MORNING.confirm.${it.symbol}.${it.date}`;

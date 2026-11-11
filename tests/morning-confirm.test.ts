@@ -69,6 +69,16 @@ describe("confirming a results date on the web", () => {
     expect(c!.issuerDate).toMatchObject({ date: "2026-11-12", host: "alstom.com" });
     expect(EvidenceStore.load(dir)!.byKey(c!.derivedKey!)!.value).toBe("2026-11-12");
   });
+  it("never lets the feed confirm itself: Nasdaq's own earnings page restating Nasdaq's date is no confirmation", () => {
+    // A US name's date comes from Nasdaq (Zacks); nasdaq.com is an exchange host, so its page reads as "official".
+    const us: DateToConfirm = { ...item, source: "nasdaq" };
+    const dir = run([{ host: "www.nasdaq.com", official: true, text: "Earnings announcement* for ALO: Nov 17, 2026\n\n*Based on past results" }]);
+    const [c] = confirmDates(dir, [us], "2026-10-28");
+    expect(c!.status).toBe("unconfirmed");
+    expect(c!.derivedKey).toBeUndefined();
+    // The same page is a source in its own right for a date another feed gave.
+    expect(confirmDates(dir, [item], "2026-10-28")[0]!.status).toBe("confirmed");
+  });
   it("is unconfirmed when no page states it, and not searched before any page is read", () => {
     expect(confirmDates(run([{ host: "example.org", official: false, text: "Nothing dated here." }]), [item], "2026-10-28")[0]!.status).toBe("unconfirmed");
     expect(confirmDates(run([]), [item], "2026-10-28")[0]!.status).toBe("not-searched");
