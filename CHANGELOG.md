@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.51](https://github.com/maxgfr/ultrastock/compare/v1.13.50...v1.13.51) (2026-11-11)
+
+
+### Bug Fixes
+
+* **serve:** leave today's point off the breaker curve when a position has no price ([6f4202e](https://github.com/maxgfr/ultrastock/commit/6f4202e09e639772fcd55da33f1cf505536eebed))
+
 ## [1.13.50](https://github.com/maxgfr/ultrastock/compare/v1.13.49...v1.13.50) (2026-11-11)
 
 
