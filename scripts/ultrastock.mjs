@@ -53762,7 +53762,27 @@ var FranceRegime = class extends TaxRegime {
     const pfuIr = this.param("pfu.ir");
     const ps = this.param("ps.capital");
     const isinOf = /* @__PURE__ */ new Map();
-    for (const t of input.transactions) if (t.symbol && t.isin) isinOf.set(t.symbol.toUpperCase(), t.isin.toUpperCase());
+    const linked = /* @__PURE__ */ new Map();
+    const poolOf = (isin) => {
+      let r3 = isin;
+      for (let next2 = linked.get(r3); next2 !== void 0 && next2 !== r3; next2 = linked.get(r3)) r3 = next2;
+      return r3;
+    };
+    const firstIsin = /* @__PURE__ */ new Map();
+    for (const t of input.transactions) {
+      if (!t.symbol || !t.isin) continue;
+      const sym3 = t.symbol.toUpperCase();
+      const isin = t.isin.toUpperCase();
+      isinOf.set(sym3, isin);
+      const held = `${t.account}|${sym3}`;
+      const first = firstIsin.get(held);
+      if (first === void 0) firstIsin.set(held, isin);
+      else if (poolOf(first) !== poolOf(isin)) linked.set(poolOf(isin), poolOf(first));
+    }
+    const keyOf3 = (t) => {
+      const isin = t.isin?.toUpperCase() ?? isinOf.get((t.symbol ?? "").toUpperCase());
+      return isin ? poolOf(isin) : t.symbol ?? "";
+    };
     for (const t of this.history(input)) {
       const env2 = envelopeOf2(t.account, input.envelopes, t.symbol);
       if (env2.guessed && !guessed.has(t.account)) {
@@ -53805,7 +53825,7 @@ var FranceRegime = class extends TaxRegime {
         continue;
       }
       const sym3 = t.symbol ?? "";
-      const key = t.isin?.toUpperCase() ?? isinOf.get(sym3.toUpperCase()) ?? sym3;
+      const key = keyOf3(t);
       const pos2 = st.securities.get(key) ?? { quantity: 0, cost: 0, currency: t.currency, symbols: /* @__PURE__ */ new Set() };
       if (sym3) pos2.symbols.add(sym3);
       if (t.type === "buy") {

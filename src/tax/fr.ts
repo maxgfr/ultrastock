@@ -90,9 +90,31 @@ export class FranceRegime extends TaxRegime {
     const pfuIr = this.param("pfu.ir");
     const ps = this.param("ps.capital");
     // The same security may be booked under several symbols (a ticker at one broker, its ISIN at another): the pool is
-    // the ISIN's, learnt from every row that carries both, so a row without one still finds it.
+    // the ISIN's, learnt from every row that carries both, so a row without one still finds it. A security may also
+    // change ISIN under its ticker (a reverse split, a redomiciliation): the ISINs one account books a ticker under
+    // are the same holding, so they share one pool — a consolidation is not a disposal, the shares keep their cost.
     const isinOf = new Map<string, string>();
-    for (const t of input.transactions) if (t.symbol && t.isin) isinOf.set(t.symbol.toUpperCase(), t.isin.toUpperCase());
+    const linked = new Map<string, string>();
+    const poolOf = (isin: string): string => {
+      let r = isin;
+      for (let next = linked.get(r); next !== undefined && next !== r; next = linked.get(r)) r = next;
+      return r;
+    };
+    const firstIsin = new Map<string, string>();
+    for (const t of input.transactions) {
+      if (!t.symbol || !t.isin) continue;
+      const sym = t.symbol.toUpperCase();
+      const isin = t.isin.toUpperCase();
+      isinOf.set(sym, isin);
+      const held = `${t.account}|${sym}`;
+      const first = firstIsin.get(held);
+      if (first === undefined) firstIsin.set(held, isin);
+      else if (poolOf(first) !== poolOf(isin)) linked.set(poolOf(isin), poolOf(first));
+    }
+    const keyOf = (t: Transaction): string => {
+      const isin = t.isin?.toUpperCase() ?? isinOf.get((t.symbol ?? "").toUpperCase());
+      return isin ? poolOf(isin) : (t.symbol ?? "");
+    };
     for (const t of this.history(input)) {
       const env = envelopeOf(t.account, input.envelopes, t.symbol);
       if (env.guessed && !guessed.has(t.account)) {
@@ -139,7 +161,7 @@ export class FranceRegime extends TaxRegime {
         continue;
       }
       const sym = t.symbol ?? "";
-      const key = t.isin?.toUpperCase() ?? isinOf.get(sym.toUpperCase()) ?? sym;
+      const key = keyOf(t);
       const pos = st.securities.get(key) ?? { quantity: 0, cost: 0, currency: t.currency, symbols: new Set<string>() };
       if (sym) pos.symbols.add(sym);
       if (t.type === "buy") {
