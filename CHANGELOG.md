@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.31](https://github.com/maxgfr/ultrastock/compare/v1.13.30...v1.13.31) (2026-11-11)
+
+
+### Bug Fixes
+
+* **serve:** answer an unparseable request target with a 400 ([1c278a3](https://github.com/maxgfr/ultrastock/commit/1c278a34c22438596aae609bd1198a2403d71434))
+* **serve:** escape every value from the state, whatever its declared type ([29554d9](https://github.com/maxgfr/ultrastock/commit/29554d97c89947b8c98c7be174c7d3d69480b3b7))
+* **serve:** keep the home directory's absolute path out of error messages ([b4b893d](https://github.com/maxgfr/ultrastock/commit/b4b893dddad260cba13def7e7859a753c0d52a3c))
+* **serve:** show the ticket and the reason of a live order's audit line ([d0df876](https://github.com/maxgfr/ultrastock/commit/d0df8767d26a88e0b3ed283ec31779b2832302ff))
+
 ## [1.13.30](https://github.com/maxgfr/ultrastock/compare/v1.13.29...v1.13.30) (2026-11-11)
 
 
