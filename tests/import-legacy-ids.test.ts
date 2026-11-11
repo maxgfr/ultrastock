@@ -1,8 +1,50 @@
 // Importers and ledger ids: a ledger written by an earlier release must not see its rows come back under new ids, and
 // an IBKR split must be replayed where the statement puts it.
+//
+// `tests/helpers/{shared,generic}-before-818a2ef.ts` are `git show 818a2ef^:<path>` (the parser as released before
+// the 12-hour-clock change), only so the test shows what an existing ledger holds.
 import { describe, expect, it } from "vitest";
-import { parseStatement } from "../src/portfolio/import/index.js";
-import { buildBook, type Transaction, transactionId } from "../src/portfolio/ledger.js";
+import { type ColumnMap, parseStatement } from "../src/portfolio/import/index.js";
+import { appendTransactions, buildBook, readLedger, type Transaction, transactionId } from "../src/portfolio/ledger.js";
+import { parseGeneric as parseGenericBefore } from "./helpers/generic-before-818a2ef.js";
+
+const MAP: ColumnMap = {
+  date: "Date",
+  type: "Action",
+  symbol: "Symbol",
+  quantity: "Quantity",
+  price: "Price",
+  currency: "Currency",
+  dateOrder: "MDY",
+  decimal: ".",
+};
+// A US broker's CSV with a 12-hour clock.
+const CSV = [
+  "Date,Action,Symbol,Quantity,Price,Currency",
+  "1/5/2026 10:15:00 AM,Buy,NVDA,10,100,USD",
+  "1/5/2026 2:30:00 PM,Buy,NVDA,10,101,USD",
+  "1/6/2026 3:45:00 PM,Sell,NVDA,5,110,USD",
+].join("\n");
+
+describe("re-importing a statement with AM/PM times into a ledger imported before 818a2ef", () => {
+  it("adds nothing: the rows are already there", async () => {
+    // What the previous release wrote (the PM marker was ignored: 2:30 PM was stored as 02:30).
+    const before = parseGenericBefore(CSV, { account: "us", map: MAP });
+    expect(before.transactions.map((t) => t.date)).toEqual(["2026-01-05T10:15:00", "2026-01-05T02:30:00", "2026-01-06T03:45:00"]);
+    expect((await appendTransactions(before.transactions, "review-ampm")).added).toHaveLength(3);
+    // The same file, imported again with the current parser.
+    const now = parseStatement("generic", CSV, { account: "us", map: MAP });
+    const again = await appendTransactions(now.transactions, "review-ampm");
+    expect(again.added.map((t) => `${t.date} ${t.type} ${t.quantity}`)).toEqual([]);
+    // 20 bought, 5 sold: 15 shares.
+    expect(buildBook(readLedger("review-ampm")).positions.map((p) => p.quantity)).toEqual([15]);
+  });
+  it("a fresh ledger takes the morning and the afternoon fill of the same size apart", async () => {
+    const csv = ["Date,Action,Symbol,Quantity,Price,Currency", "1/5/2026 2:30:00 AM,Buy,NVDA,10,100,USD", "1/5/2026 2:30:00 PM,Buy,NVDA,10,100,USD"].join("\n");
+    const r = await appendTransactions(parseStatement("generic", csv, { account: "us", map: MAP }).transactions, "fresh-ampm");
+    expect(r.added.map((t) => t.date)).toEqual(["2026-01-05T02:30:00", "2026-01-05T14:30:00"]);
+  });
+});
 
 describe("an IBKR split whose row carries only its report date (the Flex query has no Date/Time field)", () => {
   it("is applied before the trades of that day, which are already in split shares", () => {

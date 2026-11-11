@@ -24021,6 +24021,16 @@ function validate(t) {
   if ((t.type === "deposit" || t.type === "withdrawal" || t.type === "dividend" || t.type === "interest" || t.type === "fee" || t.type === "tax") && typeof t.amount !== "number")
     throw new Error(`a ${t.type} needs an amount`);
 }
+var legacyReadings = /* @__PURE__ */ new WeakMap();
+function setLegacyReadings(t, readings) {
+  if (readings.length) legacyReadings.set(t, readings);
+}
+function legacyIdsOf(t) {
+  return (legacyReadings.get(t) ?? []).map((r3) => transactionId({ ...t, ...r3 }));
+}
+function legacyReadingsOf(t) {
+  return legacyReadings.get(t) ?? [];
+}
 async function appendTransactions(txs, book2 = "real") {
   const path2 = ledgerPath(book2);
   mkdirSync17(join28(homeDir(), "ledger"), { recursive: true });
@@ -24029,23 +24039,26 @@ async function appendTransactions(txs, book2 = "real") {
     if (sqlite2) {
       for (const raw of txs) validate(raw);
       return withLedgerStore(
-        (db) => inTransaction(
-          db,
-          () => insertSqliteTransactions(
+        (db) => inTransaction(db, () => {
+          const has = db.prepare("SELECT 1 AS found FROM transactions WHERE book = ? AND id = ?");
+          const fresh = txs.filter((raw) => !legacyIdsOf(raw).some((id) => has.get(book2, id)));
+          const r3 = insertSqliteTransactions(
             db,
-            txs.map((raw) => ({ ...raw, id: transactionId(raw) })),
+            fresh.map((raw) => ({ ...raw, id: transactionId(raw) })),
             book2
-          )
-        )
+          );
+          return { added: r3.added, duplicates: r3.duplicates + txs.length - fresh.length };
+        })
       );
     }
-    const seen = new Set(readJsonlLedger(book2).map((t) => t.id));
+    const stored = new Set(readJsonlLedger(book2).map((t) => t.id));
+    const seen = new Set(stored);
     const added = [];
     let duplicates = 0;
     for (const raw of txs) {
       validate(raw);
       const t = { ...raw, id: transactionId(raw) };
-      if (seen.has(t.id)) {
+      if (seen.has(t.id) || legacyIdsOf(raw).some((id) => stored.has(id))) {
         duplicates++;
         continue;
       }
@@ -48409,6 +48422,13 @@ function findHeader(rows, required, within = 40) {
   return -1;
 }
 function statementDate(raw, order = "DMY") {
+  return readStatementDate(raw, order).date;
+}
+function legacyStatementDate(raw, order = "DMY") {
+  const r3 = readStatementDate(raw, order);
+  return r3.legacy !== r3.date ? r3.legacy : void 0;
+}
+function readStatementDate(raw, order) {
   const s = (raw ?? "").trim();
   let y;
   let mo;
@@ -48424,20 +48444,21 @@ function statementDate(raw, order = "DMY") {
     y = dmy[3];
     [d, mo] = order === "DMY" ? [dmy[1], dmy[2]] : [dmy[2], dmy[1]];
     if (dmy[4]) time2 = [dmy[4], dmy[5], dmy[6], dmy[7]];
-  } else return void 0;
+  } else return {};
   const M2 = Number(mo);
   const D = Number(d);
-  if (M2 < 1 || M2 > 12 || D < 1 || D > new Date(Date.UTC(Number(y), M2, 0)).getUTCDate()) return void 0;
+  if (M2 < 1 || M2 > 12 || D < 1 || D > new Date(Date.UTC(Number(y), M2, 0)).getUTCDate()) return {};
   const day4 = `${y}-${String(M2).padStart(2, "0")}-${String(D).padStart(2, "0")}`;
-  if (!time2) return day4;
+  if (!time2) return { date: day4 };
   const [hh, mm, ss, half] = time2;
   let h = Number(hh);
+  const legacy = !half ? void 0 : iso4 && hh.length < 2 ? day4 : `${day4}T${hh.padStart(2, "0")}:${mm}:${(ss ?? "00").padStart(2, "0")}`;
   if (half) {
-    if (h < 1 || h > 12) return void 0;
+    if (h < 1 || h > 12) return {};
     h = h % 12 + (half.toUpperCase() === "P" ? 12 : 0);
   }
-  if (h > 23 || Number(mm) > 59) return void 0;
-  return `${day4}T${String(h).padStart(2, "0")}:${mm}:${(ss ?? "00").padStart(2, "0")}`;
+  if (h > 23 || Number(mm) > 59) return {};
+  return { date: `${day4}T${String(h).padStart(2, "0")}:${mm}:${(ss ?? "00").padStart(2, "0")}`, legacy };
 }
 function statementNumber(raw, decimal) {
   if (raw === void 0) return void 0;
@@ -48520,11 +48541,18 @@ function ledgerRefusal(t) {
   if (cash && !(typeof t.amount === "number" && Number.isFinite(t.amount))) return `a ${t.type} needs an amount`;
   return void 0;
 }
-function accept(res, line, t) {
+function accept(res, line, t, legacy = []) {
   const clean3 = Object.fromEntries(Object.entries(t).filter(([, v]) => v !== void 0 && v !== ""));
   const why2 = ledgerRefusal(clean3);
-  if (why2) res.skipped.push({ line, reason: why2 });
-  else res.transactions.push(clean3);
+  if (why2) {
+    res.skipped.push({ line, reason: why2 });
+    return;
+  }
+  res.transactions.push(clean3);
+  setLegacyReadings(
+    clean3,
+    legacy.filter((r3) => r3 !== void 0)
+  );
 }
 function keepDistinctFills(res) {
   const groups = /* @__PURE__ */ new Map();
@@ -48952,6 +48980,7 @@ function parseGeneric(text2, opts) {
     };
     const n2 = (k) => statementNumber(cell3(k), decimal);
     const date = statementDate(cell3("date"), map.dateOrder ?? "DMY");
+    const legacyDate = legacyStatementDate(cell3("date"), map.dateOrder ?? "DMY");
     if (!date) {
       res.skipped.push({ line: r3.line, reason: `unreadable date "${cell3("date") ?? ""}"` });
       continue;
@@ -48985,20 +49014,25 @@ function parseGeneric(text2, opts) {
         // Where this file signs its fees (or taxes), a positive one is a refund: it stays in.
         signedTypes.has(type) ? amount : -Math.abs(amount)
       );
-    accept(res, r3.line, {
-      date,
-      type,
-      account: opts.account,
-      symbol,
-      isin: isin && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) ? isin : void 0,
-      quantity: quantity !== void 0 && !cashType ? Math.abs(quantity) : void 0,
-      price: cashType ? void 0 : price,
-      amount: cashType ? amount : void 0,
-      fee: !cashType && fee ? Math.abs(fee) : void 0,
-      currency,
-      note: cell3("note"),
-      origin: ORIGIN3
-    });
+    accept(
+      res,
+      r3.line,
+      {
+        date,
+        type,
+        account: opts.account,
+        symbol,
+        isin: isin && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) ? isin : void 0,
+        quantity: quantity !== void 0 && !cashType ? Math.abs(quantity) : void 0,
+        price: cashType ? void 0 : price,
+        amount: cashType ? amount : void 0,
+        fee: !cashType && fee ? Math.abs(fee) : void 0,
+        currency,
+        note: cell3("note"),
+        origin: ORIGIN3
+      },
+      [legacyDate ? { date: legacyDate } : void 0]
+    );
   }
   if (pricedFromAmount) res.warnings.push(`${pricedFromAmount} trade(s) had no price: taken from the net amount and the fee`);
   if (isinAsSymbol) res.warnings.push(`${isinAsSymbol} row(s) had no symbol: their ISIN stands in (the router resolves EU ISINs)`);
@@ -49688,11 +49722,13 @@ async function importCommand(args, asJson) {
   const res = parseStatement(format, text2, { account, quote: mapOpt.quote, map: mapOpt.map, presetName: mapOpt.presetName });
   const warnings = [...warning ? [warning] : [], ...res.warnings];
   const existing = readLedger(book2);
-  const known = new Set(existing.map((t) => t.id));
+  const stored = new Set(existing.map((t) => t.id));
+  const known = new Set(stored);
   const fresh = [];
   const freshIds = /* @__PURE__ */ new Set();
   let already = 0;
   let sameInFile = 0;
+  const asReadBefore = [];
   for (const t of res.transactions) {
     const id = transactionId(t);
     if (known.has(id)) {
@@ -49700,10 +49736,22 @@ async function importCommand(args, asJson) {
       else already++;
       continue;
     }
+    const legacy = legacyIdsOf(t).findIndex((x) => stored.has(x));
+    if (legacy >= 0) {
+      already++;
+      const was = legacyReadingsOf(t)[legacy];
+      const diff = Object.entries(was).map(([k, v]) => `${k} ${String(v)} for ${String(t[k] ?? "")}`).join(", ");
+      asReadBefore.push(`${txLine(t)} (stored with ${diff})`);
+      continue;
+    }
     known.add(id);
     freshIds.add(id);
     fresh.push({ ...t, id });
   }
+  if (asReadBefore.length)
+    warnings.push(
+      `${asReadBefore.length} row(s) are already in the ${book2} book as an earlier release of the importer read them \u2014 not added again, and the stored row keeps that reading (record a correcting transaction if it matters): ${asReadBefore.slice(0, 10).join("; ")}${asReadBefore.length > 10 ? "; \u2026" : ""}`
+    );
   if (sameInFile)
     warnings.push(
       `${sameInFile} row(s) identical to another in this file (same date, type, symbol, quantity, price): the ledger keeps one \u2014 separate fills need distinct times`

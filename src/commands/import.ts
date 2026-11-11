@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { argOneOf, argValue, type CommandArgs, jsonLine, UsageError } from "../engine.js";
 import { IMPORT_FORMATS, type ImportFormat, parseStatement, resolveMapOption } from "../portfolio/import/index.js";
-import { appendTransactions, buildBook, readLedger, type Transaction, transactionId } from "../portfolio/ledger.js";
+import { appendTransactions, buildBook, legacyIdsOf, legacyReadingsOf, readLedger, type Transaction, transactionId } from "../portfolio/ledger.js";
 
 const USAGE =
   "usage: ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name>] [--dry-run]";
@@ -67,11 +67,14 @@ export async function importCommand(args: CommandArgs, asJson: boolean): Promise
 
   // What is new: not in the book, and the first of identical rows in the file.
   const existing = readLedger(book);
-  const known = new Set(existing.map((t) => t.id));
+  const stored = new Set(existing.map((t) => t.id));
+  const known = new Set(stored);
   const fresh: Transaction[] = [];
   const freshIds = new Set<string>();
   let already = 0;
   let sameInFile = 0;
+  /** Rows the book holds as an earlier release of the importer read them: not added again, but named. */
+  const asReadBefore: string[] = [];
   for (const t of res.transactions) {
     const id = transactionId(t);
     if (known.has(id)) {
@@ -79,10 +82,24 @@ export async function importCommand(args: CommandArgs, asJson: boolean): Promise
       else already++;
       continue;
     }
+    const legacy = legacyIdsOf(t).findIndex((x) => stored.has(x));
+    if (legacy >= 0) {
+      already++;
+      const was = legacyReadingsOf(t)[legacy]!;
+      const diff = Object.entries(was)
+        .map(([k, v]) => `${k} ${String(v)} for ${String(t[k as keyof typeof t] ?? "")}`)
+        .join(", ");
+      asReadBefore.push(`${txLine(t)} (stored with ${diff})`);
+      continue;
+    }
     known.add(id);
     freshIds.add(id);
     fresh.push({ ...t, id });
   }
+  if (asReadBefore.length)
+    warnings.push(
+      `${asReadBefore.length} row(s) are already in the ${book} book as an earlier release of the importer read them — not added again, and the stored row keeps that reading (record a correcting transaction if it matters): ${asReadBefore.slice(0, 10).join("; ")}${asReadBefore.length > 10 ? "; …" : ""}`,
+    );
   if (sameInFile)
     warnings.push(
       `${sameInFile} row(s) identical to another in this file (same date, type, symbol, quantity, price): the ledger keeps one — separate fills need distinct times`,

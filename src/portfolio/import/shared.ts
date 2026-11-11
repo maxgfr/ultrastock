@@ -5,7 +5,7 @@
 // ledger's own validation — a parser hands back only transactions the ledger
 // will accept, and reports the rest in `skipped` with a reason.
 import { parseLooseNumber } from "../../core/csv.js";
-import { type Transaction, transactionId } from "../ledger.js";
+import { setLegacyReadings, type Transaction, transactionId } from "../ledger.js";
 
 export type ImportTx = Omit<Transaction, "id">;
 
@@ -124,6 +124,20 @@ export function findHeader(rows: readonly CsvRow[], required: readonly string[],
  * arithmetic: statements give UTC or the venue's day, and the day is kept.
  */
 export function statementDate(raw: string | undefined, order: "DMY" | "MDY" = "DMY"): string | undefined {
+  return readStatementDate(raw, order).date;
+}
+
+/**
+ * The date the release before the 12-hour clock was read (818a2ef) stored for this cell, when it differs from
+ * `statementDate`'s: that reader ignored the AM/PM marker — "2:30 PM" was 02:30, "12:05 AM" 12:05, and a one-digit
+ * hour after an ISO date dropped the time. A ledger imported then holds the row under the id of that date.
+ */
+export function legacyStatementDate(raw: string | undefined, order: "DMY" | "MDY" = "DMY"): string | undefined {
+  const r = readStatementDate(raw, order);
+  return r.legacy !== r.date ? r.legacy : undefined;
+}
+
+function readStatementDate(raw: string | undefined, order: "DMY" | "MDY"): { date?: string; legacy?: string } {
   const s = (raw ?? "").trim();
   let y: string;
   let mo: string;
@@ -140,21 +154,23 @@ export function statementDate(raw: string | undefined, order: "DMY" | "MDY" = "D
     y = dmy[3]!;
     [d, mo] = order === "DMY" ? [dmy[1]!, dmy[2]!] : [dmy[2]!, dmy[1]!];
     if (dmy[4]) time = [dmy[4], dmy[5]!, dmy[6], dmy[7]];
-  } else return undefined;
+  } else return {};
   const M = Number(mo);
   const D = Number(d);
   // A day the calendar has: 2026-02-30 and 31/04 are not dates.
-  if (M < 1 || M > 12 || D < 1 || D > new Date(Date.UTC(Number(y), M, 0)).getUTCDate()) return undefined;
+  if (M < 1 || M > 12 || D < 1 || D > new Date(Date.UTC(Number(y), M, 0)).getUTCDate()) return {};
   const day = `${y}-${String(M).padStart(2, "0")}-${String(D).padStart(2, "0")}`;
-  if (!time) return day;
+  if (!time) return { date: day };
   const [hh, mm, ss, half] = time;
   let h = Number(hh);
+  // The earlier reader: the hour as written, and an ISO date followed by a one-digit hour had no time at all.
+  const legacy = !half ? undefined : iso && hh.length < 2 ? day : `${day}T${hh.padStart(2, "0")}:${mm}:${(ss ?? "00").padStart(2, "0")}`;
   if (half) {
-    if (h < 1 || h > 12) return undefined;
+    if (h < 1 || h > 12) return {};
     h = (h % 12) + (half.toUpperCase() === "P" ? 12 : 0);
   }
-  if (h > 23 || Number(mm) > 59) return undefined;
-  return `${day}T${String(h).padStart(2, "0")}:${mm}:${(ss ?? "00").padStart(2, "0")}`;
+  if (h > 23 || Number(mm) > 59) return {};
+  return { date: `${day}T${String(h).padStart(2, "0")}:${mm}:${(ss ?? "00").padStart(2, "0")}`, legacy };
 }
 
 /**
@@ -259,12 +275,23 @@ export function ledgerRefusal(t: ImportTx): string | undefined {
   return undefined;
 }
 
-/** Push `t` when the ledger would take it, else record why on `line`. Drops undefined optional fields so ids stay stable. */
-export function accept(res: ImportResult, line: number, t: ImportTx): void {
+/**
+ * Push `t` when the ledger would take it, else record why on `line`. Drops undefined optional fields so ids stay stable.
+ * `legacy`: the fields an earlier release of the importer read differently for this row — a ledger it wrote holds the
+ * row under that reading's id, and the append recognises it there (`setLegacyReadings`).
+ */
+export function accept(res: ImportResult, line: number, t: ImportTx, legacy: ReadonlyArray<Partial<ImportTx> | undefined> = []): void {
   const clean = Object.fromEntries(Object.entries(t).filter(([, v]) => v !== undefined && v !== "")) as unknown as ImportTx;
   const why = ledgerRefusal(clean);
-  if (why) res.skipped.push({ line, reason: why });
-  else res.transactions.push(clean);
+  if (why) {
+    res.skipped.push({ line, reason: why });
+    return;
+  }
+  res.transactions.push(clean);
+  setLegacyReadings(
+    clean,
+    legacy.filter((r): r is Partial<ImportTx> => r !== undefined),
+  );
 }
 
 /**

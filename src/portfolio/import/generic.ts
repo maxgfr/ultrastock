@@ -41,6 +41,7 @@ import {
   normKey,
   round,
   sniffSeparator,
+  legacyStatementDate,
   statementDate,
   statementNumber,
 } from "./shared.js";
@@ -217,6 +218,8 @@ export function parseGeneric(text: string, opts: ImportOptions & { map: ColumnMa
     };
     const n = (k: (typeof COLUMN_KEYS)[number]) => statementNumber(cell(k), decimal);
     const date = statementDate(cell("date"), map.dateOrder ?? "DMY");
+    // A 12-hour clock was read as 24-hour before 818a2ef: a ledger imported then holds the row at that time.
+    const legacyDate = legacyStatementDate(cell("date"), map.dateOrder ?? "DMY");
     if (!date) {
       res.skipped.push({ line: r.line, reason: `unreadable date "${cell("date") ?? ""}"` });
       continue;
@@ -253,20 +256,25 @@ export function parseGeneric(text: string, opts: ImportOptions & { map: ColumnMa
             signedTypes.has(type)
             ? amount
             : -Math.abs(amount);
-    accept(res, r.line, {
-      date,
-      type,
-      account: opts.account,
-      symbol,
-      isin: isin && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) ? isin : undefined,
-      quantity: quantity !== undefined && !cashType ? Math.abs(quantity) : undefined,
-      price: cashType ? undefined : price,
-      amount: cashType ? amount : undefined,
-      fee: !cashType && fee ? Math.abs(fee) : undefined,
-      currency,
-      note: cell("note"),
-      origin: ORIGIN,
-    });
+    accept(
+      res,
+      r.line,
+      {
+        date,
+        type,
+        account: opts.account,
+        symbol,
+        isin: isin && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) ? isin : undefined,
+        quantity: quantity !== undefined && !cashType ? Math.abs(quantity) : undefined,
+        price: cashType ? undefined : price,
+        amount: cashType ? amount : undefined,
+        fee: !cashType && fee ? Math.abs(fee) : undefined,
+        currency,
+        note: cell("note"),
+        origin: ORIGIN,
+      },
+      [legacyDate ? { date: legacyDate } : undefined],
+    );
   }
   if (pricedFromAmount) res.warnings.push(`${pricedFromAmount} trade(s) had no price: taken from the net amount and the fee`);
   if (isinAsSymbol) res.warnings.push(`${isinAsSymbol} row(s) had no symbol: their ISIN stands in (the router resolves EU ISINs)`);

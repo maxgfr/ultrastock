@@ -6,6 +6,7 @@ import { importCommand } from "../src/commands/import.js";
 import type { CommandArgs } from "../src/engine.js";
 import { parseStatement } from "../src/portfolio/import/index.js";
 import { appendTransactions, buildBook, ledgerPath, readLedger, type Transaction, transactionId } from "../src/portfolio/ledger.js";
+import { parseGeneric as parseGenericBefore } from "./helpers/generic-before-818a2ef.js";
 
 const fixture = (name: string) => new URL(`./fixtures/import/${name}`, import.meta.url).pathname;
 
@@ -114,5 +115,25 @@ describe("portfolio import", () => {
     await expect(importCommand({ command: "portfolio", positional: ["import"], values: {}, bools: new Set() }, false)).rejects.toThrow(
       /usage: ultrastock portfolio import/,
     );
+  });
+});
+
+describe("portfolio import into a ledger an earlier release wrote", () => {
+  it("does not add again a 12-hour-clock row stored at the time the reader before 818a2ef gave it, and says so", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ultrastock-import-src-"));
+    const file = join(dir, "us.csv");
+    writeFileSync(
+      file,
+      ["Date,Action,Symbol,Quantity,Price,Currency", "1/5/2026 10:15:00 AM,Buy,NVDA,10,100,USD", "1/5/2026 2:30:00 PM,Buy,NVDA,10,101,USD"].join("\n"),
+    );
+    const map = '{"date":"Date","type":"Action","symbol":"Symbol","quantity":"Quantity","price":"Price","currency":"Currency","dateOrder":"MDY","decimal":"."}';
+    const old = parseGenericBefore(readFileSync(file, "utf8"), { account: "us", map: JSON.parse(map) });
+    await appendTransactions(old.transactions, "real");
+    const out = JSON.parse(await run(file, { format: "generic", account: "us", map }, [], true));
+    expect(out).toMatchObject({ added: [], duplicates: 2 });
+    expect(out.warnings.join(" ")).toMatch(
+      /1 row\(s\) are already in the real book as an earlier release of the importer read them .*date 2026-01-05T02:30:00 for 2026-01-05T14:30:00/,
+    );
+    expect(readLedger("real")).toHaveLength(2);
   });
 });

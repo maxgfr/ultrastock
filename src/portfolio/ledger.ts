@@ -173,9 +173,33 @@ function validate(t: Omit<Transaction, "id">): void {
     throw new Error(`a ${t.type} needs an amount`);
 }
 
+type Reading = Partial<Omit<Transaction, "id">>;
+
 /**
- * Append transactions under the ledger's lock; duplicates (same content id)
- * are skipped and counted. Returns what was added.
+ * How an earlier release of an importer read a row, when it read the statement differently (a 12-hour clock read as
+ * 24-hour, a pair split wrong): the fields it stored otherwise. Kept beside the parsed row, never in it: the row's own
+ * id is unchanged, and a ledger that already holds the id of one of these readings already holds the row.
+ */
+const legacyReadings = new WeakMap<object, readonly Reading[]>();
+
+/** Record how an earlier release read `t` (`t` as the importer returns it): the fields that differed. */
+export function setLegacyReadings(t: Omit<Transaction, "id">, readings: readonly Reading[]): void {
+  if (readings.length) legacyReadings.set(t, readings);
+}
+
+/** The ids an earlier release stored `t` under, if its importer named any. */
+export function legacyIdsOf(t: Omit<Transaction, "id">): string[] {
+  return (legacyReadings.get(t) ?? []).map((r) => transactionId({ ...t, ...r }));
+}
+
+/** The earlier readings of `t` (to tell the user which stored rows they are). */
+export function legacyReadingsOf(t: Omit<Transaction, "id">): readonly Reading[] {
+  return legacyReadings.get(t) ?? [];
+}
+
+/**
+ * Append transactions under the ledger's lock; duplicates (same content id, or a row the ledger already holds under the
+ * id an earlier release gave it — `setLegacyIds`) are skipped and counted. Returns what was added.
  */
 export async function appendTransactions(txs: ReadonlyArray<Omit<Transaction, "id">>, book = "real"): Promise<{ added: Transaction[]; duplicates: number }> {
   const path = ledgerPath(book);
@@ -185,22 +209,27 @@ export async function appendTransactions(txs: ReadonlyArray<Omit<Transaction, "i
     if (sqlite) {
       for (const raw of txs) validate(raw);
       return withLedgerStore((db) =>
-        inTransaction(db, () =>
-          insertSqliteTransactions(
+        inTransaction(db, () => {
+          // Only what the book held before this append counts as stored under an old id: two rows of this batch never do.
+          const has = db.prepare("SELECT 1 AS found FROM transactions WHERE book = ? AND id = ?");
+          const fresh = txs.filter((raw) => !legacyIdsOf(raw).some((id) => has.get(book, id)));
+          const r = insertSqliteTransactions(
             db,
-            txs.map((raw) => ({ ...raw, id: transactionId(raw) }) as Transaction),
+            fresh.map((raw) => ({ ...raw, id: transactionId(raw) }) as Transaction),
             book,
-          ),
-        ),
+          );
+          return { added: r.added, duplicates: r.duplicates + txs.length - fresh.length };
+        }),
       );
     }
-    const seen = new Set(readJsonlLedger(book).map((t) => t.id));
+    const stored = new Set(readJsonlLedger(book).map((t) => t.id));
+    const seen = new Set(stored);
     const added: Transaction[] = [];
     let duplicates = 0;
     for (const raw of txs) {
       validate(raw);
       const t = { ...raw, id: transactionId(raw) } as Transaction;
-      if (seen.has(t.id)) {
+      if (seen.has(t.id) || legacyIdsOf(raw).some((id) => stored.has(id))) {
         duplicates++;
         continue;
       }

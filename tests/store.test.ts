@@ -25,7 +25,16 @@ import {
   withStore,
 } from "../src/core/db.js";
 import type { CommandArgs } from "../src/engine.js";
-import { appendTransactions, buildBook, ledgerPath, readJsonlLedger, readLedger, readLedgerWithoutWriting, type Transaction } from "../src/portfolio/ledger.js";
+import {
+  appendTransactions,
+  buildBook,
+  ledgerPath,
+  readJsonlLedger,
+  readLedger,
+  readLedgerWithoutWriting,
+  setLegacyReadings,
+  type Transaction,
+} from "../src/portfolio/ledger.js";
 import { exportStore, initStore, storeOff, storeStatus } from "../src/portfolio/store.js";
 import { listNews, markNewsSeen, newsId, readHistory, type SnapshotRow, storeNews, writeSnapshots } from "../src/portfolio/tracking.js";
 import { headlineName } from "../src/commands/portfolio-store.js";
@@ -260,6 +269,19 @@ describe.skipIf(!HAS_SQLITE)("SQLite store", () => {
       expect(() => db.exec("UPDATE transactions SET price = 1")).toThrow(/append-only/);
       expect(() => db.exec("DELETE FROM transactions")).toThrow(/append-only/);
     });
+    expect(readLedger()).toHaveLength(2);
+  });
+
+  it("recognises a row stored under the id an earlier release of the importer gave it", async () => {
+    await initStore();
+    const old = TXS[1]!;
+    // Two rows of one batch never count as each other's earlier reading: only what the book held before does.
+    const sibling = { ...old, quantity: (old.quantity ?? 0) + 2 };
+    setLegacyReadings(sibling, [{ quantity: old.quantity }]);
+    expect((await appendTransactions([old, sibling])).added).toHaveLength(2);
+    const now = { ...old, quantity: (old.quantity ?? 0) + 1 };
+    setLegacyReadings(now, [{ quantity: old.quantity }]);
+    expect(await appendTransactions([now])).toEqual({ added: [], duplicates: 1 });
     expect(readLedger()).toHaveLength(2);
   });
 
