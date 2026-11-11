@@ -27,6 +27,30 @@ import { readLedger } from "../portfolio/ledger.js";
 import { addToWatchlist, loadWatchlist, removeFromWatchlist } from "../portfolio/watchlist.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
 
+/** What a decision says — all of it but the id, time and run the tool assigns. */
+const DECISION_CONTENT = [
+  "symbol",
+  "rating",
+  "horizon",
+  "conviction",
+  "thesis",
+  "evidence",
+  "falsifiers",
+  "risks",
+  "bullCase",
+  "bearCase",
+  "plan",
+  "portfolioContext",
+] as const satisfies ReadonlyArray<keyof Decision>;
+
+/** A value as JSON with its keys sorted, so two equal decisions compare equal whatever their key order. */
+const canonical = (v: unknown): string =>
+  JSON.stringify(v, (_k, x: unknown) =>
+    x && typeof x === "object" && !Array.isArray(x)
+      ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)))
+      : x,
+  ) ?? "undefined";
+
 export async function decideCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const [run, file] = args.positional;
   if (!run || !file)
@@ -55,6 +79,15 @@ export async function decideCommand(args: CommandArgs, asJson: boolean): Promise
   const r = validateDecision({ ...rest, ...(known && { id }), decidedAt: known?.decidedAt ?? clockNow().toISOString(), run: resolve(run) }, resolve(run));
   if (!r.ok) {
     out(asJson, r, `decision refused — ${r.problems.length} problem(s):\n${r.problems.map((p) => `  - ${p}`).join("\n")}`);
+    process.exitCode = 1;
+    return;
+  }
+  // "Already recorded" is said of the same decision only: the journal's id and time over another call — a thesis or a
+  // rating edited after the fact — would be answered ok while the journal keeps what was decided then.
+  const changed = known ? DECISION_CONTENT.filter((k) => canonical(r.decision![k]) !== canonical(known[k])) : [];
+  if (known && changed.length) {
+    const problem = `decision ${known.id} (decided ${known.decidedAt}) is in the journal with other content — ${changed.join(", ")} differ; a recorded decision is not edited: a new call is a decision.json without its id and decidedAt`;
+    out(asJson, { ok: false, problems: [problem] }, `decision refused — ${problem}`);
     process.exitCode = 1;
     return;
   }

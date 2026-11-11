@@ -2975,14 +2975,14 @@ function expandTokens(tokens, max = 8) {
   for (const raw of tokens) {
     if (byCanonical.size >= max) break;
     if (raw.length > MAX_KEYWORD_CHARS) continue;
-    const canonical = foldTerm(raw);
-    if (!canonical || byCanonical.has(canonical)) continue;
+    const canonical2 = foldTerm(raw);
+    if (!canonical2 || byCanonical.has(canonical2)) continue;
     const plain22 = deaccent(raw.toLowerCase());
     const variants = [{ text: raw.toLowerCase(), kind: "original" }];
-    if (canonical !== plain22) variants.push({ text: canonical, kind: "folded" });
+    if (canonical2 !== plain22) variants.push({ text: canonical2, kind: "folded" });
     if (plain22.length > 4 && plain22.endsWith("ies")) variants.push({ text: plain22.slice(0, -1), kind: "folded" });
     for (const sub of subtokens(raw)) variants.push({ text: sub, kind: "subtoken" });
-    byCanonical.set(canonical, { canonical, original: raw, variants });
+    byCanonical.set(canonical2, { canonical: canonical2, original: raw, variants });
   }
   const all = [...byCanonical.values()].flatMap((ek, kwIdx) => ek.variants.map((v) => ({ ek, v, kwIdx })));
   all.sort((a, b) => VARIANT_PRIORITY[a.v.kind] - VARIANT_PRIORITY[b.v.kind] || a.kwIdx - b.kwIdx);
@@ -3034,17 +3034,17 @@ function lineRegex(source2, text2) {
 }
 function makeMatcher(expanded) {
   const variants = expanded.flatMap((ek) => ek.variants.map((v) => ({ text: v.text, source: accentPattern(v.text), canonical: ek.canonical })));
-  const regexes = variants.map(({ text: text2, source: source2, canonical }) => ({ re: lineRegex(source2, text2), canonical }));
-  const anchored = variants.map(({ source: source2, canonical }) => ({ re: new RegExp(`^(?:${source2})$`, "i"), canonical }));
+  const regexes = variants.map(({ text: text2, source: source2, canonical: canonical2 }) => ({ re: lineRegex(source2, text2), canonical: canonical2 }));
+  const anchored = variants.map(({ source: source2, canonical: canonical2 }) => ({ re: new RegExp(`^(?:${source2})$`, "i"), canonical: canonical2 }));
   return {
     expanded,
     canonicals: expanded.map((e) => e.canonical),
-    patterns: variants.map(({ source: source2, canonical }) => ({ source: source2, canonical })),
+    patterns: variants.map(({ source: source2, canonical: canonical2 }) => ({ source: source2, canonical: canonical2 })),
     canonicalOf: (span) => anchored.find(({ re }) => re.test(span))?.canonical,
     matchLine: (line) => {
       const hit = /* @__PURE__ */ new Set();
-      for (const { re, canonical } of regexes) {
-        if (!hit.has(canonical) && re.test(line)) hit.add(canonical);
+      for (const { re, canonical: canonical2 } of regexes) {
+        if (!hit.has(canonical2) && re.test(line)) hit.add(canonical2);
       }
       return hit;
     }
@@ -3088,8 +3088,8 @@ function slugify(input, opts = {}) {
   const normalized = input.toLowerCase().replace(/^https?:\/\//, "").replace(/^git@/, "").replace(/\.git$/, "");
   const s = trimDashes(normalized.replace(/[^a-z0-9._-]+/g, "-"));
   if (!/[\u0080-\uffff]/.test(normalized) && s.length <= max) return s || (opts.fallback ?? "");
-  const canonical = trimDashes(normalized.replace(/[^\p{L}\p{N}._-]+/gu, "-"));
-  const tag = fnv1a64(canonical).toString(16).padStart(16, "0").slice(0, 8);
+  const canonical2 = trimDashes(normalized.replace(/[^\p{L}\p{N}._-]+/gu, "-"));
+  const tag = fnv1a64(canonical2).toString(16).padStart(16, "0").slice(0, 8);
   const readable = /[\u0080-\uffff]/.test(normalized) ? s.replace(/-{2,}/g, "-") : s;
   const head = readable.slice(0, Math.max(0, max - tag.length - 1)).replace(/-+$/, "");
   return head ? `${head}-${tag}` : tag;
@@ -51847,6 +51847,24 @@ async function serveCommand(args) {
 // src/commands/journal.ts
 import { readFileSync as readFileSync44 } from "fs";
 import { basename as basename5, resolve as resolve16 } from "path";
+var DECISION_CONTENT = [
+  "symbol",
+  "rating",
+  "horizon",
+  "conviction",
+  "thesis",
+  "evidence",
+  "falsifiers",
+  "risks",
+  "bullCase",
+  "bearCase",
+  "plan",
+  "portfolioContext"
+];
+var canonical = (v) => JSON.stringify(
+  v,
+  (_k, x) => x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x
+) ?? "undefined";
 async function decideCommand(args, asJson) {
   const [run3, file] = args.positional;
   if (!run3 || !file)
@@ -51868,6 +51886,13 @@ async function decideCommand(args, asJson) {
   if (!r3.ok) {
     printResult(asJson, r3, `decision refused \u2014 ${r3.problems.length} problem(s):
 ${r3.problems.map((p) => `  - ${p}`).join("\n")}`);
+    process.exitCode = 1;
+    return;
+  }
+  const changed = known ? DECISION_CONTENT.filter((k) => canonical(r3.decision[k]) !== canonical(known[k])) : [];
+  if (known && changed.length) {
+    const problem = `decision ${known.id} (decided ${known.decidedAt}) is in the journal with other content \u2014 ${changed.join(", ")} differ; a recorded decision is not edited: a new call is a decision.json without its id and decidedAt`;
+    printResult(asJson, { ok: false, problems: [problem] }, `decision refused \u2014 ${problem}`);
     process.exitCode = 1;
     return;
   }

@@ -92,6 +92,14 @@ describe("decisions", () => {
     const again = await decide(dir, forged.file);
     expect(again.out).toMatchObject({ id: forged.file.id, alreadyRecorded: true });
     expect(journal().filter((d) => d.symbol === "FORGED.PA")).toHaveLength(1);
+    // The recorded id and time over other content is neither that decision nor a new one: refused, the journal untouched.
+    const edited = await decide(dir, { ...forged.file, conviction: 5, thesis: "A thesis rewritten after the fact, to look right." });
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
+    expect(edited.out.ok).toBe(false);
+    expect(edited.out.alreadyRecorded).toBeUndefined();
+    expect(edited.out.problems.join(" ")).toMatch(new RegExp(`${forged.file.id} .*conviction, thesis`));
+    expect(journal().filter((d) => d.symbol === "FORGED.PA")).toHaveLength(1);
     // The recorded id under another time is not that decision: a new one, dated now.
     const moved = await decide(dir, { ...forged.file, decidedAt: "2026-01-02T00:00:00.000Z" });
     expect(moved.file.id).not.toBe(forged.file.id);
