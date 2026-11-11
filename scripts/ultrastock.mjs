@@ -22027,11 +22027,10 @@ function withoutColumnLabels(answer) {
     return cells.map((c) => labelRow && wholeNumber(c) ? " " : withoutPeriodLabels(cites ? c : blankDates(c))).join("|");
   }).join("\n");
 }
+var SECTION_NUMBER = new RegExp("^(?:\\d{1,2}(?:\\.(?:0|[1-9]\\d?)){0,3}[.)]\\s+(?=\\p{L})|\\d{1,2}(?:\\.(?:0|[1-9]\\d?)){1,3}\\s+(?=\\p{Lu})(?!(?:EUR|USD|GBP|CHF|JPY|CAD|AUD|NOK|SEK|DKK|BTC|ETH|USDT|USDC|Bn|Mn|Md|Mds|Mio|K)\\b))", "u");
 function headingText(heading) {
   const t = withoutPeriodLabels(heading.replace(/^#{1,6}\s+/, ""));
-  const n2 = /^(\d+(?:\.\d+)+|\d+(?=[.)]))[.)]?\s/.exec(t);
-  const first = n2 && extractFigures(t)[0];
-  return n2 && (!first || n2[1].startsWith(first.raw)) ? t.slice(n2[0].length) : t;
+  return t.replace(SECTION_NUMBER, "");
 }
 function lineFinder(lines) {
   const flat = lines.map(

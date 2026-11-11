@@ -415,15 +415,20 @@ function withoutColumnLabels(answer: string): string {
 }
 
 /**
- * A heading's text; its section number ("1.", "2.3", "2.3.1", "10)") orders the
- * sections and is dropped, but "2.3 bn" or "12 %" opening it is a figure: the
- * number goes only when the figure reader reads it bare.
+ * A section number, known by its form: small dotted integers before a title.
+ * Closed by "." or ")" ("1. Thesis", "10) Risks", "2.3. Risks"), any word
+ * follows; open ("2.3 Risks", "3.2 M&A", "1.2 B shares"), a capitalised one
+ * that is no currency or scale ("2.3 bn", "31.4 times", "1.2 EUR" are figures).
+ * "450. target" and "450.00 is" are no section: a section counts in ones and
+ * tens.
  */
+const SECTION_NUMBER =
+  /^(?:\d{1,2}(?:\.(?:0|[1-9]\d?)){0,3}[.)]\s+(?=\p{L})|\d{1,2}(?:\.(?:0|[1-9]\d?)){1,3}\s+(?=\p{Lu})(?!(?:EUR|USD|GBP|CHF|JPY|CAD|AUD|NOK|SEK|DKK|BTC|ETH|USDT|USDC|Bn|Mn|Md|Mds|Mio|K)\b))/u;
+
+/** A heading's text: its section number orders the sections and is dropped; a figure opening it stays. */
 function headingText(heading: string): string {
   const t = withoutPeriodLabels(heading.replace(/^#{1,6}\s+/, ""));
-  const n = /^(\d+(?:\.\d+)+|\d+(?=[.)]))[.)]?\s/.exec(t);
-  const first = n && extractFigures(t)[0];
-  return n && (!first || n[1]!.startsWith(first.raw)) ? t.slice(n[0].length) : t;
+  return t.replace(SECTION_NUMBER, "");
 }
 
 /** The line each claim starts on, moving forward through the answer. */

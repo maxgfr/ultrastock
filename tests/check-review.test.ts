@@ -59,6 +59,22 @@ describe("horizon and period labels in header rows and headings", () => {
   });
 });
 
+describe("a heading's section number", () => {
+  it("drops a section number before a title starting with a scale letter", () => {
+    expect(kinds("## 3.2 M&A outlook\n\nClose 383 € [E1].\n")).toEqual([]);
+    expect(kinds("## 2.1 T-bills and rates\n\nClose 383 € [E1].\n")).toEqual([]);
+    expect(kinds("## 1.2 B shares and governance\n\nClose 383 € [E1].\n")).toEqual([]);
+    expect(kinds("## 10) Risks\n\n### 1. thesis\n\nClose 383 € [E1].\n")).toEqual([]);
+  });
+  it("reads a figure opening a heading", () => {
+    expect(refused("## 450.00 is the target\n\nClose 383 € [E1].\n")).toBe(true);
+    expect(refused("## 31.4 times forward earnings\n\nClose 383 € [E1].\n")).toBe(true);
+    expect(refused("## 450. target price\n\nClose 383 € [E1].\n")).toBe(true);
+    expect(refused("## 2.3 bn of revenue\n\nClose 383 € [E1].\n")).toBe(true);
+    expect(refused("## 12 % margin\n\nClose 383 € [E1].\n")).toBe(true);
+  });
+});
+
 describe("what a header row labels", () => {
   it("reads the whole number of a key/value table's first row as a figure", () => {
     expect(refused("| Price target | 450 |\n|---|---|\n| Close | 383 € [E1] |\n")).toBe(true);

@@ -17,24 +17,30 @@ row in its own cells (a column never grounds its header) — a lead-in sentence
 above a list grounds nothing below it. `## Buy, target 450 €` with no `[E#]`
 is refused.
 
-Labels are not figures: a heading's section number (`## 1. Thesis`,
-`### 2.3 Risks`; `2.3 bn` opening a heading is still a figure), the whole
-numbers of a header row of horizons or years — two or more cells each holding
-only a whole number (`| Horizon | +5 | 20 | J+60 |`; a key/value table's first
-row, `| Price target | 450 |`, states a value), a horizon or period label in a header cell or a heading
-(`| 1M | 3M | 1Y |`, `Perf 12m`, `## 12M performance`, `H1 26`, `9M 2026`;
-`3 M€` there is still an amount, and `12M shares` in prose is twelve
-million), and everything listed below. A heading with no figure and no
-`[E#]` is a title: a date in it labels the section and is not held to the rule
-for dates ahead. So is a date in a header row that cites no `[E#]`: it labels
-its column (`| Metric | 2025-12-31 | 2026-12-31 |`).
+Labels are not figures, and everything listed below is one. In headings and
+header rows:
+
+- a heading's section number — small dotted integers before a title:
+  `## 1. Thesis`, `### 2.3 Risks`, `## 3.2 M&A outlook`, `## 10) Risks`.
+  `2.3 bn`, `31.4 times`, `450. target` and `450.00 is` opening a heading are
+  figures;
+- the whole numbers of a header row of horizons or years — two or more cells
+  each holding only a whole number: `| Horizon | +5 | 20 | J+60 |`. A
+  key/value table's first row, `| Price target | 450 |`, states a value;
+- a horizon or period label in a header cell or a heading: `| 1M | 3M | 1Y |`,
+  `Perf 12m`, `## 12M performance`, `H1 26`, `9M 2026`. `3 M€` there is still
+  an amount, and `12M shares` in prose is twelve million.
+
+A heading with no figure and no `[E#]` is a title: a date in it labels the
+section and is not held to the rule for dates ahead. So is a date in a header
+row that cites no `[E#]`: it labels its column
+(`| Metric | 2025-12-31 | 2026-12-31 |`).
 
 A **figure** is any number written as a quantity: `383,00 €`, `−1.24 %`,
 `$1.6 trillion`, `188,6 Md€`, `31.4x`, `12 bps`, `39,539,690 shares` — markup
 included: `_450_`, `4**5** %`, `&#52;&#53; %`, full-width `４５ %`, `⁴⁵ %`,
 `4½ %` (4.5 %), `45pc`. A superscript after a word or a figure is a footnote
-mark (`84.7 bn²`). These are
-not figures: dates (`2026-10-23`, `23/10/2026`, `Oct 23, 2026`), times, years
+mark (`84.7 bn²`). These are not figures: dates (`2026-10-23`, `23/10/2026`, `Oct 23, 2026`), times, years
 on their own, indicator settings (`RSI(14)`, `MACD(12,26,9)`, `MM50`, and a
 moving average at a usual period: `SMA 200`, `EMA 50`), a chart timeframe
 before an indicator (`15m RSI`, `4h MACD`), index names with their own number
