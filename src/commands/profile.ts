@@ -3,7 +3,18 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { registerDatasets, formatDatasets, type Dataset } from "../core/datasets.js";
 import { checkDnsBlock, checkMica, rulesFor, verifyChecklist } from "../core/jurisdiction.js";
-import { defaultProfile, type EnvelopeType, loadProfile, profilePath, saveProfile, setProfileField, SETTABLE_PATHS, upsertEnvelope } from "../core/profile.js";
+import { withFileLockSync } from "../core/lock.js";
+import {
+  defaultProfile,
+  type EnvelopeType,
+  loadProfile,
+  type Profile,
+  profilePath,
+  saveProfile,
+  setProfileField,
+  SETTABLE_PATHS,
+  upsertEnvelope,
+} from "../core/profile.js";
 import { applySuitability, QUESTIONS, scoreSuitability } from "../core/suitability.js";
 import { clockNow } from "../core/net.js";
 import { argValue, type CommandArgs, UsageError } from "../engine.js";
@@ -17,12 +28,27 @@ function requireProfile() {
   return p;
 }
 
+/** Every profile write runs under one lock: two `profile` commands at once must not erase each other's change. */
+const profileLock = <T>(fn: () => T): T => withFileLockSync(`${profilePath()}.lock`, fn);
+
+/** Read, change and save the profile as one step. */
+function changeProfile(change: (p: Profile) => void): Profile {
+  return profileLock(() => {
+    const p = requireProfile();
+    change(p);
+    saveProfile(p);
+    return p;
+  });
+}
+
 export async function profileCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const [sub = "show", ...rest] = args.positional;
   if (sub === "init") {
-    if (loadProfile()) throw new Error(`a profile already exists at ${profilePath()} — change it with \`profile set\``);
     const p = defaultProfile(argValue(args, "jurisdiction") ?? "FR", argValue(args, "currency") ?? "EUR", clockNow());
-    const path = saveProfile(p);
+    const path = profileLock(() => {
+      if (loadProfile()) throw new Error(`a profile already exists at ${profilePath()} — change it with \`profile set\``);
+      return saveProfile(p);
+    });
     return out(
       asJson,
       { path, profile: p },
@@ -36,9 +62,10 @@ export async function profileCommand(args: CommandArgs, asJson: boolean): Promis
   if (sub === "set") {
     const [path, ...value] = rest;
     if (!path || !value.length) throw new UsageError(`usage: ultrastock profile set <field> <value> — fields: ${SETTABLE_PATHS.join(", ")}`);
-    const p = requireProfile();
-    const from = setProfileField(p, path, value.join(" "), clockNow());
-    saveProfile(p);
+    let from: unknown;
+    const p = changeProfile((x) => {
+      from = setProfileField(x, path, value.join(" "), clockNow());
+    });
     return out(
       asJson,
       { path, from, to: p.history[p.history.length - 1]!.to },
@@ -50,9 +77,9 @@ export async function profileCommand(args: CommandArgs, asJson: boolean): Promis
     const type = argValue(args, "type")?.toUpperCase() as EnvelopeType | undefined;
     if (!id || !type || !ENVELOPES.includes(type))
       throw new UsageError(`usage: ultrastock profile envelope <id> --type ${ENVELOPES.join("|")} [--broker <name>] [--currency EUR]`);
-    const p = requireProfile();
-    upsertEnvelope(p, { id, type, broker: argValue(args, "broker"), currency: (argValue(args, "currency") ?? p.baseCurrency).toUpperCase() }, clockNow());
-    saveProfile(p);
+    const p = changeProfile((x) =>
+      upsertEnvelope(x, { id, type, broker: argValue(args, "broker"), currency: (argValue(args, "currency") ?? x.baseCurrency).toUpperCase() }, clockNow()),
+    );
     return out(
       asJson,
       p.envelopes,
@@ -76,9 +103,7 @@ export async function profileCommand(args: CommandArgs, asJson: boolean): Promis
     }
     const answers = JSON.parse(readFileSync(resolve(answersFile), "utf8")) as Record<string, string | number>;
     const r = scoreSuitability(answers);
-    const p = requireProfile();
-    applySuitability(p, r, clockNow());
-    saveProfile(p);
+    changeProfile((p) => applySuitability(p, r, clockNow()));
     return out(
       asJson,
       r,

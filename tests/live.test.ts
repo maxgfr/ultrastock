@@ -1,8 +1,5 @@
-import { execFile } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { build } from "tsup";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { homeDir } from "../src/core/paths.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
@@ -24,6 +21,7 @@ import { type Channel, issueCode, verifyCode } from "../src/trading/otp.js";
 import { killSwitchPath, type Order, orderFingerprint } from "../src/trading/riskgate.js";
 import { readCredentials, redact, setupCommands } from "../src/trading/secrets.js";
 import { createTicket, loadTicket, readAudit, recordCheck } from "../src/trading/tickets.js";
+import { inParallelProcesses, SRC } from "./helpers/processes.js";
 
 /** A venue that answers from a script and counts what it was asked. */
 function fakeVenue(
@@ -123,29 +121,16 @@ describe("approval codes", () => {
   }, 30_000);
 
   it("count every wrong guess when several processes guess at once", async () => {
-    // verifyCode is synchronous: only separate processes can race on the tries counter. Bundle it for them.
-    const dir = mkdtempSync(join(tmpdir(), "us-otp-race-"));
-    const entry = join(dir, "guess.ts");
-    writeFileSync(
-      entry,
-      `import { verifyCode } from ${JSON.stringify(join(process.cwd(), "src/trading/otp.ts"))};
-const [subject, binding, code, startAt] = process.argv.slice(2);
-while (Date.now() < Number(startAt)) {} // start together
-process.stdout.write(JSON.stringify(verifyCode(subject, binding, code)));
-`,
-    );
-    await build({ entry: { guess: entry }, outDir: dir, format: ["esm"], platform: "node", target: "node18", config: false, silent: true });
+    // verifyCode is synchronous: only separate processes can race on the tries counter.
     await issueCode("t-race01", "fp1", "a test", [["capture", capture]]);
     const right = codeFrom();
     const wrong = right === "000000" ? "111111" : "000000";
-    const startAt = String(Date.now() + 1500);
-    const guess = () =>
-      new Promise<string>((resolve, reject) =>
-        execFile(process.execPath, [join(dir, "guess.js"), "t-race01", "fp1", wrong, startAt], { env: process.env }, (err, stdout) =>
-          err ? reject(err) : resolve(JSON.parse(stdout).reason),
-        ),
-      );
-    const reasons = await Promise.all([guess(), guess(), guess()]);
+    const out = await inParallelProcesses(
+      `import { verifyCode } from ${JSON.stringify(join(SRC, "trading/otp.ts"))};
+process.stdout.write(JSON.stringify(verifyCode("t-race01", "fp1", args[0])));`,
+      [[wrong], [wrong], [wrong]],
+    );
+    const reasons = out.map((o) => JSON.parse(o).reason);
     expect(reasons.sort()).toEqual(["wrong code (1 tries left)", "wrong code (2 tries left)", "wrong code 3 times: void, issue a new one"]);
     // Three wrong guesses void the code: the right one comes too late.
     expect(verifyCode("t-race01", "fp1", right)).toMatchObject({ ok: false, reason: expect.stringMatching(/no code/) });

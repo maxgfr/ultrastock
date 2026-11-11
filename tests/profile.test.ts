@@ -1,8 +1,12 @@
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { homeDir } from "../src/core/paths.js";
 import { checkMica, ruleStatus, rulesFor, verifyChecklist } from "../src/core/jurisdiction.js";
 import { defaultProfile, loadProfile, saveProfile, setProfileField, upsertEnvelope } from "../src/core/profile.js";
 import { applySuitability, QUESTIONS, scoreSuitability } from "../src/core/suitability.js";
 import { withFixture } from "./helpers/fixtures.js";
+import { inParallelProcesses, SRC } from "./helpers/processes.js";
 
 const base = {
   horizon: "gt10",
@@ -30,6 +34,20 @@ describe("profile", () => {
     saveProfile(p);
     expect(loadProfile()!.envelopes).toHaveLength(1);
   });
+  it("keeps every change when two `profile set` run at once", async () => {
+    rmSync(homeDir(), { recursive: true, force: true });
+    saveProfile(defaultProfile("FR", "EUR"));
+    // Each process sets its own field 60 times: a change read before the other's write and saved after it would erase it.
+    await inParallelProcesses(
+      `import { profileCommand } from ${JSON.stringify(join(SRC, "commands/profile.ts"))};
+import { commandArgs } from ${JSON.stringify(join(SRC, "commands/emit.ts"))};
+for (let i = 1; i <= 60; i++) await profileCommand(commandArgs("profile", ["set", args[0], String(i)]), true);`,
+      [["horizonYears"], ["emergencyFundMonths"]],
+    );
+    const p = loadProfile()!;
+    expect(p.history).toHaveLength(120);
+    expect(p).toMatchObject({ horizonYears: 60, emergencyFundMonths: 60 });
+  }, 60_000);
   it("refuses unknown fields and out-of-range values", () => {
     const p = defaultProfile();
     expect(() => setProfileField(p, "limits.yolo", "1")).toThrow(/not a profile field/);

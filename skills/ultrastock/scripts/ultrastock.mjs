@@ -46958,12 +46958,23 @@ function requireProfile() {
   if (!p) throw new Error(`no profile yet \u2014 run \`ultrastock profile init --jurisdiction FR --currency EUR\` (it lives in ${profilePath()})`);
   return p;
 }
+var profileLock = (fn) => withFileLockSync(`${profilePath()}.lock`, fn);
+function changeProfile(change) {
+  return profileLock(() => {
+    const p = requireProfile();
+    change(p);
+    saveProfile(p);
+    return p;
+  });
+}
 async function profileCommand(args, asJson) {
   const [sub = "show", ...rest] = args.positional;
   if (sub === "init") {
-    if (loadProfile()) throw new Error(`a profile already exists at ${profilePath()} \u2014 change it with \`profile set\``);
     const p = defaultProfile(argValue(args, "jurisdiction") ?? "FR", argValue(args, "currency") ?? "EUR", clockNow());
-    const path2 = saveProfile(p);
+    const path2 = profileLock(() => {
+      if (loadProfile()) throw new Error(`a profile already exists at ${profilePath()} \u2014 change it with \`profile set\``);
+      return saveProfile(p);
+    });
     return printResult(
       asJson,
       { path: path2, profile: p },
@@ -46979,9 +46990,10 @@ async function profileCommand(args, asJson) {
   if (sub === "set") {
     const [path2, ...value] = rest;
     if (!path2 || !value.length) throw new UsageError(`usage: ultrastock profile set <field> <value> \u2014 fields: ${SETTABLE_PATHS.join(", ")}`);
-    const p = requireProfile();
-    const from = setProfileField(p, path2, value.join(" "), clockNow());
-    saveProfile(p);
+    let from;
+    const p = changeProfile((x) => {
+      from = setProfileField(x, path2, value.join(" "), clockNow());
+    });
     return printResult(
       asJson,
       { path: path2, from, to: p.history[p.history.length - 1].to },
@@ -46993,9 +47005,9 @@ async function profileCommand(args, asJson) {
     const type = argValue(args, "type")?.toUpperCase();
     if (!id || !type || !ENVELOPES.includes(type))
       throw new UsageError(`usage: ultrastock profile envelope <id> --type ${ENVELOPES.join("|")} [--broker <name>] [--currency EUR]`);
-    const p = requireProfile();
-    upsertEnvelope(p, { id, type, broker: argValue(args, "broker"), currency: (argValue(args, "currency") ?? p.baseCurrency).toUpperCase() }, clockNow());
-    saveProfile(p);
+    const p = changeProfile(
+      (x) => upsertEnvelope(x, { id, type, broker: argValue(args, "broker"), currency: (argValue(args, "currency") ?? x.baseCurrency).toUpperCase() }, clockNow())
+    );
     return printResult(
       asJson,
       p.envelopes,
@@ -47020,9 +47032,7 @@ async function profileCommand(args, asJson) {
     }
     const answers = JSON.parse(readFileSync45(resolve13(answersFile), "utf8"));
     const r3 = scoreSuitability(answers);
-    const p = requireProfile();
-    applySuitability(p, r3, clockNow());
-    saveProfile(p);
+    changeProfile((p) => applySuitability(p, r3, clockNow()));
     return printResult(
       asJson,
       r3,
