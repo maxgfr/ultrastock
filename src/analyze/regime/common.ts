@@ -23,15 +23,31 @@ export const shiftDay = (iso: string, days: number) => isoDay(new Date(Date.pars
 export const round4 = (x: number) => Number(x.toFixed(4));
 
 /**
- * Bars whose session is over at `now`: a bar dated today is dropped for a
- * crypto pair (the daily candle is still open) and for a stock market before
- * its close (US 21:15 UTC, Europe 16:45 UTC — after the close in both DST
- * regimes). Later-dated bars never pass.
+ * Minute of the UTC day after which a market's bar dated today is final, after
+ * the close in both DST regimes: US 21:15 (16:00 EST = 21:00 UTC); Euronext,
+ * other European venues and their once-a-day funds 16:45 (17:30 CET = 16:30
+ * UTC); "world" 21:15, its last venues being Toronto, Mexico and São Paulo.
+ * A crypto candle dated today is still open: never final.
+ */
+const SESSION_FINAL_UTC: Record<Market, number | undefined> = {
+  crypto: undefined,
+  us: 21 * 60 + 15,
+  world: 21 * 60 + 15,
+  euronext: 16 * 60 + 45,
+  europe: 16 * 60 + 45,
+  fund: 16 * 60 + 45,
+};
+
+/**
+ * Bars whose session is over at `now` (see SESSION_FINAL_UTC): a bar dated
+ * today passes only once its market's session is final. Later-dated bars never
+ * pass. The one closed-bar rule of every analysis (no look-ahead).
  */
 export function closedBars<T extends { date: string }>(bars: readonly T[], market: Market, now: Date): T[] {
   const today = isoDay(now);
   const minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-  const closedToday = market === "crypto" ? false : market === "us" ? minutes >= 21 * 60 + 15 : minutes >= 16 * 60 + 45;
+  const final = SESSION_FINAL_UTC[market];
+  const closedToday = final !== undefined && minutes >= final;
   return bars.filter((b) => b.date.slice(0, 10) < today || (b.date.slice(0, 10) === today && closedToday));
 }
 

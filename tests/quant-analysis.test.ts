@@ -17,7 +17,7 @@ import {
 } from "../src/analyze/quant/options.js";
 import { discountedKelly, kalshiFee, kalshiQuotesFromPoints, kalshiReadingPoints, manifoldQuotesFromPoints } from "../src/analyze/quant/predict.js";
 import { alignCloses, multiStatsPoints, singleStatsPoints } from "../src/analyze/quant/stats.js";
-import { closedBars } from "../src/commands/quant.js";
+import { closedBars } from "../src/analyze/regime/common.js";
 import type { OptionChain, OptionContract } from "../src/providers/options/chain.js";
 import { day, prng, randomWalk } from "./helpers/series.js";
 
@@ -223,9 +223,23 @@ describe("stats helpers", () => {
       { date: "2026-10-23", open: 1, high: 1, low: 1, close: 1 },
       { date: "2026-10-24", open: 1, high: 1, low: 1, close: 1 },
     ];
-    expect(closedBars(bars, true, NOW)).toHaveLength(1);
-    expect(closedBars(bars, false, NOW)).toHaveLength(1);
-    expect(closedBars(bars, false, new Date("2026-10-24T22:00:00Z"))).toHaveLength(2);
+    expect(closedBars(bars, "crypto", NOW)).toHaveLength(1);
+    expect(closedBars(bars, "us", NOW)).toHaveLength(1);
+    expect(closedBars(bars, "us", new Date("2026-10-24T22:00:00Z"))).toHaveLength(2);
+  });
+
+  it("closes a session on the same rule as the market-context analyses", () => {
+    const bars = [
+      { date: "2026-10-23", open: 1, high: 1, low: 1, close: 1 },
+      { date: "2026-10-24", open: 1, high: 1, low: 1, close: 1 },
+    ];
+    // Euronext has closed by 17:00 UTC: today's bar is final.
+    expect(closedBars(bars, "euronext", new Date("2026-10-24T17:00:00Z"))).toHaveLength(2);
+    // The US close is not settled at 21:05 UTC in winter (16:00 EST = 21:00 UTC).
+    expect(closedBars(bars, "us", new Date("2026-10-24T21:05:00Z"))).toHaveLength(1);
+    // A bar dated after today never passes.
+    const ahead = [...bars, { date: "2026-10-25", open: 1, high: 1, low: 1, close: 1 }];
+    expect(closedBars(ahead, "us", new Date("2026-10-24T22:00:00Z")).map((b) => b.date)).toEqual(["2026-10-23", "2026-10-24"]);
   });
 });
 

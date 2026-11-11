@@ -28,6 +28,9 @@ describe("regime plumbing", () => {
     expect(closedBars(bars, "us", new Date("2026-10-24T21:30:00Z"))).toHaveLength(3);
     expect(closedBars(bars, "euronext", new Date("2026-10-24T17:00:00Z"))).toHaveLength(3);
     expect(closedBars(bars, "euronext", new Date("2026-10-23T23:00:00Z"))).toHaveLength(2);
+    // "world" spans Tokyo to Toronto and São Paulo: its last venues close near 21:00 UTC.
+    expect(closedBars(bars, "world", new Date("2026-10-24T17:00:00Z"))).toHaveLength(2);
+    expect(closedBars(bars, "world", new Date("2026-10-24T21:30:00Z"))).toHaveLength(3);
   });
 
   it("aligns two series on their common dates and merges provenance to the weakest", () => {

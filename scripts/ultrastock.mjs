@@ -18986,6 +18986,120 @@ function mergedProvenance(provs, asOf) {
 var fmt = (x, d = 2) => Number.isFinite(x) ? x.toFixed(d) : String(x);
 var moveKey = (m) => `${m >= 0 ? "+" : ""}${Number((m * 100).toFixed(2))}`;
 
+// src/analyze/regime/common.ts
+import { resolve as resolve5 } from "path";
+var FETCH_CONCURRENCY = 4;
+var DAY2 = 864e5;
+var shiftDay = (iso5, days) => isoDayOf(new Date(Date.parse(`${iso5}T00:00:00Z`) + days * DAY2));
+var round4 = (x) => Number(x.toFixed(4));
+var SESSION_FINAL_UTC = {
+  crypto: void 0,
+  us: 21 * 60 + 15,
+  world: 21 * 60 + 15,
+  euronext: 16 * 60 + 45,
+  europe: 16 * 60 + 45,
+  fund: 16 * 60 + 45
+};
+function closedBars(bars, market, now) {
+  const today = isoDayOf(now);
+  const minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const final = SESSION_FINAL_UTC[market];
+  const closedToday = final !== void 0 && minutes >= final;
+  return bars.filter((b) => b.date.slice(0, 10) < today || b.date.slice(0, 10) === today && closedToday);
+}
+function alignCloses(a, b) {
+  const bm = new Map(b.map((x) => [x.date, x.close]));
+  const out = { dates: [], a: [], b: [] };
+  for (const x of a) {
+    const y = bm.get(x.date);
+    if (y === void 0 || !(y > 0) || !(x.close > 0)) continue;
+    out.dates.push(x.date);
+    out.a.push(x.close);
+    out.b.push(y);
+  }
+  return out;
+}
+function mergeProvenance(provs, asOf) {
+  const sources = [...new Set(provs.map((p) => p.source))];
+  const fetchedAt = provs.map((p) => p.fetchedAt).sort()[0] ?? (/* @__PURE__ */ new Date(0)).toISOString();
+  const asOfs = provs.map((p) => p.asOf).filter((x) => !!x).sort();
+  const fallback = [...new Set(provs.map((p) => p.fallbackFrom).filter((x) => !!x))];
+  return {
+    source: sources.join("+"),
+    ...provs.length === 1 && provs[0].url ? { url: provs[0].url } : {},
+    fetchedAt,
+    ...provs[0]?.delay ? { delay: provs[0].delay } : {},
+    official: provs.length > 0 && provs.every((p) => p.official),
+    ...fallback.length ? { fallbackFrom: fallback.join(", ") } : {},
+    asOf: asOf ?? asOfs[asOfs.length - 1]
+  };
+}
+function derivedProvenance(provs, asOf) {
+  const m = mergeProvenance(provs, asOf);
+  return { source: "ultrastock", fetchedAt: m.fetchedAt, official: m.official, ...m.asOf ? { asOf: m.asOf } : {} };
+}
+var seriesProvenance = (s, asOf) => ({ ...s.provenance, asOf: asOf ?? s.bars[s.bars.length - 1]?.date });
+async function dailyHistories(symbols, days, now) {
+  const from = new Date(now.getTime() - days * DAY2);
+  const rows = await mapLimit(symbols, FETCH_CONCURRENCY, async (s) => {
+    try {
+      const r3 = await resolveSymbol(s);
+      const series2 = await getHistory(r3, { from, to: now, interval: "1d" });
+      const bars = closedBars(series2.bars, series2.instrument.market, now);
+      if (!bars.length) return { s, error: "no closed session in the window" };
+      return { s, series: { ...series2, bars } };
+    } catch (e) {
+      return { s, error: e.message };
+    }
+  });
+  const series = /* @__PURE__ */ new Map();
+  const failed = [];
+  for (const r3 of rows) {
+    if ("series" in r3 && r3.series) series.set(r3.s, r3.series);
+    else failed.push(`${r3.s}: ${"error" in r3 ? r3.error : "no answer"}`);
+  }
+  return { series, failed };
+}
+async function settle(tasks) {
+  const names2 = Object.keys(tasks);
+  const settled = await Promise.allSettled(names2.map((n2) => tasks[n2]()));
+  const ok = {};
+  const failed = [];
+  settled.forEach((s, i) => {
+    if (s.status === "fulfilled") ok[names2[i]] = s.value;
+    else failed.push(`${names2[i]}: ${s.reason?.message ?? String(s.reason)}`);
+  });
+  return { ok, failed };
+}
+function pickPoints(ds, keys, title) {
+  const points = ds.points.filter((p) => Array.isArray(keys) ? keys.includes(p.key) : keys.test(p.key));
+  return points.length ? { ...ds, title: title ?? ds.title, points, notes: [] } : void 0;
+}
+var pointValue = (ds, key) => ds?.points.find((p) => p.key === key)?.value;
+var pointNumber = (ds, key) => {
+  const v = pointValue(ds, key);
+  return typeof v === "number" && Number.isFinite(v) ? v : void 0;
+};
+function emitReport(args, report2, asJson) {
+  const out = argValue(args, "out");
+  const dir2 = out ? resolve5(out) : void 0;
+  const datasets = report2.datasets.filter((d) => d.points.length);
+  const registered = registerDatasets(dir2, datasets);
+  const ids = /* @__PURE__ */ new Map();
+  for (const r3 of registered) r3.dataset.points.forEach((p, i) => r3.ids[i] && ids.set(p.key, r3.ids[i]));
+  const cite2 = (key) => ids.has(key) ? ` [${ids.get(key)}]` : "";
+  if (asJson) {
+    process.stdout.write(jsonLine({ dir: dir2, ...report2.json ?? {}, datasets: registered.map((r3) => ({ ...r3.dataset, ids: r3.ids, points: r3.items })) }));
+    return;
+  }
+  const lines = report2.summary(cite2);
+  process.stdout.write(`${lines.join("\n")}
+
+${formatDatasets(registered)}`);
+  if (!out) process.stdout.write("note: no --out, so nothing was registered as evidence \u2014 pass --out <dir> to cite these figures\n");
+}
+var fmt2 = (x, d = 2) => x === void 0 || !Number.isFinite(x) ? "n/a" : String(Number(x.toFixed(d)));
+
 // src/analytics/stats.ts
 function mean(xs) {
   if (!xs.length) return Number.NaN;
@@ -19872,8 +19986,8 @@ function unusualActivity(chain2, threshold = 3.5, multiplier = 100) {
 }
 
 // src/analyze/quant/options.ts
-var DAY2 = 864e5;
-var YEAR = 365 * DAY2;
+var DAY3 = 864e5;
+var YEAR = 365 * DAY3;
 var SETTLE_HOUR = { cboe: "20", deribit: "08" };
 function toQuantChain(chain2, venue, now, rate2) {
   const inverse2 = chain2.premiumCurrency === chain2.underlying;
@@ -19913,7 +20027,7 @@ function toQuantChain(chain2, venue, now, rate2) {
   }
   if (inverse2) notes.push(`premiums quoted in ${chain2.underlying} converted to ${chain2.strikeCurrency} at the index price ${chain2.underlyingPrice}`);
   if (filled) notes.push(`${filled} contract(s) had no greeks from the venue: delta and gamma are Black\u2013Scholes from their IV (r = ${r3})`);
-  const expiries = [...new Set(options.map((o) => o.expiry))].sort().map((expiry) => ({ expiry, dte: Math.max(0, Math.round((Date.parse(`${expiry}T00:00:00Z`) - now.getTime()) / DAY2)) }));
+  const expiries = [...new Set(options.map((o) => o.expiry))].sort().map((expiry) => ({ expiry, dte: Math.max(0, Math.round((Date.parse(`${expiry}T00:00:00Z`) - now.getTime()) / DAY3)) }));
   return {
     underlying: chain2.underlying,
     venue,
@@ -20621,14 +20735,14 @@ function singleStatsPoints(sym3, bars, perYear, out) {
   }
   return notes;
 }
-function alignCloses(series) {
+function alignCloses2(series) {
   if (!series.length) return { dates: [], closes: [] };
   const maps = series.map((bars) => new Map(bars.map((b) => [b.date, b.close])));
   const dates = [...maps[0].keys()].filter((d) => maps.every((m) => m.has(d))).sort();
   return { dates, closes: maps.map((m) => dates.map((d) => m.get(d))) };
 }
 function benchmarkPoints(sym3, bench, bars, benchBars, perYear, out) {
-  const { dates, closes } = alignCloses([bars, benchBars]);
+  const { dates, closes } = alignCloses2([bars, benchBars]);
   if (dates.length < 30) return [`${sym3} vs ${bench}: only ${dates.length} shared dates \u2014 no relative statistics`];
   const r3 = simpleReturns(closes[0]);
   const b = simpleReturns(closes[1]);
@@ -20710,7 +20824,7 @@ function multiStatsPoints(syms, aligned, out) {
 }
 
 // src/commands/quant.ts
-var DAY3 = 864e5;
+var DAY4 = 864e5;
 var DERIBIT = /* @__PURE__ */ new Set(["BTC", "ETH", "BTCUSDT", "ETHUSDT", "BTC-USD", "ETH-USD"]);
 var STATS_MAX_SYMBOLS = 10;
 var PREDICT_MAX_BOOKS = 10;
@@ -20722,12 +20836,6 @@ var dataset2 = (kind, title, subject, points, provenance, notes = []) => ({
   provenance,
   notes
 });
-function closedBars(bars, crypto, now) {
-  const today = now.toISOString().slice(0, 10);
-  const last2 = bars[bars.length - 1];
-  if (last2 && last2.date >= today && (crypto || now.getUTCHours() < 21)) return bars.slice(0, -1);
-  return [...bars];
-}
 var fraction = (v, flag, lo, hi) => {
   if (v === void 0) return void 0;
   const n2 = Number(v);
@@ -20803,7 +20911,7 @@ async function fetchBars(raw, from, now) {
     const r3 = await resolveSymbol(raw);
     const series = await getHistory(r3, { from, to: now, interval: "1d" });
     const crypto = r3.instrument.market === "crypto";
-    return { sym: r3.instrument.symbol, series, bars: closedBars(series.bars, crypto, now), crypto, us: r3.instrument.market === "us" };
+    return { sym: r3.instrument.symbol, series, bars: closedBars(series.bars, r3.instrument.market, now), crypto, us: r3.instrument.market === "us" };
   } catch (e) {
     return { sym: raw.toUpperCase(), bars: [], crypto: false, us: false, error: e.message };
   }
@@ -20814,7 +20922,7 @@ async function statsCommand(args, asJson) {
   if (syms.length > STATS_MAX_SYMBOLS) throw new UsageError(`stats takes at most ${STATS_MAX_SYMBOLS} symbols (got ${syms.length})`);
   const days = argInt(args, "days", { min: 60, max: 3650 }) ?? 750;
   const now = clockNow();
-  const from = new Date(now.getTime() - days * DAY3);
+  const from = new Date(now.getTime() - days * DAY4);
   const got = await mapLimit(syms, 4, (s) => fetchBars(s, from, now));
   const ok = got.filter((g) => g.series && g.bars.length >= 30);
   const failed = got.filter((g) => !ok.includes(g)).map((g) => `${g.sym}: ${g.error ?? `only ${g.bars.length} closed daily bars`}`);
@@ -20848,7 +20956,7 @@ async function statsCommand(args, asJson) {
       );
     } else if (b.sym !== a.sym) unavailable.push(`unavailable \u2014 benchmark ${benchRaw}: ${b.error ?? "too little history"}`);
   } else {
-    const aligned = alignCloses(ok.map((g) => g.bars));
+    const aligned = alignCloses2(ok.map((g) => g.bars));
     if (aligned.dates.length < 30) throw new Error(`only ${aligned.dates.length} dates shared by ${ok.map((g) => g.sym).join(", ")} \u2014 not enough to compare`);
     const pts = new PointList();
     const notes = multiStatsPoints(
@@ -20878,7 +20986,7 @@ async function statsCommand(args, asJson) {
   emitDatasets(args, out, asJson);
 }
 var CRYPTO_USAGE = "usage: ultrastock crypto-analysis <coin> [--days 365] [--out <dir>] | crypto-analysis yields <symbol> [--limit 20] \u2014 funding, basis, OI, long/short, DVOL, MVRV, fees, realised vol, drawdown from ATH, leverage heat; or DeFi yield sustainability";
-async function settle(tasks) {
+async function settle2(tasks) {
   const datasets = /* @__PURE__ */ new Map();
   const failed = [];
   await mapLimit(tasks, 4, async ([name, run3]) => {
@@ -20890,7 +20998,7 @@ async function settle(tasks) {
   });
   return { datasets, failed };
 }
-var pointValue = (ds, key) => {
+var pointValue2 = (ds, key) => {
   for (const d of ds ?? []) {
     const p = d.points.find((x) => x.key === key);
     if (p && typeof p.value === "number") return { value: p.value, ds: d };
@@ -20914,8 +21022,8 @@ async function cryptoAnalysisCommand(args, asJson) {
       "daily bars",
       async () => {
         const r3 = await resolveSymbol(`${coin}USDT`);
-        const series = await getHistory(r3, { from: new Date(now.getTime() - days * DAY3), to: now, interval: "1d" });
-        bars = { series, bars: closedBars(series.bars, true, now) };
+        const series = await getHistory(r3, { from: new Date(now.getTime() - days * DAY4), to: now, interval: "1d" });
+        bars = { series, bars: closedBars(series.bars, "crypto", now) };
         return [];
       }
     ],
@@ -20934,7 +21042,7 @@ async function cryptoAnalysisCommand(args, asJson) {
     tasks.push(["Coin Metrics (MVRV)", async () => [await coinmetricsAssetMetrics(coin.toLowerCase(), 30)]]);
   }
   if (coin === "BTC") tasks.push(["mempool.space fees", async () => (await mempoolNetwork()).slice(0, 1)]);
-  const { datasets, failed } = await settle(tasks);
+  const { datasets, failed } = await settle2(tasks);
   const out = [];
   for (const [name] of tasks) out.push(...datasets.get(name) ?? []);
   const notes = [];
@@ -20952,9 +21060,9 @@ async function cryptoAnalysisCommand(args, asJson) {
     );
   } else if (bars) notes.push(`${coin}: only ${bars.bars.length} closed daily bars \u2014 no realised volatility`);
   const fut = datasets.get("Binance futures positioning");
-  const fundAnn = pointValue(fut, `${coin}.deriv.funding.binance.annualized`);
-  const fundMean = pointValue(fut, `${coin}.deriv.funding.binance.mean`);
-  const oiChange = pointValue(fut, `${coin}.deriv.oi.binance.change`);
+  const fundAnn = pointValue2(fut, `${coin}.deriv.funding.binance.annualized`);
+  const fundMean = pointValue2(fut, `${coin}.deriv.funding.binance.mean`);
+  const oiChange = pointValue2(fut, `${coin}.deriv.oi.binance.change`);
   if (fut) {
     const pts = new PointList();
     pts.num(
@@ -20977,7 +21085,7 @@ async function cryptoAnalysisCommand(args, asJson) {
       ])
     );
   }
-  const dvol = pointValue(datasets.get("Deribit DVOL"), `${coin}.deriv.dvol`);
+  const dvol = pointValue2(datasets.get("Deribit DVOL"), `${coin}.deriv.dvol`);
   if (dvol && rv30) {
     const pts = new PointList();
     pts.num(
@@ -26559,7 +26667,7 @@ var SPECIAL_CLOSURES = [
   }
 ];
 var utc = (y, m, d) => new Date(Date.UTC(y, m - 1, d));
-var fmt2 = (d) => d.toISOString().slice(0, 10);
+var fmt3 = (d) => d.toISOString().slice(0, 10);
 var addDays = (d, n2) => new Date(d.getTime() + n2 * 864e5);
 function easterSunday(year) {
   const a = year % 19;
@@ -26594,10 +26702,10 @@ function observed(d) {
 }
 function holidays(market, year) {
   const out = [];
-  const closed = (d, name) => out.push({ date: fmt2(d), name, kind: "closed" });
+  const closed = (d, name) => out.push({ date: fmt3(d), name, kind: "closed" });
   const early = (d, name, closeAt) => {
     const w = d.getUTCDay();
-    if (w !== 0 && w !== 6) out.push({ date: fmt2(d), name, kind: "early-close", closeAt });
+    if (w !== 0 && w !== 6) out.push({ date: fmt3(d), name, kind: "early-close", closeAt });
   };
   const easter = easterSunday(year);
   if (market === "XNYS") {
@@ -26690,7 +26798,7 @@ function nextSessions(market, from, n2) {
   const out = [];
   let d = /* @__PURE__ */ new Date(`${from}T00:00:00Z`);
   for (let guard = 0; out.length < n2 && guard < 400; guard++, d = addDays(d, 1)) {
-    const day4 = fmt2(d);
+    const day4 = fmt3(d);
     if (!isTradingDay(market, day4)) continue;
     const e = yearOf(market, d.getUTCFullYear()).early.get(day4);
     out.push({ date: day4, closeAt: e?.closeAt ?? MARKETS[market].close, early: !!e });
@@ -26702,9 +26810,9 @@ function addSessions(market, from, n2) {
   let left = n2;
   for (let guard = 0; left > 0 && guard < 2e3; guard++) {
     d = addDays(d, 1);
-    if (isTradingDay(market, fmt2(d))) left--;
+    if (isTradingDay(market, fmt3(d))) left--;
   }
-  return fmt2(d);
+  return fmt3(d);
 }
 
 // src/providers/macro/calendars.ts
@@ -27123,111 +27231,6 @@ async function resultsReactionsDataset(sym3, now = clockNow()) {
   };
 }
 
-// src/analyze/regime/common.ts
-import { resolve as resolve5 } from "path";
-var FETCH_CONCURRENCY = 4;
-var DAY4 = 864e5;
-var shiftDay = (iso5, days) => isoDayOf(new Date(Date.parse(`${iso5}T00:00:00Z`) + days * DAY4));
-var round4 = (x) => Number(x.toFixed(4));
-function closedBars2(bars, market, now) {
-  const today = isoDayOf(now);
-  const minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-  const closedToday = market === "crypto" ? false : market === "us" ? minutes >= 21 * 60 + 15 : minutes >= 16 * 60 + 45;
-  return bars.filter((b) => b.date.slice(0, 10) < today || b.date.slice(0, 10) === today && closedToday);
-}
-function alignCloses2(a, b) {
-  const bm = new Map(b.map((x) => [x.date, x.close]));
-  const out = { dates: [], a: [], b: [] };
-  for (const x of a) {
-    const y = bm.get(x.date);
-    if (y === void 0 || !(y > 0) || !(x.close > 0)) continue;
-    out.dates.push(x.date);
-    out.a.push(x.close);
-    out.b.push(y);
-  }
-  return out;
-}
-function mergeProvenance(provs, asOf) {
-  const sources = [...new Set(provs.map((p) => p.source))];
-  const fetchedAt = provs.map((p) => p.fetchedAt).sort()[0] ?? (/* @__PURE__ */ new Date(0)).toISOString();
-  const asOfs = provs.map((p) => p.asOf).filter((x) => !!x).sort();
-  const fallback = [...new Set(provs.map((p) => p.fallbackFrom).filter((x) => !!x))];
-  return {
-    source: sources.join("+"),
-    ...provs.length === 1 && provs[0].url ? { url: provs[0].url } : {},
-    fetchedAt,
-    ...provs[0]?.delay ? { delay: provs[0].delay } : {},
-    official: provs.length > 0 && provs.every((p) => p.official),
-    ...fallback.length ? { fallbackFrom: fallback.join(", ") } : {},
-    asOf: asOf ?? asOfs[asOfs.length - 1]
-  };
-}
-function derivedProvenance(provs, asOf) {
-  const m = mergeProvenance(provs, asOf);
-  return { source: "ultrastock", fetchedAt: m.fetchedAt, official: m.official, ...m.asOf ? { asOf: m.asOf } : {} };
-}
-var seriesProvenance = (s, asOf) => ({ ...s.provenance, asOf: asOf ?? s.bars[s.bars.length - 1]?.date });
-async function dailyHistories(symbols, days, now) {
-  const from = new Date(now.getTime() - days * DAY4);
-  const rows = await mapLimit(symbols, FETCH_CONCURRENCY, async (s) => {
-    try {
-      const r3 = await resolveSymbol(s);
-      const series2 = await getHistory(r3, { from, to: now, interval: "1d" });
-      const bars = closedBars2(series2.bars, series2.instrument.market, now);
-      if (!bars.length) return { s, error: "no closed session in the window" };
-      return { s, series: { ...series2, bars } };
-    } catch (e) {
-      return { s, error: e.message };
-    }
-  });
-  const series = /* @__PURE__ */ new Map();
-  const failed = [];
-  for (const r3 of rows) {
-    if ("series" in r3 && r3.series) series.set(r3.s, r3.series);
-    else failed.push(`${r3.s}: ${"error" in r3 ? r3.error : "no answer"}`);
-  }
-  return { series, failed };
-}
-async function settle2(tasks) {
-  const names2 = Object.keys(tasks);
-  const settled = await Promise.allSettled(names2.map((n2) => tasks[n2]()));
-  const ok = {};
-  const failed = [];
-  settled.forEach((s, i) => {
-    if (s.status === "fulfilled") ok[names2[i]] = s.value;
-    else failed.push(`${names2[i]}: ${s.reason?.message ?? String(s.reason)}`);
-  });
-  return { ok, failed };
-}
-function pickPoints(ds, keys, title) {
-  const points = ds.points.filter((p) => Array.isArray(keys) ? keys.includes(p.key) : keys.test(p.key));
-  return points.length ? { ...ds, title: title ?? ds.title, points, notes: [] } : void 0;
-}
-var pointValue2 = (ds, key) => ds?.points.find((p) => p.key === key)?.value;
-var pointNumber = (ds, key) => {
-  const v = pointValue2(ds, key);
-  return typeof v === "number" && Number.isFinite(v) ? v : void 0;
-};
-function emitReport(args, report2, asJson) {
-  const out = argValue(args, "out");
-  const dir2 = out ? resolve5(out) : void 0;
-  const datasets = report2.datasets.filter((d) => d.points.length);
-  const registered = registerDatasets(dir2, datasets);
-  const ids = /* @__PURE__ */ new Map();
-  for (const r3 of registered) r3.dataset.points.forEach((p, i) => r3.ids[i] && ids.set(p.key, r3.ids[i]));
-  const cite2 = (key) => ids.has(key) ? ` [${ids.get(key)}]` : "";
-  if (asJson) {
-    process.stdout.write(jsonLine({ dir: dir2, ...report2.json ?? {}, datasets: registered.map((r3) => ({ ...r3.dataset, ids: r3.ids, points: r3.items })) }));
-    return;
-  }
-  const lines = report2.summary(cite2);
-  process.stdout.write(`${lines.join("\n")}
-
-${formatDatasets(registered)}`);
-  if (!out) process.stdout.write("note: no --out, so nothing was registered as evidence \u2014 pass --out <dir> to cite these figures\n");
-}
-var fmt3 = (x, d = 2) => x === void 0 || !Number.isFinite(x) ? "n/a" : String(Number(x.toFixed(d)));
-
 // src/analyze/regime/catalysts.ts
 var MAX_MACRO_DAYS = 10;
 var CLUSTER_SESSIONS = 3;
@@ -27355,7 +27358,7 @@ async function macroAgenda(currencies, from, to, now, ns = "AGENDA") {
   if (!regions.length) return { datasets: [], items: [], notes };
   const days = [];
   for (let d = from; d <= to && days.length < MAX_MACRO_DAYS; d = shiftDay(d, 1)) if (![0, 6].includes((/* @__PURE__ */ new Date(`${d}T00:00:00Z`)).getUTCDay())) days.push(d);
-  const side2 = await settle2({
+  const side2 = await settle({
     "ForexFactory high-impact week": () => forexFactoryCalendar({ now, minImpact: "high" }),
     "Nasdaq economic calendar": () => macroCalendar(days)
   });
@@ -27437,7 +27440,7 @@ async function catalystsReport(raw, days, now = clockNow(), opts = {}) {
     if (![0, 6].includes((/* @__PURE__ */ new Date(`${d}T00:00:00Z`)).getUTCDay())) macroDays.push(d);
   const tvTicker2 = tvTickerFor(inst);
   const sec8k = company && full ? secFilings(sym3, { forms: ["8-K"], days: 30, now, limit: 20 }).catch((e) => e) : void 0;
-  const side2 = await settle2({
+  const side2 = await settle({
     ...company ? { "Nasdaq earnings date": () => nasdaqEarningsDate(sym3) } : {},
     ...company ? { "Nasdaq dividends": () => nasdaqDividends(sym3, { limit: 12 }) } : {},
     ...sec8k ? {
@@ -27706,7 +27709,7 @@ async function catalystsReport(raw, days, now = clockNow(), opts = {}) {
       ]);
       timeline.push({
         date: expiry,
-        text: `option expiry: \xB1${fmt3(em.move1sd)} USD (\xB1${fmt3(em.move1sd / chain2.underlyingPrice * 100, 1)} %) implied to here`,
+        text: `option expiry: \xB1${fmt2(em.move1sd)} USD (\xB1${fmt2(em.move1sd / chain2.underlyingPrice * 100, 1)} %) implied to here`,
         keys: [`${ns}.options.move1sd`, `${ns}.options.move1sdPct`]
       });
     } else notes.push(expiry ? `no two-sided ATM quote at ${expiry} \u2014 no expected move` : `no option expiry on or after ${end}`);
@@ -27724,7 +27727,7 @@ async function catalystsReport(raw, days, now = clockNow(), opts = {}) {
         const ex = v("excessMedian");
         const dr = v("driftMedian");
         past.push(
-          `past results: a median move of \xB1${fmt3(abs, 1)} %{${sym3}.results.absMedian} over ${n2}{${sym3}.results.n} reports` + (ex !== void 0 ? `, ${fmt3(ex, 1)} %{${sym3}.results.excessMedian} median against SPY` : "") + (dr !== void 0 ? `, then a median 20-session drift of ${fmt3(dr, 1)} %{${sym3}.results.driftMedian} against SPY` : "")
+          `past results: a median move of \xB1${fmt2(abs, 1)} %{${sym3}.results.absMedian} over ${n2}{${sym3}.results.n} reports` + (ex !== void 0 ? `, ${fmt2(ex, 1)} %{${sym3}.results.excessMedian} median against SPY` : "") + (dr !== void 0 ? `, then a median 20-session drift of ${fmt2(dr, 1)} %{${sym3}.results.driftMedian} against SPY` : "")
         );
       }
     } catch (e) {
@@ -28513,10 +28516,10 @@ function componentPoints(ns, components, asOf) {
 }
 function adviceSummary(ns, a, cite2) {
   return [
-    `zone: ${a.zone}${cite2(`${ns}.coach.zone`)} \xB7 score ${fmt3(a.score, 1)}/100${cite2(`${ns}.coach.score`)} on ${fmt3(a.coverage * 100, 0)} % of the weights${cite2(`${ns}.coach.coverage`)}`,
+    `zone: ${a.zone}${cite2(`${ns}.coach.zone`)} \xB7 score ${fmt2(a.score, 1)}/100${cite2(`${ns}.coach.score`)} on ${fmt2(a.coverage * 100, 0)} % of the weights${cite2(`${ns}.coach.coverage`)}`,
     `max exposure: ${a.maxExposurePct === void 0 ? "n/a (coverage under 50 %)" : `${a.maxExposurePct} %`}${cite2(`${ns}.coach.maxExposure`)} \xB7 new entries: ${a.newEntries}${cite2(`${ns}.coach.newEntries`)}`,
     `components: ${a.components.map(
-      (c) => `${c.id} ${c.score === void 0 ? "n/a" : fmt3(c.score, 0)}${c.score === void 0 ? "" : cite2(`${ns}.coach.${c.id}.score`)} (w ${c.weight})`
+      (c) => `${c.id} ${c.score === void 0 ? "n/a" : fmt2(c.score, 0)}${c.score === void 0 ? "" : cite2(`${ns}.coach.${c.id}.score`)} (w ${c.weight})`
     ).join(", ") || "none"}`
   ];
 }
@@ -28571,12 +28574,12 @@ var meanOf = (xs) => {
   const v = xs.filter((x) => x !== void 0 && Number.isFinite(x));
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : void 0;
 };
-var signalLine = (ns, s, cite2) => `  - ${s.label}: ${s.value === void 0 ? "n/a" : (s.value >= 0 ? "+" : "") + fmt3(s.value)}${cite2(`${ns}.signal.${s.id}`)} \u2014 ${s.reason}`;
+var signalLine = (ns, s, cite2) => `  - ${s.label}: ${s.value === void 0 ? "n/a" : (s.value >= 0 ? "+" : "") + fmt2(s.value)}${cite2(`${ns}.signal.${s.id}`)} \u2014 ${s.reason}`;
 async function usRegime(now = clockNow()) {
   const ns = "US.regime";
   const [hist, side2] = await Promise.all([
     dailyHistories(US_REGIME_SYMBOLS, REGIME_HISTORY_DAYS, now),
-    settle2({
+    settle({
       "Cboe VIX term structure": () => vixTermStructure(["VIX", "VIX3M"]),
       "CNN Fear & Greed": () => cnnFearGreed(now),
       "TradingView large-cap breadth": () => usBreadthCount(),
@@ -28610,7 +28613,7 @@ async function usRegime(now = clockNow()) {
     const sa = S.get(a);
     const sb = S.get(b);
     if (!sa || !sb) return void 0;
-    const al = alignCloses2(sa.bars, sb.bars);
+    const al = alignCloses(sa.bars, sb.bars);
     const s = ratioSignal(`${id}.${a}_${b}`, `${a}/${b} (${label2})`, al.a, al.b);
     const p = mergeProvenance([seriesProvenance(sa), seriesProvenance(sb)], al.dates[al.dates.length - 1]);
     provs.push(p);
@@ -28664,7 +28667,7 @@ async function usRegime(now = clockNow()) {
       id: "sentiment",
       label: "CNN Fear & Greed, read contrarian",
       value: sentiment,
-      reason: `index ${fmt3(fg, 1)} \u2014 ${fg <= 20 ? "extreme fear: contrarian risk-on" : fg >= 80 ? "extreme greed: contrarian risk-off" : "between the extremes: a small tilt, mostly noise"}`
+      reason: `index ${fmt2(fg, 1)} \u2014 ${fg <= 20 ? "extreme fear: contrarian risk-on" : fg >= 80 ? "extreme greed: contrarian risk-off" : "between the extremes: a small tilt, mostly noise"}`
     };
     signals.push(s);
     sec.add("US volatility and sentiment signals", p, signalPoints(ns, s, "\u2264 20 \u2192 +0.8, \u2265 80 \u2192 \u22120.8, else (50 \u2212 index) / 30 \xD7 0.5", p.asOf));
@@ -28678,7 +28681,7 @@ async function usRegime(now = clockNow()) {
       id: "breadth.above200",
       label: "US large caps above their 200-day",
       value: breadthSignal(tv.pct),
-      reason: `${tv.above} of ${tv.total} (${fmt3(tv.pct, 1)} %) close above their 200-day average`
+      reason: `${tv.above} of ${tv.total} (${fmt2(tv.pct, 1)} %) close above their 200-day average`
     };
     signals.push(breadthPct);
     sec.add("US large-cap breadth (TradingView, unofficial)", p, [
@@ -28748,7 +28751,7 @@ async function usRegime(now = clockNow()) {
       ...context.map((s) => signalLine(ns, s, cite2)),
       ...spreads.map(({ spread: spread2, r: r3 }) => {
         const k = `${ns}.credit.oas.${spread2.id}`;
-        return `  - ${spread2.label}: ${fmt3(r3.level)} %${cite2(k)}${r3.changeBp !== void 0 ? `, ${r3.changeBp >= 0 ? "+" : ""}${fmt3(r3.changeBp, 0)} bp over ${SPREAD_LOOKBACK} observations${cite2(`${k}.chg${SPREAD_LOOKBACK}`)}` : ""}${r3.widening ? ` \u2014 WIDENING${cite2(`${k}.widening`)}: credit is pricing more risk` : ""}`;
+        return `  - ${spread2.label}: ${fmt2(r3.level)} %${cite2(k)}${r3.changeBp !== void 0 ? `, ${r3.changeBp >= 0 ? "+" : ""}${fmt2(r3.changeBp, 0)} bp over ${SPREAD_LOOKBACK} observations${cite2(`${k}.chg${SPREAD_LOOKBACK}`)}` : ""}${r3.widening ? ` \u2014 WIDENING${cite2(`${k}.widening`)}: credit is pricing more risk` : ""}`;
       }),
       ...notes.length ? ["notes:", ...notes.map((n2) => `  - ${n2}`)] : []
     ]
@@ -28759,7 +28762,7 @@ async function euRegime(now = clockNow()) {
   const [hist, tv, side2] = await Promise.all([
     dailyHistories([CAC40_ISIN, EU_WORLD_ETF], REGIME_HISTORY_DAYS, now),
     largeCapRows(EU_MARKETS, EU_LARGE_CAP, ["close", "SMA200"]),
-    settle2({
+    settle({
       "ECB AAA curve": () => ecbYieldCurve(["2Y", "10Y"]),
       "Cboe VIX term structure": () => vixTermStructure(["VIX", "VIX3M"])
     })
@@ -28821,7 +28824,7 @@ async function euRegime(now = clockNow()) {
       id: "breadth.above200",
       label: "euro-area large caps above their 200-day",
       value: breadthSignal(b.pct),
-      reason: `${b.above} of ${b.total} (${fmt3(b.pct, 1)} %) close above their 200-day average (${tv.datasets.length} of ${EU_MARKETS.length} markets read)`
+      reason: `${b.above} of ${b.total} (${fmt2(b.pct, 1)} %) close above their 200-day average (${tv.datasets.length} of ${EU_MARKETS.length} markets read)`
     };
     signals.push(breadthPct);
     sec.add("EU large-cap breadth (TradingView, unofficial)", p, [
@@ -28851,7 +28854,7 @@ async function euRegime(now = clockNow()) {
     context.push({
       id: "curve.2s10s",
       label: "euro AAA 2s10s",
-      reason: `${fmt3(slope, 1)} bp \u2014 ${slope < 0 ? "inverted: the market prices cuts ahead, a late-cycle sign" : slope < 50 ? "flat" : "positively sloped"} (context: rates, not credit)`
+      reason: `${fmt2(slope, 1)} bp \u2014 ${slope < 0 ? "inverted: the market prices cuts ahead, a late-cycle sign" : slope < 50 ? "flat" : "positively sloped"} (context: rates, not credit)`
     });
   }
   const vix = side2.ok["Cboe VIX term structure"];
@@ -28940,7 +28943,7 @@ async function cryptoRegimeReport(now = clockNow()) {
   const ns = "CRYPTO.regime";
   const [hist, side2] = await Promise.all([
     dailyHistories(["BTCUSDT"], REGIME_HISTORY_DAYS, now),
-    settle2({
+    settle({
       "CoinGecko top 50": () => coingeckoMarkets({ limit: 50 }),
       "Binance futures funding": () => binanceFuturesPositioning("BTC", { fundingLimit: 21, days: 2 })
     })
@@ -29067,13 +29070,13 @@ async function cryptoRegimeReport(now = clockNow()) {
     json: { market: "crypto", asOf, regime: r3 },
     summary: (cite2) => [
       `# Crypto market regime \u2014 as of ${asOf}`,
-      `regime: ${r3.label}${cite2(`${ns}.label`)} \xB7 score ${fmt3(r3.score, 1)}/100${cite2(`${ns}.score`)} on ${fmt3(r3.coverage * 100, 0)} % of the weights${cite2(`${ns}.coverage`)}`,
-      `components: ${r3.components.map((c) => `${c.id} ${c.score === void 0 ? "n/a" : fmt3(c.score, 0) + cite2(`${ns}.coach.${c.id}.score`)} (w ${c.weight})`).join(", ")}`,
+      `regime: ${r3.label}${cite2(`${ns}.label`)} \xB7 score ${fmt2(r3.score, 1)}/100${cite2(`${ns}.score`)} on ${fmt2(r3.coverage * 100, 0)} % of the weights${cite2(`${ns}.coverage`)}`,
+      `components: ${r3.components.map((c) => `${c.id} ${c.score === void 0 ? "n/a" : fmt2(c.score, 0) + cite2(`${ns}.coach.${c.id}.score`)} (w ${c.weight})`).join(", ")}`,
       "inputs:",
       ...signals.map((s) => signalLine(ns, s, cite2)),
-      `  - BTC 30-day return: ${fmt3(inputs.btcReturn30dPct)} %${cite2(`${ns}.btc.return30d`)} \xB7 drawdown from ATH: ${fmt3(inputs.btcDrawdownPct)} %${cite2("BTC.market.ath.change")}`,
-      `  - alt breadth (30-day change > 0, proxy for above the 50-day): ${fmt3(inputs.altBreadthPct, 1)} %${cite2(`${ns}.altBreadth.pct`)}`,
-      `  - funding annualised: ${fmt3(inputs.fundingAnnualizedPct, 1)} %${cite2(fundingKey)}`,
+      `  - BTC 30-day return: ${fmt2(inputs.btcReturn30dPct)} %${cite2(`${ns}.btc.return30d`)} \xB7 drawdown from ATH: ${fmt2(inputs.btcDrawdownPct)} %${cite2("BTC.market.ath.change")}`,
+      `  - alt breadth (30-day change > 0, proxy for above the 50-day): ${fmt2(inputs.altBreadthPct, 1)} %${cite2(`${ns}.altBreadth.pct`)}`,
+      `  - funding annualised: ${fmt2(inputs.fundingAnnualizedPct, 1)} %${cite2(fundingKey)}`,
       ...notes.length ? ["notes:", ...notes.map((n2) => `  - ${n2}`)] : []
     ]
   };
@@ -29218,7 +29221,7 @@ function sectorPoints(ns, s, bench, asOf) {
     out.push({ key: `${k}.members`, label: `${s.name} large caps in the screen`, value: s.members, unit: "count", ...asOf ? { asOf } : {} });
   return out;
 }
-var tableLine = (s, cite2, ns, extra) => `  ${String(s.rank ?? "\u2013").padStart(2)}. ${s.name.padEnd(24)} rel 1m ${fmt3(s.rel["1m"], 1).padStart(6)} \xB7 3m ${fmt3(s.rel["3m"], 1).padStart(6)} \xB7 6m ${fmt3(s.rel["6m"], 1).padStart(6)}${cite2(`${ns}.${s.id}.rs.composite`)}  ${extra}`;
+var tableLine = (s, cite2, ns, extra) => `  ${String(s.rank ?? "\u2013").padStart(2)}. ${s.name.padEnd(24)} rel 1m ${fmt2(s.rel["1m"], 1).padStart(6)} \xB7 3m ${fmt2(s.rel["3m"], 1).padStart(6)} \xB7 6m ${fmt2(s.rel["6m"], 1).padStart(6)}${cite2(`${ns}.${s.id}.rs.composite`)}  ${extra}`;
 async function usSectors(now = clockNow()) {
   const ns = "US.sector";
   const ids = Object.keys(SECTOR_ETFS);
@@ -29233,7 +29236,7 @@ async function usSectors(now = clockNow()) {
   for (const id of ids) {
     const s = hist.series.get(id);
     if (!s) continue;
-    const al = alignCloses2(s.bars, spy.bars);
+    const al = alignCloses(s.bars, spy.bars);
     stats.push(etfVsBenchmark(id, al.a, al.b));
     const p = mergeProvenance([seriesProvenance(s), seriesProvenance(spy)], al.dates[al.dates.length - 1]);
     provs.push(p);
@@ -29331,7 +29334,7 @@ async function euSectors() {
       `rotation: ${rot.reading}${cite2(`${ns}.rotation`)} \u2014 ${rot.reason}`,
       `leaders: ${leaders.map((s) => s.name).join(", ")}${cite2(`${ns}.leaders`)} \xB7 laggards: ${laggards.map((s) => s.name).join(", ")}${cite2(`${ns}.laggards`)}`,
       "relative strength (median performance relative to all large caps, in %; rank 1 = strongest):",
-      ...ranked.map((s) => tableLine(s, cite2, ns, `${s.members} stocks, ${fmt3(s.pctAbove200, 0)} % > 200d${cite2(`${ns}.${s.id}.above200.pct`)}`)),
+      ...ranked.map((s) => tableLine(s, cite2, ns, `${s.members} stocks, ${fmt2(s.pctAbove200, 0)} % > 200d${cite2(`${ns}.${s.id}.above200.pct`)}`)),
       ...notes.length ? ["notes:", ...notes.map((n2) => `  - ${n2}`)] : []
     ]
   };
@@ -54055,7 +54058,7 @@ function constituentSymbol(index, c) {
   const t = c.ticker.toUpperCase();
   return index === "UKX" ? `${t.replace(/\.$/, "").replace(/\./g, "-")}.L` : t;
 }
-function closedBars3(bars, today) {
+function closedBars2(bars, today) {
   return bars.filter((b) => b.date.slice(0, 10) < today);
 }
 async function universeSymbols(opts) {
@@ -54098,7 +54101,7 @@ async function builtinScreen(id, opts) {
   const bench = benchmarkFor2(opts.universe, symbols);
   const fetchBars2 = async (sym3) => {
     const series = await getHistory(await resolveSymbol(sym3), { from, to: now, interval: "1d" });
-    return { ...series, bars: closedBars3(series.bars, today) };
+    return { ...series, bars: closedBars2(series.bars, today) };
   };
   let benchBars;
   const needsBench = id === "minervini" || id === "canslim-technical" || id === "rs-leaders";

@@ -27,6 +27,7 @@ import { manifoldSearch, PLAY_MONEY_NOTE } from "../providers/prediction/manifol
 import { getHistory, resolveSymbol } from "../providers/router.js";
 import type { Bar, PriceSeries } from "../providers/types.js";
 import { mergedProvenance, PointList } from "../analyze/quant/common.js";
+import { closedBars } from "../analyze/regime/common.js";
 import { leverageHeat, poolsFromPoints, realisedPoints, yieldSustainability } from "../analyze/quant/crypto.js";
 import {
   buildStrategy,
@@ -63,18 +64,6 @@ const dataset = (kind: string, title: string, subject: string, points: PointList
   provenance,
   notes,
 });
-
-/**
- * Closed daily bars only: a crypto day closes at 00:00 UTC, so today's bar is
- * still forming; an exchange's bar dated today is dropped before 21:00 UTC
- * (after the US close, and well after the European ones).
- */
-export function closedBars(bars: readonly Bar[], crypto: boolean, now: Date): Bar[] {
-  const today = now.toISOString().slice(0, 10);
-  const last = bars[bars.length - 1];
-  if (last && last.date >= today && (crypto || now.getUTCHours() < 21)) return bars.slice(0, -1);
-  return [...bars];
-}
 
 const fraction = (v: string | undefined, flag: string, lo: number, hi: number): number | undefined => {
   if (v === undefined) return undefined;
@@ -177,7 +166,7 @@ async function fetchBars(raw: string, from: Date, now: Date): Promise<Fetched> {
     const r = await resolveSymbol(raw);
     const series = await getHistory(r, { from, to: now, interval: "1d" });
     const crypto = r.instrument.market === "crypto";
-    return { sym: r.instrument.symbol, series, bars: closedBars(series.bars, crypto, now), crypto, us: r.instrument.market === "us" };
+    return { sym: r.instrument.symbol, series, bars: closedBars(series.bars, r.instrument.market, now), crypto, us: r.instrument.market === "us" };
   } catch (e) {
     return { sym: raw.toUpperCase(), bars: [], crypto: false, us: false, error: (e as Error).message };
   }
@@ -299,7 +288,7 @@ export async function cryptoAnalysisCommand(args: CommandArgs, asJson: boolean):
       async () => {
         const r = await resolveSymbol(`${coin}USDT`);
         const series = await getHistory(r, { from: new Date(now.getTime() - days * DAY), to: now, interval: "1d" });
-        bars = { series, bars: closedBars(series.bars, true, now) };
+        bars = { series, bars: closedBars(series.bars, "crypto", now) };
         return [];
       },
     ],
