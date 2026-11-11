@@ -4,7 +4,7 @@
 // so a Treasury yield, an INSEE index and a FRED series cite the same way.
 import type { Dataset, Point } from "../../core/datasets.js";
 import type { NetResponse } from "../../core/net.js";
-import { isoDayOf as isoDate } from "../fundamentals/util.js";
+import { epochDay, isoDayOf as isoDate, mdyToIso as usSlashDate } from "../fundamentals/util.js";
 import { ProviderError } from "../types.js";
 
 /** One dated value of a series. `date` is YYYY-MM-DD, YYYY-MM (monthly), YYYY-Qn or YYYY (annual) as the source dates it. */
@@ -20,19 +20,9 @@ export function requireOk(source: string, res: NetResponse, what: string): void 
   if (!res.ok) throw new ProviderError(source, `${what} unavailable (HTTP ${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
 }
 
-// A Date as YYYY-MM-DD (UTC): the fundamentals' isoDayOf, under the name this module's callers know.
-export { isoDate };
-
-/** "10/23/2026" (or "9/3/2026") → "2026-10-23", without the local time zone. */
-export function usSlashDate(s: string | undefined): string | undefined {
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s ?? "").trim());
-  return m ? `${m[3]}-${m[1]!.padStart(2, "0")}-${m[2]!.padStart(2, "0")}` : undefined;
-}
-
-/** An epoch (ms) as YYYY-MM-DD (UTC). */
-export function epochDay(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10);
-}
+// The shared date helpers (fundamentals/util), under the names this module's callers know:
+// a Date as YYYY-MM-DD (UTC); "10/23/2026" or "9/3/2026" → "2026-10-23"; an epoch (ms) as YYYY-MM-DD (UTC).
+export { epochDay, isoDate, usSlashDate };
 
 /** A month-level period ("2026-09", "2026-Q2", "2026") as the last day it covers, for comparisons; other strings pass through. */
 export function periodEnd(period: string): string {

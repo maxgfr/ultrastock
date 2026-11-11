@@ -10,6 +10,7 @@
 // The published limit is 500 requests a minute per IP; calls are paced under it.
 import type { Dataset, Point } from "../../core/datasets.js";
 import { fetchJson } from "../../core/net.js";
+import { epochDay as isoDay } from "../fundamentals/util.js";
 import { ProviderError } from "../types.js";
 import { num } from "./common.js";
 
@@ -34,8 +35,6 @@ export interface ManifoldMarketRaw {
   textDescription?: string;
   answers?: Array<{ id?: string; text?: string; probability?: number | string; index?: number | string }>;
 }
-
-const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 /** One market as points under `MANIFOLD.<id>.…`; question, answers and description are untrusted. */
 export function manifoldMarketPoints(m: ManifoldMarketRaw): Point[] {

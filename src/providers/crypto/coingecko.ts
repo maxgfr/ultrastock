@@ -13,6 +13,7 @@
 // Names, descriptions and categories are the projects' own words: untrusted.
 import type { Dataset, Point } from "../../core/datasets.js";
 import { fetchJson } from "../../core/net.js";
+import { epochDay as isoDay } from "../fundamentals/util.js";
 import { ProviderError } from "../types.js";
 
 const BASE = "https://api.coingecko.com/api/v3";
@@ -35,7 +36,6 @@ async function get<T>(path: string, what: string): Promise<{ data: T; url: strin
   return { data: res.data, url: res.url, fetchedAt: res.fetchedAt };
 }
 
-const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 /** A key-safe subject for a coin: its ticker when it is a plain one, else its CoinGecko id. */

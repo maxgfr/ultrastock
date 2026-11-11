@@ -21,6 +21,7 @@ import { env, have, shAsync } from "../../engine.js";
 import { cachedJson, TTL } from "../../core/cache.js";
 import { clockNow, fetchJson, netMode, politeUa, recordedCall } from "../../core/net.js";
 import { homeDir } from "../../core/paths.js";
+import { isoDayOf as iso } from "../fundamentals/util.js";
 import { ProviderError } from "../types.js";
 
 export const SOURCE = "crible";
@@ -136,7 +137,6 @@ export const CRIBLE_MAX_AGE_DAYS = 7;
 export const CRIBLE_REFRESH = "ultrastock screen --engine crible --bootstrap";
 
 const DAY_MS = 86_400_000;
-const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 /**
  * When the local dataset was built: the manifest of the release it was

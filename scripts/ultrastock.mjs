@@ -1449,9 +1449,9 @@ function cellTemporals(xml) {
 function serialDate(serial, kind, date1904) {
   const days = date1904 ? serial + 1462 : serial < 60 ? serial + 1 : serial;
   if (!(serial >= 0 && days <= 2958466)) return void 0;
-  const iso5 = new Date(Math.round((EXCEL_EPOCH + days * DAY_MS) / 1e3) * 1e3).toISOString();
-  const time2 = iso5.slice(11, iso5.endsWith(":00.000Z") ? 16 : 19);
-  return kind === "date" ? iso5.slice(0, 10) : kind === "time" ? time2 : `${iso5.slice(0, 10)} ${time2}`;
+  const iso4 = new Date(Math.round((EXCEL_EPOCH + days * DAY_MS) / 1e3) * 1e3).toISOString();
+  const time2 = iso4.slice(11, iso4.endsWith(":00.000Z") ? 16 : 19);
+  return kind === "date" ? iso4.slice(0, 10) : kind === "time" ? time2 : `${iso4.slice(0, 10)} ${time2}`;
 }
 function sheetRows(xml, shared, styles, budget) {
   const table2 = { rows: [] };
@@ -13082,9 +13082,9 @@ function resolveBinance(symbol) {
 }
 function parseKlines(rows, interval) {
   return rows.map((k) => {
-    const iso5 = new Date(k[0]).toISOString();
+    const iso4 = new Date(k[0]).toISOString();
     return {
-      date: interval === "1d" || interval === "1w" ? iso5.slice(0, 10) : iso5,
+      date: interval === "1d" || interval === "1w" ? iso4.slice(0, 10) : iso4,
       open: Number(k[1]),
       high: Number(k[2]),
       low: Number(k[3]),
@@ -13293,6 +13293,36 @@ function toCsv(rows) {
 `;
 }
 
+// src/providers/fundamentals/util.ts
+function isoDayOf(d) {
+  return d.toISOString().slice(0, 10);
+}
+function epochDay(ms) {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+var dayMs = 864e5;
+var dayNumber = (iso4) => Math.round(Date.parse(`${iso4.slice(0, 10)}T00:00:00Z`) / dayMs);
+function daysBetween(a, b) {
+  return dayNumber(b) - dayNumber(a);
+}
+function shiftIsoDay(iso4, n2) {
+  return new Date((dayNumber(iso4) + n2) * dayMs).toISOString().slice(0, 10);
+}
+function mdyToIso(s) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s ?? "").trim());
+  return m ? `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}` : void 0;
+}
+var MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+function monthYearToIso(s) {
+  const m = /^([A-Za-z]{3})[a-z]*\.?\s+(\d{4})$/.exec((s ?? "").trim());
+  const month = m ? MONTHS.indexOf(m[1].toLowerCase()) : -1;
+  return m && month >= 0 ? `${m[2]}-${String(month + 1).padStart(2, "0")}` : void 0;
+}
+function finiteNumber(v) {
+  const n2 = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : Number.NaN;
+  return Number.isFinite(n2) ? n2 : void 0;
+}
+
 // src/providers/euronext.ts
 var BASE2 = "https://live.euronext.com";
 var SOURCE2 = "euronext";
@@ -13361,7 +13391,6 @@ async function resolveEuronext(symbol) {
     venueId: `${pick3.isin}-${pick3.mic}`
   };
 }
-var isoDay = (d) => d.toISOString().slice(0, 10);
 function parseEuronextHistory(csv) {
   const rows = parseCsvText(csv, ";");
   const at = rows.findIndex((r3) => r3[0]?.trim() === "Date");
@@ -13398,15 +13427,15 @@ function parseEuronextHistory(csv) {
   return bars.sort((a, b) => a.date.localeCompare(b.date));
 }
 async function euronextHistory(instrument, from, to) {
-  const url = `${BASE2}/en/ajax/AwlHistoricalPrice/getFullDownloadAjax/${instrument.venueId}?format=csv&decimal_separator=.&date_form=d/m/Y&op=&adjusted=Y&base100=&startdate=${isoDay(from)}&enddate=${isoDay(to)}`;
+  const url = `${BASE2}/en/ajax/AwlHistoricalPrice/getFullDownloadAjax/${instrument.venueId}?format=csv&decimal_separator=.&date_form=d/m/Y&op=&adjusted=Y&base100=&startdate=${isoDayOf(from)}&enddate=${isoDayOf(to)}`;
   const res = await fetchText(url, { accept: "text/csv,*/*" });
   if (!res.ok)
     throw new ProviderError(SOURCE2, `historical download failed for ${instrument.venueId} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   const bars = parseEuronextHistory(res.body);
   if (!bars.length)
-    throw new ProviderError(SOURCE2, `no bars for ${instrument.venueId} between ${isoDay(from)} and ${isoDay(to)} \u2014 Euronext serves about two years`);
+    throw new ProviderError(SOURCE2, `no bars for ${instrument.venueId} between ${isoDayOf(from)} and ${isoDayOf(to)} \u2014 Euronext serves about two years`);
   const notes = [];
-  if (bars[0].date > isoDay(new Date(from.getTime() + 7 * 864e5)))
+  if (bars[0].date > isoDayOf(new Date(from.getTime() + 7 * 864e5)))
     notes.push(`Euronext served history from ${bars[0].date} only (it keeps about two years)`);
   return {
     instrument,
@@ -13515,7 +13544,7 @@ async function ftFundProfile(isin, opts = {}) {
     notes
   };
 }
-var MONTHS = {
+var MONTHS2 = {
   Jan: "01",
   Feb: "02",
   Mar: "03",
@@ -13534,7 +13563,7 @@ function parseFtHistory(html) {
   for (const row of html.split(/<tr[^>]*>/).slice(1)) {
     const d = /\b[A-Z][a-z]{2}, ([A-Z][a-z]{2}) (\d{2}), (\d{4})</.exec(row);
     const cells = [...row.matchAll(/<td[^>]*>([^<]*)<\/td>/g)].map((c) => Number(c[1].replace(/,/g, "")));
-    const month = d ? MONTHS[d[1]] : void 0;
+    const month = d ? MONTHS2[d[1]] : void 0;
     if (!d || !month || cells.length < 4 || !cells.slice(0, 4).every((n2) => Number.isFinite(n2) && n2 > 0)) continue;
     const [open2, high, low, close] = cells;
     const date = `${d[3]}-${month}-${d[2]}`;
@@ -13580,8 +13609,8 @@ function resolveCoinbase(symbol) {
 }
 function parseCoinbaseCandles(rows, interval) {
   return rows.map(([t, low, high, open2, close, volume]) => {
-    const iso5 = new Date(t * 1e3).toISOString();
-    return { date: interval === "1d" ? iso5.slice(0, 10) : iso5, open: open2, high, low, close, volume };
+    const iso4 = new Date(t * 1e3).toISOString();
+    return { date: interval === "1d" ? iso4.slice(0, 10) : iso4, open: open2, high, low, close, volume };
   }).sort((a, b) => a.date.localeCompare(b.date));
 }
 function failure(status, product2, body, error) {
@@ -13683,9 +13712,9 @@ async function resolveKraken(symbol) {
 }
 function parseKrakenOhlc(rows, interval) {
   return rows.map(([t, o, h, l, c, vwap2, v, n2]) => {
-    const iso5 = new Date(t * 1e3).toISOString();
+    const iso4 = new Date(t * 1e3).toISOString();
     return {
-      date: interval === "1d" || interval === "1w" ? iso5.slice(0, 10) : iso5,
+      date: interval === "1d" || interval === "1w" ? iso4.slice(0, 10) : iso4,
       open: Number(o),
       high: Number(h),
       low: Number(l),
@@ -14071,16 +14100,15 @@ function parseNasdaqHistory(rows) {
   }
   return bars.sort((a, b) => a.date.localeCompare(b.date));
 }
-var isoDay2 = (d) => d.toISOString().slice(0, 10);
-var MONTHS2 = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+var MONTHS3 = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 function monthDayYear(s) {
   const m = /^([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),\s*(\d{4})/.exec(s.trim());
-  const month = m ? MONTHS2.indexOf(m[1].toLowerCase()) : -1;
+  const month = m ? MONTHS3.indexOf(m[1].toLowerCase()) : -1;
   return m && month >= 0 ? `${m[3]}-${String(month + 1).padStart(2, "0")}-${m[2].padStart(2, "0")}` : void 0;
 }
 async function nasdaqHistory(instrument, from, to) {
   const sym3 = instrument.venueId.split("|")[0];
-  const url = `${BASE6}/quote/${encodeURIComponent(sym3)}/historical?assetclass=${assetClassOf(instrument)}&fromdate=${isoDay2(from)}&todate=${isoDay2(to)}&limit=9999`;
+  const url = `${BASE6}/quote/${encodeURIComponent(sym3)}/historical?assetclass=${assetClassOf(instrument)}&fromdate=${isoDayOf(from)}&todate=${isoDayOf(to)}&limit=9999`;
   const res = await fetchJson(url, {
     headers: { referer: "https://www.nasdaq.com/" }
   });
@@ -14088,7 +14116,7 @@ async function nasdaqHistory(instrument, from, to) {
   if (!res.ok || !Array.isArray(rows))
     throw new ProviderError(SOURCE7, `historical prices unavailable for ${sym3} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   const bars = parseNasdaqHistory(rows);
-  if (!bars.length) throw new ProviderError(SOURCE7, `no bars for ${sym3} between ${isoDay2(from)} and ${isoDay2(to)}`);
+  if (!bars.length) throw new ProviderError(SOURCE7, `no bars for ${sym3} between ${isoDayOf(from)} and ${isoDayOf(to)}`);
   return {
     instrument,
     interval: "1d",
@@ -14590,7 +14618,6 @@ var CRIBLE_DATA_MANIFEST = `${REPO}/releases/download/data-latest/manifest.json`
 var CRIBLE_MAX_AGE_DAYS = 7;
 var CRIBLE_REFRESH = "ultrastock screen --engine crible --bootstrap";
 var DAY_MS2 = 864e5;
-var iso = (d) => d.toISOString().slice(0, 10);
 function cribleLocalBuiltAt(dir2 = cribleDataDir()) {
   for (const [file, field2] of [
     [".restored-manifest.json", "generated_at"],
@@ -14616,9 +14643,9 @@ function cribleFreshnessOf(local2, now, maxAgeDays, published) {
   const ageDays = Math.floor((now.getTime() - local2.getTime()) / DAY_MS2);
   const newer = published === void 0 || published.getTime() - local2.getTime() > DAY_MS2;
   const stale = ageDays > maxAgeDays && newer;
-  const pub = published ? `; the published data-latest dataset was built ${iso(published)}` : "";
-  const message = stale ? `crible's local dataset is ${ageDays} days old (built ${iso(local2)}${pub}) \u2014 its fundamentals, caps and prices may be out of date; refresh it with \`${CRIBLE_REFRESH}\` (re-downloads the published dataset, about a minute, and replaces the local copy)` : `crible's local dataset was built ${iso(local2)} (${ageDays} day${ageDays === 1 ? "" : "s"} old${pub})`;
-  return { local: iso(local2), ageDays, maxAgeDays, ...published ? { published: iso(published) } : {}, stale, message };
+  const pub = published ? `; the published data-latest dataset was built ${isoDayOf(published)}` : "";
+  const message = stale ? `crible's local dataset is ${ageDays} days old (built ${isoDayOf(local2)}${pub}) \u2014 its fundamentals, caps and prices may be out of date; refresh it with \`${CRIBLE_REFRESH}\` (re-downloads the published dataset, about a minute, and replaces the local copy)` : `crible's local dataset was built ${isoDayOf(local2)} (${ageDays} day${ageDays === 1 ? "" : "s"} old${pub})`;
+  return { local: isoDayOf(local2), ageDays, maxAgeDays, ...published ? { published: isoDayOf(published) } : {}, stale, message };
 }
 var freshness;
 function cribleFreshness(now = clockNow()) {
@@ -15067,33 +15094,6 @@ async function gleifSearch(name, opts = {}) {
   };
 }
 
-// src/providers/fundamentals/util.ts
-function isoDayOf(d) {
-  return d.toISOString().slice(0, 10);
-}
-var dayMs = 864e5;
-var dayNumber = (iso5) => Math.round(Date.parse(`${iso5.slice(0, 10)}T00:00:00Z`) / dayMs);
-function daysBetween(a, b) {
-  return dayNumber(b) - dayNumber(a);
-}
-function shiftIsoDay(iso5, n2) {
-  return new Date((dayNumber(iso5) + n2) * dayMs).toISOString().slice(0, 10);
-}
-function mdyToIso(s) {
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s ?? "").trim());
-  return m ? `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}` : void 0;
-}
-var MONTHS3 = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-function monthYearToIso(s) {
-  const m = /^([A-Za-z]{3})[a-z]*\.?\s+(\d{4})$/.exec((s ?? "").trim());
-  const month = m ? MONTHS3.indexOf(m[1].toLowerCase()) : -1;
-  return m && month >= 0 ? `${m[2]}-${String(month + 1).padStart(2, "0")}` : void 0;
-}
-function finiteNumber(v) {
-  const n2 = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : Number.NaN;
-  return Number.isFinite(n2) ? n2 : void 0;
-}
-
 // src/providers/fundamentals/esef.ts
 var ESEF_SOURCE = "esef";
 var BASE9 = "https://filings.xbrl.org";
@@ -15378,11 +15378,11 @@ async function fromFiles(sym3, sessions, now) {
   let url = "";
   const today = isoDayOf(now);
   for (let back = 0; back < sessions * 2 + 6 && days.length < sessions; back++) {
-    const iso5 = isoDayOf(new Date(now.getTime() - back * 864e5));
-    const d = iso5.replace(/-/g, "");
+    const iso4 = isoDayOf(new Date(now.getTime() - back * 864e5));
+    const d = iso4.replace(/-/g, "");
     const u = `${CDN}/CNMSshvol${d}.txt`;
     const read2 = () => readFile2(u, sym3);
-    const file = daysBetween(iso5, today) >= 2 ? await cachedJson(`finra:regsho:${d}:${sym3}`, TTL.immutable, read2) : await read2();
+    const file = daysBetween(iso4, today) >= 2 ? await cachedJson(`finra:regsho:${d}:${sym3}`, TTL.immutable, read2) : await read2();
     if (!file) continue;
     if (file.row) days.push(file.row);
     url ||= u;
@@ -17518,13 +17518,12 @@ async function get2(path2, pair) {
   if (!res.ok || res.data === void 0) throw futuresFailure(res.status, pair, path2.split("?")[0], res.error);
   return { data: res.data, url: res.url, fetchedAt: res.fetchedAt };
 }
-var isoDay3 = (ms) => new Date(ms).toISOString().slice(0, 10);
 function premiumPoints(p, intervalsPerYear = 3 * 365) {
   const b = baseOf(p.symbol);
   const mark = Number(p.markPrice);
   const index = Number(p.indexPrice);
   const funding = Number(p.lastFundingRate) * 100;
-  const asOf = isoDay3(p.time);
+  const asOf = epochDay(p.time);
   return [
     { key: `${b}.deriv.mark.binance`, label: `${p.symbol} perpetual mark price (Binance)`, value: mark, unit: "USDT", asOf },
     { key: `${b}.deriv.index.binance`, label: `${p.symbol} index price (Binance)`, value: index, unit: "USDT", asOf },
@@ -17574,10 +17573,10 @@ async function binanceFuturesPositioning(symbol, opts = {}) {
   if (mean2 !== void 0 && lastFunding)
     fp.push({
       key: `${b}.deriv.funding.binance.mean`,
-      label: `${pair} mean funding rate over the last ${fund.data.length} intervals (since ${isoDay3(fund.data[0].fundingTime)})`,
+      label: `${pair} mean funding rate over the last ${fund.data.length} intervals (since ${epochDay(fund.data[0].fundingTime)})`,
       value: mean2,
       unit: "%",
-      asOf: isoDay3(lastFunding.fundingTime),
+      asOf: epochDay(lastFunding.fundingTime),
       formula: "mean of settled funding rates \xD7 100"
     });
   out.push({
@@ -17585,7 +17584,7 @@ async function binanceFuturesPositioning(symbol, opts = {}) {
     title: `${pair} perpetual: price and funding (Binance)`,
     subject: b,
     points: fp,
-    provenance: prov5(prem, isoDay3(prem.data.time)),
+    provenance: prov5(prem, epochDay(prem.data.time)),
     notes: ["positive funding: longs pay shorts (demand for leverage on the long side)"]
   });
   const unavailable = [];
@@ -17601,7 +17600,7 @@ async function binanceFuturesPositioning(symbol, opts = {}) {
   await optional("open interest", async () => {
     const oi = await get2(`/fapi/v1/openInterest?symbol=${pair}`, pair);
     const oiPoints = [
-      { key: `${b}.deriv.oi.binance`, label: `${pair} open interest (Binance)`, value: Number(oi.data.openInterest), unit: b, asOf: isoDay3(oi.data.time) }
+      { key: `${b}.deriv.oi.binance`, label: `${pair} open interest (Binance)`, value: Number(oi.data.openInterest), unit: b, asOf: epochDay(oi.data.time) }
     ];
     await optional("open interest history", async () => {
       const hist = await get2(
@@ -17616,15 +17615,15 @@ async function binanceFuturesPositioning(symbol, opts = {}) {
           label: `${pair} open interest value (Binance, daily)`,
           value: Number(h1.sumOpenInterestValue),
           unit: "USD",
-          asOf: isoDay3(h1.timestamp)
+          asOf: epochDay(h1.timestamp)
         });
       if (h0 && h1 && h0 !== h1 && Number(h0.sumOpenInterest) > 0)
         oiPoints.push({
           key: `${b}.deriv.oi.binance.change`,
-          label: `${pair} open interest change since ${isoDay3(h0.timestamp)} (Binance)`,
+          label: `${pair} open interest change since ${epochDay(h0.timestamp)} (Binance)`,
           value: (Number(h1.sumOpenInterest) / Number(h0.sumOpenInterest) - 1) * 100,
           unit: "%",
-          asOf: isoDay3(h1.timestamp),
+          asOf: epochDay(h1.timestamp),
           formula: "(OI last / OI first \u2212 1) \xD7 100, in coins"
         });
     });
@@ -17633,7 +17632,7 @@ async function binanceFuturesPositioning(symbol, opts = {}) {
       title: `${pair} open interest (Binance)`,
       subject: b,
       points: finite4(oiPoints),
-      provenance: prov5(oi, isoDay3(oi.data.time)),
+      provenance: prov5(oi, epochDay(oi.data.time)),
       notes: ["open interest in coins; the USD value is Binance's daily snapshot"]
     });
   });
@@ -17651,14 +17650,14 @@ async function binanceFuturesPositioning(symbol, opts = {}) {
       const last2 = r3.data[r3.data.length - 1];
       const v = last2 ? Number(last2[field2]) : Number.NaN;
       if (!last2 || !Number.isFinite(v)) return;
-      rp.push({ key: `${b}.deriv.${key}.binance`, label: `${pair} ${what}, ${period2} (Binance)`, value: v, unit: "ratio", asOf: isoDay3(last2.timestamp) });
+      rp.push({ key: `${b}.deriv.${key}.binance`, label: `${pair} ${what}, ${period2} (Binance)`, value: v, unit: "ratio", asOf: epochDay(last2.timestamp) });
       if (last2.longAccount !== void 0 && Number.isFinite(Number(last2.longAccount)))
         rp.push({
           key: `${b}.deriv.${key}.binance.long`,
           label: `${pair} share long, ${what} (Binance)`,
           value: Number(last2.longAccount) * 100,
           unit: "%",
-          asOf: isoDay3(last2.timestamp)
+          asOf: epochDay(last2.timestamp)
         });
     });
   if (rp.length && rprov)
@@ -17691,14 +17690,13 @@ async function get3(path2, what) {
   if (!res.ok || res.data === void 0) throw new ProviderError(SOURCE10, `${what} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   return { data: res.data, url: res.url, fetchedAt: res.fetchedAt };
 }
-var isoDay4 = (ms) => new Date(ms).toISOString().slice(0, 10);
 var finite = (v) => typeof v === "number" && Number.isFinite(v);
 function coinSubject(symbol, id) {
   const s = (symbol ?? "").toUpperCase();
   return /^[A-Z0-9]{1,12}$/.test(s) ? s : id.replace(/[^a-z0-9-]/gi, "").slice(0, 40) || "COIN";
 }
 function globalPoints(g, vs = "usd") {
-  const asOf = g.updated_at ? isoDay4(g.updated_at * 1e3) : void 0;
+  const asOf = g.updated_at ? epochDay(g.updated_at * 1e3) : void 0;
   const cur = vs.toUpperCase();
   const out = [];
   const push = (key, label2, value2, unit, formula) => {
@@ -17971,7 +17969,7 @@ var SOURCE12 = "defillama";
 var API2 = "https://api.llama.fi";
 var BIG = { maxBytes: 96 * 1024 * 1024, timeoutMs: 6e4 };
 var finite2 = (v) => typeof v === "number" && Number.isFinite(v);
-var isoDay5 = (sec) => new Date(sec * 1e3).toISOString().slice(0, 10);
+var isoDay = (sec) => new Date(sec * 1e3).toISOString().slice(0, 10);
 function llamaId(raw) {
   return raw.replace(/[^A-Za-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 48) || "unknown";
 }
@@ -18020,7 +18018,7 @@ function protocolSummaryPoints(slug, d) {
   if (d.category) out.push({ key: `${s}.defi.category`, label: `${s} category`, value: llamaText(d.category) });
   const last2 = series[series.length - 1];
   if (!last2) return out;
-  out.push({ key: `${s}.defi.tvl`, label: `${s} TVL`, value: last2.totalLiquidityUSD, unit: "USD", asOf: isoDay5(last2.date) });
+  out.push({ key: `${s}.defi.tvl`, label: `${s} TVL`, value: last2.totalLiquidityUSD, unit: "USD", asOf: isoDay(last2.date) });
   const at = (days) => {
     const t = last2.date - days * 86400;
     let pick3;
@@ -18030,25 +18028,25 @@ function protocolSummaryPoints(slug, d) {
   for (const days of [30, 90, 365]) {
     const p = at(days);
     if (!p || p.totalLiquidityUSD <= 0) continue;
-    out.push({ key: `${s}.defi.tvl.${days}d`, label: `${s} TVL ${days} days earlier`, value: p.totalLiquidityUSD, unit: "USD", asOf: isoDay5(p.date) });
+    out.push({ key: `${s}.defi.tvl.${days}d`, label: `${s} TVL ${days} days earlier`, value: p.totalLiquidityUSD, unit: "USD", asOf: isoDay(p.date) });
     out.push({
       key: `${s}.defi.tvl.change${days}d`,
       label: `${s} TVL change over ${days} days`,
       value: (last2.totalLiquidityUSD / p.totalLiquidityUSD - 1) * 100,
       unit: "%",
-      asOf: isoDay5(last2.date),
+      asOf: isoDay(last2.date),
       formula: `(tvl / tvl_${days}d_ago - 1) \xD7 100`
     });
   }
   const peak = series.reduce((m, x) => x.totalLiquidityUSD > m.totalLiquidityUSD ? x : m, series[0]);
-  out.push({ key: `${s}.defi.tvl.peak`, label: `${s} peak TVL (${isoDay5(peak.date)})`, value: peak.totalLiquidityUSD, unit: "USD", asOf: isoDay5(peak.date) });
+  out.push({ key: `${s}.defi.tvl.peak`, label: `${s} peak TVL (${isoDay(peak.date)})`, value: peak.totalLiquidityUSD, unit: "USD", asOf: isoDay(peak.date) });
   if (peak.totalLiquidityUSD > 0)
     out.push({
       key: `${s}.defi.tvl.fromPeak`,
       label: `${s} TVL distance from peak`,
       value: (last2.totalLiquidityUSD / peak.totalLiquidityUSD - 1) * 100,
       unit: "%",
-      asOf: isoDay5(last2.date),
+      asOf: isoDay(last2.date),
       formula: "(tvl / peak_tvl - 1) \xD7 100"
     });
   const chains2 = Object.entries(d.currentChainTvls ?? {}).filter(([k, v]) => finite2(v) && v > 0 && !k.includes("-") && !["borrowed", "staking", "pool2", "vesting", "treasury", "offers"].includes(k)).sort((a, b) => b[1] - a[1]);
@@ -18059,7 +18057,7 @@ function protocolSummaryPoints(slug, d) {
       label: `${s} TVL share on ${llamaText(chain2)}`,
       value: v / total * 100,
       unit: "%",
-      asOf: isoDay5(last2.date),
+      asOf: isoDay(last2.date),
       formula: "chain_tvl / \u03A3 chain_tvl \xD7 100"
     });
   if (finite2(d.mcap) && d.mcap > 0 && last2.totalLiquidityUSD > 0)
@@ -18250,7 +18248,6 @@ async function llamaFees(opts = {}) {
 var BASE15 = "https://mempool.space/api/v1";
 var SOURCE13 = "mempool.space";
 var PACE4 = { hostIntervalMs: 300 };
-var isoDay6 = (ms) => new Date(ms).toISOString().slice(0, 10);
 async function get5(path2) {
   const res = await fetchJson(`${BASE15}${path2}`, PACE4);
   if (!res.ok || res.data === void 0) throw new ProviderError(SOURCE13, `${path2} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
@@ -18275,7 +18272,7 @@ function hashratePoints(h) {
       label: "BTC daily average hashrate",
       value: last2.avgHashrate / 1e18,
       unit: "EH/s",
-      asOf: isoDay6(last2.timestamp * 1e3)
+      asOf: epochDay(last2.timestamp * 1e3)
     });
   if (Number.isFinite(h.currentHashrate))
     out.push({ key: "BTC.onchain.hashrate.current", label: "BTC current hashrate estimate", value: h.currentHashrate / 1e18, unit: "EH/s" });
@@ -18289,7 +18286,7 @@ function difficultyPoints(d) {
     { key: "BTC.onchain.epoch.change.projected", label: "BTC projected difficulty change at next retarget", value: d.difficultyChange, unit: "%" },
     { key: "BTC.onchain.epoch.change.previous", label: "BTC difficulty change at previous retarget", value: d.previousRetarget, unit: "%" },
     { key: "BTC.onchain.epoch.remainingBlocks", label: "BTC blocks until next retarget", value: d.remainingBlocks, unit: "count" },
-    { key: "BTC.onchain.epoch.retargetDate", label: "BTC estimated next retarget date", value: isoDay6(d.estimatedRetargetDate) },
+    { key: "BTC.onchain.epoch.retargetDate", label: "BTC estimated next retarget date", value: epochDay(d.estimatedRetargetDate) },
     { key: "BTC.onchain.epoch.retargetHeight", label: "BTC next retarget block height", value: d.nextRetargetHeight, unit: "count" }
   ].filter((p) => typeof p.value === "string" || Number.isFinite(p.value));
 }
@@ -18881,7 +18878,6 @@ var BASE19 = "https://api.manifold.markets/v0";
 var SOURCE17 = "manifold";
 var PACE7 = { hostIntervalMs: 150 };
 var PLAY_MONEY_NOTE = "play money (MANA, not redeemable) \u2014 a signal, not a market";
-var isoDay7 = (ms) => new Date(ms).toISOString().slice(0, 10);
 function manifoldMarketPoints(m) {
   const p = `MANIFOLD.${m.id}`;
   const s = `Manifold ${m.id}`;
@@ -18904,7 +18900,7 @@ function manifoldMarketPoints(m) {
   const bettors = num5(m.uniqueBettorCount);
   if (bettors !== void 0) out.push({ key: `${p}.bettors`, label: `${s} unique bettors`, value: bettors, unit: "count" });
   const close = num5(m.closeTime);
-  if (close !== void 0) out.push({ key: `${p}.closeDate`, label: `${s} close date`, value: isoDay7(close) });
+  if (close !== void 0) out.push({ key: `${p}.closeDate`, label: `${s} close date`, value: epochDay(close) });
   if (typeof m.isResolved === "boolean") out.push({ key: `${p}.resolved`, label: `${s} resolved`, value: m.isResolved });
   if (m.isResolved && m.resolution) out.push({ key: `${p}.resolution`, label: `${s} resolution`, value: m.resolution });
   const rp = num5(m.resolutionProbability);
@@ -18993,7 +18989,7 @@ var moveKey = (m) => `${m >= 0 ? "+" : ""}${Number((m * 100).toFixed(2))}`;
 import { resolve as resolve5 } from "path";
 var FETCH_CONCURRENCY = 4;
 var DAY2 = 864e5;
-var shiftDay = (iso5, days) => isoDayOf(new Date(Date.parse(`${iso5}T00:00:00Z`) + days * DAY2));
+var shiftDay = (iso4, days) => isoDayOf(new Date(Date.parse(`${iso4}T00:00:00Z`) + days * DAY2));
 var round4 = (x) => Number(x.toFixed(4));
 var SESSION_FINAL_UTC = {
   crypto: void 0,
@@ -20478,9 +20474,9 @@ function kalshiQuotesFromPoints(points) {
   }
   return [...by.values()];
 }
-function daysUntil(iso5, now) {
-  if (!iso5) return void 0;
-  const t = Date.parse(iso5.length === 10 ? `${iso5}T00:00:00Z` : iso5);
+function daysUntil(iso4, now) {
+  if (!iso4) return void 0;
+  const t = Date.parse(iso4.length === 10 ? `${iso4}T00:00:00Z` : iso4);
   return Number.isNaN(t) ? void 0 : (t - now.getTime()) / 864e5;
 }
 function discountedKelly(p, mid2, spread2, feePerContract) {
@@ -24613,13 +24609,6 @@ async function tradingviewScan(market, opts = {}) {
 function requireOk(source2, res, what) {
   if (!res.ok) throw new ProviderError(source2, `${what} unavailable (HTTP ${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
 }
-function usSlashDate(s) {
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s ?? "").trim());
-  return m ? `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}` : void 0;
-}
-function epochDay(ms) {
-  return new Date(ms).toISOString().slice(0, 10);
-}
 function seriesPoints(key, label2, unit, obs, opts = {}) {
   const last2 = obs[obs.length - 1];
   if (!last2) return [];
@@ -27037,10 +27026,10 @@ function parseNasdaqDividends2(rows) {
       {
         symbol,
         name: clean2(r3.companyName) ?? "",
-        exDate: usSlashDate(clean2(r3.dividend_Ex_Date)),
-        payDate: usSlashDate(clean2(r3.payment_Date)),
-        recordDate: usSlashDate(clean2(r3.record_Date)),
-        announced: usSlashDate(clean2(r3.announcement_Date)),
+        exDate: mdyToIso(clean2(r3.dividend_Ex_Date)),
+        payDate: mdyToIso(clean2(r3.payment_Date)),
+        recordDate: mdyToIso(clean2(r3.record_Date)),
+        announced: mdyToIso(clean2(r3.announcement_Date)),
         amount: num16(r3.dividend_Rate),
         annual: num16(r3.indicated_Annual_Dividend)
       }
@@ -27094,7 +27083,7 @@ function around(closes, before, after) {
   }
   return { pre, post };
 }
-var nextDay = (iso5) => new Date(Date.parse(`${iso5}T00:00:00Z`) + 864e5).toISOString().slice(0, 10);
+var nextDay = (iso4) => new Date(Date.parse(`${iso4}T00:00:00Z`) + 864e5).toISOString().slice(0, 10);
 function eventReaction(event, index, fxPerBase, opts = {}) {
   const resultDay = opts.sameDay ? event.date : nextDay(event.endDate ?? event.date);
   const out = { date: event.date, label: event.label };
@@ -32893,7 +32882,7 @@ function tenorOf(header2) {
 function parseTreasuryCsv(text2) {
   const rows = [];
   for (const r3 of csvRecords(text2)) {
-    const date = usSlashDate(r3.Date);
+    const date = mdyToIso(r3.Date);
     if (!date) continue;
     const yields = {};
     for (const [h, v] of Object.entries(r3)) {
@@ -34836,15 +34825,15 @@ var plain2 = (s) => s.replace(LINK, (_m, target, label2) => label2 ?? target).re
 function parseDay(text2, month, year) {
   const m = /^(\d{1,2})(?:\s*[–-]\s*(\d{1,2}))?\s+([A-Za-z]+)(?:\s*[–-]\s*(\d{1,2})\s+([A-Za-z]+))?/.exec(text2.trim());
   if (!m) return void 0;
-  const iso5 = (d, mo2, y = year) => `${y}-${String(mo2 + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const iso4 = (d, mo2, y = year) => `${y}-${String(mo2 + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   const mo = MONTHS6.indexOf(m[3].toLowerCase());
   const start = mo >= 0 ? mo : month;
   if (m[4] && m[5]) {
     const mo2 = MONTHS6.indexOf(m[5].toLowerCase());
     const end = mo2 >= 0 ? mo2 : start;
-    return { date: iso5(Number(m[1]), start), endDate: iso5(Number(m[4]), end, end < start ? year + 1 : year) };
+    return { date: iso4(Number(m[1]), start), endDate: iso4(Number(m[4]), end, end < start ? year + 1 : year) };
   }
-  return { date: iso5(Number(m[1]), start), ...m[2] ? { endDate: iso5(Number(m[2]), start) } : {} };
+  return { date: iso4(Number(m[1]), start), ...m[2] ? { endDate: iso4(Number(m[2]), start) } : {} };
 }
 function entry(raw, when) {
   const text2 = raw.trim();
@@ -34911,7 +34900,7 @@ async function readElectionCalendar(year) {
 
 // src/providers/macro/central-banks.ts
 var MONTHS7 = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
-var iso2 = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+var iso = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 var FOMC_URL = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm";
 var ECB_URL = "https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html";
 function parseFomc(html) {
@@ -34932,7 +34921,7 @@ function parseFomc(html) {
       const y2 = endMonth > 11 ? year + 1 : year;
       out.push({
         bank: "Fed",
-        date: iso2(y2, endMonth % 12, endDay),
+        date: iso(y2, endMonth % 12, endDay),
         area: "US",
         currency: "USD",
         label: `FOMC rate decision${m[4] ? " (with economic projections)" : ""}`,
@@ -35062,8 +35051,8 @@ function formatFindings(title, f3, emitted, store) {
 }
 
 // src/analyze/events/markets.ts
-var M = (iso5, name, index, indexName, currency, usEtf) => ({
-  iso: iso5,
+var M = (iso4, name, index, indexName, currency, usEtf) => ({
+  iso: iso4,
   name,
   index,
   indexName,
@@ -35195,8 +35184,8 @@ function holdingCountry(h) {
 // src/analyze/events/run.ts
 var DAY5 = 864e5;
 var STRESS_YEARS = 10;
-var iso3 = (d) => d.toISOString().slice(0, 10);
-var nextIso = (day4) => iso3(new Date(Date.parse(`${day4}T00:00:00Z`) + DAY5));
+var iso2 = (d) => d.toISOString().slice(0, 10);
+var nextIso = (day4) => iso2(new Date(Date.parse(`${day4}T00:00:00Z`) + DAY5));
 async function marketEvents(from, to, notes) {
   const out = [];
   const years = /* @__PURE__ */ new Set([Number(from.slice(0, 4)), Number(to.slice(0, 4))]);
@@ -35269,13 +35258,13 @@ async function pastLike(e, now, notes, max = 6) {
       return [];
     }
     const cb = await policyMeetings();
-    return cb.meetings.filter((m) => m.bank === "Fed" && m.date < iso3(now) && m.date < e.date).slice(-max).map(policyEvent);
+    return cb.meetings.filter((m) => m.bank === "Fed" && m.date < iso2(now) && m.date < e.date).slice(-max).map(policyEvent);
   }
   const year = Number(e.date.slice(0, 4));
   for (let y = year; y >= year - 24 && out.length < max; y--) {
     try {
       const cal = await electionCalendar(y);
-      const hits = cal.events.filter((x) => x.iso === e.iso && x.date < e.date && x.date < iso3(now) && comparable(x, e)).map((x) => electionEvent(x, cal.url)).reverse();
+      const hits = cal.events.filter((x) => x.iso === e.iso && x.date < e.date && x.date < iso2(now) && comparable(x, e)).map((x) => electionEvent(x, cal.url)).reverse();
       out.push(...hits.slice(0, max - out.length));
     } catch {
     }
@@ -35396,8 +35385,8 @@ async function eventsRun(dir2, opts = {}) {
     );
   }
   const { byCountry, byCurrency } = bookExposure(marked, f3, base2);
-  const from = iso3(new Date(now.getTime() - since * DAY5));
-  const to = iso3(new Date(now.getTime() + days * DAY5));
+  const from = iso2(new Date(now.getTime() - since * DAY5));
+  const to = iso2(new Date(now.getTime() + days * DAY5));
   const all = await marketEvents(from, to, notes);
   const wanted = new Set((opts.countries ?? []).map((c) => c.toUpperCase()));
   const relevant = all.filter((e) => {
@@ -35405,7 +35394,7 @@ async function eventsRun(dir2, opts = {}) {
     if (eventExposure(e, byCountry, byCurrency).length) return true;
     return !!opts.all && (!!COUNTRY_MARKETS[e.iso] || e.iso === "EU");
   });
-  const today = iso3(now);
+  const today = iso2(now);
   const ahead = relevant.filter((e) => (e.endDate ?? e.date) >= today);
   const past = relevant.filter((e) => (e.endDate ?? e.date) < today);
   const day4 = today;
@@ -35830,7 +35819,7 @@ async function upcomingEventAlerts(opts) {
   const marked = await loadMarkedBook(opts.book ?? "real", f3, now);
   const { byCountry, byCurrency } = bookExposure(marked, f3, marked.base);
   const notes = [];
-  const events = await marketEvents(iso3(now), iso3(new Date(now.getTime() + (opts.days ?? 14) * DAY5)), notes);
+  const events = await marketEvents(iso2(now), iso2(new Date(now.getTime() + (opts.days ?? 14) * DAY5)), notes);
   const out = [];
   for (const e of events) {
     const xs = eventExposure(e, byCountry, byCurrency);
@@ -36762,8 +36751,8 @@ function parseWorldBank(answer) {
   for (const list of out.values()) list.sort((a, b) => a.date.localeCompare(b.date));
   return out;
 }
-async function worldBankIndicators(iso5, which = ["gdpGrowth", "inflation", "debt"], n2 = 3) {
-  const c = iso5.toUpperCase();
+async function worldBankIndicators(iso4, which = ["gdpGrowth", "inflation", "debt"], n2 = 3) {
+  const c = iso4.toUpperCase();
   const defs2 = which.map((w) => WB_INDICATORS[w]);
   const url = `${BASE28}/${encodeURIComponent(c)}/indicator/${defs2.map((d) => d.code).join(";")}?format=json&mrnev=${n2}&source=2&per_page=500`;
   const res = await fetchJson(url);
@@ -37473,13 +37462,13 @@ async function dailyHistory(r3, from, to, now) {
       ...y,
       notes: [
         ...y.notes,
-        `${r3.instrument.symbol}: Yahoo used \u2014 ${tooOld ? `the ${src2} history does not reach back to ${iso4(from)}` : `${src2} serves windows ending today, not one ending ${iso4(to)}`}`
+        `${r3.instrument.symbol}: Yahoo used \u2014 ${tooOld ? `the ${src2} history does not reach back to ${iso3(from)}` : `${src2} serves windows ending today, not one ending ${iso3(to)}`}`
       ]
     };
   }
   return getHistory(r3, { from, to, interval: "1d" });
 }
-var iso4 = (d) => d.toISOString().slice(0, 10);
+var iso3 = (d) => d.toISOString().slice(0, 10);
 var closesOf2 = (s) => s.bars.map((b) => ({ date: b.date.slice(0, 10), close: b.close })).filter((c) => c.close > 0);
 async function ecbDailyRates(currencies, n2) {
   const want = [...new Set(currencies.map((c) => c === "USDT" || c === "USDC" || c === "FDUSD" ? "USD" : c).filter((c) => c !== "EUR"))];
@@ -37591,7 +37580,7 @@ async function baseHistories(items, days, tag, f3, now) {
     const key = `${it.symbol}.${tag}.lastClose`;
     f3.input({
       kind: "history",
-      title: `${it.symbol} daily closes since ${iso4(from)}`,
+      title: `${it.symbol} daily closes since ${iso3(from)}`,
       subject: it.symbol,
       points: [
         {
@@ -37606,7 +37595,7 @@ async function baseHistories(items, days, tag, f3, now) {
       provenance: { ...s.provenance, asOf: last2.date },
       notes: s.notes
     });
-    if (first.date > iso4(new Date(from.getTime() + 10 * DAY7))) f3.note(`${it.symbol}: history starts ${first.date}, later than the ${iso4(from)} asked for`);
+    if (first.date > iso3(new Date(from.getTime() + 10 * DAY7))) f3.note(`${it.symbol}: history starts ${first.date}, later than the ${iso3(from)} asked for`);
     got.set(it.symbol, { local: local2, currency: s.instrument.currency, key });
   });
   const ccys = [...new Set([...got.values()].map((g) => g.currency))];
@@ -41290,9 +41279,9 @@ async function bulkKlines(req) {
     const file = res.outputPath ?? join41(out, readdirSync11(out).find((f3) => f3.endsWith(".jsonl")) ?? "");
     const bars = readFileSync34(file, "utf8").split("\n").filter(Boolean).map((line) => {
       const k = JSON.parse(line);
-      const iso5 = new Date(k.openTime).toISOString();
+      const iso4 = new Date(k.openTime).toISOString();
       return {
-        date: /^(1d|3d|1w|1M)$/.test(req.interval) ? iso5.slice(0, 10) : iso5,
+        date: /^(1d|3d|1w|1M)$/.test(req.interval) ? iso4.slice(0, 10) : iso4,
         open: Number(k.open),
         high: Number(k.high),
         low: Number(k.low),
@@ -41310,7 +41299,7 @@ async function bulkKlines(req) {
 // src/backtest/data.ts
 var INTERVAL_MS = { "15m": 9e5, "1h": 36e5, "4h": 144e5, "1d": 864e5, "1w": 6048e5 };
 var DAY9 = 864e5;
-var isoDay8 = (d) => d.toISOString().slice(0, 10);
+var isoDay2 = (d) => d.toISOString().slice(0, 10);
 async function loadBars(raw, req) {
   const resolved = await resolveSymbol(raw);
   const inst = resolved.instrument;
@@ -41342,7 +41331,7 @@ async function loadBars(raw, req) {
     return { resolved, series: await getHistory(resolved, req) };
   }
   const series = await getHistory(resolved, req);
-  const wanted = isoDay8(new Date(req.from.getTime() + 7 * DAY9));
+  const wanted = isoDay2(new Date(req.from.getTime() + 7 * DAY9));
   if (inst.market === "euronext" && series.bars[0] && series.bars[0].date > wanted) {
     try {
       const y = await resolveYahoo(inst.symbol);
@@ -41356,7 +41345,7 @@ async function loadBars(raw, req) {
             provenance: { ...longer.provenance, fallbackFrom: "euronext" },
             notes: [
               ...longer.notes,
-              `Euronext keeps about two years (its bars start ${series.bars[0].date}); the window from ${isoDay8(req.from)} was read from Yahoo instead \u2014 unofficial, split-adjusted`
+              `Euronext keeps about two years (its bars start ${series.bars[0].date}); the window from ${isoDay2(req.from)} was read from Yahoo instead \u2014 unofficial, split-adjusted`
             ]
           }
         };
@@ -47469,11 +47458,11 @@ function statementDate(raw, order = "DMY") {
   let mo;
   let d;
   let time2;
-  const iso5 = /^(\d{4})-?(\d{2})-?(\d{2})(?:(?:[T ;]|,\s*)(\d{2}):?(\d{2})(?::?(\d{2}))?)?/.exec(s);
+  const iso4 = /^(\d{4})-?(\d{2})-?(\d{2})(?:(?:[T ;]|,\s*)(\d{2}):?(\d{2})(?::?(\d{2}))?)?/.exec(s);
   const dmy = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:(?:[T ]|,\s*)(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
-  if (iso5) {
-    [y, mo, d] = [iso5[1], iso5[2], iso5[3]];
-    if (iso5[4]) time2 = [iso5[4], iso5[5], iso5[6]];
+  if (iso4) {
+    [y, mo, d] = [iso4[1], iso4[2], iso4[3]];
+    if (iso4[4]) time2 = [iso4[4], iso4[5], iso4[6]];
   } else if (dmy) {
     y = dmy[3];
     [d, mo] = order === "DMY" ? [dmy[1], dmy[2]] : [dmy[2], dmy[1]];
@@ -50468,8 +50457,8 @@ var value = (v) => typeof v === "number" ? formatNumber(v) : String(v);
 var opt = (s) => esc2(s ?? "");
 var num13 = (html) => `<td class="num">${html}</td>`;
 var cell2 = (s) => `<td>${opt(s)}</td>`;
-var time = (iso5) => `<time datetime="${esc2(iso5)}">${esc2(
-  iso5.replace("T", " ").replace(/\.\d+Z$/, " UTC").replace(/Z$/, " UTC")
+var time = (iso4) => `<time datetime="${esc2(iso4)}">${esc2(
+  iso4.replace("T", " ").replace(/\.\d+Z$/, " UTC").replace(/Z$/, " UTC")
 )}</time>`;
 function table(caption, head, rows, numeric = []) {
   const th = head.map((h, i) => `<th scope="col"${numeric.includes(i) ? ' class="num"' : ""}>${esc2(h)}</th>`).join("");
@@ -51114,8 +51103,8 @@ function confirmDates(dir2, items, today) {
         const near = lines.slice(Math.max(0, i - 1), i + NEAR_LINES2 + 1).join(" ");
         if (!RESULTS_LINE.test(near)) continue;
         for (const d of extractDates(lines[i])) {
-          const iso5 = isoOf(d);
-          if (iso5 && iso5 >= today && (!issuerDate || iso5 < issuerDate.date)) issuerDate = { date: iso5, id: e.id, host: e.host };
+          const iso4 = isoOf(d);
+          if (iso4 && iso4 >= today && (!issuerDate || iso4 < issuerDate.date)) issuerDate = { date: iso4, id: e.id, host: e.host };
         }
       }
     }
@@ -55710,9 +55699,9 @@ function valueRegion(arg) {
   return { id: codes.join(","), label: codes.join(", "), countries: [...new Set(codes)] };
 }
 function peaEligible(row) {
-  const iso5 = EU_EEA_ISO;
+  const iso4 = EU_EEA_ISO;
   const isin = typeof row.isin === "string" ? row.isin.trim().toUpperCase() : "";
-  return typeof row.country === "string" && iso5.includes(row.country) && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) && iso5.includes(isin.slice(0, 2));
+  return typeof row.country === "string" && iso4.includes(row.country) && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) && iso4.includes(isin.slice(0, 2));
 }
 var quoteList = (xs) => xs.map((x) => `'${x.replace(/'/g, "")}'`).join(",");
 function valueCandidateDsl(style, region, minCapEur) {

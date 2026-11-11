@@ -10,6 +10,7 @@
 // second): calls are paced, and a 429 is a transient ProviderError.
 import type { Dataset, Point } from "../../core/datasets.js";
 import { fetchJson } from "../../core/net.js";
+import { epochDay as isoDay } from "../fundamentals/util.js";
 import { ProviderError } from "../types.js";
 
 const BASE = "https://mempool.space/api/v1";
@@ -38,8 +39,6 @@ export interface MempoolDifficulty {
   previousRetarget: number;
   nextRetargetHeight: number;
 }
-
-const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 async function get<T>(path: string): Promise<{ data: T; url: string; fetchedAt: string }> {
   const res = await fetchJson<T>(`${BASE}${path}`, PACE);

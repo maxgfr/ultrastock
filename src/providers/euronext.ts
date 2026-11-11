@@ -11,6 +11,7 @@ import { cachedJson, TTL } from "../core/cache.js";
 import { decodeEntities, stripTags } from "../engine.js";
 import { parseCsvText, parseLooseNumber } from "../core/csv.js";
 import { fetchJson, fetchText } from "../core/net.js";
+import { isoDayOf as isoDay } from "./fundamentals/util.js";
 import { type AssetKind, type Bar, type Instrument, type PriceSeries, ProviderError } from "./types.js";
 
 const BASE = "https://live.euronext.com";
@@ -100,8 +101,6 @@ export async function resolveEuronext(symbol: string): Promise<Instrument> {
     venueId: `${pick.isin}-${pick.mic}`,
   };
 }
-
-const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 
 /** Parse the historical-download CSV; rows come newest first and leave oldest first. */
 export function parseEuronextHistory(csv: string): Bar[] {

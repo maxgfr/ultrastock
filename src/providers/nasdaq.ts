@@ -7,6 +7,7 @@
 import { cachedJson, TTL } from "../core/cache.js";
 import { parseLooseNumber } from "../core/csv.js";
 import { fetchJson } from "../core/net.js";
+import { isoDayOf as isoDay } from "./fundamentals/util.js";
 import { type AssetKind, type Bar, type Instrument, type PriceSeries, ProviderError, type QuoteResult } from "./types.js";
 
 const BASE = "https://api.nasdaq.com/api";
@@ -74,8 +75,6 @@ export function parseNasdaqHistory(rows: Array<Record<string, string>>): Bar[] {
   }
   return bars.sort((a, b) => a.date.localeCompare(b.date));
 }
-
-const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 /** "Oct 22, 2026" (optionally followed by a time) → "2026-10-22", without going through the local time zone. */

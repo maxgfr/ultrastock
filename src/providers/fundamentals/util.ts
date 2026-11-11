@@ -7,6 +7,11 @@ export function isoDayOf(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** An epoch (ms) as YYYY-MM-DD (UTC). */
+export function epochDay(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
 const dayMs = 86_400_000;
 const dayNumber = (iso: string) => Math.round(Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) / dayMs);
 

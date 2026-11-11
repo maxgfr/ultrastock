@@ -14,6 +14,7 @@
 // that is a definitive refusal, reported as such, never routed around.
 import type { Dataset, Point } from "../../core/datasets.js";
 import { fetchJson } from "../../core/net.js";
+import { epochDay as isoDay } from "../fundamentals/util.js";
 import { ProviderError } from "../types.js";
 
 const BASE = "https://fapi.binance.com";
@@ -49,8 +50,6 @@ async function get<T>(path: string, pair: string): Promise<{ data: T; url: strin
   if (!res.ok || res.data === undefined) throw futuresFailure(res.status, pair, path.split("?")[0]!, res.error);
   return { data: res.data, url: res.url, fetchedAt: res.fetchedAt };
 }
-
-const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 export interface PremiumIndex {
   symbol: string;
