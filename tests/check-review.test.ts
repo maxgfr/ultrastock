@@ -43,6 +43,22 @@ describe("brackets", () => {
   });
 });
 
+describe("horizon and period labels in header rows and headings", () => {
+  it("reads a horizon or tenor heading a column or a section as a label, not as millions", () => {
+    expect(kinds("| Name | 1M | 3M | 6M | 1Y |\n|---|---|---|---|---|\n| LVMH | n/a | n/a | n/a | −37,7 % [E2] |\n")).toEqual([]);
+    expect(kinds("| Nom | Perf 1m | Perf 12m |\n|---|---|---|\n| LVMH | n/a | −37,7 % [E2] |\n")).toEqual([]);
+    expect(kinds("## 12M performance\n\nDown 37.7 % [E2].\n")).toEqual([]);
+    expect(kinds("| KPI | FY2025 | H1 26 | 9M 2026 |\n|---|---|---|---|\n| Revenue | 84.7 bn [E4] | n/a | n/a |\n")).toEqual([]);
+  });
+  it("still reads an amount in a header cell or a heading", () => {
+    expect(refused("| Fund | 3 M€ |\n|---|---|\n| Close | 383 € [E1] |\n")).toBe(true);
+    expect(refused("| Fund | 3M€ |\n|---|---|\n| Close | 383 € [E1] |\n")).toBe(true);
+    expect(refused("## Raised 12M €\n\nClose 383 € [E1].\n")).toBe(true);
+    // In prose, "12M" is still twelve million.
+    expect(refused("Close 383 € [E1], 12M shares traded.\n")).toBe(true);
+  });
+});
+
 describe("figures behind markup and other code points", () => {
   it("reads a figure in emphasis, in full-width digits, as entities, as a vulgar fraction, as 'pc' or in superscript", () => {
     expect(refused("Close 383 € [E1]. Target _450_ and up _45 %_.\n")).toBe(true);

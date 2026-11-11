@@ -22013,15 +22013,17 @@ function closingSourcesMask(lines) {
   if (last2 !== void 0 && SOURCES_HEADING.test(lines[last2].trim())) for (let i = last2; i < lines.length; i++) mask[i] = true;
   return mask;
 }
+var PERIOD_LABEL = /(?<![\p{L}\p{N}.,])(?:\d{1,2}[MmYyWwDd](?![\p{L}\p{N}])(?!\s?(?:[$€£]|(?:EUR|USD|GBP|CHF)\b))|[HQST][1-4]\s?'?\d{2}(?![\p{N}.,]))/gu;
+var withoutPeriodLabels = (text2) => text2.replace(PERIOD_LABEL, " ");
 function withoutColumnLabels(answer) {
   const separator = (l) => /\|/.test(l) && /^[\s:|-]+$/.test(l.trim()) && /-/.test(l);
   const lines = answer.split("\n");
   return lines.map(
-    (l, i) => /\|/.test(l) && !separator(l) && separator(lines[i + 1] ?? "") ? l.split("|").map((c) => new RegExp("^\\s*(?:\\p{L}?[+\\-\u2212\u2013])?\\d+\\s*$", "u").test(c) ? " " : c).join("|") : l
+    (l, i) => /\|/.test(l) && !separator(l) && separator(lines[i + 1] ?? "") ? l.split("|").map((c) => new RegExp("^\\s*(?:\\p{L}?[+\\-\u2212\u2013])?\\d+\\s*$", "u").test(c) ? " " : withoutPeriodLabels(c)).join("|") : l
   ).join("\n");
 }
 function headingText(heading) {
-  const t = heading.replace(/^#{1,6}\s+/, "");
+  const t = withoutPeriodLabels(heading.replace(/^#{1,6}\s+/, ""));
   const n2 = /^(\d+(?:\.\d+)+|\d+(?=[.)]))[.)]?\s/.exec(t);
   const first = n2 && extractFigures(t)[0];
   return n2 && (!first || n2[1].startsWith(first.raw)) ? t.slice(n2[0].length) : t;

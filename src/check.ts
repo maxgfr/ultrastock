@@ -380,9 +380,19 @@ function closingSourcesMask(lines: readonly string[]): boolean[] {
 }
 
 /**
+ * A horizon or a period heading a column or a section labels it: "1M", "3M",
+ * "12m", "1Y", "9M 2026", "H1 26", "Q3 '26". Only the glued form, and not
+ * before a currency: "3 M€" and "12M €" there are still amounts. In prose, "12M
+ * shares" is twelve million — this is for header cells and headings only.
+ */
+const PERIOD_LABEL = /(?<![\p{L}\p{N}.,])(?:\d{1,2}[MmYyWwDd](?![\p{L}\p{N}])(?!\s?(?:[$€£]|(?:EUR|USD|GBP|CHF)\b))|[HQST][1-4]\s?'?\d{2}(?![\p{N}.,]))/gu;
+const withoutPeriodLabels = (text: string) => text.replace(PERIOD_LABEL, " ");
+
+/**
  * A table's header row is read like any row, but a header cell holding only a
  * whole number — a horizon (`+5`, `20`, `J+60`) or a year — labels its column:
- * it is blanked, the rest of the row is checked. Lines are kept one for one.
+ * it is blanked, the rest of the row is checked; so is a horizon or a period
+ * label ("1M", "H1 26"). Lines are kept one for one.
  */
 function withoutColumnLabels(answer: string): string {
   const separator = (l: string) => /\|/.test(l) && /^[\s:|-]+$/.test(l.trim()) && /-/.test(l);
@@ -392,7 +402,7 @@ function withoutColumnLabels(answer: string): string {
       /\|/.test(l) && !separator(l) && separator(lines[i + 1] ?? "")
         ? l
             .split("|")
-            .map((c) => (/^\s*(?:\p{L}?[+\-−–])?\d+\s*$/u.test(c) ? " " : c))
+            .map((c) => (/^\s*(?:\p{L}?[+\-−–])?\d+\s*$/u.test(c) ? " " : withoutPeriodLabels(c)))
             .join("|")
         : l,
     )
@@ -405,7 +415,7 @@ function withoutColumnLabels(answer: string): string {
  * number goes only when the figure reader reads it bare.
  */
 function headingText(heading: string): string {
-  const t = heading.replace(/^#{1,6}\s+/, "");
+  const t = withoutPeriodLabels(heading.replace(/^#{1,6}\s+/, ""));
   const n = /^(\d+(?:\.\d+)+|\d+(?=[.)]))[.)]?\s/.exec(t);
   const first = n && extractFigures(t)[0];
   return n && (!first || n[1]!.startsWith(first.raw)) ? t.slice(n[0].length) : t;
