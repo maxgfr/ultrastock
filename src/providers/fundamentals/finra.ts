@@ -11,11 +11,12 @@
 // CDN answers 403). Short VOLUME is the share of the day's off-exchange trade
 // reports marked short — market makers short to fill buy orders, so 40–50 % is
 // ordinary — and is NOT short INTEREST (open positions, twice a month).
+import { cachedJson, TTL } from "../../core/cache.js";
 import { csvRecords, parseLooseNumber } from "../../core/csv.js";
 import type { Dataset, Point } from "../../core/datasets.js";
 import { clockNow, fetchJson, fetchText } from "../../core/net.js";
 import { ProviderError } from "../types.js";
-import { isoDayOf } from "./util.js";
+import { daysBetween, isoDayOf } from "./util.js";
 
 export const FINRA_SOURCE = "finra";
 const API = "https://api.finra.org/data/group/otcMarket/name/regShoDaily";
@@ -78,22 +79,37 @@ async function fromApi(sym: string, sessions: number, now: Date) {
   return { days: parseRegShoApi(res.data).slice(0, sessions), url: API, fetchedAt: res.fetchedAt };
 }
 
+/** One daily file → the symbol's row (none when the symbol is absent), or undefined when the day has no file. */
+async function readFile(u: string, sym: string): Promise<{ row?: ShortVolumeDay; fetchedAt: string } | undefined> {
+  const res = await fetchText(u, { accept: "text/plain", retries: 0 });
+  if (!res.ok) {
+    if (res.status === 403 || res.status === 404) return undefined;
+    throw new ProviderError(FINRA_SOURCE, `${u} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+  }
+  return { row: parseRegShoFile(res.body, sym), fetchedAt: res.fetchedAt };
+}
+
+/**
+ * The daily files, newest first. A file never changes once its day is over, so
+ * the symbol's row is kept (with the time it was read); the last two UTC days
+ * are always read again — by then New York's session day is over too. A day
+ * without a file is asked again: its file may still come.
+ */
 async function fromFiles(sym: string, sessions: number, now: Date) {
   const days: ShortVolumeDay[] = [];
   let fetchedAt = "";
   let url = "";
+  const today = isoDayOf(now);
   for (let back = 0; back < sessions * 2 + 6 && days.length < sessions; back++) {
-    const d = isoDayOf(new Date(now.getTime() - back * 86_400_000)).replace(/-/g, "");
+    const iso = isoDayOf(new Date(now.getTime() - back * 86_400_000));
+    const d = iso.replace(/-/g, "");
     const u = `${CDN}/CNMSshvol${d}.txt`;
-    const res = await fetchText(u, { accept: "text/plain", retries: 0 });
-    if (!res.ok) {
-      if (res.status === 403 || res.status === 404) continue;
-      throw new ProviderError(FINRA_SOURCE, `${u} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
-    }
-    const row = parseRegShoFile(res.body, sym);
-    if (row) days.push(row);
+    const read = () => readFile(u, sym);
+    const file = daysBetween(iso, today) >= 2 ? await cachedJson(`finra:regsho:${d}:${sym}`, TTL.immutable, read) : await read();
+    if (!file) continue;
+    if (file.row) days.push(file.row);
     url ||= u;
-    fetchedAt ||= res.fetchedAt;
+    fetchedAt ||= file.fetchedAt;
   }
   return { days, url, fetchedAt };
 }

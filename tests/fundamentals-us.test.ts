@@ -1,6 +1,7 @@
 import { deflateRawSync } from "node:zlib";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Dataset } from "../src/core/datasets.js";
+import { setNetMode } from "../src/core/net.js";
 import { finraShortVolume, parseRegShoApi, parseRegShoFile } from "../src/providers/fundamentals/finra.js";
 import { housePtrFilings, parseHouseIndex, parsePtrText } from "../src/providers/fundamentals/house.js";
 import {
@@ -174,6 +175,40 @@ describe("US market fixtures", () => {
       expect(div.points.filter((p) => /^NVDA\.div\.\d{4}-\d{2}-\d{2}$/.test(p.key))).toHaveLength(3);
     });
   }, 60_000);
+
+  it("keeps the FINRA daily file of a day that is over, and asks again for the last two days only", async () => {
+    // The query API is down: the daily files are read, one per day back; weekends have none (403).
+    const asked: string[] = [];
+    vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (init?.method === "POST") return new Response("down", { status: 503 });
+      asked.push(url);
+      const d = /CNMSshvol(\d{8})\.txt$/.exec(url)?.[1] ?? "";
+      const weekday = new Date(`${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}T00:00:00Z`).getUTCDay() % 6 !== 0;
+      if (!weekday) return new Response("", { status: 403 });
+      return new Response(`Date|Symbol|ShortVolume|ShortExemptVolume|TotalVolume|Market\n${d}|NVDA|40|0|100|Q\n${d}|AAPL|1|0|2|Q\n`);
+    });
+    try {
+      const now = new Date("2026-10-28T12:00:00Z"); // a Wednesday
+      const first = await finraShortVolume("NVDA", { sessions: 5, now });
+      expect(first.points.filter((p) => /\.ratio\.\d{4}-/.test(p.key)).map((p) => p.asOf)).toEqual([
+        "2026-10-28",
+        "2026-10-27",
+        "2026-10-26",
+        "2026-10-23",
+        "2026-10-22",
+      ]);
+      expect(asked).toHaveLength(7);
+      asked.length = 0;
+      setNetMode({ kind: "live" }); // a new process: nothing held in memory
+      const second = await finraShortVolume("NVDA", { sessions: 5, now });
+      expect(second.points).toEqual(first.points);
+      // Today's and yesterday's files may still be in the making; the weekend still has no file to keep.
+      expect(asked.map((u) => u.slice(-12, -4))).toEqual(["20261028", "20261027", "20261025", "20261024"]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 
   it("replays NVDA's Reg SHO short-volume ratio from FINRA", async () => {
     await withFixture("fundamentals-finra-nvda", async () => {

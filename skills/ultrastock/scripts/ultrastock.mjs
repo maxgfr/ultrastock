@@ -15361,22 +15361,29 @@ async function fromApi(sym3, sessions, now) {
     throw new ProviderError(FINRA_SOURCE, `query API failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   return { days: parseRegShoApi(res.data).slice(0, sessions), url: API, fetchedAt: res.fetchedAt };
 }
+async function readFile2(u, sym3) {
+  const res = await fetchText(u, { accept: "text/plain", retries: 0 });
+  if (!res.ok) {
+    if (res.status === 403 || res.status === 404) return void 0;
+    throw new ProviderError(FINRA_SOURCE, `${u} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+  }
+  return { row: parseRegShoFile(res.body, sym3), fetchedAt: res.fetchedAt };
+}
 async function fromFiles(sym3, sessions, now) {
   const days = [];
   let fetchedAt = "";
   let url = "";
+  const today = isoDayOf(now);
   for (let back = 0; back < sessions * 2 + 6 && days.length < sessions; back++) {
-    const d = isoDayOf(new Date(now.getTime() - back * 864e5)).replace(/-/g, "");
+    const iso5 = isoDayOf(new Date(now.getTime() - back * 864e5));
+    const d = iso5.replace(/-/g, "");
     const u = `${CDN}/CNMSshvol${d}.txt`;
-    const res = await fetchText(u, { accept: "text/plain", retries: 0 });
-    if (!res.ok) {
-      if (res.status === 403 || res.status === 404) continue;
-      throw new ProviderError(FINRA_SOURCE, `${u} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
-    }
-    const row = parseRegShoFile(res.body, sym3);
-    if (row) days.push(row);
+    const read2 = () => readFile2(u, sym3);
+    const file = daysBetween(iso5, today) >= 2 ? await cachedJson(`finra:regsho:${d}:${sym3}`, TTL.immutable, read2) : await read2();
+    if (!file) continue;
+    if (file.row) days.push(file.row);
     url ||= u;
-    fetchedAt ||= res.fetchedAt;
+    fetchedAt ||= file.fetchedAt;
   }
   return { days, url, fetchedAt };
 }
