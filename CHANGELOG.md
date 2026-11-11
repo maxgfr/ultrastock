@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.12](https://github.com/maxgfr/ultrastock/compare/v1.13.11...v1.13.12) (2026-11-11)
+
+
+### Bug Fixes
+
+* **tax:** read a fiat-base crypto pair (EURUSDT) from its fiat side in France ([049f890](https://github.com/maxgfr/ultrastock/commit/049f89090639823be00cf5f41996f2334dcbe453))
+
 ## [1.13.11](https://github.com/maxgfr/ultrastock/compare/v1.13.10...v1.13.11) (2026-11-11)
 
 
