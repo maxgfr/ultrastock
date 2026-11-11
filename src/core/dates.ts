@@ -41,11 +41,25 @@ const year4 = (y: string) => (y.length === 2 ? 2000 + Number(y) : Number(y));
 
 const ISO = /(?<![\d-])(\d{4})-(\d{2})-(\d{2})(?![\d])/g;
 const NUMERIC = /(?<![\d./-])(\d{1,2})([/.])(\d{1,2})\2(\d{4}|\d{2})(?![\d./])/g;
-const DAY_MONTH = new RegExp(`(?<![\\p{L}\\p{N}.,])(\\d{1,2})(?:er|st|nd|rd|th)?\\s+(${MONTH_WORD})\\.?(?:,?\\s+(\\d{4}))?(?![\\p{L}\\p{N}])`, "giu");
+/**
+ * A day and month with a slash and no year — "le 17/11", "on 11/17" — only after a word that introduces a date: alone,
+ * "17/11" may as well be a ratio.
+ */
+const NUMERIC_NO_YEAR =
+  /(?<=(?:^|[^\p{L}])(?:le|du|au|dès|jusqu'au|jusqu’au|avant le|après le|on|by|from|until|till|before|after|since)\s)(\d{1,2})\/(\d{1,2})(?![\p{N}/]|[.,]\d|\s?[%‰$€£])/giu;
+/** The second day of a range in one month: "17–21 November 2026", "November 17-21, 2026" — both ends are dates. */
+const DAY_RANGE = "(?:\\s?[-–]\\s?(\\d{1,2}))?";
+const DAY_MONTH = new RegExp(
+  `(?<![\\p{L}\\p{N}.,])(?:(\\d{1,2})\\s?[-–]\\s?)?(\\d{1,2})(?:er|st|nd|rd|th)?\\s+(${MONTH_WORD})\\.?(?:,?\\s+(\\d{4}))?(?![\\p{L}\\p{N}])`,
+  "giu",
+);
 // A day is not followed by a decimal or a unit: "May 45 %", "mars 12 % du CA" and "Nov 17 €" are figures after a month.
 const NO_UNIT =
   "(?![.,]\\d)(?!\\s?(?:[%‰$€£]|(?:pts?|bps?|x|k|K|M|m|mn|Mn|bn|Bn|B|Md|Mds|T|tn|EUR|USD|GBP|CHF|millions?|billions?|milliards?)(?![\\p{L}\\p{N}])))";
-const MONTH_DAY = new RegExp(`(?<![\\p{L}])(${MONTH_WORD})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?${NO_UNIT}(?:,?\\s+(\\d{4}))?(?![\\p{L}\\p{N}])`, "giu");
+const MONTH_DAY = new RegExp(
+  `(?<![\\p{L}])(${MONTH_WORD})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?${DAY_RANGE}${NO_UNIT}(?:,?\\s+(\\d{4}))?(?![\\p{L}\\p{N}])`,
+  "giu",
+);
 /** English month names that are also words: lowercase, "may" and "march" are a verb ("21 may look rich"). */
 const WORD_NOT_MONTH = /^(?:may|march)$/;
 
@@ -61,10 +75,11 @@ export function dateSpans(text: string): Array<[start: number, end: number]> {
 
 function scanDates(text: string): Array<WrittenDate & { at: number; end: number }> {
   const out: Array<WrittenDate & { at: number; end: number }> = [];
-  const add = (m: RegExpMatchArray, d: WrittenDate) => {
+  // A range writes two dates in one span: both are kept, or neither.
+  const add = (m: RegExpMatchArray, ...ds: WrittenDate[]) => {
     const at = m.index ?? 0;
     const end = at + m[0].length;
-    if (d.readings.length && !out.some((o) => at < o.end && end > o.at)) out.push({ ...d, at, end });
+    if (ds.every((d) => d.readings.length) && !out.some((o) => at < o.end && end > o.at)) for (const d of ds) out.push({ ...d, at, end });
   };
   for (const m of text.matchAll(ISO)) {
     const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
@@ -78,18 +93,23 @@ function scanDates(text: string): Array<WrittenDate & { at: number; end: number 
     if (a !== b && valid(y, a, b)) readings.push([a, b]);
     add(m, { raw: m[0], year: y, readings });
   }
-  for (const m of text.matchAll(DAY_MONTH)) {
-    const mo = WORD_NOT_MONTH.test(m[2]!) ? undefined : monthOf(m[2]!);
-    const y = m[3] ? Number(m[3]) : undefined;
-    const d = Number(m[1]);
-    add(m, { raw: m[0].trim(), ...(y ? { year: y } : {}), readings: mo && valid(y, mo, d) ? [[mo, d]] : [] });
+  for (const m of text.matchAll(NUMERIC_NO_YEAR)) {
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    const readings: Array<[number, number]> = [];
+    if (valid(undefined, b, a)) readings.push([b, a]);
+    if (a !== b && valid(undefined, a, b)) readings.push([a, b]);
+    add(m, { raw: m[0], readings });
   }
-  for (const m of text.matchAll(MONTH_DAY)) {
-    const mo = WORD_NOT_MONTH.test(m[1]!) ? undefined : monthOf(m[1]!);
-    const y = m[3] ? Number(m[3]) : undefined;
-    const d = Number(m[2]);
-    add(m, { raw: m[0].trim(), ...(y ? { year: y } : {}), readings: mo && valid(y, mo, d) ? [[mo, d]] : [] });
-  }
+  const named = (m: RegExpMatchArray, month: string, days: Array<string | undefined>, year: string | undefined) => {
+    const mo = WORD_NOT_MONTH.test(month) ? undefined : monthOf(month);
+    const y = year ? Number(year) : undefined;
+    const ds = days.filter((d): d is string => d !== undefined).map(Number);
+    // A range runs forward: "17–21", not "21–17" (that is two figures).
+    if (ds.length === 2 && ds[0]! >= ds[1]!) return;
+    add(m, ...ds.map((d): WrittenDate => ({ raw: m[0].trim(), ...(y ? { year: y } : {}), readings: mo && valid(y, mo, d) ? [[mo, d]] : [] })));
+  };
+  for (const m of text.matchAll(DAY_MONTH)) named(m, m[3]!, [m[1], m[2]], m[4]);
+  for (const m of text.matchAll(MONTH_DAY)) named(m, m[1]!, [m[2], m[3]], m[4]);
   return out.sort((a, b) => a.at - b.at);
 }
 

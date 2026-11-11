@@ -22,14 +22,19 @@ header rows:
 
 - a heading's section number — small dotted integers before a title:
   `## 1. Thesis`, `### 2.3 Risks`, `## 3.2 M&A outlook`, `## 10) Risks`.
-  `2.3 bn`, `31.4 times`, `450. target` and `450.00 is` opening a heading are
-  figures;
-- the whole numbers of a header row of horizons or years — two or more cells
-  each holding only a whole number: `| Horizon | +5 | 20 | J+60 |`. A
-  key/value table's first row, `| Price target | 450 |`, states a value;
+  `2.3 bn`, `31.4 times`, `4.2 Billion`, `77.5 Percent`, `450. target` and
+  `450.00 is` opening a heading are figures. A heading that cites an `[E#]`
+  keeps only a closed number (`## 2. Valuation [E1]`): in
+  `## 4.2 Buyback [E1]`, 4.2 is a figure;
+- the whole numbers of a header row of horizons or years — a row that cites no
+  `[E#]`, two or more of its cells each holding only a whole number:
+  `| Horizon | +5 | 20 | J+60 |`. A key/value table's first row,
+  `| Price target | 450 |`, states a value, and so does a row that cites
+  evidence: `| X close | 777 | 888 | [E1] |`;
 - a horizon or period label in a header cell or a heading: `| 1M | 3M | 1Y |`,
   `Perf 12m`, `## 12M performance`, `H1 26`, `9M 2026`. `3 M€` there is still
-  an amount, and `12M shares` in prose is twelve million.
+  an amount, `Q3 45 %` a period and a figure, and `12M shares` in prose is
+  twelve million.
 
 A heading with no figure and no `[E#]` is a title: a date in it labels the
 section and is not held to the rule for dates ahead. So is a date in a header
@@ -37,15 +42,19 @@ row that cites no `[E#]`: it labels its column
 (`| Metric | 2025-12-31 | 2026-12-31 |`).
 
 A **figure** is any number written as a quantity: `383,00 €`, `−1.24 %`,
-`$1.6 trillion`, `188,6 Md€`, `31.4x`, `12 bps`, `39,539,690 shares` — markup
-included: `_450_`, `4**5** %`, `&#52;&#53; %`, full-width `４５ %`, `⁴⁵ %`,
-`4½ %` (4.5 %), `45pc`. A superscript after a word or a figure is a footnote
+`$1.6 trillion`, `188,6 Md€`, `31.4x`, `12 bps`, `25 bp`, `3.5pp`,
+`39,539,690 shares`, `1’999 CHF`, `$777MM`, `$7.77bln`, `999 mln`,
+`45 thousand`, `999 MEUR`, `USD777`, `EUR777bn` — markup included: `_450_`, `4**5** %`, `&#52;&#53; %`, full-width `４５ %`, `⁴⁵ %`,
+`4½ %` (4.5 %), `45pc`. A unit the reader does not know, glued to the number
+(`777p`, `64GB`), never makes it vanish: the figure is held only to an item
+stored in that unit (pence: `GBp`/`GBX`). Letters glued between digits make an
+identifier (`Rule 10b5-1`, `15h30`). A superscript after a word or a figure is a footnote
 mark (`84.7 bn²`). These are not figures: dates (`2026-10-23`, `23/10/2026`, `Oct 23, 2026`), times, years
-on their own, indicator settings (`RSI(14)`, `MACD(12,26,9)`, `MM50`, and a
+on their own, a fiscal year across two (`FY2025/26`, `2025/2026`, `FY25/26`), indicator settings (`RSI(14)`, `MACD(12,26,9)`, `MM50`, and a
 moving average at a usual period: `SMA 200`, `EMA 50`), a chart timeframe
 before an indicator (`15m RSI`, `4h MACD`), index names with their own number
-(`CAC 40`, `S&P 500`, `Nasdaq 100`, `Nikkei 225`), filing forms (`10-K`,
-`10-Q`, `20-F`, `40-F`, `8-K`, `6-K`), spans (`52 weeks`, `3 mois`, `5-day`),
+(`CAC 40`, `S&P 500`, `STOXX Europe 600`, `Nasdaq 100`, `Nikkei 225`), filing forms (`10-K`,
+`10-Q`, `20-F`, `40-F`, `8-K`, `6-K`), spans (`52 weeks`, `3 mois`, `5-day` — `777 d'ici` is a figure),
 week numbers (`Week 46`, `semaine 46`), an allocation split summing to 100
 (`60/40`, `70/20/10`), labels glued to letters (`Q3`, `FY2025`, `J+5`), whole
 numbers under ten (`3 positions`), and footnote markers (`[^3]`, or a number
@@ -57,10 +66,14 @@ date.
 A **date** is checked on its own terms. In a claim that cites evidence, every
 calendar date must be one a cited `[E#]` holds — its value, label or as-of day
 (not the day it was read), or the text of a cited document — in any usual form: `2026-11-17`,
-`17/11/2026`, `17 novembre 2026`, `Nov 17, 2026`, `le 17 novembre` (no year:
-matched on the day). Only a valid date is one: in `85 may fall`, `In May 45 %
-of revenue` and `en mars 12 % du CA` the number is a figure (a day past 31, a
-unit after it, and `may` / `march` in lowercase are no date). A results date
+`17/11/2026`, `17 novembre 2026`, `Nov 17, 2026`, `le 17 novembre` and
+`le 17/11` (no year: matched on the day; a day and month with a slash only
+after a date word — `le`, `du`, `au`, `on`, `from`, `by`…), and a range of
+days, both ends held: `17–21 November 2026`, `November 17-21, 2026`. Only a
+valid date is one: in `85 may fall`, `In May 45 % of revenue`, `en mars 12 %
+du CA`, `2026-11-31`, `31/11/2026` and `85/90/95` the numbers are figures (a
+day past the month's end, a unit after it, and `may` / `march` in lowercase
+are no date). A results date
 copied wrong is refused even next to the right `[E#]`. A date **ahead** stated with no `[E#]` at all is refused too (the
 user acts on it); a past day with no citation — "cours au 2026-10-27" — is
 context and passes.
@@ -73,7 +86,10 @@ A figure matches a cited `[E#]` when it is that value at the precision written:
 figure is a claim too: `−41,5 %` is refused against +41.5); `188.6 bn` for
 188 576 644 501; a fraction written as a percentage and back (`27.3 %` for
 a unitless or ratio item of 0.2733 — a price, a count or an index of 0.45 is
-not `45 %`). French and
+not `45 %`, nor is a document's `0.45 EUR` or `15 stores`: a document's figures
+are read as written). No closer than the precision written: `450.45` is not
+450, `104,250.00` is not 104,150.37. A cited text item — a headline — holds the
+figures it writes (`sales rise 12%` holds `12 %`). French and
 English separators both read: `1 234,5`, `1,234.5`, `0,25`.
 
 ## Derived figures

@@ -21819,9 +21819,17 @@ var valid = (y, m, d) => m >= 1 && m <= 12 && d >= 1 && d <= 31 && (y === void 0
 var year4 = (y) => y.length === 2 ? 2e3 + Number(y) : Number(y);
 var ISO = /(?<![\d-])(\d{4})-(\d{2})-(\d{2})(?![\d])/g;
 var NUMERIC = /(?<![\d./-])(\d{1,2})([/.])(\d{1,2})\2(\d{4}|\d{2})(?![\d./])/g;
-var DAY_MONTH = new RegExp(`(?<![\\p{L}\\p{N}.,])(\\d{1,2})(?:er|st|nd|rd|th)?\\s+(${MONTH_WORD})\\.?(?:,?\\s+(\\d{4}))?(?![\\p{L}\\p{N}])`, "giu");
+var NUMERIC_NO_YEAR = /(?<=(?:^|[^\p{L}])(?:le|du|au|dès|jusqu'au|jusqu’au|avant le|après le|on|by|from|until|till|before|after|since)\s)(\d{1,2})\/(\d{1,2})(?![\p{N}/]|[.,]\d|\s?[%‰$€£])/giu;
+var DAY_RANGE = "(?:\\s?[-\u2013]\\s?(\\d{1,2}))?";
+var DAY_MONTH = new RegExp(
+  `(?<![\\p{L}\\p{N}.,])(?:(\\d{1,2})\\s?[-\u2013]\\s?)?(\\d{1,2})(?:er|st|nd|rd|th)?\\s+(${MONTH_WORD})\\.?(?:,?\\s+(\\d{4}))?(?![\\p{L}\\p{N}])`,
+  "giu"
+);
 var NO_UNIT = "(?![.,]\\d)(?!\\s?(?:[%\u2030$\u20AC\xA3]|(?:pts?|bps?|x|k|K|M|m|mn|Mn|bn|Bn|B|Md|Mds|T|tn|EUR|USD|GBP|CHF|millions?|billions?|milliards?)(?![\\p{L}\\p{N}])))";
-var MONTH_DAY = new RegExp(`(?<![\\p{L}])(${MONTH_WORD})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?${NO_UNIT}(?:,?\\s+(\\d{4}))?(?![\\p{L}\\p{N}])`, "giu");
+var MONTH_DAY = new RegExp(
+  `(?<![\\p{L}])(${MONTH_WORD})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?${DAY_RANGE}${NO_UNIT}(?:,?\\s+(\\d{4}))?(?![\\p{L}\\p{N}])`,
+  "giu"
+);
 var WORD_NOT_MONTH = /^(?:may|march)$/;
 function extractDates(text2) {
   return scanDates(text2).map(({ at: _a, end: _e, ...d }) => d);
@@ -21831,10 +21839,10 @@ function dateSpans(text2) {
 }
 function scanDates(text2) {
   const out = [];
-  const add2 = (m, d) => {
+  const add2 = (m, ...ds) => {
     const at = m.index ?? 0;
     const end = at + m[0].length;
-    if (d.readings.length && !out.some((o) => at < o.end && end > o.at)) out.push({ ...d, at, end });
+    if (ds.every((d) => d.readings.length) && !out.some((o) => at < o.end && end > o.at)) for (const d of ds) out.push({ ...d, at, end });
   };
   for (const m of text2.matchAll(ISO)) {
     const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
@@ -21848,18 +21856,22 @@ function scanDates(text2) {
     if (a !== b && valid(y, a, b)) readings.push([a, b]);
     add2(m, { raw: m[0], year: y, readings });
   }
-  for (const m of text2.matchAll(DAY_MONTH)) {
-    const mo = WORD_NOT_MONTH.test(m[2]) ? void 0 : monthOf(m[2]);
-    const y = m[3] ? Number(m[3]) : void 0;
-    const d = Number(m[1]);
-    add2(m, { raw: m[0].trim(), ...y ? { year: y } : {}, readings: mo && valid(y, mo, d) ? [[mo, d]] : [] });
+  for (const m of text2.matchAll(NUMERIC_NO_YEAR)) {
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    const readings = [];
+    if (valid(void 0, b, a)) readings.push([b, a]);
+    if (a !== b && valid(void 0, a, b)) readings.push([a, b]);
+    add2(m, { raw: m[0], readings });
   }
-  for (const m of text2.matchAll(MONTH_DAY)) {
-    const mo = WORD_NOT_MONTH.test(m[1]) ? void 0 : monthOf(m[1]);
-    const y = m[3] ? Number(m[3]) : void 0;
-    const d = Number(m[2]);
-    add2(m, { raw: m[0].trim(), ...y ? { year: y } : {}, readings: mo && valid(y, mo, d) ? [[mo, d]] : [] });
-  }
+  const named = (m, month, days, year) => {
+    const mo = WORD_NOT_MONTH.test(month) ? void 0 : monthOf(month);
+    const y = year ? Number(year) : void 0;
+    const ds = days.filter((d) => d !== void 0).map(Number);
+    if (ds.length === 2 && ds[0] >= ds[1]) return;
+    add2(m, ...ds.map((d) => ({ raw: m[0].trim(), ...y ? { year: y } : {}, readings: mo && valid(y, mo, d) ? [[mo, d]] : [] })));
+  };
+  for (const m of text2.matchAll(DAY_MONTH)) named(m, m[3], [m[1], m[2]], m[4]);
+  for (const m of text2.matchAll(MONTH_DAY)) named(m, m[1], [m[2], m[3]], m[4]);
   return out.sort((a, b) => a.at - b.at);
 }
 var pad2 = (n2) => String(n2).padStart(2, "0");
@@ -21893,10 +21905,10 @@ function normalizeEvidenceCitations(answer) {
   );
 }
 var SCALES = [
-  [/^(?:k|K|mille)$/, 1e3],
-  [/^(?:M|m|mn|Mn|mio|million|millions)$/, 1e6],
-  [/^(?:Md|Mds|md|mds|bn|Bn|B|billion|billions|milliard|milliards)$/, 1e9],
-  [/^(?:T|tn|trillion|trillions)$/, 1e12]
+  [/^(?:k|K|mille|[Tt]housands?)$/, 1e3],
+  [/^(?:M|m|mn|Mn|MM|mio|Mio|mln|Mln|[Mm]illions?)$/, 1e6],
+  [/^(?:Md|Mds|md|mds|Mrd|bn|Bn|B|bln|Bln|[Bb]illions?|milliards?)$/, 1e9],
+  [/^(?:T|tn|trn|[Tt]rillions?)$/, 1e12]
 ];
 function unnestBrackets(text2) {
   const chars = text2.split("");
@@ -21915,7 +21927,7 @@ var AVERAGE_NAMES = "SMA|EMA|WMA|HMA|MA|MM|DMA";
 var AVERAGE_PERIODS = "5|7|8|9|10|12|13|20|21|26|30|34|40|50|55|60|89|100|120|144|150|200|250";
 var INDEX_NAMES = [
   "S&P\\s?(?:100|400|500|600|1500)",
-  "\\b(?:Euro\\s?)?(?:STOXX|Stoxx|stoxx)\\s?(?:50|600)",
+  "\\b(?:Euro\\s?)?(?:STOXX|Stoxx|stoxx)\\s?(?:Europe\\s?)?(?:50|600)",
   "\\bCAC\\s?(?:40|Next\\s?20|Mid\\s?60|Mid\\s?&\\s?Small|Small)",
   "\\bSBF\\s?(?:120|250)",
   "\\b(?:Nasdaq|NASDAQ)[-\\s]?100",
@@ -22007,11 +22019,27 @@ function blankDates(text2) {
 }
 function stripNonFigures(text2) {
   return blankDates(
-    unbracket(plainText(text2.replace(/`[^`]*`/g, " "))).replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ").replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ")
+    // Only a valid date is one: "2026-11-31", "31/11/2026" and "85/90/95" are figures.
+    unbracket(plainText(text2.replace(/`[^`]*`/g, " "))).replace(/\b(\d{4}-\d{2}-\d{2})(?:T[\d:.]+Z?)?\b/g, (m, day4) => dateSpans(day4).length ? " " : m).replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, (m) => dateSpans(m).length ? " " : m)
+  ).replace(
+    /(?<![\p{L}\p{N}.,/])(?:FY|fy|EF)?((?:19|20)?\d{2})\/((?:19|20)?\d{2})(?![\p{N}/]|[.,]\d|\s?[%$€£])/gu,
+    (m, a, b) => (a.length === 4 || /^(?:FY|fy|EF)/.test(m)) && Number(b.slice(-2)) === (Number(a.slice(-2)) + 1) % 100 ? " " : m
   ).replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ").replace(new RegExp(`\\b\\d{1,2}[mhdwM]\\s?(?=(?:${INDICATOR_NAMES})(?![A-Za-z]))`, "gi"), " ").replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ").replace(new RegExp(`\\b(?:${AVERAGE_NAMES})\\s?(?:${AVERAGE_PERIODS})\\b${NOT_A_VALUE}`, "giu"), " ").replace(new RegExp(`(?:${INDEX_NAMES})${NOT_A_VALUE}`, "gu"), " ").replace(/(?<![\p{L}\p{N}])(?:10-[KQ]|20-F|40-F|8-K|6-K)(?:\/A|405|T)?(?![\p{L}\p{N}])/giu, " ").replace(/\b(?:weeks?|wk|semaines?|sem\.)\s?\d{1,2}\b(?![.,]\d|\s?[%$€£])/gi, " ").replace(/(?<![\p{N}.,/])\d{1,3}(?:\/\d{1,3})+(?![\p{N}/]|[.,]\d)/gu, (m) => m.split("/").reduce((a, b) => a + Number(b), 0) === 100 ? " " : m);
 }
-var FIGURE_RE = /(?<![\p{L}\p{N}_.,])([+\-−–]?)\s?([$€£]\s?)?(\d{1,3}(?:[ ,.  ']\d{3})+(?!\d)(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(\s?(?:%|pts?|bps|x|×)|\s?(?:k|K|M|m|mn|Mn|mio|Md|Mds|md|mds|bn|Bn|B|T|tn|million|millions|milliard|milliards|billion|billions|trillion|trillions|mille|pc|pct|percent|per\s?cent|pour\s?cent)\b)?(\s?(?:[$€£]|EUR|USD|USDT|USDC|GBP|CHF|NOK|BTC|ETH)\b|\s?[$€£])?/gu;
-var PARAMETER_AFTER = /^[-\s]?(?:days?|d|jours?|j|weeks?|wks?|w|semaines?|months?|mo|mois|years?|yrs?|y|ans?|années?|bars?|séances?|sessions?|hours?|h|heures?|min|minutes?|périodes?|periods?|ème|e|er|re|st|nd|rd|th)\b/iu;
+var CURRENCY_CODES = "EUR|USD|USDT|USDC|GBP|CHF|NOK|SEK|DKK|JPY|CAD|AUD|HKD|CNY|BTC|ETH";
+var SCALE_WORDS = "k|K|M|m|mn|Mn|MM|mio|Mio|mln|Mln|Md|Mds|md|mds|Mrd|bn|Bn|B|bln|Bln|T|tn|trn|[Mm]illions?|milliards?|[Bb]illions?|[Tt]rillions?|[Tt]housands?|mille|pc|pct|[Pp]ercent|[Pp]er\\s?cent|pour\\s?cent";
+var FIGURE_RE = new RegExp(
+  [
+    "(?<![\\p{L}\\p{N}_.,])([+\\-\u2212\u2013]?)\\s?",
+    `((?:[$\u20AC\xA3]|(?:${CURRENCY_CODES})(?![\\p{L}]))\\s?)?`,
+    "(\\d{1,3}(?:[ ,.\xA0\u202F'\u2019]\\d{3})+(?!\\d)(?:[.,]\\d+)?|\\d+(?:[.,]\\d+)?)",
+    `(\\s?(?:%|pts?|pp(?![\\p{L}])|bps?(?![\\p{L}])|x|\xD7)|\\s?(?:${SCALE_WORDS})(?:\\b|(?=(?:${CURRENCY_CODES})\\b)))?`,
+    `(\\s?(?:[$\u20AC\xA3]|${CURRENCY_CODES})\\b|\\s?[$\u20AC\xA3])?`
+  ].join(""),
+  "gu"
+);
+var PARAMETER_AFTER = /^[-\s]?(?:days?|d|jours?|j|weeks?|wks?|w|semaines?|months?|mo|mois|years?|yrs?|y|ans?|années?|bars?|séances?|sessions?|hours?|h|heures?|min|minutes?|périodes?|periods?|am|pm|ème|e|er|re|st|nd|rd|th)\b(?!['’])/iu;
+var PERCENT_WORD = /^(?:%|pts?|pp|pc|pct|[Pp]ercent|[Pp]er\s?cent|pour\s?cent)$/;
 function extractFigures(text2) {
   const src2 = stripNonFigures(text2);
   const out = [];
@@ -22020,20 +22048,21 @@ function extractFigures(text2) {
     const suffix = (suffixRaw ?? "").trim();
     const after = src2.slice((m.index ?? 0) + raw.length);
     if (!suffix && !curPre && !curPost && PARAMETER_AFTER.test(after)) continue;
-    if (!suffix && /^[\p{L}]/u.test(after)) continue;
+    const glued = suffix || curPost ? void 0 : new RegExp("^\\p{L}+", "u").exec(after)?.[0];
+    if (glued && new RegExp("^\\p{N}", "u").test(after.slice(glued.length))) continue;
     const { value: value2, decimals } = parseDigits(digits);
-    const percent = /^(?:%|pts?|pc|pct|percent|per\s?cent|pour\s?cent)$/.test(suffix);
-    const scale = SCALES.find(([re]) => re.test(suffix))?.[1] ?? (suffix === "bps" ? 0.01 : 1);
+    const percent = PERCENT_WORD.test(suffix);
+    const scale = SCALES.find(([re]) => re.test(suffix))?.[1] ?? (/^bps?$/.test(suffix) ? 0.01 : 1);
     const plain3 = !suffix && !curPre && !curPost && decimals === 0;
     if (plain3 && Math.abs(value2) < 10) continue;
     if (plain3 && !sign2 && value2 >= 1900 && value2 <= 2100) continue;
     const signed2 = /[-−–]/.test(sign2 ?? "") ? -value2 : value2;
-    out.push({ raw: raw.trim(), value: signed2 * scale, percent, decimals, scale });
+    out.push({ raw: `${raw.trim()}${glued ?? ""}`, value: signed2 * scale, percent, decimals, scale, ...glued ? { unit: glued } : {} });
   }
   return out;
 }
 function parseDigits(d) {
-  let s = d.replace(/[  ' ]/g, "");
+  let s = d.replace(/[  '’ ]/g, "");
   if (/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(s)) s = s.replace(/,/g, "");
   else if (/^\d{1,3}(?:\.\d{3}){2,}(?:,\d+)?$/.test(s) || /^\d{1,3}(?:\.\d{3})+,\d+$/.test(s)) s = s.replace(/\./g, "");
   s = s.replace(",", ".");
@@ -22041,17 +22070,20 @@ function parseDigits(d) {
   return { value: Number(s), decimals };
 }
 var FRACTION_UNITS = /* @__PURE__ */ new Set([void 0, "", "ratio", "x"]);
+var AS_WRITTEN = "as written";
+var unitAgrees = (written, stored) => stored !== void 0 && (stored === written || /^p(?:ence)?$/.test(written) && /^(?:GBp|GBX|p|pence)$/.test(stored));
 function figureMatches(f3, items, opts = {}) {
   const tol = 0.5 * 10 ** -f3.decimals * f3.scale;
   const writtenNegative = !!opts.signed && /^[-−](?:[$€£]\s?)?\d/.test(f3.raw);
   for (const it of items) {
     if (typeof it.value !== "number") continue;
+    if (f3.unit !== void 0 && !unitAgrees(f3.unit, it.unit)) continue;
     const candidates2 = [it.value];
-    if (f3.percent && FRACTION_UNITS.has(it.unit)) candidates2.push(it.value * 100);
-    if (!f3.percent && it.unit === "%") candidates2.push(it.value / 100);
+    if (f3.unit === void 0 && f3.percent && FRACTION_UNITS.has(it.unit)) candidates2.push(it.value * 100);
+    if (f3.unit === void 0 && !f3.percent && it.unit === "%") candidates2.push(it.value / 100);
     for (const v of candidates2) {
       const a = Math.abs(Math.abs(v) - Math.abs(f3.value));
-      const near = a <= tol + 1e-9 * Math.max(1, Math.abs(v)) || Math.abs(v) > 0 && a / Math.abs(v) <= 1e-3;
+      const near = a <= tol + 1e-9 * Math.max(1, Math.abs(v));
       if (!near) continue;
       if (writtenNegative && v > tol) continue;
       return true;
@@ -22060,7 +22092,7 @@ function figureMatches(f3, items, opts = {}) {
   return false;
 }
 function documentFigures(doc, text2) {
-  return extractFigures(text2).map((f3) => ({ ...doc, value: f3.value, unit: f3.percent ? "%" : void 0, doc: void 0 }));
+  return extractFigures(text2).map((f3) => ({ ...doc, value: f3.value, unit: f3.unit ?? (f3.percent ? "%" : AS_WRITTEN), doc: void 0 }));
 }
 var NEAR_LINES = 3;
 function nearClaim(doc, claim) {
@@ -22098,7 +22130,7 @@ function closingSourcesMask(lines) {
   }
   return mask;
 }
-var PERIOD_LABEL = /(?<![\p{L}\p{N}.,])(?:\d{1,2}[MmYyWwDd](?![\p{L}\p{N}])(?!\s?(?:[$€£]|(?:EUR|USD|GBP|CHF)\b))|[HQST][1-4]\s?'?\d{2}(?![\p{N}.,]))/gu;
+var PERIOD_LABEL = /(?<![\p{L}\p{N}.,])(?:\d{1,2}[MmYyWwDd](?![\p{L}\p{N}])(?!\s?(?:[$€£]|(?:EUR|USD|GBP|CHF)\b))|[HQST][1-4]\s?'?\d{2}(?![\p{N}.,])(?!\s?(?:[%‰$€£×]|(?:x|pts?|pp|bps?|k|K|M|mn|bn|Bn|Md|Mds|EUR|USD|GBP|CHF)(?![\p{L}\p{N}]))))/gu;
 var withoutPeriodLabels = (text2) => text2.replace(PERIOD_LABEL, " ");
 function withoutColumnLabels(answer) {
   const separator = (l) => /\|/.test(l) && /^[\s:|-]+$/.test(l.trim()) && /-/.test(l);
@@ -22107,15 +22139,17 @@ function withoutColumnLabels(answer) {
   return lines.map((l, i) => {
     if (!(/\|/.test(l) && !separator(l) && separator(lines[i + 1] ?? ""))) return l;
     const cells = l.split("|");
-    const labelRow = cells.filter(wholeNumber).length >= 2;
     const cites = /\[E\d+\]/.test(l);
+    const labelRow = !cites && cells.filter(wholeNumber).length >= 2;
     return cells.map((c) => labelRow && wholeNumber(c) ? " " : withoutPeriodLabels(cites ? c : blankDates(c))).join("|");
   }).join("\n");
 }
-var SECTION_NUMBER = new RegExp("^(?:\\d{1,2}(?:\\.(?:0|[1-9]\\d?)){0,3}[.)]\\s+(?=\\p{L})|\\d{1,2}(?:\\.(?:0|[1-9]\\d?)){1,3}\\s+(?=\\p{Lu})(?!(?:EUR|USD|GBP|CHF|JPY|CAD|AUD|NOK|SEK|DKK|BTC|ETH|USDT|USDC|Bn|Mn|Md|Mds|Mio|K)\\b))", "u");
+var CLOSED_SECTION_NUMBER = new RegExp("^\\d{1,2}(?:\\.(?:0|[1-9]\\d?)){0,3}[.)]\\s+(?=\\p{L})", "u");
+var OPEN_SECTION_NUMBER = new RegExp("^\\d{1,2}(?:\\.(?:0|[1-9]\\d?)){1,3}\\s+(?=\\p{Lu})(?!(?:EUR|USD|GBP|CHF|JPY|CAD|AUD|NOK|SEK|DKK|BTC|ETH|USDT|USDC|Bn|Mn|Md|Mds|Mio|Mln|Bln|Mrd|MM|K)\\b)(?!(?:Thousands?|Millions?|Billions?|Trillions?|Milliards?|Percent|Per\\s?cent|Pct|Points?|Pts?|Bps|Basis|Times)\\b)", "u");
 function headingText(heading) {
   const t = withoutPeriodLabels(heading.replace(/^#{1,6}\s+/, ""));
-  return t.replace(SECTION_NUMBER, "");
+  if (CLOSED_SECTION_NUMBER.test(t)) return t.replace(CLOSED_SECTION_NUMBER, "");
+  return /\[E\d+\]/.test(t) ? t : t.replace(OPEN_SECTION_NUMBER, "");
 }
 function lineFinder(lines) {
   const flat = lines.map(
@@ -22161,6 +22195,11 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
       docs.set(item.id, text2 === void 0 ? null : { text: text2, figures: documentFigures(item, text2) });
     }
     return docs.get(item.id) ?? void 0;
+  };
+  const textFigures = /* @__PURE__ */ new Map();
+  const textFiguresOf = (item) => {
+    if (!textFigures.has(item.id)) textFigures.set(item.id, documentFigures(item, String(item.value)));
+    return textFigures.get(item.id);
   };
   const itemDates = /* @__PURE__ */ new Map();
   const datesOf = (item) => {
@@ -22250,8 +22289,9 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
             message: `the date ${d.raw} is in none of ${cites.map((c) => `[${c.id}]`).join(" ")} \u2014 cite the evidence that holds it (any usual form is read: 2026-11-17, 17/11/2026, 17 novembre 2026)`
           });
         }
+      const held = known.flatMap((it) => typeof it.value === "string" ? textFiguresOf(it) : [it]);
       for (const f3 of figs) {
-        if (figureMatches(f3, known, { signed: true })) continue;
+        if (figureMatches(f3, held, { signed: true })) continue;
         const holder = citedDocs.find((d) => figureMatches(f3, docOf(d).figures));
         if (holder) {
           const doc = docOf(holder);

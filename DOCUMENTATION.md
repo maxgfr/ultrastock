@@ -33,15 +33,23 @@ header row, which the parser sets aside as structure), reads every figure in
 each claim with its own financial number reader (signs, `%`, `bn`/`Md`, French
 and English separators, more than eight figures per row), and requires each
 figure to be among the values of the `[E#]` the same claim cites, at the
-precision written: a figure in a heading or a header row needs its `[E#]` in
-that same line or row. Dates, years, indicator settings, index names and spans
-are not figures, nor are a heading's section number (`2.3`) and a header cell
-holding only a whole number (a horizon or a year labelling its column); a
-heading with no figure and no `[E#]` is a title, its date a label. A
+precision written (`450.45` is not 450; no relative slack): a figure in a
+heading or a header row needs its `[E#]` in that same line or row. Dates,
+years, indicator settings, index names and spans are not figures, nor are a
+heading's section number (`2.3`; in a heading that cites an `[E#]`, only the
+closed form `2.` or `2.3.`) and a header cell holding only a whole number in a
+row that cites no `[E#]` (a horizon or a year labelling its column); a heading
+with no figure and no `[E#]` is a title, its date a label. A unit or scale
+word the reader does not know, glued to a number (`777p`, `64GB`), never makes
+the number vanish: the figure is held to an item stored in that unit. A
+cited text item (a headline) holds the figures it writes; a document's plain
+figures are read as written, never as a fraction a percentage could state. A
 calendar date is checked on its own (`src/core/dates.ts` reads ISO, numeric,
-French and English forms): in a claim that cites evidence it must be a date a
+French and English forms, `le 17/11` after a date word, and a range such as
+`17–21 November 2026`): in a claim that cites evidence it must be a date a
 cited `[E#]` holds or a cited document writes, and a date ahead with no `[E#]`
-fails. A closing sources list is set aside.
+fails. Only a valid date is one: `2026-11-31` and `31/11/2026` are figures. A
+closing sources list is set aside.
 
 ## Determinism
 

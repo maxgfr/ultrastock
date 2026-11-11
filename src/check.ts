@@ -66,13 +66,18 @@ export interface Figure {
   /** Decimals as written, for the rounding tolerance. */
   decimals: number;
   scale: number;
+  /**
+   * A unit the reader does not know, glued to the number ("777p", "64GB"): its scale cannot be read, so the figure is
+   * only held to an item stored in that same unit — never dropped, never matched as a bare number.
+   */
+  unit?: string;
 }
 
 const SCALES: Array<[RegExp, number]> = [
-  [/^(?:k|K|mille)$/, 1e3],
-  [/^(?:M|m|mn|Mn|mio|million|millions)$/, 1e6],
-  [/^(?:Md|Mds|md|mds|bn|Bn|B|billion|billions|milliard|milliards)$/, 1e9],
-  [/^(?:T|tn|trillion|trillions)$/, 1e12],
+  [/^(?:k|K|mille|[Tt]housands?)$/, 1e3],
+  [/^(?:M|m|mn|Mn|MM|mio|Mio|mln|Mln|[Mm]illions?)$/, 1e6],
+  [/^(?:Md|Mds|md|mds|Mrd|bn|Bn|B|bln|Bln|[Bb]illions?|milliards?)$/, 1e9],
+  [/^(?:T|tn|trn|[Tt]rillions?)$/, 1e12],
 ];
 
 /**
@@ -112,7 +117,7 @@ const AVERAGE_PERIODS = "5|7|8|9|10|12|13|20|21|26|30|34|40|50|55|60|89|100|120|
 /** Index names with the number that is part of the name — a fixed list, so "the Nasdaq 21000 level" is a figure. */
 const INDEX_NAMES = [
   "S&P\\s?(?:100|400|500|600|1500)",
-  "\\b(?:Euro\\s?)?(?:STOXX|Stoxx|stoxx)\\s?(?:50|600)",
+  "\\b(?:Euro\\s?)?(?:STOXX|Stoxx|stoxx)\\s?(?:Europe\\s?)?(?:50|600)",
   "\\bCAC\\s?(?:40|Next\\s?20|Mid\\s?60|Mid\\s?&\\s?Small|Small)",
   "\\bSBF\\s?(?:120|250)",
   "\\b(?:Nasdaq|NASDAQ)[-\\s]?100",
@@ -232,10 +237,15 @@ function blankDates(text: string): string {
 function stripNonFigures(text: string): string {
   return (
     blankDates(
+      // Only a valid date is one: "2026-11-31", "31/11/2026" and "85/90/95" are figures.
       unbracket(plainText(text.replace(/`[^`]*`/g, " ")))
-        .replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ")
-        .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " "),
+        .replace(/\b(\d{4}-\d{2}-\d{2})(?:T[\d:.]+Z?)?\b/g, (m, day: string) => (dateSpans(day).length ? " " : m))
+        .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, (m) => (dateSpans(m).length ? " " : m)),
     )
+      // A fiscal year straddling two calendar years labels a period: FY2025/26, 2025/2026, FY25/26.
+      .replace(/(?<![\p{L}\p{N}.,/])(?:FY|fy|EF)?((?:19|20)?\d{2})\/((?:19|20)?\d{2})(?![\p{N}/]|[.,]\d|\s?[%$€£])/gu, (m, a: string, b: string) =>
+        (a.length === 4 || /^(?:FY|fy|EF)/.test(m)) && Number(b.slice(-2)) === (Number(a.slice(-2)) + 1) % 100 ? " " : m,
+      )
       .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ")
       // A chart timeframe before an indicator is its label: the 15m RSI, the 4h MACD — not 15 million.
       .replace(new RegExp(`\\b\\d{1,2}[mhdwM]\\s?(?=(?:${INDICATOR_NAMES})(?![A-Za-z]))`, "gi"), " ")
@@ -252,11 +262,30 @@ function stripNonFigures(text: string): string {
   );
 }
 
+/** Currency codes read on either side of a figure: "USD777", "999 MEUR", "1’999 CHF". */
+const CURRENCY_CODES = "EUR|USD|USDT|USDC|GBP|CHF|NOK|SEK|DKK|JPY|CAD|AUD|HKD|CNY|BTC|ETH";
+/**
+ * Scale words and percentage words. A scale may be glued to its currency code ("999 MEUR", "15kUSD"). The unit words
+ * (bp, pp, x) need no boundary: "75bp", "3.5pp", "31.4x".
+ */
+const SCALE_WORDS =
+  "k|K|M|m|mn|Mn|MM|mio|Mio|mln|Mln|Md|Mds|md|mds|Mrd|bn|Bn|B|bln|Bln|T|tn|trn|[Mm]illions?|milliards?|[Bb]illions?|[Tt]rillions?|[Tt]housands?|mille|pc|pct|[Pp]ercent|[Pp]er\\s?cent|pour\\s?cent";
 // A thousands group is exactly three digits: "0.775886" and "5,8741" are decimals, not "0.775" or "5,874" cut short.
-const FIGURE_RE =
-  /(?<![\p{L}\p{N}_.,])([+\-−–]?)\s?([$€£]\s?)?(\d{1,3}(?:[ ,.  ']\d{3})+(?!\d)(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(\s?(?:%|pts?|bps|x|×)|\s?(?:k|K|M|m|mn|Mn|mio|Md|Mds|md|mds|bn|Bn|B|T|tn|million|millions|milliard|milliards|billion|billions|trillion|trillions|mille|pc|pct|percent|per\s?cent|pour\s?cent)\b)?(\s?(?:[$€£]|EUR|USD|USDT|USDC|GBP|CHF|NOK|BTC|ETH)\b|\s?[$€£])?/gu;
+// The group separators: a space, a comma, a dot, a no-break or narrow no-break space, an apostrophe, a typographic one.
+const FIGURE_RE = new RegExp(
+  [
+    "(?<![\\p{L}\\p{N}_.,])([+\\-−–]?)\\s?",
+    `((?:[$€£]|(?:${CURRENCY_CODES})(?![\\p{L}]))\\s?)?`,
+    "(\\d{1,3}(?:[ ,.\u00a0\u202f'’]\\d{3})+(?!\\d)(?:[.,]\\d+)?|\\d+(?:[.,]\\d+)?)",
+    `(\\s?(?:%|pts?|pp(?![\\p{L}])|bps?(?![\\p{L}])|x|×)|\\s?(?:${SCALE_WORDS})(?:\\b|(?=(?:${CURRENCY_CODES})\\b)))?`,
+    `(\\s?(?:[$€£]|${CURRENCY_CODES})\\b|\\s?[$€£])?`,
+  ].join(""),
+  "gu",
+);
+/** A span or an ordinal after a number makes it a setting ("5-day", "52 weeks", "3e"); "d'ici" and "j'ai" are words. */
 const PARAMETER_AFTER =
-  /^[-\s]?(?:days?|d|jours?|j|weeks?|wks?|w|semaines?|months?|mo|mois|years?|yrs?|y|ans?|années?|bars?|séances?|sessions?|hours?|h|heures?|min|minutes?|périodes?|periods?|ème|e|er|re|st|nd|rd|th)\b/iu;
+  /^[-\s]?(?:days?|d|jours?|j|weeks?|wks?|w|semaines?|months?|mo|mois|years?|yrs?|y|ans?|années?|bars?|séances?|sessions?|hours?|h|heures?|min|minutes?|périodes?|periods?|am|pm|ème|e|er|re|st|nd|rd|th)\b(?!['’])/iu;
+const PERCENT_WORD = /^(?:%|pts?|pp|pc|pct|[Pp]ercent|[Pp]er\s?cent|pour\s?cent)$/;
 
 /** Every figure a piece of text states. */
 export function extractFigures(text: string): Figure[] {
@@ -267,22 +296,25 @@ export function extractFigures(text: string): Figure[] {
     const suffix = (suffixRaw ?? "").trim();
     const after = src.slice((m.index ?? 0) + raw.length);
     if (!suffix && !curPre && !curPost && PARAMETER_AFTER.test(after)) continue; // "5-day", "52 weeks", "3e"
-    if (!suffix && /^[\p{L}]/u.test(after)) continue; // glued to a word: an identifier
+    // Letters glued to the number are a unit the reader does not know ("777p", "75bps" aside) — unless a digit follows
+    // them, which makes the whole an identifier ("10b5", "15h30", "2s10s").
+    const glued = suffix || curPost ? undefined : /^\p{L}+/u.exec(after)?.[0];
+    if (glued && /^\p{N}/u.test(after.slice(glued.length))) continue;
     const { value, decimals } = parseDigits(digits!);
-    const percent = /^(?:%|pts?|pc|pct|percent|per\s?cent|pour\s?cent)$/.test(suffix);
-    const scale = SCALES.find(([re]) => re.test(suffix))?.[1] ?? (suffix === "bps" ? 0.01 : 1);
+    const percent = PERCENT_WORD.test(suffix);
+    const scale = SCALES.find(([re]) => re.test(suffix))?.[1] ?? (/^bps?$/.test(suffix) ? 0.01 : 1);
     const plain = !suffix && !curPre && !curPost && decimals === 0;
-    if (plain && Math.abs(value) < 10) continue; // "3 positions": too weak to check anything with
-    if (plain && !sign && value >= 1900 && value <= 2100) continue; // a year
+    if (plain && Math.abs(value) < 10) continue; // "3 positions", "5G": too weak to check anything with
+    if (plain && !sign && value >= 1900 && value <= 2100) continue; // a year ("2025A" too)
     const signed = /[-−–]/.test(sign ?? "") ? -value : value;
-    out.push({ raw: raw.trim(), value: signed * scale, percent, decimals, scale });
+    out.push({ raw: `${raw.trim()}${glued ?? ""}`, value: signed * scale, percent, decimals, scale, ...(glued ? { unit: glued } : {}) });
   }
   return out;
 }
 
 /** "1 234,5", "1,234.5", "0,25", "12.34" → value and written decimals. */
 function parseDigits(d: string): { value: number; decimals: number } {
-  let s = d.replace(/[  ' ]/g, "");
+  let s = d.replace(/[  '’ ]/g, "");
   // "1,234" and "1,234.5": commas group thousands. "1.234.567" and "1.234,5": dots do.
   // A lone "1.234" stays a decimal — the English reading, and the one a source would print.
   if (/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(s)) s = s.replace(/,/g, "");
@@ -299,6 +331,13 @@ function parseDigits(d: string): { value: number; decimals: number } {
  */
 const FRACTION_UNITS: ReadonlySet<string | undefined> = new Set([undefined, "", "ratio", "x"]);
 
+/** The unit a document's plain figure is stored under: as written, so no fraction is read into a percentage. */
+const AS_WRITTEN = "as written";
+
+/** Does an item stored in `stored` hold a figure written in a unit the reader does not know? Pence read as GBp/GBX. */
+const unitAgrees = (written: string, stored: string | undefined) =>
+  stored !== undefined && (stored === written || (/^p(?:ence)?$/.test(written) && /^(?:GBp|GBX|p|pence)$/.test(stored)));
+
 /**
  * Is the written figure one of the values these evidence items hold?
  *
@@ -313,13 +352,16 @@ export function figureMatches(f: Figure, items: readonly EvidenceItem[], opts: {
   const writtenNegative = !!opts.signed && /^[-−](?:[$€£]\s?)?\d/.test(f.raw);
   for (const it of items) {
     if (typeof it.value !== "number") continue;
+    // A unit the reader does not know is held only to an item in that unit, at the value written.
+    if (f.unit !== undefined && !unitAgrees(f.unit, it.unit)) continue;
     const candidates = [it.value];
     // A fraction stored as a ratio can be written as a percentage, and back.
-    if (f.percent && FRACTION_UNITS.has(it.unit)) candidates.push(it.value * 100);
-    if (!f.percent && it.unit === "%") candidates.push(it.value / 100);
+    if (f.unit === undefined && f.percent && FRACTION_UNITS.has(it.unit)) candidates.push(it.value * 100);
+    if (f.unit === undefined && !f.percent && it.unit === "%") candidates.push(it.value / 100);
     for (const v of candidates) {
       const a = Math.abs(Math.abs(v) - Math.abs(f.value));
-      const near = a <= tol + 1e-9 * Math.max(1, Math.abs(v)) || (Math.abs(v) > 0 && a / Math.abs(v) <= 0.001);
+      // At the precision written, no closer: 450.45 is not 450, nor 104,250.00 the 104,150.37 held.
+      const near = a <= tol + 1e-9 * Math.max(1, Math.abs(v));
       if (!near) continue;
       // A positive value that rounds to the zero written ("-0.0 %") contradicts nothing.
       if (writtenNegative && v > tol) continue;
@@ -329,9 +371,12 @@ export function figureMatches(f: Figure, items: readonly EvidenceItem[], opts: {
   return false;
 }
 
-/** A document's figures as evidence-shaped values, so `figureMatches` reads them like any other. */
+/**
+ * A document's figures as evidence-shaped values, so `figureMatches` reads them like any other. A plain figure is
+ * stored as written, not as a fraction: "0.45 EUR" or "15 stores" in a page is no "45 %".
+ */
 export function documentFigures(doc: EvidenceItem, text: string): EvidenceItem[] {
-  return extractFigures(text).map((f) => ({ ...doc, value: f.value, unit: f.percent ? "%" : undefined, doc: undefined }));
+  return extractFigures(text).map((f) => ({ ...doc, value: f.value, unit: f.unit ?? (f.percent ? "%" : AS_WRITTEN), doc: undefined }));
 }
 
 /** A cited document as `check` reads it once: its text, its figures, and what is derived from them on demand. */
@@ -408,19 +453,22 @@ function closingSourcesMask(lines: readonly string[]): boolean[] {
 /**
  * A horizon or a period heading a column or a section labels it: "1M", "3M",
  * "12m", "1Y", "9M 2026", "H1 26", "Q3 '26". Only the glued form, and not
- * before a currency: "3 M€" and "12M €" there are still amounts. In prose, "12M
- * shares" is twelve million — this is for header cells and headings only.
+ * before a currency or a unit: "3 M€" and "12M €" there are still amounts, and
+ * "Q3 45 %" or "H1 77 %" a period followed by a figure. In prose, "12M shares"
+ * is twelve million — this is for header cells and headings only.
  */
-const PERIOD_LABEL = /(?<![\p{L}\p{N}.,])(?:\d{1,2}[MmYyWwDd](?![\p{L}\p{N}])(?!\s?(?:[$€£]|(?:EUR|USD|GBP|CHF)\b))|[HQST][1-4]\s?'?\d{2}(?![\p{N}.,]))/gu;
+const PERIOD_LABEL =
+  /(?<![\p{L}\p{N}.,])(?:\d{1,2}[MmYyWwDd](?![\p{L}\p{N}])(?!\s?(?:[$€£]|(?:EUR|USD|GBP|CHF)\b))|[HQST][1-4]\s?'?\d{2}(?![\p{N}.,])(?!\s?(?:[%‰$€£×]|(?:x|pts?|pp|bps?|k|K|M|mn|bn|Bn|Md|Mds|EUR|USD|GBP|CHF)(?![\p{L}\p{N}]))))/gu;
 const withoutPeriodLabels = (text: string) => text.replace(PERIOD_LABEL, " ");
 
 /**
  * A table's header row is read like any row, but its labels are blanked and
  * the rest of the row is checked (lines are kept one for one):
- * - whole numbers, where the row is plainly a row of labels — two or more of
- *   its cells are a whole number alone, a series of horizons or years (`+5`,
- *   `20`, `J+60`, `2026`). A key/value table's first row (`| Price target |
- *   450 |`) states a value;
+ * - whole numbers, where the row is plainly a row of labels — it cites no [E#]
+ *   and two or more of its cells are a whole number alone, a series of
+ *   horizons or years (`+5`, `20`, `J+60`, `2026`). A key/value table's first
+ *   row (`| Price target | 450 |`) states a value, and so does a row citing
+ *   evidence (`| X close | 777 | 888 | [E1] |`);
  * - a horizon or a period label ("1M", "H1 26");
  * - the dates of a row that cites no [E#]: like a heading's, they label the
  *   columns (`| Metric | 2025-12-31 | 2026-12-31 |`).
@@ -433,8 +481,8 @@ function withoutColumnLabels(answer: string): string {
     .map((l, i) => {
       if (!(/\|/.test(l) && !separator(l) && separator(lines[i + 1] ?? ""))) return l;
       const cells = l.split("|");
-      const labelRow = cells.filter(wholeNumber).length >= 2;
       const cites = /\[E\d+\]/.test(l);
+      const labelRow = !cites && cells.filter(wholeNumber).length >= 2;
       return cells.map((c) => (labelRow && wholeNumber(c) ? " " : withoutPeriodLabels(cites ? c : blankDates(c)))).join("|");
     })
     .join("\n");
@@ -444,17 +492,20 @@ function withoutColumnLabels(answer: string): string {
  * A section number, known by its form: small dotted integers before a title.
  * Closed by "." or ")" ("1. Thesis", "10) Risks", "2.3. Risks"), any word
  * follows; open ("2.3 Risks", "3.2 M&A", "1.2 B shares"), a capitalised one
- * that is no currency or scale ("2.3 bn", "31.4 times", "1.2 EUR" are figures).
- * "450. target" and "450.00 is" are no section: a section counts in ones and
- * tens.
+ * that is no currency, scale or unit word ("2.3 bn", "31.4 times", "1.2 EUR",
+ * "4.2 Billion", "77.5 Percent" are figures) — and only in a heading that cites
+ * no [E#]: "## 4.2 Buyback [E1]" states 4.2. "450. target" and "450.00 is" are
+ * no section: a section counts in ones and tens.
  */
-const SECTION_NUMBER =
-  /^(?:\d{1,2}(?:\.(?:0|[1-9]\d?)){0,3}[.)]\s+(?=\p{L})|\d{1,2}(?:\.(?:0|[1-9]\d?)){1,3}\s+(?=\p{Lu})(?!(?:EUR|USD|GBP|CHF|JPY|CAD|AUD|NOK|SEK|DKK|BTC|ETH|USDT|USDC|Bn|Mn|Md|Mds|Mio|K)\b))/u;
+const CLOSED_SECTION_NUMBER = /^\d{1,2}(?:\.(?:0|[1-9]\d?)){0,3}[.)]\s+(?=\p{L})/u;
+const OPEN_SECTION_NUMBER =
+  /^\d{1,2}(?:\.(?:0|[1-9]\d?)){1,3}\s+(?=\p{Lu})(?!(?:EUR|USD|GBP|CHF|JPY|CAD|AUD|NOK|SEK|DKK|BTC|ETH|USDT|USDC|Bn|Mn|Md|Mds|Mio|Mln|Bln|Mrd|MM|K)\b)(?!(?:Thousands?|Millions?|Billions?|Trillions?|Milliards?|Percent|Per\s?cent|Pct|Points?|Pts?|Bps|Basis|Times)\b)/u;
 
 /** A heading's text: its section number orders the sections and is dropped; a figure opening it stays. */
 function headingText(heading: string): string {
   const t = withoutPeriodLabels(heading.replace(/^#{1,6}\s+/, ""));
-  return t.replace(SECTION_NUMBER, "");
+  if (CLOSED_SECTION_NUMBER.test(t)) return t.replace(CLOSED_SECTION_NUMBER, "");
+  return /\[E\d+\]/.test(t) ? t : t.replace(OPEN_SECTION_NUMBER, "");
 }
 
 /** The line each claim starts on, moving forward through the answer. */
@@ -521,6 +572,11 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
       docs.set(item.id, text === undefined ? null : { text, figures: documentFigures(item, text) });
     }
     return docs.get(item.id) ?? undefined;
+  };
+  const textFigures = new Map<string, EvidenceItem[]>();
+  const textFiguresOf = (item: EvidenceItem): EvidenceItem[] => {
+    if (!textFigures.has(item.id)) textFigures.set(item.id, documentFigures(item, String(item.value)));
+    return textFigures.get(item.id)!;
   };
   // The dates an item holds: a data point's value, label, key and as-of day; a document's text. The day it was read
   // (fetchedAt) is not one: a close as of the 22nd fetched on the 23rd says nothing about the 23rd.
@@ -619,8 +675,10 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
             message: `the date ${d.raw} is in none of ${cites.map((c) => `[${c.id}]`).join(" ")} — cite the evidence that holds it (any usual form is read: 2026-11-17, 17/11/2026, 17 novembre 2026)`,
           });
         }
+      // A text item — a headline — holds the figures it writes, as a document does: "sales rise 12%" holds 12 %.
+      const held = known.flatMap((it) => (typeof it.value === "string" ? textFiguresOf(it) : [it]));
       for (const f of figs) {
-        if (figureMatches(f, known, { signed: true })) continue;
+        if (figureMatches(f, held, { signed: true })) continue;
         const holder = citedDocs.find((d) => figureMatches(f, docOf(d)!.figures));
         if (holder) {
           const doc = docOf(holder)!;
