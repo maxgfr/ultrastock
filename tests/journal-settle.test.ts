@@ -70,14 +70,49 @@ describe("journal settle", () => {
     expect(later.waiting).toEqual([]);
   });
 
-  it("waits for the benchmark's history too", async () => {
+  it("waits for the benchmark's history too, then settles on the raw return once it never comes", async () => {
     histories.bars = { LAG: weekdays("2026-02-16", "2026-06-30", 100), SPY: weekdays("2026-02-16", "2026-03-20", 500) };
     decide("LAG");
-    const r = await settleDecisions(now);
+    // On 10 April the +20 horizon (30 March) is fewer than ten sessions old: it waits; +60 has not matured.
+    const r = await settleDecisions(new Date("2026-04-10T12:00:00Z"));
     expect(r.settled.map((s) => s.horizon)).toEqual([5]);
-    expect(r.waiting.map((w) => [w.horizon, w.series, w.lastBar])).toEqual([
-      [20, "SPY", "2026-03-20"],
-      [60, "SPY", "2026-03-20"],
+    expect(r.settled[0]).not.toHaveProperty("partial");
+    expect(r.waiting.map((w) => [w.horizon, w.series, w.lastBar])).toEqual([[20, "SPY", "2026-03-20"]]);
+    // Ten sessions past each end and still no benchmark: scored on the symbol's own return, said partial.
+    const later = await settleDecisions(now);
+    expect(later.waiting).toEqual([]);
+    expect(later.settled.map((s) => [s.horizon, s.endDate, s.partial, s.benchmarkReturnPct, s.alphaPct])).toEqual([
+      [20, "2026-03-30", true, undefined, undefined],
+      [60, "2026-05-27", true, undefined, undefined],
     ]);
+  });
+
+  it("settles a name no longer quoted on its last close, ten sessions after the horizon's end", async () => {
+    // Quoted at 100 up to the decision, 120 after it, delisted after 15 April: the +60 horizon ends on 27 May.
+    const gone = [...weekdays("2026-02-16", "2026-03-02", 100), ...weekdays("2026-03-03", "2026-04-15", 120)];
+    histories.bars = { GONE: gone, SPY: weekdays("2026-02-16", "2026-06-30", 500) };
+    const id = decide("GONE");
+    // 5 June is seven sessions after 27 May: +5 and +20 settle as usual, +60 still waits for a bar.
+    const r = await settleDecisions(new Date("2026-06-05T12:00:00Z"));
+    expect(r.settled.map((s) => [s.horizon, s.endDate, s.partial])).toEqual([
+      [5, "2026-03-09", undefined],
+      [20, "2026-03-30", undefined],
+    ]);
+    expect(r.waiting.map((w) => [w.decisionId, w.horizon, w.lastBar])).toEqual([[id, 60, "2026-04-15"]]);
+    // 30 June: past 10 June, the tenth session after the end. Settled on 15 April's close, against SPY to the same day.
+    const later = await settleDecisions(now);
+    expect(later.waiting).toEqual([]);
+    expect(later.settled).toHaveLength(1);
+    expect(later.settled[0]).toMatchObject({
+      horizon: 60,
+      partial: true,
+      endDate: "2026-04-15",
+      endClose: 120,
+      returnPct: 20,
+      benchmarkReturnPct: 0,
+      alphaPct: 20,
+    });
+    // Settled once: the next run finds nothing to do.
+    expect((await settleDecisions(now)).settled).toEqual([]);
   });
 });

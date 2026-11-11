@@ -42980,6 +42980,7 @@ function equityJson(sim) {
 import { appendFileSync as appendFileSync6, existsSync as existsSync30, mkdirSync as mkdirSync22, readFileSync as readFileSync35 } from "fs";
 import { join as join43 } from "path";
 var HORIZONS2 = [5, 20, 60];
+var SETTLE_GRACE_SESSIONS = 10;
 function readDecisions() {
   const f3 = join43(journalDir(), "decisions.jsonl");
   if (!existsSync30(f3)) return [];
@@ -43034,20 +43035,29 @@ async function settleDecisions(now = clockNow()) {
         const endDate = horizonEnd(market, start, h);
         const histories = [[d.symbol, series.bars]];
         if (benchSym) histories.push([benchSym, bench?.bars ?? []]);
-        const short = histories.find(([, bars]) => (bars.at(-1)?.date.slice(0, 10) ?? "") < endDate);
+        const lastDay = (bars) => bars.at(-1)?.date.slice(0, 10) ?? "";
+        const short = histories.find(([, bars]) => lastDay(bars) < endDate);
+        let used = endDate;
+        let partial = false;
         if (short) {
-          waiting.push({ decisionId: d.id, symbol: d.symbol, horizon: h, endDate, series: short[0], lastBar: short[1].at(-1)?.date.slice(0, 10) });
-          continue;
+          const symbolLast = lastDay(series.bars);
+          if (!(horizonEnd(market, endDate, SETTLE_GRACE_SESSIONS) < today) || symbolLast <= start) {
+            waiting.push({ decisionId: d.id, symbol: d.symbol, horizon: h, endDate, series: short[0], lastBar: short[1].at(-1)?.date.slice(0, 10) });
+            continue;
+          }
+          partial = true;
+          if (symbolLast < endDate) used = symbolLast;
         }
+        const benchUsable = bench !== void 0 && lastDay(bench.bars) >= used;
         const s0 = closeAtOrBefore(series.bars, start);
-        const s1 = closeAtOrBefore(series.bars, endDate);
+        const s1 = closeAtOrBefore(series.bars, used);
         if (!s0 || !s1) {
           errors.push(`${d.symbol} ${h}: no close around ${start} or ${endDate}`);
           continue;
         }
         const ret2 = (s1.close / s0.close - 1) * 100;
-        const b0 = bench && closeAtOrBefore(bench.bars, start);
-        const b1 = bench && closeAtOrBefore(bench.bars, endDate);
+        const b0 = benchUsable ? closeAtOrBefore(bench.bars, start) : void 0;
+        const b1 = benchUsable ? closeAtOrBefore(bench.bars, used) : void 0;
         const bRet = b0 && b1 ? (b1.close / b0.close - 1) * 100 : void 0;
         const alpha = bRet === void 0 ? void 0 : ret2 - bRet;
         const st = {
@@ -43064,6 +43074,7 @@ async function settleDecisions(now = clockNow()) {
           benchmarkReturnPct: bRet === void 0 ? void 0 : Number(bRet.toFixed(4)),
           alphaPct: alpha === void 0 ? void 0 : Number(alpha.toFixed(4)),
           hit: judge(d.rating, alpha ?? ret2, h),
+          ...partial ? { partial: true } : {},
           settledAt: now.toISOString()
         };
         settled.push(st);
@@ -43079,7 +43090,7 @@ async function settleDecisions(now = clockNow()) {
     appendFileSync6(
       join43(journalDir(), "decisions.md"),
       settled.map(
-        (s) => `SETTLED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions \u2192 ${s.endDate}]: return ${s.returnPct} %${s.alphaPct !== void 0 ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} \u2014 ${s.hit ? "right" : "wrong"}
+        (s) => `SETTLED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions \u2192 ${s.endDate}]: return ${s.returnPct} %${s.alphaPct !== void 0 ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} \u2014 ${s.hit ? "right" : "wrong"}${s.partial ? " (partial: the history stops short)" : ""}
 `
       ).join("")
     );

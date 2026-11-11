@@ -5,6 +5,12 @@
 // overweight is right when the alpha is positive, a sell or underweight when it
 // is negative; a hold is judged neutral (|alpha| under 2 % a month) — the hit
 // rates by rating come from here.
+//
+// A history that stops short of a horizon's end (a name delisted or renamed, a
+// benchmark that cannot be read) is waited for SETTLE_GRACE_SESSIONS sessions
+// past that end; then the horizon settles on the last close there is, marked
+// `partial` — the symbol's last close when its own history stops, the raw
+// return when the benchmark's does.
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Decision, journalDir } from "../analyze/decision.js";
@@ -31,8 +37,18 @@ export interface Settlement {
   benchmarkReturnPct?: number;
   alphaPct?: number;
   hit?: boolean;
+  /**
+   * Settled on what history there was, the grace past the horizon's end over:
+   * `endDate` is the close used (before the horizon's end when the symbol's
+   * history stops short), and there is no benchmark return when the
+   * benchmark's history does not reach that close.
+   */
+  partial?: true;
   settledAt: string;
 }
+
+/** Sessions a short history is waited for past a horizon's end, before the horizon settles on its last close. */
+export const SETTLE_GRACE_SESSIONS = 10;
 
 export function readDecisions(): Array<Decision & { id: string }> {
   const f = join(journalDir(), "decisions.jsonl");
@@ -84,7 +100,7 @@ export function maturedHorizons(market: CalendarMarket | undefined, start: strin
   return due.filter((h) => horizonEnd(market, start, h) < today);
 }
 
-/** A matured horizon left pending because a price history stops before its end. */
+/** A matured horizon left pending because a price history stops before its end (within the grace, or with no bar after the decision). */
 export interface Waiting {
   decisionId: string;
   symbol: string;
@@ -125,20 +141,32 @@ export async function settleDecisions(now = clockNow()): Promise<{ settled: Sett
         // on an earlier close, and a settlement is never re-scored: the horizon waits for a bar on or after its end.
         const histories: Array<[string, readonly Bar[]]> = [[d.symbol, series.bars]];
         if (benchSym) histories.push([benchSym, bench?.bars ?? []]);
-        const short = histories.find(([, bars]) => (bars.at(-1)?.date.slice(0, 10) ?? "") < endDate);
+        const lastDay = (bars: readonly Bar[]) => bars.at(-1)?.date.slice(0, 10) ?? "";
+        const short = histories.find(([, bars]) => lastDay(bars) < endDate);
+        let used = endDate;
+        let partial = false;
         if (short) {
-          waiting.push({ decisionId: d.id, symbol: d.symbol, horizon: h, endDate, series: short[0], lastBar: short[1].at(-1)?.date.slice(0, 10) });
-          continue;
+          // Past the grace, the last close settles it — unless the symbol has none after the decision: a 0 % return
+          // would be no measure at all, and a hold scored right on it for good.
+          const symbolLast = lastDay(series.bars);
+          if (!(horizonEnd(market, endDate, SETTLE_GRACE_SESSIONS) < today) || symbolLast <= start) {
+            waiting.push({ decisionId: d.id, symbol: d.symbol, horizon: h, endDate, series: short[0], lastBar: short[1].at(-1)?.date.slice(0, 10) });
+            continue;
+          }
+          partial = true;
+          if (symbolLast < endDate) used = symbolLast;
         }
+        // The benchmark over the very same span, or none.
+        const benchUsable = bench !== undefined && lastDay(bench.bars) >= used;
         const s0 = closeAtOrBefore(series.bars, start);
-        const s1 = closeAtOrBefore(series.bars, endDate);
+        const s1 = closeAtOrBefore(series.bars, used);
         if (!s0 || !s1) {
           errors.push(`${d.symbol} ${h}: no close around ${start} or ${endDate}`);
           continue;
         }
         const ret = (s1.close / s0.close - 1) * 100;
-        const b0 = bench && closeAtOrBefore(bench.bars, start);
-        const b1 = bench && closeAtOrBefore(bench.bars, endDate);
+        const b0 = benchUsable ? closeAtOrBefore(bench.bars, start) : undefined;
+        const b1 = benchUsable ? closeAtOrBefore(bench.bars, used) : undefined;
         const bRet = b0 && b1 ? (b1.close / b0.close - 1) * 100 : undefined;
         const alpha = bRet === undefined ? undefined : ret - bRet;
         const st: Settlement = {
@@ -155,6 +183,7 @@ export async function settleDecisions(now = clockNow()): Promise<{ settled: Sett
           benchmarkReturnPct: bRet === undefined ? undefined : Number(bRet.toFixed(4)),
           alphaPct: alpha === undefined ? undefined : Number(alpha.toFixed(4)),
           hit: judge(d.rating, alpha ?? ret, h),
+          ...(partial ? { partial: true as const } : {}),
           settledAt: now.toISOString(),
         };
         settled.push(st);
@@ -171,7 +200,7 @@ export async function settleDecisions(now = clockNow()): Promise<{ settled: Sett
       settled
         .map(
           (s) =>
-            `SETTLED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions → ${s.endDate}]: return ${s.returnPct} %${s.alphaPct !== undefined ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} — ${s.hit ? "right" : "wrong"}\n`,
+            `SETTLED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions → ${s.endDate}]: return ${s.returnPct} %${s.alphaPct !== undefined ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} — ${s.hit ? "right" : "wrong"}${s.partial ? " (partial: the history stops short)" : ""}\n`,
         )
         .join(""),
     );
