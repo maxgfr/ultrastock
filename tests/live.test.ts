@@ -10,13 +10,17 @@ import { effectiveLimits, isTightening, type LiveLimits, LOOSEN_DELAY_MS, reques
 import { readLedger } from "../src/portfolio/ledger.js";
 import {
   clientOrderIdFor,
+  LIVE_SWITCH_BINDING,
   liveCancel,
+  liveSwitchOn,
   liveSubmit,
   NOT_PLACED_WAIT_MS,
   notPlacedBinding,
   orderBinding,
   preconditions,
   reconcile,
+  switchLiveOff,
+  switchLiveOn,
   venueSymbol,
 } from "../src/trading/live.js";
 import { type Channel, issueCode, verifyCode } from "../src/trading/otp.js";
@@ -200,6 +204,39 @@ describe("live preconditions and the single submission", () => {
     const n = await preconditions({ ticket: s, venue: "kraken", env: "test", adapter: fakeVenue({ free: 0.5 }).a, venueSym: "SOLEUR", micaAuthorised: true });
     expect(n.refusals.map((r) => r.code)).toContain("NO_SHORT");
   });
+
+  it("keeps live off when the environment alone says on: the switch is a file the user writes with an out-of-band code", async () => {
+    const t = await checkedTicket(order());
+    const liveOff = async () =>
+      (await preconditions({ ticket: t, venue: "kraken", env: "live", adapter: fakeVenue().a, venueSym: "SOLEUR", micaAuthorised: true })).refusals.find(
+        (r) => r.code === "LIVE_OFF",
+      );
+    const before = process.env.ULTRASTOCK_LIVE;
+    try {
+      // An agent can prefix one command with the variable: that is not the user switching live on.
+      process.env.ULTRASTOCK_LIVE = "1";
+      expect((await liveOff())?.reason).toMatch(/broker code live.*broker live on --code/);
+      // No code, a wrong one: still off.
+      expect(() => switchLiveOn(undefined)).toThrow(/code/);
+      await issueCode("live-switch", LIVE_SWITCH_BINDING, "live", [["capture", capture]]);
+      expect(() => switchLiveOn(codeFrom() === "000000" ? "111111" : "000000")).toThrow(/wrong code/);
+      expect(liveSwitchOn()).toBe(false);
+      switchLiveOn(codeFrom());
+      expect(liveSwitchOn()).toBe(true);
+      expect(await liveOff()).toBeUndefined();
+      // The variable stays a second requirement.
+      delete process.env.ULTRASTOCK_LIVE;
+      expect((await liveOff())?.reason).toMatch(/ULTRASTOCK_LIVE=1/);
+      process.env.ULTRASTOCK_LIVE = "1";
+      // Switching off needs no code.
+      switchLiveOff();
+      expect(liveSwitchOn()).toBe(false);
+      expect(await liveOff()).toBeDefined();
+    } finally {
+      if (before === undefined) delete process.env.ULTRASTOCK_LIVE;
+      else process.env.ULTRASTOCK_LIVE = before;
+    }
+  }, 30_000);
 
   it("sends exactly once with a valid code; a timeout is unknown, blocks resending, and reconcile settles it", async () => {
     switchOn();

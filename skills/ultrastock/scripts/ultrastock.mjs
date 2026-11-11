@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { readFileSync as readFileSync49, realpathSync as realpathSync5 } from "fs";
+import { readFileSync as readFileSync50, realpathSync as realpathSync5 } from "fs";
 import { resolve as resolve20 } from "path";
 import { pathToFileURL } from "url";
 
@@ -43848,8 +43848,8 @@ edit it, then: ultrastock strategy validate ${ref} && ultrastock backtest run ${
 }
 
 // src/commands/broker.ts
-import { existsSync as existsSync34, mkdirSync as mkdirSync26, writeFileSync as writeFileSync12 } from "fs";
-import { dirname as dirname6 } from "path";
+import { existsSync as existsSync34, mkdirSync as mkdirSync27, writeFileSync as writeFileSync12 } from "fs";
+import { dirname as dirname7 } from "path";
 
 // src/trading/brokers/binance.ts
 import { createHmac } from "crypto";
@@ -44913,8 +44913,8 @@ function liveEverApproved() {
 }
 
 // src/trading/live.ts
-import { existsSync as existsSync33 } from "fs";
-import { join as join48 } from "path";
+import { existsSync as existsSync33, mkdirSync as mkdirSync26, readFileSync as readFileSync39, rmSync as rmSync11 } from "fs";
+import { dirname as dirname6, join as join48 } from "path";
 import { createHash as createHash5 } from "crypto";
 
 // src/tax/rules.ts
@@ -45681,6 +45681,36 @@ function clientOrderIdFor(ticketId, attempt2) {
   const h = createHash5("sha256").update(`${ticketId}#${attempt2}`).digest("hex");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-${(Number.parseInt(h[16], 16) & 3 | 8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
+var liveSwitchPath = () => join48(homeDir(), "state", "live-switch.json");
+var LIVE_SWITCH_SUBJECT = "live-switch";
+var LIVE_SWITCH_BINDING = "live-switch|on";
+function liveSwitchOn() {
+  try {
+    return JSON.parse(readFileSync39(liveSwitchPath(), "utf8")).on === true;
+  } catch {
+    return false;
+  }
+}
+function switchLiveOn(code, now = /* @__PURE__ */ new Date()) {
+  if (!code) throw new Error("switching live trading on needs the out-of-band code: `broker code live`, then `broker live on --code <code>`");
+  const v = verifyCode(LIVE_SWITCH_SUBJECT, LIVE_SWITCH_BINDING, code, now);
+  if (!v.ok) throw new Error(`live trading stays off: ${v.reason}`);
+  mkdirSync26(dirname6(liveSwitchPath()), { recursive: true });
+  writeFileAtomic(liveSwitchPath(), `${JSON.stringify({ on: true, at: now.toISOString() })}
+`, 384);
+  audit({ event: "live-switch", on: true });
+}
+function switchLiveOff() {
+  rmSync11(liveSwitchPath(), { force: true });
+  audit({ event: "live-switch", on: false });
+}
+function liveOffReason() {
+  const missing = [
+    ...liveSwitchOn() ? [] : ["the user switches it on with `broker code live`, then `broker live on --code <code>` (a code sent out of band)"],
+    ...process.env.ULTRASTOCK_LIVE === "1" ? [] : ["the user sets ULTRASTOCK_LIVE=1 in their own shell"]
+  ];
+  return missing.length ? `live trading is off: ${missing.join("; and ")}` : void 0;
+}
 function liveActivity(now = /* @__PURE__ */ new Date()) {
   const day4 = now.toISOString().slice(0, 10);
   let fills = 0;
@@ -45699,7 +45729,8 @@ async function preconditions(p) {
   const profile = loadProfile();
   if (!profile) no("NO_PROFILE", "no investor profile: `ultrastock profile init` first");
   if (p.env === "live") {
-    if (process.env.ULTRASTOCK_LIVE !== "1") no("LIVE_OFF", "live trading is off: the user sets ULTRASTOCK_LIVE=1 in their own shell to allow it");
+    const off = liveOffReason();
+    if (off) no("LIVE_OFF", off);
     if (Number(process.versions.node.split(".")[0]) < 22) no("NODE", `live trading needs Node \u2265 22 (this is ${process.versions.node})`);
     const txs = readLedger("paper");
     const r3 = readiness(closedTradeResults(txs), readEquity("paper"), txs.find((t) => t.type === "buy")?.date, now);
@@ -46091,7 +46122,7 @@ function setupCommands(venue, env2) {
 }
 
 // src/commands/broker.ts
-var USAGE = "usage: ultrastock broker status|setup <venue>|balances|preview <ticket>|code <ticket>|submit <ticket>|reconcile <ticket>|cancel <ticket>|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr|kalshi] [--env test|live] [--code <6 digits>] [--conid <id>] [--json]";
+var USAGE = "usage: ultrastock broker status|setup <venue>|balances|preview <ticket>|code <ticket>|code live|live on|live off|submit <ticket>|reconcile <ticket>|cancel <ticket>|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr|kalshi] [--env test|live] [--code <6 digits>] [--conid <id>] [--json]";
 function venueOf(args, fallback) {
   const v = (argValue(args, "venue") ?? fallback ?? "").toLowerCase();
   if (!VENUES.includes(v)) throw new UsageError(`--venue is one of ${VENUES.join(", ")}`);
@@ -46197,9 +46228,17 @@ async function brokerCommand(args, asJson) {
         `approval code sent to ${r4.sentTo.join(", ")} (valid until ${r4.expiresAt}). Then: ultrastock broker limits set \u2026 --code <code> (the same flags).`
       );
     }
+    if (id === "live") {
+      const r4 = await issueCode(LIVE_SWITCH_SUBJECT, LIVE_SWITCH_BINDING, "switching LIVE trading on \u2014 real money");
+      return printResult(
+        asJson,
+        r4,
+        `approval code sent to ${r4.sentTo.join(", ")} (valid until ${r4.expiresAt}). The user types it: ultrastock broker live on --code <code>`
+      );
+    }
     if (!id)
       throw new UsageError(
-        "usage: ultrastock broker code <ticket-id> [--env test|live] [--venue <v>] [--conid <id>] | code limits [--max-order] [--max-daily] [--venues] [--attest]"
+        "usage: ultrastock broker code <ticket-id> [--env test|live] [--venue <v>] [--conid <id>] | code limits [--max-order] [--max-daily] [--venues] [--attest] | code live"
       );
     const t2 = loadTicket(id);
     if (args.bools.has("not-placed")) {
@@ -46236,7 +46275,7 @@ async function brokerCommand(args, asJson) {
     );
   }
   if (sub === "panic") {
-    mkdirSync26(dirname6(killSwitchPath()), { recursive: true });
+    mkdirSync27(dirname7(killSwitchPath()), { recursive: true });
     if (!existsSync34(killSwitchPath())) writeFileSync12(killSwitchPath(), `kill switch set by \`broker panic\` at ${now.toISOString()}
 `);
     audit({ event: "panic" });
@@ -46281,13 +46320,35 @@ async function brokerCommand(args, asJson) {
     }
     return printResult(
       asJson,
-      { env: env3, kill: existsSync34(killSwitchPath()), limits: lim, liveFills: fills, todayNotional, venues: rows, liveSwitch: process.env.ULTRASTOCK_LIVE === "1" },
+      {
+        env: env3,
+        kill: existsSync34(killSwitchPath()),
+        limits: lim,
+        liveFills: fills,
+        todayNotional,
+        venues: rows,
+        liveSwitch: liveSwitchOn(),
+        liveEnv: process.env.ULTRASTOCK_LIVE === "1"
+      },
       [
-        `env ${env3} \xB7 kill switch ${existsSync34(killSwitchPath()) ? "ON" : "off"} \xB7 ULTRASTOCK_LIVE ${process.env.ULTRASTOCK_LIVE === "1" ? "on" : "off"} \xB7 tier "${lim.tier}" (${lim.limits.maxOrder}/order, ${lim.limits.maxDaily}/day, ${todayNotional.toFixed(2)} used today)`,
+        `env ${env3} \xB7 kill switch ${existsSync34(killSwitchPath()) ? "ON" : "off"} \xB7 live switch ${liveSwitchOn() ? "on" : "off"} \xB7 ULTRASTOCK_LIVE ${process.env.ULTRASTOCK_LIVE === "1" ? "on" : "off"} \xB7 tier "${lim.tier}" (${lim.limits.maxOrder}/order, ${lim.limits.maxDaily}/day, ${todayNotional.toFixed(2)} used today)`,
         ...rows.map(
           (r3) => `  ${String(r3.venue).padEnd(9)} key: ${r3.key}${r3.on ? "" : " \xB7 not switched on"}${r3.mica ? ` \xB7 MiCA: ${r3.mica}` : ""}${r3.permissions ? ` \xB7 ${r3.permissions}` : ""}`
         )
       ].join("\n")
+    );
+  }
+  if (sub === "live") {
+    if (id === "off") {
+      switchLiveOff();
+      return printResult(asJson, { liveSwitch: false }, "live trading switched off");
+    }
+    if (id !== "on") throw new UsageError("usage: ultrastock broker live on --code <code> (after `broker code live`) | live off");
+    switchLiveOn(argValue(args, "code"), now);
+    return printResult(
+      asJson,
+      { liveSwitch: true, liveEnv: process.env.ULTRASTOCK_LIVE === "1" },
+      `live trading switched on (${liveSwitchPath()}); real orders also need ULTRASTOCK_LIVE=1 in your own shell \u2014 \`broker live off\` to stop`
     );
   }
   if (sub === "balances" || sub === "open") {
@@ -46370,9 +46431,9 @@ function pendingLive() {
 // src/mcp.ts
 import { execFile } from "child_process";
 import { randomBytes as randomBytes4 } from "crypto";
-import { mkdtempSync as mkdtempSync5, realpathSync as realpathSync4, rmSync as rmSync11, writeFileSync as writeFileSync13 } from "fs";
+import { mkdtempSync as mkdtempSync5, realpathSync as realpathSync4, rmSync as rmSync12, writeFileSync as writeFileSync13 } from "fs";
 import { tmpdir as tmpdir6 } from "os";
-import { basename as basename3, dirname as dirname7, isAbsolute as isAbsolute4, join as join49, relative as relative3, resolve as resolve12 } from "path";
+import { basename as basename3, dirname as dirname8, isAbsolute as isAbsolute4, join as join49, relative as relative3, resolve as resolve12 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 var OUT = { kind: "string", description: "absolute run directory: figures become [E#] evidence there, to cite and to check" };
 var sym2 = (d = "instrument: MC.PA, NVDA, CW8.PA, an EU ISIN, BTCUSDT") => ({ kind: "string", description: d, positional: 0, required: true });
@@ -46841,7 +46902,7 @@ function isInside(path2, dir2) {
     try {
       return realpathSync4(p);
     } catch {
-      const parent = dirname7(p);
+      const parent = dirname8(p);
       return parent === p ? p : join49(real2(parent), basename3(p));
     }
   };
@@ -46883,7 +46944,7 @@ function mcpAdapter(run3 = runBundle) {
         writeFileSync13(file, JSON.stringify(hits));
         return { text: await run3([...argvFor(t, given).filter((a) => a !== "--json"), `--web-results=${file}`, "--json"], ctx?.signal) };
       } finally {
-        rmSync11(dir2, { recursive: true, force: true });
+        rmSync12(dir2, { recursive: true, force: true });
       }
     }
   };
@@ -47033,9 +47094,9 @@ function peaDeposits(txs, peaAccounts) {
 }
 
 // src/analyze/portfolio/rebalance.ts
-import { existsSync as existsSync35, readFileSync as readFileSync39 } from "fs";
+import { existsSync as existsSync35, readFileSync as readFileSync40 } from "fs";
 function parseTargets(raw) {
-  const text2 = raw.trim().startsWith("{") ? raw : existsSync35(raw) ? readFileSync39(raw, "utf8") : void 0;
+  const text2 = raw.trim().startsWith("{") ? raw : existsSync35(raw) ? readFileSync40(raw, "utf8") : void 0;
   if (text2 === void 0) throw new UsageError(`--targets is a JSON object of weights in % or a path to one, not "${raw}"`);
   let parsed;
   try {
@@ -47641,14 +47702,14 @@ async function incomeAnalysis(m, f3) {
 }
 
 // src/alerts/alerts.ts
-import { existsSync as existsSync36, mkdirSync as mkdirSync27, readFileSync as readFileSync40 } from "fs";
+import { existsSync as existsSync36, mkdirSync as mkdirSync28, readFileSync as readFileSync41 } from "fs";
 import { join as join50 } from "path";
 var statePath = () => join50(homeDir(), "state", "alerts.json");
 function loadRules() {
-  return existsSync36(statePath()) ? JSON.parse(readFileSync40(statePath(), "utf8")) : [];
+  return existsSync36(statePath()) ? JSON.parse(readFileSync41(statePath(), "utf8")) : [];
 }
 function saveRules(rules) {
-  mkdirSync27(join50(homeDir(), "state"), { recursive: true });
+  mkdirSync28(join50(homeDir(), "state"), { recursive: true });
   writeFileAtomic(statePath(), `${JSON.stringify(rules, null, 2)}
 `, 384);
 }
@@ -47902,7 +47963,7 @@ async function notify(events) {
 }
 
 // src/commands/import.ts
-import { existsSync as existsSync37, readFileSync as readFileSync41 } from "fs";
+import { existsSync as existsSync37, readFileSync as readFileSync42 } from "fs";
 import { resolve as resolve13 } from "path";
 
 // src/portfolio/import/shared.ts
@@ -49182,7 +49243,7 @@ function resolveMapOption(format, raw) {
 var USAGE2 = "usage: ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name>] [--dry-run]";
 var LIST_CAP = 60;
 function readStatement(path2) {
-  const buf = readFileSync41(path2);
+  const buf = readFileSync42(path2);
   try {
     return { text: new TextDecoder("utf-8", { fatal: true }).decode(buf) };
   } catch {
@@ -49212,7 +49273,7 @@ async function importCommand(args, asJson) {
   const dryRun = args.bools.has("dry-run");
   let mapRaw = argValue(args, "map");
   if (mapRaw !== void 0 && !mapRaw.trim().startsWith("{") && /\.json$/i.test(mapRaw) && existsSync37(resolve13(mapRaw)))
-    mapRaw = readFileSync41(resolve13(mapRaw), "utf8");
+    mapRaw = readFileSync42(resolve13(mapRaw), "utf8");
   let mapOpt;
   try {
     mapOpt = resolveMapOption(format, mapRaw);
@@ -49720,7 +49781,7 @@ async function portfolioAnalyticsCommand(args, asJson) {
 import { resolve as resolve14 } from "path";
 
 // src/portfolio/store.ts
-import { existsSync as existsSync38, mkdirSync as mkdirSync28, readdirSync as readdirSync13, statSync as statSync11 } from "fs";
+import { existsSync as existsSync38, mkdirSync as mkdirSync29, readdirSync as readdirSync13, statSync as statSync11 } from "fs";
 import { join as join51 } from "path";
 function jsonlBooks() {
   const dir2 = join51(homeDir(), "ledger");
@@ -49733,7 +49794,7 @@ function storeBooks() {
   );
 }
 async function initStore(now = /* @__PURE__ */ new Date()) {
-  mkdirSync28(join51(homeDir(), "ledger"), { recursive: true });
+  mkdirSync29(join51(homeDir(), "ledger"), { recursive: true });
   const books = [];
   for (const book2 of jsonlBooks()) {
     const r3 = await withFileLock(`${ledgerPath(book2)}.lock`, () => {
@@ -49749,7 +49810,7 @@ async function initStore(now = /* @__PURE__ */ new Date()) {
 }
 async function exportBook(book2) {
   const path2 = ledgerPath(book2);
-  mkdirSync28(join51(homeDir(), "ledger"), { recursive: true });
+  mkdirSync29(join51(homeDir(), "ledger"), { recursive: true });
   return withFileLock(`${path2}.lock`, () => {
     const stored = withStore((db) => readSqliteLedger(db, book2));
     const file = readJsonlLedger(book2);
@@ -50842,14 +50903,14 @@ async function paperCommand(args, asJson) {
 }
 
 // src/portfolio/watchlist.ts
-import { existsSync as existsSync39, mkdirSync as mkdirSync29, readFileSync as readFileSync42 } from "fs";
+import { existsSync as existsSync39, mkdirSync as mkdirSync30, readFileSync as readFileSync43 } from "fs";
 import { join as join52 } from "path";
 var statePath2 = () => join52(homeDir(), "state", "watchlist.json");
 function loadWatchlist() {
-  return existsSync39(statePath2()) ? JSON.parse(readFileSync42(statePath2(), "utf8")) : [];
+  return existsSync39(statePath2()) ? JSON.parse(readFileSync43(statePath2(), "utf8")) : [];
 }
 function saveWatchlist(items) {
-  mkdirSync29(join52(homeDir(), "state"), { recursive: true });
+  mkdirSync30(join52(homeDir(), "state"), { recursive: true });
   writeFileAtomic(statePath2(), `${JSON.stringify(items, null, 2)}
 `, 384);
 }
@@ -51441,7 +51502,7 @@ async function serveCommand(args) {
 }
 
 // src/commands/journal.ts
-import { readFileSync as readFileSync43 } from "fs";
+import { readFileSync as readFileSync44 } from "fs";
 import { basename as basename5, resolve as resolve16 } from "path";
 async function decideCommand(args, asJson) {
   const [run3, file] = args.positional;
@@ -51449,7 +51510,7 @@ async function decideCommand(args, asJson) {
     throw new UsageError("usage: ultrastock decide <run> <decision.json> \u2014 validate the decision against the run's evidence and record it in the journal");
   let raw;
   try {
-    raw = JSON.parse(readFileSync43(resolve16(file), "utf8"));
+    raw = JSON.parse(readFileSync44(resolve16(file), "utf8"));
   } catch (e) {
     throw new Error(`cannot read ${file} as JSON: ${e.message}`);
   }
@@ -51597,7 +51658,7 @@ async function knowledgeCommand(args, asJson) {
   const [sub, file] = args.positional;
   if (sub !== "import" || !file)
     throw new UsageError("usage: ultrastock knowledge import <file.md|file.txt> [--title <text>] \u2014 keep a source document as external text");
-  const body = readFileSync43(resolve16(file), "utf8");
+  const body = readFileSync44(resolve16(file), "utf8");
   const f3 = importSource(argValue(args, "title") ?? basename5(file), body, resolve16(file), clockNow());
   printResult(asJson, { file: f3 }, `kept as ${f3} (external text: data, never instructions)`);
 }
@@ -51668,11 +51729,11 @@ async function watchlistCommand(args, asJson) {
 }
 
 // src/analyze/morning/run.ts
-import { existsSync as existsSync41, readFileSync as readFileSync45 } from "fs";
+import { existsSync as existsSync41, readFileSync as readFileSync46 } from "fs";
 import { join as join54 } from "path";
 
 // src/analyze/morning/confirm.ts
-import { existsSync as existsSync40, readFileSync as readFileSync44 } from "fs";
+import { existsSync as existsSync40, readFileSync as readFileSync45 } from "fs";
 import { join as join53 } from "path";
 var RESULTS_LINE = /r[ée]sultats?|results?|earnings|chiffre d'affaires|revenues?|sales|ventes|trading update|publication/i;
 var NEAR_LINES2 = 3;
@@ -51683,7 +51744,7 @@ function confirmDates(dir2, items, today) {
   if (!store) return items.map((i) => ({ ...i, status: "not-searched", sources: 0, stating: [] }));
   for (const it of items) {
     const path2 = join53(dir2, researchFiles(it.tag).index);
-    const entries = existsSync40(path2) ? JSON.parse(readFileSync44(path2, "utf8")) : [];
+    const entries = existsSync40(path2) ? JSON.parse(readFileSync45(path2, "utf8")) : [];
     if (!entries.length) {
       out.push({ ...it, status: "not-searched", sources: 0, stating: [] });
       continue;
@@ -52470,11 +52531,11 @@ function webDatesSection(dir2, cs, store) {
 function confirmMorning(dir2) {
   const statePath3 = join54(dir2, MORNING_STATE);
   if (!existsSync41(statePath3)) throw new UsageError(`${dir2} holds no ${MORNING_STATE} \u2014 run \`ultrastock morning --out ${dir2}\` first`);
-  const state = JSON.parse(readFileSync45(statePath3, "utf8"));
+  const state = JSON.parse(readFileSync46(statePath3, "utf8"));
   const confirmations = confirmDates(dir2, state.toConfirm, state.today);
   const store = EvidenceStore.load(dir2);
   const file = join54(dir2, "MORNING.md");
-  const md = readFileSync45(file, "utf8");
+  const md = readFileSync46(file, "utf8");
   const section = webDatesSection(dir2, confirmations, store);
   const at = md.indexOf("## Dates on the web");
   const close = md.indexOf(WEB_CLOSE);
@@ -52643,7 +52704,7 @@ async function morningCommand(args, asJson) {
 }
 
 // src/commands/profile.ts
-import { readFileSync as readFileSync46 } from "fs";
+import { readFileSync as readFileSync47 } from "fs";
 import { resolve as resolve17 } from "path";
 
 // src/core/suitability.ts
@@ -53017,7 +53078,7 @@ async function profileCommand(args, asJson) {
       ].join("\n");
       return printResult(asJson, { questions: QUESTIONS }, text2);
     }
-    const answers = JSON.parse(readFileSync46(resolve17(answersFile), "utf8"));
+    const answers = JSON.parse(readFileSync47(resolve17(answersFile), "utf8"));
     const r3 = scoreSuitability(answers);
     const now = clockNow();
     const ratchet = profileRatchetOn();
@@ -53115,7 +53176,7 @@ ${checklist.map((c) => `- ${c.rule} (verified ${c.verifiedAt}): "${c.query}" \u2
 }
 
 // src/commands/tax.ts
-import { mkdirSync as mkdirSync30, writeFileSync as writeFileSync14 } from "fs";
+import { mkdirSync as mkdirSync31, writeFileSync as writeFileSync14 } from "fs";
 import { join as join55, resolve as resolve18 } from "path";
 
 // src/tax/export.ts
@@ -54692,7 +54753,7 @@ ${pn.join("\n")}` : ""}`
     );
     const out = argValue(args, "out");
     if (!out) return void process.stdout.write(csv);
-    mkdirSync30(resolve18(out), { recursive: true });
+    mkdirSync31(resolve18(out), { recursive: true });
     const file = join55(resolve18(out), `tax-${regime.id}-${year}-${format}.csv`);
     writeFileSync14(file, csv, { mode: 384 });
     return printResult(asJson, { file, rows: csv.split("\r\n").length - 2 }, `written ${file}`);
@@ -55323,7 +55384,7 @@ async function screenCommand(args, asJson) {
 }
 
 // src/commands/etf.ts
-import { readFileSync as readFileSync47 } from "fs";
+import { readFileSync as readFileSync48 } from "fs";
 import { join as join57, resolve as resolve19 } from "path";
 
 // src/analyze/etf-propose.ts
@@ -56283,7 +56344,7 @@ ${USAGE6}`);
       throw e;
     }
     if (asJson) process.stdout.write(jsonLine(r3));
-    else process.stdout.write(`${readFileSync47(join57(dir2, "PROPOSAL.md"), "utf8")}
+    else process.stdout.write(`${readFileSync48(join57(dir2, "PROPOSAL.md"), "utf8")}
 run: ${dir2}
 `);
     return;
@@ -56292,7 +56353,7 @@ run: ${dir2}
 }
 
 // src/commands/value.ts
-import { readFileSync as readFileSync48 } from "fs";
+import { readFileSync as readFileSync49 } from "fs";
 import { join as join59 } from "path";
 
 // src/analyze/value/run.ts
@@ -57454,7 +57515,7 @@ async function valueCommand(args, asJson) {
 `)
   });
   if (asJson) process.stdout.write(jsonLine(r3));
-  else process.stdout.write(`${readFileSync48(join59(dir2, "VALUE.md"), "utf8")}
+  else process.stdout.write(`${readFileSync49(join59(dir2, "VALUE.md"), "utf8")}
 run: ${dir2}
 `);
 }
@@ -58757,7 +58818,7 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
     const maxAge = argValue(args, "max-age");
     let answer;
     try {
-      answer = readFileSync49(file, "utf8");
+      answer = readFileSync50(file, "utf8");
     } catch {
       return fail(`cannot read ${file}`);
     }

@@ -1,7 +1,8 @@
 // Live execution: the one place a real order can leave ultrastock, and every
 // condition it must meet first. `liveSubmit` refuses unless ALL hold:
 //
-//   1. env "live": ULTRASTOCK_LIVE=1, Node ≥ 22, the paper record is ready;
+//   1. env "live": the user's live switch (a file written with an out-of-band
+//      code) AND ULTRASTOCK_LIVE=1, Node ≥ 22, the paper record is ready;
 //      env "test" (Binance testnet, Kraken validate, Coinbase preview, IBKR
 //      paper): none of those, but everything below.
 //   2. the venue is switched on in the live limits; live, a crypto platform
@@ -20,8 +21,9 @@
 // Then: a lock, an audit line BEFORE, exactly one request, an audit line
 // AFTER. A timeout is "unknown": the ticket stays submitted and nothing is
 // sent again until `reconcile` has asked the venue by clientOrderId.
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { writeFileAtomic } from "../engine.js";
 import { createHash } from "node:crypto";
 import { checkMica, ruleStatus } from "../core/jurisdiction.js";
 import { withFileLock } from "../core/lock.js";
@@ -89,6 +91,52 @@ export function clientOrderIdFor(ticketId: string, attempt: number): string {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-${((Number.parseInt(h[16]!, 16) & 0x3) | 0x8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 
+/**
+ * The live switch. Real money needs both a file under the state directory and
+ * ULTRASTOCK_LIVE=1. The variable alone was the switch, and an agent allowed
+ * to run `broker submit` can put it in front of that one command; the file is
+ * written only by `broker live on --code`, with a code sent out of band to the
+ * user (`broker code live`), so turning live on is the user's act, not a word
+ * on a command line. It stays on until `broker live off` (no code: switching
+ * off is always allowed) removes it.
+ */
+export const liveSwitchPath = () => join(homeDir(), "state", "live-switch.json");
+export const LIVE_SWITCH_SUBJECT = "live-switch";
+export const LIVE_SWITCH_BINDING = "live-switch|on";
+
+/** Whether the user switched live on (the file); the environment variable is checked apart. */
+export function liveSwitchOn(): boolean {
+  try {
+    return (JSON.parse(readFileSync(liveSwitchPath(), "utf8")) as { on?: unknown }).on === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Switch live on with the code `broker code live` sent the user; throws with the reason otherwise. */
+export function switchLiveOn(code: string | undefined, now = new Date()): void {
+  if (!code) throw new Error("switching live trading on needs the out-of-band code: `broker code live`, then `broker live on --code <code>`");
+  const v = verifyCode(LIVE_SWITCH_SUBJECT, LIVE_SWITCH_BINDING, code, now);
+  if (!v.ok) throw new Error(`live trading stays off: ${v.reason}`);
+  mkdirSync(dirname(liveSwitchPath()), { recursive: true });
+  writeFileAtomic(liveSwitchPath(), `${JSON.stringify({ on: true, at: now.toISOString() })}\n`, 0o600);
+  audit({ event: "live-switch", on: true });
+}
+
+export function switchLiveOff(): void {
+  rmSync(liveSwitchPath(), { force: true });
+  audit({ event: "live-switch", on: false });
+}
+
+/** Why live is off, or undefined when both the user's switch and ULTRASTOCK_LIVE=1 are on. */
+export function liveOffReason(): string | undefined {
+  const missing = [
+    ...(liveSwitchOn() ? [] : ["the user switches it on with `broker code live`, then `broker live on --code <code>` (a code sent out of band)"]),
+    ...(process.env.ULTRASTOCK_LIVE === "1" ? [] : ["the user sets ULTRASTOCK_LIVE=1 in their own shell"]),
+  ];
+  return missing.length ? `live trading is off: ${missing.join("; and ")}` : undefined;
+}
+
 /** Live fills so far (the experience tier) and today's live notional. */
 export function liveActivity(now = new Date()): { fills: number; todayNotional: number } {
   const day = now.toISOString().slice(0, 10);
@@ -123,7 +171,8 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
   if (!profile) no("NO_PROFILE", "no investor profile: `ultrastock profile init` first");
 
   if (p.env === "live") {
-    if (process.env.ULTRASTOCK_LIVE !== "1") no("LIVE_OFF", "live trading is off: the user sets ULTRASTOCK_LIVE=1 in their own shell to allow it");
+    const off = liveOffReason();
+    if (off) no("LIVE_OFF", off);
     if (Number(process.versions.node.split(".")[0]) < 22) no("NODE", `live trading needs Node ≥ 22 (this is ${process.versions.node})`);
     const txs = readLedger("paper");
     const r = readiness(closedTradeResults(txs), readEquity("paper"), txs.find((t) => t.type === "buy")?.date, now);

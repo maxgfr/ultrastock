@@ -21,14 +21,20 @@ import type { BrokerAdapter, Environment, Venue } from "../trading/brokers/types
 import { currentLimits, effectiveLimits, limitsBinding, type LiveLimits, requestLimits } from "../trading/limits.js";
 import {
   CRYPTO_VENUES,
+  LIVE_SWITCH_BINDING,
+  LIVE_SWITCH_SUBJECT,
   liveActivity,
   liveCancel,
   liveRecordOf,
   liveSubmit,
+  liveSwitchOn,
+  liveSwitchPath,
   notPlacedBinding,
   orderBinding,
   preconditions,
   reconcile,
+  switchLiveOff,
+  switchLiveOn,
   VENUES,
   venueSymbol,
 } from "../trading/live.js";
@@ -38,7 +44,7 @@ import { readCredentials, setupCommands } from "../trading/secrets.js";
 import { audit, listTickets, loadTicket } from "../trading/tickets.js";
 
 const USAGE =
-  "usage: ultrastock broker status|setup <venue>|balances|preview <ticket>|code <ticket>|submit <ticket>|reconcile <ticket>|cancel <ticket>|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr|kalshi] [--env test|live] [--code <6 digits>] [--conid <id>] [--json]";
+  "usage: ultrastock broker status|setup <venue>|balances|preview <ticket>|code <ticket>|code live|live on|live off|submit <ticket>|reconcile <ticket>|cancel <ticket>|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr|kalshi] [--env test|live] [--code <6 digits>] [--conid <id>] [--json]";
 
 function venueOf(args: CommandArgs, fallback?: string): Venue {
   const v = (argValue(args, "venue") ?? fallback ?? "").toLowerCase();
@@ -158,9 +164,17 @@ export async function brokerCommand(args: CommandArgs, asJson: boolean): Promise
         `approval code sent to ${r.sentTo.join(", ")} (valid until ${r.expiresAt}). Then: ultrastock broker limits set … --code <code> (the same flags).`,
       );
     }
+    if (id === "live") {
+      const r = await issueCode(LIVE_SWITCH_SUBJECT, LIVE_SWITCH_BINDING, "switching LIVE trading on — real money");
+      return out(
+        asJson,
+        r,
+        `approval code sent to ${r.sentTo.join(", ")} (valid until ${r.expiresAt}). The user types it: ultrastock broker live on --code <code>`,
+      );
+    }
     if (!id)
       throw new UsageError(
-        "usage: ultrastock broker code <ticket-id> [--env test|live] [--venue <v>] [--conid <id>] | code limits [--max-order] [--max-daily] [--venues] [--attest]",
+        "usage: ultrastock broker code <ticket-id> [--env test|live] [--venue <v>] [--conid <id>] | code limits [--max-order] [--max-daily] [--venues] [--attest] | code live",
       );
     const t = loadTicket(id);
     if (args.bools.has("not-placed")) {
@@ -250,14 +264,37 @@ export async function brokerCommand(args: CommandArgs, asJson: boolean): Promise
     }
     return out(
       asJson,
-      { env, kill: existsSync(killSwitchPath()), limits: lim, liveFills: fills, todayNotional, venues: rows, liveSwitch: process.env.ULTRASTOCK_LIVE === "1" },
+      {
+        env,
+        kill: existsSync(killSwitchPath()),
+        limits: lim,
+        liveFills: fills,
+        todayNotional,
+        venues: rows,
+        liveSwitch: liveSwitchOn(),
+        liveEnv: process.env.ULTRASTOCK_LIVE === "1",
+      },
       [
-        `env ${env} · kill switch ${existsSync(killSwitchPath()) ? "ON" : "off"} · ULTRASTOCK_LIVE ${process.env.ULTRASTOCK_LIVE === "1" ? "on" : "off"} · tier "${lim.tier}" (${lim.limits.maxOrder}/order, ${lim.limits.maxDaily}/day, ${todayNotional.toFixed(2)} used today)`,
+        `env ${env} · kill switch ${existsSync(killSwitchPath()) ? "ON" : "off"} · live switch ${liveSwitchOn() ? "on" : "off"} · ULTRASTOCK_LIVE ${process.env.ULTRASTOCK_LIVE === "1" ? "on" : "off"} · tier "${lim.tier}" (${lim.limits.maxOrder}/order, ${lim.limits.maxDaily}/day, ${todayNotional.toFixed(2)} used today)`,
         ...rows.map(
           (r) =>
             `  ${String(r.venue).padEnd(9)} key: ${r.key}${r.on ? "" : " · not switched on"}${r.mica ? ` · MiCA: ${r.mica}` : ""}${r.permissions ? ` · ${r.permissions}` : ""}`,
         ),
       ].join("\n"),
+    );
+  }
+
+  if (sub === "live") {
+    if (id === "off") {
+      switchLiveOff();
+      return out(asJson, { liveSwitch: false }, "live trading switched off");
+    }
+    if (id !== "on") throw new UsageError("usage: ultrastock broker live on --code <code> (after `broker code live`) | live off");
+    switchLiveOn(argValue(args, "code"), now);
+    return out(
+      asJson,
+      { liveSwitch: true, liveEnv: process.env.ULTRASTOCK_LIVE === "1" },
+      `live trading switched on (${liveSwitchPath()}); real orders also need ULTRASTOCK_LIVE=1 in your own shell — \`broker live off\` to stop`,
     );
   }
 
