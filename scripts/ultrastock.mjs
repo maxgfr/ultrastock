@@ -21835,9 +21835,40 @@ function unnestBrackets(text2) {
   return chars.join("");
 }
 var unbracket = (text2) => unnestBrackets(text2).replace(/!?\[([^[\]]*)\]\([^()]*\)/g, " $1 ").replace(/(?<=[\p{L}\p{N}.,;:)\]])\[\d{1,3}\]/gu, " ").replace(/\[(?:E\d+|\^[^\s[\]]+)\]/g, " ").replace(/\[([^[\]]*)\]/g, " $1 ");
+var AVERAGE_NAMES = "SMA|EMA|WMA|HMA|MA|MM|DMA";
+var AVERAGE_PERIODS = "5|7|8|9|10|12|13|20|21|26|30|34|40|50|55|60|89|100|120|144|150|200|250";
+var INDEX_NAMES = [
+  "S&P\\s?(?:100|400|500|600|1500)",
+  "\\b(?:Euro\\s?)?(?:STOXX|Stoxx|stoxx)\\s?(?:50|600)",
+  "\\bCAC\\s?(?:40|Next\\s?20|Mid\\s?60|Mid\\s?&\\s?Small|Small)",
+  "\\bSBF\\s?(?:120|250)",
+  "\\b(?:Nasdaq|NASDAQ)[-\\s]?100",
+  "\\bRussell\\s?(?:1000|2000|3000)",
+  "\\b(?:Tec)?DAX\\s?(?:30|40)",
+  "\\bMDAX\\s?50",
+  "\\bSDAX\\s?70",
+  "\\bFTSE\\s?(?:100|250|350|MIB(?:\\s?40)?)",
+  "\\bAEX\\s?25",
+  "\\bBEL\\s?20",
+  "\\bIBEX\\s?35",
+  "\\bPSI\\s?20",
+  "\\bOBX\\s?25",
+  "\\bOMXS\\s?30",
+  "\\bISEQ\\s?20",
+  "\\bSMI\\s?20",
+  "\\bNikkei\\s?225",
+  "\\bKOSPI\\s?200",
+  "\\bASX\\s?200",
+  "\\bTSX\\s?60",
+  "\\bNifty\\s?50",
+  "\\bSensex\\s?30",
+  "\\bDow\\s?Jones\\s?30",
+  "\\b[Tt]op\\s?\\d{1,3}"
+].join("|");
+var NOT_A_VALUE = "(?![\\p{N}]|[.,]\\d|\\s?(?:%|[$\u20AC\xA3]|pts?\\b|bps\\b))";
 var INDICATOR_NAMES = "SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA|VWAP|OBV|Stoch|Stochastic|Bollinger|Ichimoku|Supertrend";
 function stripNonFigures(text2) {
-  return unbracket(text2.replace(/`[^`]*`/g, " ")).replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ").replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ").replace(new RegExp(`\\b\\d{1,2}(?:er)?\\s+(?:${MONTH_WORD})(?!\\p{L})\\.?(?:\\s+\\d{4})?`, "giu"), " ").replace(new RegExp(`(?<!\\p{L})(?:${MONTH_WORD})(?!\\p{L})\\.?\\s+\\d{1,2}(?:,\\s*\\d{4}(?!\\p{N}))?(?!\\p{N}|[.,]\\d)`, "giu"), " ").replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ").replace(new RegExp(`\\b\\d{1,2}[mhdwM]\\s?(?=(?:${INDICATOR_NAMES})(?![A-Za-z]))`, "gi"), " ").replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ").replace(/\b(?:SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA)\s?\d+\b/gi, " ").replace(/\b(?:weeks?|wk|semaines?|sem\.)\s?\d{1,2}\b(?![.,]\d|\s?[%$€£])/gi, " ").replace(/(?<![\p{N}.,/])\d{1,3}(?:\/\d{1,3})+(?![\p{N}/]|[.,]\d)/gu, (m) => m.split("/").reduce((a, b) => a + Number(b), 0) === 100 ? " " : m).replace(/(?:S&P|\b(?:CAC|SBF|STOXX|Stoxx|Nasdaq|NASDAQ|Russell|DAX|MDAX|FTSE|AEX|BEL|IBEX|MIB|PSI|OBX|ISEQ|Nikkei|Top|top|Dow Jones))\s?\d+\b/g, " ");
+  return unbracket(text2.replace(/`[^`]*`/g, " ")).replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ").replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ").replace(new RegExp(`\\b\\d{1,2}(?:er)?\\s+(?:${MONTH_WORD})(?!\\p{L})\\.?(?:\\s+\\d{4})?`, "giu"), " ").replace(new RegExp(`(?<!\\p{L})(?:${MONTH_WORD})(?!\\p{L})\\.?\\s+\\d{1,2}(?:,\\s*\\d{4}(?!\\p{N}))?(?!\\p{N}|[.,]\\d)`, "giu"), " ").replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ").replace(new RegExp(`\\b\\d{1,2}[mhdwM]\\s?(?=(?:${INDICATOR_NAMES})(?![A-Za-z]))`, "gi"), " ").replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ").replace(new RegExp(`\\b(?:${AVERAGE_NAMES})\\s?(?:${AVERAGE_PERIODS})\\b${NOT_A_VALUE}`, "giu"), " ").replace(new RegExp(`(?:${INDEX_NAMES})${NOT_A_VALUE}`, "gu"), " ").replace(/(?<![\p{L}\p{N}])(?:10-[KQ]|20-F|40-F|8-K|6-K)(?:\/A|405|T)?(?![\p{L}\p{N}])/giu, " ").replace(/\b(?:weeks?|wk|semaines?|sem\.)\s?\d{1,2}\b(?![.,]\d|\s?[%$€£])/gi, " ").replace(/(?<![\p{N}.,/])\d{1,3}(?:\/\d{1,3})+(?![\p{N}/]|[.,]\d)/gu, (m) => m.split("/").reduce((a, b) => a + Number(b), 0) === 100 ? " " : m);
 }
 var FIGURE_RE = /(?<![\p{L}\p{N}_.,])([+\-−–]?)\s?([$€£]\s?)?(\d{1,3}(?:[ ,.  ']\d{3})+(?!\d)(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(\s?(?:%|pts?|bps|x|×)|\s?(?:k|K|M|m|mn|Mn|mio|Md|Mds|md|mds|bn|Bn|B|T|tn|million|millions|milliard|milliards|billion|billions|trillion|trillions|mille)\b)?(\s?(?:[$€£]|EUR|USD|USDT|USDC|GBP|CHF|NOK|BTC|ETH)\b|\s?[$€£])?/gu;
 var PARAMETER_AFTER = /^[-\s]?(?:days?|d|jours?|j|weeks?|wks?|w|semaines?|months?|mo|mois|years?|yrs?|y|ans?|années?|bars?|séances?|sessions?|hours?|h|heures?|min|minutes?|périodes?|periods?|ème|e|er|re|st|nd|rd|th)\b/iu;

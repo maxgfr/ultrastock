@@ -42,3 +42,23 @@ describe("brackets", () => {
     expect(kinds("Close 383 € [see [E1].\n")).toEqual([]);
   });
 });
+
+describe("labels: filing forms, indicator settings, index names", () => {
+  it("reads a filing form named in a link's text as a label", () => {
+    expect(kinds("Revenue was 84.7 bn [E4] ([10-K](https://www.sec.gov/x)).\n")).toEqual([]);
+    expect(kinds("Revenue was 84.7 bn [E4], per the 10-Q, the 20-F, the 40-F, an 8-K and a 6-K.\n")).toEqual([]);
+  });
+  it("reads an indicator or index VALUE after its name as a figure; only the settings form is a label", () => {
+    expect(refused("RSI 85, overbought; close 383 € [E1].\n")).toBe(true);
+    expect(refused("RSI 72.5 and ADX 45; close 383 € [E1].\n")).toBe(true);
+    expect(refused("The Nasdaq 21000 level held; close 383 € [E1].\n")).toBe(true);
+    expect(refused("The DAX 18000 level held; close 383 € [E1].\n")).toBe(true);
+    expect(refused("Close 383 € [E1], under its SMA 412.\n")).toBe(true);
+    // Settings and index names stay labels.
+    expect(
+      kinds(
+        "Close 383 € [E1]: under the SMA 200 and the EMA 50, RSI(14) low, MACD(12,26,9) flat; CAC 40, S&P 500, Nasdaq 100, Euro Stoxx 50, Russell 2000, FTSE 100, Nikkei 225.\n",
+      ),
+    ).toEqual([]);
+  });
+});

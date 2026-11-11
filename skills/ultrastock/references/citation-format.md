@@ -27,13 +27,16 @@ for dates ahead.
 A **figure** is any number written as a quantity: `383,00 €`, `−1.24 %`,
 `$1.6 trillion`, `188,6 Md€`, `31.4x`, `12 bps`, `39,539,690 shares`. These are
 not figures: dates (`2026-10-23`, `23/10/2026`, `Oct 23, 2026`), times, years
-on their own, indicator settings (`RSI(14)`, `MACD(12,26,9)`, `SMA 200`,
-`MM50`), a chart timeframe before an indicator (`15m RSI`, `4h MACD`), index
-names (`CAC 40`, `S&P 500`), spans (`52 weeks`, `3 mois`, `5-day`), week
-numbers (`Week 46`, `semaine 46`), an allocation split summing to 100 (`60/40`,
-`70/20/10`), labels glued to letters (`Q3`, `FY2025`, `J+5`), whole numbers
-under ten (`3 positions`), and footnote markers (`[^3]`, or a number glued to
-its word: `revenue[12]`). A link's text and a bracketed phrase are read like
+on their own, indicator settings (`RSI(14)`, `MACD(12,26,9)`, `MM50`, and a
+moving average at a usual period: `SMA 200`, `EMA 50`), a chart timeframe
+before an indicator (`15m RSI`, `4h MACD`), index names with their own number
+(`CAC 40`, `S&P 500`, `Nasdaq 100`, `Nikkei 225`), filing forms (`10-K`,
+`10-Q`, `20-F`, `40-F`, `8-K`, `6-K`), spans (`52 weeks`, `3 mois`, `5-day`),
+week numbers (`Week 46`, `semaine 46`), an allocation split summing to 100
+(`60/40`, `70/20/10`), labels glued to letters (`Q3`, `FY2025`, `J+5`), whole
+numbers under ten (`3 positions`), and footnote markers (`[^3]`, or a number
+glued to its word: `revenue[12]`). A value after an indicator's or an index's
+name is a figure: `RSI 85`, `ADX 45`, `SMA 412`, `the Nasdaq 21000 level`. A link's text and a bracketed phrase are read like
 any other text: `target [450]` and `results on [2026-12-01]` are a figure and a
 date.
 

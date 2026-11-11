@@ -106,6 +106,41 @@ const unbracket = (text: string): string =>
     .replace(/\[(?:E\d+|\^[^\s[\]]+)\]/g, " ")
     .replace(/\[([^[\]]*)\]/g, " $1 ");
 
+/** Moving averages and the periods they are set to: "SMA 200" is a setting, "SMA 412" a level. */
+const AVERAGE_NAMES = "SMA|EMA|WMA|HMA|MA|MM|DMA";
+const AVERAGE_PERIODS = "5|7|8|9|10|12|13|20|21|26|30|34|40|50|55|60|89|100|120|144|150|200|250";
+/** Index names with the number that is part of the name — a fixed list, so "the Nasdaq 21000 level" is a figure. */
+const INDEX_NAMES = [
+  "S&P\\s?(?:100|400|500|600|1500)",
+  "\\b(?:Euro\\s?)?(?:STOXX|Stoxx|stoxx)\\s?(?:50|600)",
+  "\\bCAC\\s?(?:40|Next\\s?20|Mid\\s?60|Mid\\s?&\\s?Small|Small)",
+  "\\bSBF\\s?(?:120|250)",
+  "\\b(?:Nasdaq|NASDAQ)[-\\s]?100",
+  "\\bRussell\\s?(?:1000|2000|3000)",
+  "\\b(?:Tec)?DAX\\s?(?:30|40)",
+  "\\bMDAX\\s?50",
+  "\\bSDAX\\s?70",
+  "\\bFTSE\\s?(?:100|250|350|MIB(?:\\s?40)?)",
+  "\\bAEX\\s?25",
+  "\\bBEL\\s?20",
+  "\\bIBEX\\s?35",
+  "\\bPSI\\s?20",
+  "\\bOBX\\s?25",
+  "\\bOMXS\\s?30",
+  "\\bISEQ\\s?20",
+  "\\bSMI\\s?20",
+  "\\bNikkei\\s?225",
+  "\\bKOSPI\\s?200",
+  "\\bASX\\s?200",
+  "\\bTSX\\s?60",
+  "\\bNifty\\s?50",
+  "\\bSensex\\s?30",
+  "\\bDow\\s?Jones\\s?30",
+  "\\b[Tt]op\\s?\\d{1,3}",
+].join("|");
+/** What a label's number is not followed by: a decimal or a unit would make it a value. */
+const NOT_A_VALUE = "(?![\\p{N}]|[.,]\\d|\\s?(?:%|[$€£]|pts?\\b|bps\\b))";
+
 const INDICATOR_NAMES = "SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA|VWAP|OBV|Stoch|Stochastic|Bollinger|Ichimoku|Supertrend";
 
 /** What is not a figure: dates, times, citation tokens, inline code, link targets, labels. */
@@ -120,13 +155,16 @@ function stripNonFigures(text: string): string {
       .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ")
       // A chart timeframe before an indicator is its label: the 15m RSI, the 4h MACD — not 15 million.
       .replace(new RegExp(`\\b\\d{1,2}[mhdwM]\\s?(?=(?:${INDICATOR_NAMES})(?![A-Za-z]))`, "gi"), " ")
-      // Indicator parameters and index names are labels, not claims: RSI(14), MACD(12,26,9), SMA 200, MM50, CAC 40, S&P 500.
+      // Indicator settings and index names are labels, not claims: RSI(14), MACD(12,26,9), SMA 200, MM50, CAC 40, S&P 500.
+      // Only their settings form is: "RSI 85", "ADX 45", "SMA 412" and "the Nasdaq 21000 level" state a value.
       .replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ")
-      .replace(/\b(?:SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA)\s?\d+\b/gi, " ")
+      .replace(new RegExp(`\\b(?:${AVERAGE_NAMES})\\s?(?:${AVERAGE_PERIODS})\\b${NOT_A_VALUE}`, "giu"), " ")
+      .replace(new RegExp(`(?:${INDEX_NAMES})${NOT_A_VALUE}`, "gu"), " ")
+      // A filing form names a document: the 10-K, a 6-K, the 20-F/A.
+      .replace(/(?<![\p{L}\p{N}])(?:10-[KQ]|20-F|40-F|8-K|6-K)(?:\/A|405|T)?(?![\p{L}\p{N}])/giu, " ")
       // So is a week number ("Week 46", "semaine 46") and an allocation split summing to 100 ("60/40", "70/20/10").
       .replace(/\b(?:weeks?|wk|semaines?|sem\.)\s?\d{1,2}\b(?![.,]\d|\s?[%$€£])/gi, " ")
       .replace(/(?<![\p{N}.,/])\d{1,3}(?:\/\d{1,3})+(?![\p{N}/]|[.,]\d)/gu, (m) => (m.split("/").reduce((a, b) => a + Number(b), 0) === 100 ? " " : m))
-      .replace(/(?:S&P|\b(?:CAC|SBF|STOXX|Stoxx|Nasdaq|NASDAQ|Russell|DAX|MDAX|FTSE|AEX|BEL|IBEX|MIB|PSI|OBX|ISEQ|Nikkei|Top|top|Dow Jones))\s?\d+\b/g, " ")
   );
 }
 
