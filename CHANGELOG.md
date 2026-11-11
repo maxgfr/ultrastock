@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.43](https://github.com/maxgfr/ultrastock/compare/v1.12.42...v1.12.43) (2026-11-11)
+
+
+### Bug Fixes
+
+* **router:** ask Kraken and Coinbase for the USD pair the user wrote ([bbf0fb9](https://github.com/maxgfr/ultrastock/commit/bbf0fb922024a1d5e288d0e1c142ea2f68a13082))
+
 ## [1.12.42](https://github.com/maxgfr/ultrastock/compare/v1.12.41...v1.12.42) (2026-11-11)
 
 
