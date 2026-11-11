@@ -52509,6 +52509,10 @@ async function morningRun(dir2, opts = {}) {
     const row = { symbol, notes: [] };
     try {
       const h = heldBy.get(symbol);
+      if (parsePredictionSymbol(symbol)) {
+        if (!h) row.notes.push(`${symbol}: a prediction-market contract \u2014 no listing to quote in the brief`);
+        return row;
+      }
       const resolved = h?.resolved ?? await resolveSymbol(symbol);
       row.instrument = resolved.instrument;
       if (!h)
@@ -52801,7 +52805,7 @@ async function morningRun(dir2, opts = {}) {
   if (opts.news !== false) {
     const moved = new Set(moves.filter((m) => Math.abs(m.changePct) >= MOVE_WARN_PCT).map((m) => m.symbol));
     const soon = new Set(dates.filter((d) => d.kind === "earnings" && d.date <= end && d.sessionsAway <= NEAR_SESSIONS).map((d) => d.symbol));
-    const wanted = universe.filter((s) => heldBy.has(s) || moved.has(s) || soon.has(s)).slice(0, MAX_NEWS);
+    const wanted = universe.filter((s) => !parsePredictionSymbol(s) && (heldBy.has(s) || moved.has(s) || soon.has(s))).slice(0, MAX_NEWS);
     const byRow = new Map(rows.map((r3) => [r3.symbol, r3]));
     const got = await mapLimit(wanted, 2, async (s) => {
       const inst = byRow.get(s)?.instrument;

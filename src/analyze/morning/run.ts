@@ -38,6 +38,7 @@ import { researchRound, searchName, startResearch } from "../../research/run.js"
 import { type Confirmation, confirmDates, type DateToConfirm } from "./confirm.js";
 import { getQuote, resolveSymbol } from "../../providers/router.js";
 import type { Instrument, QuoteResult } from "../../providers/types.js";
+import { parsePredictionSymbol } from "../../trading/prediction.js";
 import { filledAt, listTickets, type Ticket } from "../../trading/tickets.js";
 import { bookExposure, eventExposure, type MarketEvent, marketEvents } from "../events/run.js";
 import { loadMarkedBook, type MarkedBook } from "../portfolio/book.js";
@@ -422,6 +423,12 @@ export async function morningRun(dir: string, opts: MorningOptions = {}): Promis
     const row: Row = { symbol, notes: [] };
     try {
       const h = heldBy.get(symbol);
+      // A prediction-market contract is no listing: the book prices a held one from its own order book, and it has no
+      // company dates. Looking it up as a symbol could only fail.
+      if (parsePredictionSymbol(symbol)) {
+        if (!h) row.notes.push(`${symbol}: a prediction-market contract — no listing to quote in the brief`);
+        return row;
+      }
       const resolved = h?.resolved ?? (await resolveSymbol(symbol));
       row.instrument = resolved.instrument;
       if (!h)
@@ -742,7 +749,8 @@ export async function morningRun(dir: string, opts: MorningOptions = {}): Promis
   if (opts.news !== false) {
     const moved = new Set(moves.filter((m) => Math.abs(m.changePct) >= MOVE_WARN_PCT).map((m) => m.symbol));
     const soon = new Set(dates.filter((d) => d.kind === "earnings" && d.date <= end && d.sessionsAway <= NEAR_SESSIONS).map((d) => d.symbol));
-    const wanted = universe.filter((s) => heldBy.has(s) || moved.has(s) || soon.has(s)).slice(0, MAX_NEWS);
+    // A prediction-market contract has no company name to search the headlines for.
+    const wanted = universe.filter((s) => !parsePredictionSymbol(s) && (heldBy.has(s) || moved.has(s) || soon.has(s))).slice(0, MAX_NEWS);
     const byRow = new Map(rows.map((r) => [r.symbol, r]));
     const got = await mapLimit(wanted, 2, async (s) => {
       const inst = byRow.get(s)?.instrument;
