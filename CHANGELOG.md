@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.40](https://github.com/maxgfr/ultrastock/compare/v1.12.39...v1.12.40) (2026-11-11)
+
+
+### Bug Fixes
+
+* **fallback:** report a crashed reader as a defect, not as an outage ([c0abf51](https://github.com/maxgfr/ultrastock/commit/c0abf51b4c83e8fcdea71d8502813e5cc91ed880))
+
 ## [1.12.39](https://github.com/maxgfr/ultrastock/compare/v1.12.38...v1.12.39) (2026-11-10)
 
 
