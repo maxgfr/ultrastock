@@ -53055,8 +53055,9 @@ var FranceRegime = class extends TaxRegime {
           });
         return;
       }
-      const fee = fiatBase ? 0 : rowFee;
-      const price = fiatBase ? this.toBase(t, t.quantity ?? 0, input, asset) : this.toBase(t, gross2(t), input);
+      const fiatFee = fiatBase && t.price ? (t.fee ?? 0) / t.price : 0;
+      const fee = fiatBase ? this.toBase(t, fiatFee, input, asset) : rowFee;
+      const price = fiatBase ? this.toBase(t, (t.quantity ?? 0) + fiatFee, input, asset) : this.toBase(t, gross2(t), input);
       const net = price - fee;
       const value2 = input.cryptoValue?.(day3(t.date), t);
       const acquisitionNet = c.acquisitions - c.fractions;

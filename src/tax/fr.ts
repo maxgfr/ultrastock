@@ -254,8 +254,10 @@ export class FranceRegime extends TaxRegime {
     }
     if (t.type === "buy" || t.type === "sell") {
       // A pair whose base is the fiat (EURUSDT) trades the fiat itself: selling it buys the crypto-asset of the quote,
-      // buying it back cashes that crypto-asset out. The fiat that moved is the quantity, in the base currency — already
-      // net of a fee charged in it; a fee charged in the crypto-asset is not a fiat amount and is left out.
+      // buying it back cashes that crypto-asset out. The fiat paid is the quantity sold, in the base currency. The fiat
+      // received is the quantity bought, net of the fee: the ledger books a fee in the quote currency (an importer
+      // nets one charged in the fiat from the quantity and values it at the trade's price), so the fee in fiat is
+      // fee / price, and the price of the disposal is what was received before it (form 2086 lines 213 and 214).
       const fiatBase = isFiat(asset);
       if (!fiatBase) c.holdings.set(asset, (c.holdings.get(asset) ?? 0) + (t.type === "buy" ? 1 : -1) * (t.quantity ?? 0));
       const kind = cryptoTradeKind(t);
@@ -277,8 +279,9 @@ export class FranceRegime extends TaxRegime {
           });
         return;
       }
-      const fee = fiatBase ? 0 : rowFee;
-      const price = fiatBase ? this.toBase(t, t.quantity ?? 0, input, asset) : this.toBase(t, gross(t), input);
+      const fiatFee = fiatBase && t.price ? (t.fee ?? 0) / t.price : 0;
+      const fee = fiatBase ? this.toBase(t, fiatFee, input, asset) : rowFee;
+      const price = fiatBase ? this.toBase(t, (t.quantity ?? 0) + fiatFee, input, asset) : this.toBase(t, gross(t), input);
       const net = price - fee;
       const value = input.cryptoValue?.(day(t.date), t);
       const acquisitionNet = c.acquisitions - c.fractions;
