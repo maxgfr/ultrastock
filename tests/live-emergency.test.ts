@@ -5,9 +5,10 @@ import { dirname } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { homeDir } from "../src/core/paths.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
-import type { BrokerAdapter, LiveOrder } from "../src/trading/brokers/types.js";
+import { readLedger } from "../src/portfolio/ledger.js";
+import type { BrokerAdapter, LiveOrder, OrderResult } from "../src/trading/brokers/types.js";
 import { LOOSEN_DELAY_MS, requestLimits } from "../src/trading/limits.js";
-import { liveCancel, liveSubmit, orderBinding, reconcile } from "../src/trading/live.js";
+import { clientOrderIdFor, liveCancel, liveSubmit, orderBinding, reconcile } from "../src/trading/live.js";
 import { type Channel, issueCode } from "../src/trading/otp.js";
 import { killSwitchPath, type Order, orderFingerprint } from "../src/trading/riskgate.js";
 import { createTicket, loadTicket, recordCheck } from "../src/trading/tickets.js";
@@ -125,5 +126,37 @@ describe("live emergency paths", () => {
     // The panic listed the tickets "submitted" at that instant: this one was still "checked", so nothing will cancel it either.
     expect(v.calls.submit).toBe(0);
     expect(r.refusals.map((x) => x.code)).toContain("KILL_SWITCH");
+  });
+
+  it("does not close a cancelled order as unfilled when the read of what it filled failed", async () => {
+    switchOn();
+    const t = await acceptedTicket(order());
+    const id = clientOrderIdFor(t.id, 1);
+    // The venue cancels the order; it had filled 0.4 before. Its cancel answer says nothing of fills (Kraken: a count).
+    const partly: OrderResult = {
+      state: "cancelled",
+      clientOrderId: id,
+      venueOrderId: "V1",
+      filledQuantity: 0.4,
+      averagePrice: 100,
+      fee: 0.1,
+      feeCurrency: "EUR",
+    };
+    let reads = 0;
+    const v = fakeVenue({
+      query: async () => {
+        // The follow-up read fails once (a timeout), then the venue answers.
+        if (reads++ === 0) throw new Error("timeout after 10000 ms");
+        return partly;
+      },
+    });
+    await liveCancel(t.id, v.a);
+    // Whatever the ticket says now, asking the venue again must end with the 0.4 bought in the book.
+    await reconcile(t.id, v.a, new Date(Date.now() + 5000));
+    expect(
+      readLedger("live-test")
+        .filter((x) => x.type === "buy")
+        .map((x) => x.quantity),
+    ).toEqual([0.4]);
   });
 });

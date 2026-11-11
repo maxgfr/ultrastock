@@ -46085,7 +46085,7 @@ async function reconcileLocked(ticketId, adapter, now, opts) {
     );
     return { ticket: ticket2, note: "not found at the venue, declared never placed: the ticket can be checked and approved again" };
   }
-  if (r3.state === rec.state && r3.state !== "filled") return { ticket: t, result: r3, note: `still ${r3.state}` };
+  if (r3.state === rec.state && r3.state !== "filled" && !fillDelta(t.fills, r3)) return { ticket: t, result: r3, note: `still ${r3.state}` };
   const ticket = rec.state === "filled" ? t : await applyResult(t, r3, rec, now);
   return { ticket, result: r3, note: r3.state };
 }
@@ -46102,7 +46102,11 @@ async function cancelLocked(ticketId, adapter, now) {
   audit({ event: "live-cancel-intent", ticket: t.id, venue: rec.venue, env: rec.env, clientOrderId: rec.clientOrderId });
   const r3 = await adapter.cancel(rec.venueSymbol, rec.clientOrderId);
   audit({ event: "live-cancel-result", ticket: t.id, venue: rec.venue, env: rec.env, clientOrderId: rec.clientOrderId, state: r3.state, message: r3.message });
-  const seen = await adapter.query(rec.venueSymbol, rec.clientOrderId).catch(() => void 0);
+  let unread;
+  const seen = await adapter.query(rec.venueSymbol, rec.clientOrderId).catch((e) => {
+    unread = e.message;
+    return void 0;
+  });
   if (r3.state === "rejected") {
     if (seen && seen.state !== rec.state && seen.state !== "unknown") await applyResult(t, seen, rec, now);
     return r3;
@@ -46112,7 +46116,9 @@ async function cancelLocked(ticketId, adapter, now) {
     filledQuantity: r3.filledQuantity ?? seen?.filledQuantity,
     averagePrice: r3.averagePrice ?? seen?.averagePrice,
     fee: r3.fee ?? seen?.fee,
-    feeCurrency: r3.feeCurrency ?? seen?.feeCurrency
+    feeCurrency: r3.feeCurrency ?? seen?.feeCurrency,
+    // A failed read is not "nothing filled": the record says so, and a reconcile that reads a fill still books it.
+    ...unread !== void 0 && !r3.filledQuantity ? { message: `${r3.message ? `${r3.message}; ` : ""}what it filled could not be read (${unread}): \`broker reconcile ${t.id}\` settles it` } : {}
   };
   await applyResult(t, done, rec, now);
   return done;
