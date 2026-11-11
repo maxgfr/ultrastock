@@ -54109,7 +54109,8 @@ async function buildInput(args, regime, year, opts = {}) {
   const first = txs.map((t) => day3(t.date)).sort()[0] ?? end;
   const from = first < end ? first : end;
   const currencies = [...new Set(txs.map((t) => t.currency)), "USD"].filter((c) => c !== regime.currency);
-  const ecb = await historicalFx(regime.currency, currencies, from, end);
+  const fiatBases = txs.map((t) => splitPair(t.symbol ?? t.currency, t.currency).base).filter((c) => isFiat(c) && c !== regime.currency);
+  const ecb = await historicalFx(regime.currency, [.../* @__PURE__ */ new Set([...currencies, ...fiatBases])], from, end);
   notes.push(...ecb.notes);
   let fx = ecb.fx;
   if (regime.id === "us") {

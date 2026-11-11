@@ -10,7 +10,7 @@ import { buildBook, readLedger, type Transaction } from "../portfolio/ledger.js"
 import { EXPORT_FORMATS, type ExportFormat, export2074, export2086, export8949, exportKoinly } from "../tax/export.js";
 import { regimeFor } from "../tax/index.js";
 import { cryptoValuer, currentPrices, historicalFx, withCryptoQuotes } from "../tax/inputs.js";
-import { cryptoTradeKind, day, isCryptoTx, type TaxInput, type TaxRegime, type TaxSummary, yearOf } from "../tax/regime.js";
+import { cryptoTradeKind, day, isCryptoTx, isFiat, splitPair, type TaxInput, type TaxRegime, type TaxSummary, yearOf } from "../tax/regime.js";
 import { emitDatasets, printResult as print } from "./emit.js";
 
 const USAGE =
@@ -44,7 +44,9 @@ async function buildInput(args: CommandArgs, regime: TaxRegime, year: number, op
   // biome-ignore lint/complexity/useMathMinMax: ISO date strings, not numbers
   const from = first < end ? first : end;
   const currencies = [...new Set(txs.map((t) => t.currency)), "USD"].filter((c) => c !== regime.currency);
-  const ecb = await historicalFx(regime.currency, currencies, from, end);
+  // The engines also convert the fiat base of a pair such as GBPUSDT (the pounds paid or received): its rate is asked too.
+  const fiatBases = txs.map((t) => splitPair(t.symbol ?? t.currency, t.currency).base).filter((c) => isFiat(c) && c !== regime.currency);
+  const ecb = await historicalFx(regime.currency, [...new Set([...currencies, ...fiatBases])], from, end);
   notes.push(...ecb.notes);
   let fx = ecb.fx;
   // The US taxes a trade quoted in a crypto-asset (ETHBTC) at its dollar value; France defers it and needs no rate.
