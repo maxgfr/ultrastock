@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.37](https://github.com/maxgfr/ultrastock/compare/v1.13.36...v1.13.37) (2026-11-11)
+
+
+### Bug Fixes
+
+* **tax/us:** price harvest candidates in dollars, whatever the symbol is quoted in ([8c640a5](https://github.com/maxgfr/ultrastock/commit/8c640a514296f1a0e942254db381c419442d0779))
+
 ## [1.13.36](https://github.com/maxgfr/ultrastock/compare/v1.13.35...v1.13.36) (2026-11-11)
 
 
