@@ -25,6 +25,9 @@ describe("MCP tools", () => {
     const decls = mcpAdapter(async () => "").listTools("2025-06-18" as never);
     const hints = (n: string) => decls.find((d) => d.name === n)!.annotations!;
     expect(hints("plan").readOnlyHint).toBe(false);
+    // plan values the book through the risk gate, which appends its equity reading for the breaker — ticket or not.
+    expect(tool("plan").writes).toMatch(/equity reading.*every call/);
+    expect(decls.find((d) => d.name === "plan")!.description).toMatch(/equity reading/);
     // A run written (analyze, calc), an equity reading appended for the breaker (portfolio show|perf), a cache filled.
     for (const n of ["analyze", "calc", "portfolio", "portfolio_news", "research"]) expect(hints(n).readOnlyHint, n).toBe(false);
     for (const n of ["analyze", "portfolio", "portfolio_news", "research", "plan"]) expect(hints(n).idempotentHint, n).toBe(false);

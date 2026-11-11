@@ -9,7 +9,9 @@
 // a run directory (`out`) writes its evidence there, `analyze`, `research` and
 // `calc` write a run, `portfolio show|perf` append the equity reading the
 // circuit breaker reads, `portfolio_news` fills the news cache and `plan`
-// creates a ticket. Only a tool that writes nothing is read-only.
+// appends that equity reading on every call (its gate values the book) and,
+// with ticket=true, creates a ticket. Only a tool that writes nothing is
+// read-only.
 //
 // A file a tool reads and may quote back — `check`'s answer, `research`'s
 // --web-results — must sit inside the run directory of the same call: a tool
@@ -357,7 +359,8 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "portfolio",
-    description: "The user's book marked to market and its analytics (read only).",
+    description:
+      "The user's book marked to market and its analytics. The ledger is never edited; show and perf append the book's equity reading, which the circuit breaker reads.",
     command: ["portfolio"],
     params: {
       action: {
@@ -482,7 +485,7 @@ export const TOOLS: Tool[] = [
   {
     name: "plan",
     description:
-      "Turn a view into a sized order within the profile's limits, dry-run through the risk gate; ticket=true creates the ticket. Nothing is sent: execution stays with the user on the command line.",
+      "Turn a view into a sized order within the profile's limits, dry-run through the risk gate; ticket=true creates the ticket. Nothing is sent: execution stays with the user on the command line. The gate values the book, so every call appends the book's equity reading, which the circuit breaker reads.",
     command: ["plan"],
     params: {
       symbol: sym(),
@@ -494,7 +497,7 @@ export const TOOLS: Tool[] = [
       ticket: { kind: "boolean", description: "create the ticket" },
       out: OUT,
     },
-    writes: "with ticket=true, a ticket — never sent",
+    writes: "the book's equity reading, which the circuit breaker reads, on every call; with ticket=true, a ticket — never sent",
   },
 ];
 

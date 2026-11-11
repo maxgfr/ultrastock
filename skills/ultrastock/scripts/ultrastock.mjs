@@ -47446,7 +47446,7 @@ var TOOLS = [
   },
   {
     name: "portfolio",
-    description: "The user's book marked to market and its analytics (read only).",
+    description: "The user's book marked to market and its analytics. The ledger is never edited; show and perf append the book's equity reading, which the circuit breaker reads.",
     command: ["portfolio"],
     params: {
       action: {
@@ -47566,7 +47566,7 @@ var TOOLS = [
   },
   {
     name: "plan",
-    description: "Turn a view into a sized order within the profile's limits, dry-run through the risk gate; ticket=true creates the ticket. Nothing is sent: execution stays with the user on the command line.",
+    description: "Turn a view into a sized order within the profile's limits, dry-run through the risk gate; ticket=true creates the ticket. Nothing is sent: execution stays with the user on the command line. The gate values the book, so every call appends the book's equity reading, which the circuit breaker reads.",
     command: ["plan"],
     params: {
       symbol: sym2(),
@@ -47578,7 +47578,7 @@ var TOOLS = [
       ticket: { kind: "boolean", description: "create the ticket" },
       out: OUT
     },
-    writes: "with ticket=true, a ticket \u2014 never sent"
+    writes: "the book's equity reading, which the circuit breaker reads, on every call; with ticket=true, a ticket \u2014 never sent"
   }
 ];
 var HIT_SCHEMA = {
