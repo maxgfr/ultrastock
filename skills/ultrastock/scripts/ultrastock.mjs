@@ -12538,7 +12538,7 @@ function lastValue(xs) {
 }
 
 // src/core/evidence.ts
-import { existsSync as existsSync4, mkdirSync as mkdirSync4, readFileSync as readFileSync9 } from "fs";
+import { existsSync as existsSync4, mkdirSync as mkdirSync4, readFileSync as readFileSync9, rmSync as rmSync6 } from "fs";
 import { isAbsolute as isAbsolute3, join as join5, relative as relative2, resolve } from "path";
 
 // src/core/lock.ts
@@ -12662,22 +12662,31 @@ function sanitizeExternalDocument(raw) {
 // src/core/evidence.ts
 var EVIDENCE_FILE = "evidence.json";
 var EVIDENCE_SCHEMA = 1;
+var EVIDENCE_IDS_FILE = `${EVIDENCE_FILE}.ids`;
+var ID_BLOCK = 64;
+var idNumber = (id) => Number(/^E(\d+)$/.exec(id)?.[1] ?? 0);
+var maxIdOf = (items) => items.reduce((m, i) => Math.max(m, idNumber(i.id)), 0);
+function readEvidenceFile(path2) {
+  if (!existsSync4(path2)) return void 0;
+  const data = JSON.parse(readFileSync9(path2, "utf8"));
+  if (data.schema !== EVIDENCE_SCHEMA || !Array.isArray(data.items)) throw new Error(`${path2} is not an ultrastock evidence file (schema ${EVIDENCE_SCHEMA})`);
+  return data;
+}
 var EvidenceStore = class _EvidenceStore {
   dir;
   data;
+  /** Inside `update`: the run's lock is held and the items were just read, so ids follow them directly. */
+  locked = false;
+  /** The ids this store has reserved and not yet handed out. */
+  block;
   constructor(dir2, data) {
     this.dir = dir2;
     this.data = data;
   }
   /** Open the run at `dir`, creating an empty register when there is none. */
   static open(dir2, init = {}) {
-    const path2 = join5(dir2, EVIDENCE_FILE);
-    if (existsSync4(path2)) {
-      const data = JSON.parse(readFileSync9(path2, "utf8"));
-      if (data.schema !== EVIDENCE_SCHEMA || !Array.isArray(data.items))
-        throw new Error(`${path2} is not an ultrastock evidence file (schema ${EVIDENCE_SCHEMA})`);
-      return new _EvidenceStore(dir2, data);
-    }
+    const data = readEvidenceFile(join5(dir2, EVIDENCE_FILE));
+    if (data) return new _EvidenceStore(dir2, data);
     return new _EvidenceStore(dir2, {
       schema: EVIDENCE_SCHEMA,
       run: init.run ?? dir2,
@@ -12697,13 +12706,14 @@ var EvidenceStore = class _EvidenceStore {
    * otherwise both read N items, both hand out E(N+1), and the second save
    * would replace the first — the [E#] one of them was given then holds another
    * figure. Use it for every short write; a store kept open across a long run
-   * still saves what it read at its start.
+   * reserves its ids and merges on save instead (see the file's header).
    */
   static update(dir2, change, init = {}) {
-    return withFileLockSync(join5(dir2, `${EVIDENCE_FILE}.lock`), () => {
+    return withFileLockSync(lockPath(dir2), () => {
       const store = _EvidenceStore.open(dir2, init);
+      store.locked = true;
       const result = change(store);
-      store.save();
+      store.write();
       return result;
     });
   }
@@ -12729,9 +12739,22 @@ var EvidenceStore = class _EvidenceStore {
     if (typeof item.value === "number" && !Number.isFinite(item.value)) throw new Error(`evidence ${item.key}: not a finite number`);
     const existing = this.byKey(item.key);
     if (existing && existing.value === item.value) return existing.id;
-    const id = `E${this.data.items.length + 1}`;
+    const id = `E${this.nextId()}`;
     this.data.items.push({ id, ...item });
     return id;
+  }
+  /** The next id number, unique in the run whatever else writes it meanwhile. */
+  nextId() {
+    if (this.locked) return Math.max(maxIdOf(this.data.items), readReserved(this.dir)) + 1;
+    if (!this.block || this.block.next > this.block.end)
+      this.block = withFileLockSync(lockPath(this.dir), () => {
+        const onDisk = readEvidenceFile(join5(this.dir, EVIDENCE_FILE))?.items ?? [];
+        const next2 = Math.max(maxIdOf(onDisk), readReserved(this.dir), maxIdOf(this.data.items)) + 1;
+        writeFileAtomic(join5(this.dir, EVIDENCE_IDS_FILE), `${next2 + ID_BLOCK - 1}
+`);
+        return { next: next2, end: next2 + ID_BLOCK - 1 };
+      });
+    return this.block.next++;
   }
   /**
    * Register a figure computed from other evidence: its provenance is the
@@ -12755,7 +12778,29 @@ var EvidenceStore = class _EvidenceStore {
       formula
     });
   }
+  /**
+   * Write the register. Under the run's lock, the file is read again and what
+   * this store added joins what other commands registered meanwhile; the ids
+   * this store did not hand out are given back when nobody reserved after them.
+   */
   save() {
+    if (this.locked) return this.write();
+    return withFileLockSync(lockPath(this.dir), () => {
+      const disk = readEvidenceFile(join5(this.dir, EVIDENCE_FILE));
+      if (disk) {
+        const held = new Set(this.data.items.map((i) => i.id));
+        const items = [...this.data.items, ...disk.items.filter((i) => !held.has(i.id))].sort((a, b) => idNumber(a.id) - idNumber(b.id));
+        this.data = { ...disk, subject: disk.subject ?? this.data.subject, items };
+      }
+      const path2 = this.write();
+      if (this.block && readReserved(this.dir) === this.block.end) {
+        rmSync6(join5(this.dir, EVIDENCE_IDS_FILE), { force: true });
+        this.block = void 0;
+      }
+      return path2;
+    });
+  }
+  write() {
     mkdirSync4(this.dir, { recursive: true });
     const path2 = join5(this.dir, EVIDENCE_FILE);
     writeFileAtomic(path2, `${JSON.stringify(this.data, null, 2)}
@@ -12763,6 +12808,15 @@ var EvidenceStore = class _EvidenceStore {
     return path2;
   }
 };
+var lockPath = (dir2) => join5(dir2, `${EVIDENCE_FILE}.lock`);
+function readReserved(dir2) {
+  try {
+    const n2 = Number(readFileSync9(join5(dir2, EVIDENCE_IDS_FILE), "utf8").trim());
+    return Number.isSafeInteger(n2) && n2 > 0 ? n2 : 0;
+  } catch {
+    return 0;
+  }
+}
 function formatEvidence(i) {
   const value2 = typeof i.value === "number" ? formatNumber(i.value) : String(i.value);
   const unit = i.unit ? i.unit === "%" ? "%" : ` ${i.unit}` : "";
@@ -21358,7 +21412,7 @@ function followUpAngles(s, under, opts = {}) {
 }
 
 // src/research/delegate.ts
-import { mkdtempSync as mkdtempSync3, readFileSync as readFileSync19, rmSync as rmSync6, writeFileSync as writeFileSync7 } from "fs";
+import { mkdtempSync as mkdtempSync3, readFileSync as readFileSync19, rmSync as rmSync7, writeFileSync as writeFileSync7 } from "fs";
 import { tmpdir as tmpdir4 } from "os";
 import { join as join20 } from "path";
 var SEARCH_DELEGATES = ["claude", "codex", "ccs"];
@@ -21486,7 +21540,7 @@ async function runBatch(who, batch, model) {
     }
     return parseDelegateAnswer(who, r3.stdout, last2);
   } finally {
-    rmSync6(work, { recursive: true, force: true });
+    rmSync7(work, { recursive: true, force: true });
   }
 }
 async function delegatedSearch(who, queries, opts = {}) {
@@ -21808,7 +21862,12 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
       const citedDocs = [];
       for (const t of tokens) {
         const item = store.get(t);
-        if (!item) problems.push({ line, kind: "dangling", message: `[${t}] is not in this run's evidence (it holds E1\u2026E${store.items.length})` });
+        if (!item)
+          problems.push({
+            line,
+            kind: "dangling",
+            message: `[${t}] is not in this run's evidence (it holds E1\u2026${store.items[store.items.length - 1]?.id ?? "nothing"})`
+          });
         else if (item.doc && !docOf(item))
           problems.push({
             line,
@@ -41268,7 +41327,7 @@ import { mkdirSync as mkdirSync21 } from "fs";
 import { join as join42 } from "path";
 
 // src/providers/external/binance-historical.ts
-import { mkdtempSync as mkdtempSync4, readdirSync as readdirSync11, readFileSync as readFileSync34, rmSync as rmSync7 } from "fs";
+import { mkdtempSync as mkdtempSync4, readdirSync as readdirSync11, readFileSync as readFileSync34, rmSync as rmSync8 } from "fs";
 import { tmpdir as tmpdir5 } from "os";
 import { join as join41 } from "path";
 var SOURCE34 = "binance-historical";
@@ -41349,7 +41408,7 @@ async function bulkKlines(req) {
     });
     return { bars, report: report2 };
   } finally {
-    rmSync7(out, { recursive: true, force: true });
+    rmSync8(out, { recursive: true, force: true });
   }
 }
 
@@ -44993,7 +45052,7 @@ function chronological(txs) {
 // src/trading/otp.ts
 import { execFileSync } from "child_process";
 import { randomBytes as randomBytes3, randomInt, scryptSync, timingSafeEqual as timingSafeEqual3 } from "crypto";
-import { closeSync as closeSync5, existsSync as existsSync33, mkdirSync as mkdirSync25, openSync as openSync5, readFileSync as readFileSync39, rmSync as rmSync8, writeSync as writeSync4 } from "fs";
+import { closeSync as closeSync5, existsSync as existsSync33, mkdirSync as mkdirSync25, openSync as openSync5, readFileSync as readFileSync39, rmSync as rmSync9, writeSync as writeSync4 } from "fs";
 import { join as join46 } from "path";
 var CODE_TTL_MS = 12e4;
 var MAX_TRIES = 3;
@@ -45086,23 +45145,23 @@ function verifyLocked(f3, binding, code, now) {
   if (!existsSync33(f3)) return { ok: false, reason: "no code was issued for this \u2014 run the code step first" };
   const p = JSON.parse(readFileSync39(f3, "utf8"));
   if (now.getTime() > Date.parse(p.expiresAt)) {
-    rmSync8(f3, { force: true });
+    rmSync9(f3, { force: true });
     return { ok: false, reason: "the code expired (2 minutes): issue a new one" };
   }
   if (!code || !/^\d{6}$/.test(code)) return { ok: false, reason: "the code is six digits" };
   if (p.binding !== binding) {
-    rmSync8(f3, { force: true });
+    rmSync9(f3, { force: true });
     return { ok: false, reason: "the code was issued for a different order or change \u2014 it is void; issue a new one" };
   }
   const a = Buffer.from(digest2(code, binding, p.salt), "hex");
   const b = Buffer.from(p.hash, "hex");
   if (a.length === b.length && timingSafeEqual3(a, b)) {
-    rmSync8(f3, { force: true });
+    rmSync9(f3, { force: true });
     return { ok: true };
   }
   p.tries++;
   if (p.tries >= MAX_TRIES) {
-    rmSync8(f3, { force: true });
+    rmSync9(f3, { force: true });
     return { ok: false, reason: `wrong code ${MAX_TRIES} times: void, issue a new one` };
   }
   writeFileAtomic(f3, `${JSON.stringify(p)}
@@ -45988,7 +46047,7 @@ function pendingLive() {
 // src/mcp.ts
 import { execFile } from "child_process";
 import { randomBytes as randomBytes4 } from "crypto";
-import { mkdtempSync as mkdtempSync5, rmSync as rmSync9, writeFileSync as writeFileSync11 } from "fs";
+import { mkdtempSync as mkdtempSync5, rmSync as rmSync10, writeFileSync as writeFileSync11 } from "fs";
 import { tmpdir as tmpdir6 } from "os";
 import { join as join49 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
@@ -46462,7 +46521,7 @@ function mcpAdapter(run3 = runBundle) {
         writeFileSync11(file, JSON.stringify(hits));
         return { text: await run3([...argvFor(t, given).filter((a) => a !== "--json"), `--web-results=${file}`, "--json"], ctx?.signal) };
       } finally {
-        rmSync9(dir2, { recursive: true, force: true });
+        rmSync10(dir2, { recursive: true, force: true });
       }
     }
   };

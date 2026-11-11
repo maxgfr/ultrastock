@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -63,5 +63,43 @@ describe("calc", () => {
     expect(() => calcEvidence(dir, "close * 2", { label: "x" })).toThrow(/not an evidence id/);
     expect(() => calcEvidence(dir, "2 * 3", { label: "x" })).toThrow(/at least one evidence id/);
     expect(() => calcEvidence(dir, "E1 / (E2 - E2)", { label: "x" })).toThrow(/finite/);
+  });
+});
+
+describe("a store kept open across a long run", () => {
+  it("keeps what another command registered meanwhile, and every id it handed out", () => {
+    const dir = mkdtempSync(join(tmpdir(), "us-merge-"));
+    EvidenceStore.update(dir, (s) => s.add({ ...base, key: "close", label: "close", value: 383, unit: "EUR" }));
+    // `analyze` opens the run and registers figures for a while, without saving.
+    const long = EvidenceStore.open(dir);
+    const mine = [long.add({ ...base, key: "a", label: "A", value: 1 }), long.add({ ...base, key: "b", label: "B", value: 2 })];
+    // Meanwhile an agent's `calc` registers a figure of its own on the same run.
+    const theirs = calcEvidence(dir, "E1 * 2", { label: "double" }).id;
+    expect(mine).not.toContain(theirs);
+    // The long run saves at its end, then goes on.
+    long.save();
+    const later = long.add({ ...base, key: "c", label: "C", value: 3 });
+    long.save();
+    const back = EvidenceStore.load(dir)!;
+    const ids = back.items.map((i) => i.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(back.get(theirs)).toMatchObject({ value: 766, label: "double" });
+    expect(back.get(mine[0]!)).toMatchObject({ key: "a", value: 1 });
+    expect(back.get(mine[1]!)).toMatchObject({ key: "b", value: 2 });
+    expect(back.get(later)).toMatchObject({ key: "c", value: 3 });
+    expect([theirs, ...mine]).not.toContain(later);
+    // A calc after the save numbers after everything already handed out.
+    const next = calcEvidence(dir, "E1 * 3", { label: "triple" }).id;
+    expect([theirs, ...mine, later]).not.toContain(next);
+  });
+  it("numbers a run alone contiguously, whatever it registers, and leaves no reservation behind", () => {
+    const dir = mkdtempSync(join(tmpdir(), "us-merge-"));
+    const s = EvidenceStore.open(dir);
+    for (let i = 0; i < 150; i++) s.add({ ...base, key: `k${i}`, label: `K${i}`, value: i });
+    s.save();
+    expect(EvidenceStore.load(dir)!.items.map((i) => i.id)).toEqual(Array.from({ length: 150 }, (_, i) => `E${i + 1}`));
+    expect(readdirSync(dir).sort()).toEqual(["evidence.json"]);
+    expect(calcEvidence(dir, "E1 + E2", { label: "sum" }).id).toBe("E151");
+    expect(existsSync(join(dir, "evidence.json.lock"))).toBe(false);
   });
 });

@@ -391,7 +391,12 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
       const citedDocs: EvidenceItem[] = [];
       for (const t of tokens) {
         const item = store.get(t);
-        if (!item) problems.push({ line, kind: "dangling", message: `[${t}] is not in this run's evidence (it holds E1…E${store.items.length})` });
+        if (!item)
+          problems.push({
+            line,
+            kind: "dangling",
+            message: `[${t}] is not in this run's evidence (it holds E1…${store.items[store.items.length - 1]?.id ?? "nothing"})`,
+          });
         else if (item.doc && !docOf(item))
           problems.push({
             line,

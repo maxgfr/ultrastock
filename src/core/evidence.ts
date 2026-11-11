@@ -7,7 +7,15 @@
 // and `ultrastock check` refuses an answer whose numbers are not in the
 // evidence they cite. Ids are assigned in insertion order, so the same inputs
 // (a replayed fixture) always produce the same ids.
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+//
+// Several commands write one run: `analyze` keeps a store open across its
+// network reads while an agent's `calc` registers figures on the same run. An
+// id is handed out the moment it is added, so it must be unique across them:
+// a store kept open reserves its ids on disk, a few at a time, under the run's
+// lock (EVIDENCE_IDS_FILE), and its save merges what it added into what the
+// file holds by then. Nothing handed out is ever renumbered; a run written by
+// one command at a time stays numbered E1, E2… without a gap.
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { writeFileAtomic } from "../engine.js";
 import { withFileLockSync } from "./lock.js";
@@ -15,6 +23,20 @@ import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "./untrusted.js";
 
 export const EVIDENCE_FILE = "evidence.json";
 export const EVIDENCE_SCHEMA = 1;
+/** The highest id a store still open has reserved in the run, while one has. */
+export const EVIDENCE_IDS_FILE = `${EVIDENCE_FILE}.ids`;
+/** How many ids a store kept open reserves at once: one lock per block, not per figure. */
+const ID_BLOCK = 64;
+
+const idNumber = (id: string): number => Number(/^E(\d+)$/.exec(id)?.[1] ?? 0);
+const maxIdOf = (items: readonly EvidenceItem[]): number => items.reduce((m, i) => Math.max(m, idNumber(i.id)), 0);
+
+function readEvidenceFile(path: string): EvidenceFile | undefined {
+  if (!existsSync(path)) return undefined;
+  const data = JSON.parse(readFileSync(path, "utf8")) as EvidenceFile;
+  if (data.schema !== EVIDENCE_SCHEMA || !Array.isArray(data.items)) throw new Error(`${path} is not an ultrastock evidence file (schema ${EVIDENCE_SCHEMA})`);
+  return data;
+}
 
 /** Where a figure came from. */
 export interface Provenance {
@@ -79,6 +101,10 @@ export interface EvidenceFile {
 export class EvidenceStore {
   readonly dir: string;
   private data: EvidenceFile;
+  /** Inside `update`: the run's lock is held and the items were just read, so ids follow them directly. */
+  private locked = false;
+  /** The ids this store has reserved and not yet handed out. */
+  private block?: { next: number; end: number };
 
   private constructor(dir: string, data: EvidenceFile) {
     this.dir = dir;
@@ -87,13 +113,8 @@ export class EvidenceStore {
 
   /** Open the run at `dir`, creating an empty register when there is none. */
   static open(dir: string, init: { run?: string; subject?: string; createdAt?: string } = {}): EvidenceStore {
-    const path = join(dir, EVIDENCE_FILE);
-    if (existsSync(path)) {
-      const data = JSON.parse(readFileSync(path, "utf8")) as EvidenceFile;
-      if (data.schema !== EVIDENCE_SCHEMA || !Array.isArray(data.items))
-        throw new Error(`${path} is not an ultrastock evidence file (schema ${EVIDENCE_SCHEMA})`);
-      return new EvidenceStore(dir, data);
-    }
+    const data = readEvidenceFile(join(dir, EVIDENCE_FILE));
+    if (data) return new EvidenceStore(dir, data);
     return new EvidenceStore(dir, {
       schema: EVIDENCE_SCHEMA,
       run: init.run ?? dir,
@@ -115,13 +136,14 @@ export class EvidenceStore {
    * otherwise both read N items, both hand out E(N+1), and the second save
    * would replace the first — the [E#] one of them was given then holds another
    * figure. Use it for every short write; a store kept open across a long run
-   * still saves what it read at its start.
+   * reserves its ids and merges on save instead (see the file's header).
    */
   static update<T>(dir: string, change: (store: EvidenceStore) => T, init: { run?: string; subject?: string; createdAt?: string } = {}): T {
-    return withFileLockSync(join(dir, `${EVIDENCE_FILE}.lock`), () => {
+    return withFileLockSync(lockPath(dir), () => {
       const store = EvidenceStore.open(dir, init);
+      store.locked = true;
       const result = change(store);
-      store.save();
+      store.write();
       return result;
     });
   }
@@ -152,9 +174,22 @@ export class EvidenceStore {
     if (typeof item.value === "number" && !Number.isFinite(item.value)) throw new Error(`evidence ${item.key}: not a finite number`);
     const existing = this.byKey(item.key);
     if (existing && existing.value === item.value) return existing.id;
-    const id = `E${this.data.items.length + 1}`;
+    const id = `E${this.nextId()}`;
     this.data.items.push({ id, ...item });
     return id;
+  }
+
+  /** The next id number, unique in the run whatever else writes it meanwhile. */
+  private nextId(): number {
+    if (this.locked) return Math.max(maxIdOf(this.data.items), readReserved(this.dir)) + 1;
+    if (!this.block || this.block.next > this.block.end)
+      this.block = withFileLockSync(lockPath(this.dir), () => {
+        const onDisk = readEvidenceFile(join(this.dir, EVIDENCE_FILE))?.items ?? [];
+        const next = Math.max(maxIdOf(onDisk), readReserved(this.dir), maxIdOf(this.data.items)) + 1;
+        writeFileAtomic(join(this.dir, EVIDENCE_IDS_FILE), `${next + ID_BLOCK - 1}\n`);
+        return { next, end: next + ID_BLOCK - 1 };
+      });
+    return this.block.next++;
   }
 
   /**
@@ -183,11 +218,48 @@ export class EvidenceStore {
     });
   }
 
+  /**
+   * Write the register. Under the run's lock, the file is read again and what
+   * this store added joins what other commands registered meanwhile; the ids
+   * this store did not hand out are given back when nobody reserved after them.
+   */
   save(): string {
+    if (this.locked) return this.write();
+    return withFileLockSync(lockPath(this.dir), () => {
+      const disk = readEvidenceFile(join(this.dir, EVIDENCE_FILE));
+      if (disk) {
+        // What this store holds stands (it read it, or added it under a reserved id); the file adds what others registered.
+        const held = new Set(this.data.items.map((i) => i.id));
+        const items = [...this.data.items, ...disk.items.filter((i) => !held.has(i.id))].sort((a, b) => idNumber(a.id) - idNumber(b.id));
+        this.data = { ...disk, subject: disk.subject ?? this.data.subject, items };
+      }
+      const path = this.write();
+      // Every id handed out is now in the file: the reservation can go, unless another store reserved after it.
+      if (this.block && readReserved(this.dir) === this.block.end) {
+        rmSync(join(this.dir, EVIDENCE_IDS_FILE), { force: true });
+        this.block = undefined;
+      }
+      return path;
+    });
+  }
+
+  private write(): string {
     mkdirSync(this.dir, { recursive: true });
     const path = join(this.dir, EVIDENCE_FILE);
     writeFileAtomic(path, `${JSON.stringify(this.data, null, 2)}\n`);
     return path;
+  }
+}
+
+const lockPath = (dir: string) => join(dir, `${EVIDENCE_FILE}.lock`);
+
+/** The highest id a store still open has reserved in the run (0: none). */
+function readReserved(dir: string): number {
+  try {
+    const n = Number(readFileSync(join(dir, EVIDENCE_IDS_FILE), "utf8").trim());
+    return Number.isSafeInteger(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
   }
 }
 
