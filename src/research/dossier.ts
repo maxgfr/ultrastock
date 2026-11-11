@@ -14,7 +14,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { documentFigures, figureMatches, type Figure } from "../check.js";
-import { EvidenceStore } from "../core/evidence.js";
+import { EvidenceStore, readDocText } from "../core/evidence.js";
 import { clockNow } from "../core/net.js";
 import { sanitizeExternalDocument, sanitizeExternalText, UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "../core/untrusted.js";
 import { bestExcerpt, bm25Tokenize, canonicalizeUrl, contentHash, domainOf, termCoverage, underCovered, writeArtifact, writeFileAtomic } from "../engine.js";
@@ -124,8 +124,10 @@ export function registerDocuments(dir: string, subject: ResearchSubject, pages: 
     const official = officialHost(host, subject.name);
     const text = sanitizeExternalDocument(page.text);
     const title = sanitizeExternalText(page.title || host, 160);
+    const key = `doc.${contentHash(canonicalizeUrl(page.finalUrl)).slice(0, 16)}`;
+    const before = store.byKey(key);
     const id = store.add({
-      key: `doc.${contentHash(canonicalizeUrl(page.finalUrl)).slice(0, 16)}`,
+      key,
       label: `${host} document${page.pdf ? " (PDF)" : ""}`,
       value: title,
       source: host,
@@ -138,6 +140,12 @@ export function registerDocuments(dir: string, subject: ResearchSubject, pages: 
       doc: { path: "", chars: text.length, hash: contentHash(text), ...(page.publishedAt ? { publishedAt: page.publishedAt } : {}) },
     });
     const item = store.get(id)!;
+    // The page is a document this run already holds (read again in a later round, through another URL): its [E#] keeps
+    // the text it was registered, and maybe cited, with — the page as read now may have changed.
+    if (before?.id === id && item.doc?.path) {
+      out.push({ id, page: { ...page, text: readDocText(dir, item) ?? text }, host, official });
+      continue;
+    }
     item.doc = { ...item.doc!, path: `sources/${id}.md` };
     writeArtifact(
       join(dir, item.doc.path),

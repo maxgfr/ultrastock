@@ -9,6 +9,7 @@ import {
   type RegisteredDoc,
   type ResearchTodo,
   readTodo,
+  registerDocuments,
   registrableDomain,
   researchFiles,
   researchTags,
@@ -18,7 +19,7 @@ import {
 import { fuseHits, parseWebResults, readCandidates } from "../src/research/ingest.js";
 import { pendingQueries } from "../src/research/run.js";
 import { researchCommand } from "../src/commands/research.js";
-import { EvidenceStore } from "../src/core/evidence.js";
+import { EvidenceStore, readDocText } from "../src/core/evidence.js";
 
 const LVMH: ResearchSubject = { subject: "MC.PA", symbol: "MC.PA", name: "LVMH", kind: "equity", focus: "results", year: 2026 };
 
@@ -132,6 +133,21 @@ describe("the second round follows the angles, not the template words", () => {
     expect(md).toMatch(/Under-covered angles: results-release \(0 sources\), results-filing \(0 sources\), results-call \(0 sources\)/);
     expect(md).toMatch(/Term statistic, for information \(not searched\)/);
     expect(md).not.toMatch(/Under-covered: transcription/);
+  });
+
+  it("never rewrites a registered document: a page read again in a later round keeps the text its [E#] was cited on", () => {
+    const dir = mkdtempSync(join(tmpdir(), "us-rounds-"));
+    // Round 1 read the page through a redirect; round 2's hit is the URL before it, so the page is read again — and has changed.
+    const first = { ...doc("x", "www.lvmh.com", ["results-release"]).page, url: "https://lvmh.com/x", text: "Revenue rose 4 % to 20.1 bn." };
+    const again = { ...first, text: "Revenue rose 9 % to 22.0 bn.", fetchedAt: "2026-11-03T00:00:00Z" };
+    const [a] = registerDocuments(dir, LVMH, [first]);
+    const [b] = registerDocuments(dir, LVMH, [again]);
+    expect(b!.id).toBe(a!.id);
+    const item = EvidenceStore.load(dir)!.get(a!.id)!;
+    const text = readDocText(dir, item)!;
+    expect(text).toMatch(/Revenue rose 4 % to 20\.1 bn/);
+    expect(text).not.toMatch(/22\.0 bn/);
+    expect(item.doc!.chars).toBe(first.text.length);
   });
 
   it("lists a dropped hit's URL as data: a line break in it cannot start a line of DOSSIER.md", async () => {

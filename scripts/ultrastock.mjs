@@ -21716,8 +21716,10 @@ function registerDocuments(dir2, subject, pages) {
     const official = officialHost(host, subject.name);
     const text = sanitizeExternalDocument(page.text);
     const title = sanitizeExternalText(page.title || host, 160);
+    const key = `doc.${contentHash(canonicalizeUrl(page.finalUrl)).slice(0, 16)}`;
+    const before = store.byKey(key);
     const id = store.add({
-      key: `doc.${contentHash(canonicalizeUrl(page.finalUrl)).slice(0, 16)}`,
+      key,
       label: `${host} document${page.pdf ? " (PDF)" : ""}`,
       value: title,
       source: host,
@@ -21730,6 +21732,10 @@ function registerDocuments(dir2, subject, pages) {
       doc: { path: "", chars: text.length, hash: contentHash(text), ...page.publishedAt ? { publishedAt: page.publishedAt } : {} }
     });
     const item = store.get(id);
+    if (before?.id === id && item.doc?.path) {
+      out.push({ id, page: { ...page, text: readDocText(dir2, item) ?? text }, host, official });
+      continue;
+    }
     item.doc = { ...item.doc, path: `sources/${id}.md` };
     writeArtifact(
       join21(dir2, item.doc.path),
