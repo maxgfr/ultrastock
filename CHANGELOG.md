@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.40](https://github.com/maxgfr/ultrastock/compare/v1.13.39...v1.13.40) (2026-11-11)
+
+
+### Bug Fixes
+
+* **tax/us:** shares taken out of an IRA do not carry the IRA's basis into a taxable account ([7fc7a4c](https://github.com/maxgfr/ultrastock/commit/7fc7a4ceff88a15bdad1a3d4c18c50400d1824e5))
+
 ## [1.13.39](https://github.com/maxgfr/ultrastock/compare/v1.13.38...v1.13.39) (2026-11-11)
 
 
