@@ -342,13 +342,25 @@ export function ticketsPage(v: TicketsView, book: BookName): string {
       )
     : "<p>No ticket (<code>ultrastock plan … --ticket</code>).</p>";
   const str = (x: unknown) => (x === undefined || x === null ? "" : typeof x === "string" ? x : JSON.stringify(x));
+  const field = (x: unknown, k: string) => (typeof x === "object" && x !== null ? (x as Record<string, unknown>)[k] : undefined);
+  // The trail holds two kinds of line: a ticket's transition (`id`, `from`, `to`, `why`), and a live order's event
+  // (`ticket`, `venue`, `env`, `clientOrderId`, then `state` and `message`, or `refusals` of `{ code, reason }`).
+  // `live-limits` carries the limits asked for and whether they apply; `panic` carries nothing but its name.
+  const refusal = (r: unknown) =>
+    typeof r === "object" && r !== null ? [field(r, "code"), field(r, "reason") ?? field(r, "message")].map(str).filter(Boolean).join(": ") : str(r);
+  const why = (a: (typeof v.audit)[number]) =>
+    Array.isArray(a.refusals)
+      ? a.refusals.map(refusal).join("; ")
+      : a.event === "live-limits"
+        ? `${str(field(a.next, "maxOrder"))} per order, ${str(field(a.next, "maxDaily"))} per day: ${a.applied === true ? "in force now" : a.effectiveAt !== undefined ? `in force from ${str(a.effectiveAt)}` : "not changed"}`
+        : str(a.why ?? a.message ?? a.error ?? a.reason);
   const audit = v.audit.length
     ? table(
         `Order audit trail, newest first${v.auditCount > v.audit.length ? ` (the latest ${v.audit.length} of ${v.auditCount} lines)` : ""}`,
-        ["At", "Event", "Ticket", "Transition", "Why"],
+        ["At", "Event", "Ticket", "Transition", "Venue", "Order state", "Why"],
         v.audit.map(
           (a) =>
-            `<tr><td>${esc(str(a.at))}</td><th scope="row">${esc(str(a.event))}</th><td><code>${esc(str(a.id))}</code></td><td>${a.from !== undefined || a.to !== undefined ? `${esc(str(a.from))} → ${esc(str(a.to))}` : ""}</td>${cell(str(a.why ?? a.error ?? a.reason))}</tr>`,
+            `<tr><td>${esc(str(a.at))}</td><th scope="row">${esc(str(a.event))}</th><td><code>${esc(str(a.ticket ?? a.id))}</code></td><td>${a.from !== undefined || a.to !== undefined ? `${esc(str(a.from))} → ${esc(str(a.to))}` : ""}</td><td>${esc([a.venue, a.env].map(str).filter(Boolean).join(" "))}${a.clientOrderId !== undefined ? ` <code>${esc(str(a.clientOrderId))}</code>` : ""}</td>${cell(str(a.state))}${cell(why(a))}</tr>`,
         ),
       )
     : "<p>The audit trail is empty.</p>";

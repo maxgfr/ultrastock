@@ -325,6 +325,34 @@ describe("serve: the pages", () => {
     expect(JSON.parse((await call("/api/tickets")).body).audit).toHaveLength(1);
   });
 
+  it("shows each kind of audit line with its ticket, venue, order state and why", async () => {
+    const h = newHome("audit");
+    const id = "t-20261110090000-abcd1234";
+    const live = { ticket: id, venue: "binance", env: "live", clientOrderId: "us-abcd1234-1" };
+    // The shapes src/trading/tickets.ts, src/trading/live.ts and src/commands/broker.ts write.
+    const lines = [
+      { at: "2026-11-10T09:00:00.000Z", event: "ticket", id, from: "approved", to: "submitted", why: "sending to binance live" },
+      { at: "2026-11-10T09:01:00.000Z", event: "live-refused", ...live, refusals: [{ code: "DAILY", reason: `daily notional limit reached ${XSS}` }] },
+      { at: "2026-11-10T09:02:00.000Z", event: "live-cancel-result", ...live, state: "rejected", message: "unknown order sent" },
+      { at: "2026-11-10T09:03:00.000Z", event: "live-limits", next: { maxOrder: 500, maxDaily: 2000 }, applied: true },
+      { at: "2026-11-10T09:04:00.000Z", event: "panic" },
+    ];
+    mkdirSync(join(h, "audit"), { recursive: true });
+    writeFileSync(join(h, "audit", "orders.jsonl"), lines.map((l) => `${JSON.stringify(l)}\n`).join(""));
+    const r = await call("/tickets");
+    expect(r.status).toBe(200);
+    const row = (event: string) => r.body.split("<tr>").find((x) => x.includes(`<th scope="row">${event}</th>`)) ?? "";
+    expect(r.body).toContain('<th scope="col">Venue</th><th scope="col">Order state</th><th scope="col">Why</th>');
+    expect(row("ticket")).toContain(`<td><code>${id}</code></td><td>approved → submitted</td><td></td><td></td><td>sending to binance live</td>`);
+    expect(row("live-refused")).toContain(
+      `<td><code>${id}</code></td><td></td><td>binance live <code>us-abcd1234-1</code></td><td></td><td>DAILY: daily notional limit reached ${XSS_ESCAPED}</td>`,
+    );
+    expect(row("live-cancel-result")).toContain("<td>binance live <code>us-abcd1234-1</code></td><td>rejected</td><td>unknown order sent</td>");
+    expect(row("live-limits")).toContain("<td>500 per order, 2000 per day: in force now</td>");
+    expect(row("panic")).toContain("<td><code></code></td><td></td><td></td><td></td><td></td>");
+    expect(r.body).not.toMatch(/<script/i);
+  });
+
   it("escapes a hostile account, symbol, note, rule, decision, lesson, thesis and ticket on every page that shows them", async () => {
     await withFixture("portfolio-analytics-paper", async () => {
       for (const path of ["/?book=real", "/ledger?book=real", `/ledger?book=real&account=${encodeURIComponent(XSS)}`, "/journal", "/watch", "/tickets"]) {

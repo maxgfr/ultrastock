@@ -50934,11 +50934,14 @@ function ticketsPage(v, book2) {
     [3, 5, 6]
   ) : "<p>No ticket (<code>ultrastock plan \u2026 --ticket</code>).</p>";
   const str5 = (x) => x === void 0 || x === null ? "" : typeof x === "string" ? x : JSON.stringify(x);
+  const field2 = (x, k) => typeof x === "object" && x !== null ? x[k] : void 0;
+  const refusal2 = (r3) => typeof r3 === "object" && r3 !== null ? [field2(r3, "code"), field2(r3, "reason") ?? field2(r3, "message")].map(str5).filter(Boolean).join(": ") : str5(r3);
+  const why2 = (a) => Array.isArray(a.refusals) ? a.refusals.map(refusal2).join("; ") : a.event === "live-limits" ? `${str5(field2(a.next, "maxOrder"))} per order, ${str5(field2(a.next, "maxDaily"))} per day: ${a.applied === true ? "in force now" : a.effectiveAt !== void 0 ? `in force from ${str5(a.effectiveAt)}` : "not changed"}` : str5(a.why ?? a.message ?? a.error ?? a.reason);
   const audit2 = v.audit.length ? table(
     `Order audit trail, newest first${v.auditCount > v.audit.length ? ` (the latest ${v.audit.length} of ${v.auditCount} lines)` : ""}`,
-    ["At", "Event", "Ticket", "Transition", "Why"],
+    ["At", "Event", "Ticket", "Transition", "Venue", "Order state", "Why"],
     v.audit.map(
-      (a) => `<tr><td>${esc2(str5(a.at))}</td><th scope="row">${esc2(str5(a.event))}</th><td><code>${esc2(str5(a.id))}</code></td><td>${a.from !== void 0 || a.to !== void 0 ? `${esc2(str5(a.from))} \u2192 ${esc2(str5(a.to))}` : ""}</td>${cell2(str5(a.why ?? a.error ?? a.reason))}</tr>`
+      (a) => `<tr><td>${esc2(str5(a.at))}</td><th scope="row">${esc2(str5(a.event))}</th><td><code>${esc2(str5(a.ticket ?? a.id))}</code></td><td>${a.from !== void 0 || a.to !== void 0 ? `${esc2(str5(a.from))} \u2192 ${esc2(str5(a.to))}` : ""}</td><td>${esc2([a.venue, a.env].map(str5).filter(Boolean).join(" "))}${a.clientOrderId !== void 0 ? ` <code>${esc2(str5(a.clientOrderId))}</code>` : ""}</td>${cell2(str5(a.state))}${cell2(why2(a))}</tr>`
     )
   ) : "<p>The audit trail is empty.</p>";
   return layout({ title: "Tickets", page: "tickets", book: book2, asOf: v.asOf, body: `<h2>Tickets</h2>${tickets}<h2>Audit trail</h2>${audit2}` });
