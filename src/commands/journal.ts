@@ -1,7 +1,7 @@
 // Decisions, the journal, knowledge and alerts.
 import { readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
-import { recordDecision, validateDecision } from "../analyze/decision.js";
+import { type Decision, pastDecisions, recordDecision, validateDecision } from "../analyze/decision.js";
 import { runAlerts, addRule, loadRules, notify, removeRule, type RuleKind } from "../alerts/alerts.js";
 import { clockNow } from "../core/net.js";
 import { argInt, argList, argValue, type CommandArgs, UsageError } from "../engine.js";
@@ -37,17 +37,41 @@ export async function decideCommand(args: CommandArgs, asJson: boolean): Promise
   } catch (e) {
     throw new Error(`cannot read ${file} as JSON: ${(e as Error).message}`);
   }
-  const r = validateDecision({ decidedAt: clockNow().toISOString(), run: resolve(run), ...(raw as object) }, resolve(run));
+  // The time, run and id of a decision are the tool's: a decidedAt the file sets would date the call before prices already
+  // known, and `journal settle` would score it on them. The one file that keeps its own is one `decide` already recorded —
+  // it wrote that id and time back, and the journal holds both — which is not recorded twice. Anything else is a new call.
+  const { id, decidedAt, run: claimedRun, ...rest } = (raw ?? {}) as Partial<Decision>;
+  const known =
+    typeof id === "string" && typeof decidedAt === "string"
+      ? pastDecisions(String(rest.symbol), Number.POSITIVE_INFINITY).find((d) => d.id === id && d.decidedAt === decidedAt)
+      : undefined;
+  const notes = known
+    ? []
+    : [
+        ...(decidedAt !== undefined ? [`decidedAt ${JSON.stringify(decidedAt)} ignored: a new decision is dated by the clock`] : []),
+        ...(id !== undefined ? [`id ${JSON.stringify(id)} ignored: no decision of the journal has it at that time, so this is a new one`] : []),
+        ...(claimedRun !== undefined && claimedRun !== resolve(run) ? [`run ${JSON.stringify(claimedRun)} ignored: the decision is on ${resolve(run)}`] : []),
+      ];
+  const r = validateDecision({ ...rest, ...(known && { id }), decidedAt: known?.decidedAt ?? clockNow().toISOString(), run: resolve(run) }, resolve(run));
   if (!r.ok) {
     out(asJson, r, `decision refused — ${r.problems.length} problem(s):\n${r.problems.map((p) => `  - ${p}`).join("\n")}`);
     process.exitCode = 1;
     return;
   }
+  if (known)
+    return out(
+      asJson,
+      { ...r, id: known.id, alreadyRecorded: true },
+      `decision ${known.id} (decided ${known.decidedAt}) is already in the journal — not recorded again; a new call is a decision.json without its id and decidedAt`,
+    );
   const rec = recordDecision(r.decision!, resolve(run));
   out(
     asJson,
-    { ...r, ...rec },
-    `decision ${rec.id} recorded: ${r.decision!.rating} ${r.decision!.symbol} (conviction ${r.decision!.conviction}) — ${rec.journal}\nIt will be settled at +5, +20 and +60 sessions by \`ultrastock journal settle\`.`,
+    { ...r, ...rec, notes },
+    [
+      `decision ${rec.id} recorded: ${r.decision!.rating} ${r.decision!.symbol} (conviction ${r.decision!.conviction}) — ${rec.journal}\nIt will be settled at +5, +20 and +60 sessions by \`ultrastock journal settle\`.`,
+      ...notes.map((n) => `  note: ${n}`),
+    ].join("\n"),
   );
 }
 

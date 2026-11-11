@@ -50600,19 +50600,35 @@ async function decideCommand(args, asJson) {
   } catch (e) {
     throw new Error(`cannot read ${file} as JSON: ${e.message}`);
   }
-  const r3 = validateDecision({ decidedAt: clockNow().toISOString(), run: resolve15(run3), ...raw }, resolve15(run3));
+  const { id, decidedAt, run: claimedRun, ...rest } = raw ?? {};
+  const known = typeof id === "string" && typeof decidedAt === "string" ? pastDecisions(String(rest.symbol), Number.POSITIVE_INFINITY).find((d) => d.id === id && d.decidedAt === decidedAt) : void 0;
+  const notes = known ? [] : [
+    ...decidedAt !== void 0 ? [`decidedAt ${JSON.stringify(decidedAt)} ignored: a new decision is dated by the clock`] : [],
+    ...id !== void 0 ? [`id ${JSON.stringify(id)} ignored: no decision of the journal has it at that time, so this is a new one`] : [],
+    ...claimedRun !== void 0 && claimedRun !== resolve15(run3) ? [`run ${JSON.stringify(claimedRun)} ignored: the decision is on ${resolve15(run3)}`] : []
+  ];
+  const r3 = validateDecision({ ...rest, ...known && { id }, decidedAt: known?.decidedAt ?? clockNow().toISOString(), run: resolve15(run3) }, resolve15(run3));
   if (!r3.ok) {
     printResult(asJson, r3, `decision refused \u2014 ${r3.problems.length} problem(s):
 ${r3.problems.map((p) => `  - ${p}`).join("\n")}`);
     process.exitCode = 1;
     return;
   }
+  if (known)
+    return printResult(
+      asJson,
+      { ...r3, id: known.id, alreadyRecorded: true },
+      `decision ${known.id} (decided ${known.decidedAt}) is already in the journal \u2014 not recorded again; a new call is a decision.json without its id and decidedAt`
+    );
   const rec = recordDecision(r3.decision, resolve15(run3));
   printResult(
     asJson,
-    { ...r3, ...rec },
-    `decision ${rec.id} recorded: ${r3.decision.rating} ${r3.decision.symbol} (conviction ${r3.decision.conviction}) \u2014 ${rec.journal}
-It will be settled at +5, +20 and +60 sessions by \`ultrastock journal settle\`.`
+    { ...r3, ...rec, notes },
+    [
+      `decision ${rec.id} recorded: ${r3.decision.rating} ${r3.decision.symbol} (conviction ${r3.decision.conviction}) \u2014 ${rec.journal}
+It will be settled at +5, +20 and +60 sessions by \`ultrastock journal settle\`.`,
+      ...notes.map((n2) => `  note: ${n2}`)
+    ].join("\n")
   );
 }
 async function journalCommand(args, asJson) {

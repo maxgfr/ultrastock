@@ -1,9 +1,11 @@
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { pastDecisions, recordDecision, validateDecision } from "../src/analyze/decision.js";
+import { describe, expect, it, vi } from "vitest";
+import { type Decision, journalDir, pastDecisions, recordDecision, validateDecision } from "../src/analyze/decision.js";
 import { deltaMarkdown, deltaRuns } from "../src/analyze/delta.js";
+import { commandArgs } from "../src/commands/emit.js";
+import { decideCommand } from "../src/commands/journal.js";
 import { EvidenceStore } from "../src/core/evidence.js";
 import { markdownToHtml, priceSvg, renderReport } from "../src/report/html.js";
 
@@ -51,6 +53,50 @@ describe("decisions", () => {
     expect(r.problems.join(" | ")).toMatch(/contradicts/);
     expect(validateDecision({ ...good, plan: { ...good.plan, stop: undefined } }, dir).problems.join(" ")).toMatch(/stop is required/);
     expect(validateDecision("nope", dir).ok).toBe(false);
+  });
+  it("dates a new decision by the clock, never by its file, and records a re-run of the same file once", async () => {
+    const decide = async (dir: string, body: object) => {
+      const file = join(dir, "decision.json");
+      writeFileSync(file, JSON.stringify(body));
+      let out = "";
+      const spy = vi.spyOn(process.stdout, "write").mockImplementation((c: string | Uint8Array) => {
+        out += String(c);
+        return true;
+      });
+      try {
+        await decideCommand(commandArgs("decide", [dir, file]), true);
+      } finally {
+        spy.mockRestore();
+      }
+      return { out: JSON.parse(out), file: JSON.parse(readFileSync(file, "utf8")) as Decision };
+    };
+    const journal = () =>
+      readFileSync(join(journalDir(), "decisions.jsonl"), "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l) as Decision);
+    const dir = run({ "MC.PA.close": 383, "MC.PA.trend": "downtrend" });
+    const before = Date.now();
+    // Backdated to January, it would be settled against prices already known.
+    const forged = await decide(dir, { ...good, symbol: "FORGED.PA", decidedAt: "2026-01-02", id: "d-forged", run: "/elsewhere" });
+    expect(Date.parse(forged.file.decidedAt)).toBeGreaterThanOrEqual(before);
+    expect(forged.file.id).not.toBe("d-forged");
+    expect(forged.file.run).toBe(dir);
+    expect(forged.out.notes.join(" ")).toMatch(/decidedAt "2026-01-02" ignored.*id "d-forged" ignored/);
+    expect(
+      journal()
+        .filter((d) => d.symbol === "FORGED.PA")
+        .map((d) => [d.id, d.decidedAt]),
+    ).toEqual([[forged.file.id, forged.file.decidedAt]]);
+    // decide again on the file it wrote back: the same decision, neither a second entry nor a new date.
+    const again = await decide(dir, forged.file);
+    expect(again.out).toMatchObject({ id: forged.file.id, alreadyRecorded: true });
+    expect(journal().filter((d) => d.symbol === "FORGED.PA")).toHaveLength(1);
+    // The recorded id under another time is not that decision: a new one, dated now.
+    const moved = await decide(dir, { ...forged.file, decidedAt: "2026-01-02T00:00:00.000Z" });
+    expect(moved.file.id).not.toBe(forged.file.id);
+    expect(Date.parse(moved.file.decidedAt)).toBeGreaterThanOrEqual(before);
+    expect(journal().filter((d) => d.symbol === "FORGED.PA")).toHaveLength(2);
   });
 });
 
