@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.7](https://github.com/maxgfr/ultrastock/compare/v1.13.6...v1.13.7) (2026-11-11)
+
+
+### Bug Fixes
+
+* **check:** a figure in a heading or a table's header row is checked like any other ([955ed45](https://github.com/maxgfr/ultrastock/commit/955ed45a2734d5f919021be5282fd519e57c2392))
+* **etf:** refuse --max-funds below the sleeves the risk profile needs ([a57b5d3](https://github.com/maxgfr/ultrastock/commit/a57b5d3ff529dd76b18f3988dc20879d1e962b49))
+* **journal:** a decision is dated by the clock, never by its decision.json ([be3241d](https://github.com/maxgfr/ultrastock/commit/be3241d85da8aa2668569cb0442093d1bf07b78e))
+* **journal:** settle a horizon only once the price history reaches its end ([c666c2d](https://github.com/maxgfr/ultrastock/commit/c666c2dde2d3b41f2f43534c2a63625945ac875e))
+* **morning:** show only the stop of a ticket filled since the line was opened ([a685590](https://github.com/maxgfr/ultrastock/commit/a68559045b353b3c1074552fbf6d24dedb6b8cfa))
+* **portfolio:** convert each deposit at its own date's rate before the XIRR ([6385124](https://github.com/maxgfr/ultrastock/commit/638512451cf1b3e11e08efc06bfbb1514f7be834))
+
 ## [1.13.6](https://github.com/maxgfr/ultrastock/compare/v1.13.5...v1.13.6) (2026-11-11)
 
 
