@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.11](https://github.com/maxgfr/ultrastock/compare/v1.13.10...v1.13.11) (2026-11-11)
+
+
+### Performance Improvements
+
+* **indicators:** percentRank and Aroon without rescanning each window ([8a31622](https://github.com/maxgfr/ultrastock/commit/8a31622e6d9bd3f541b9643b5d979ea4059e3fdb))
+
 ## [1.13.10](https://github.com/maxgfr/ultrastock/compare/v1.13.9...v1.13.10) (2026-11-11)
 
 
