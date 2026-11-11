@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.9](https://github.com/maxgfr/ultrastock/compare/v1.13.8...v1.13.9) (2026-11-11)
+
+
+### Bug Fixes
+
+* **alerts:** fire a stop only from a ticket filled since the line was opened ([62a1eae](https://github.com/maxgfr/ultrastock/commit/62a1eae70ee7bb35b77bf3ecf2ca242f9b37ed78))
+
 ## [1.13.8](https://github.com/maxgfr/ultrastock/compare/v1.13.7...v1.13.8) (2026-11-11)
 
 
