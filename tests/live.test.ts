@@ -6,7 +6,7 @@ import { setNetMode } from "../src/core/net.js";
 import { homeDir } from "../src/core/paths.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
 import type { BrokerAdapter, LiveOrder, OrderResult } from "../src/trading/brokers/types.js";
-import { effectiveLimits, isTightening, type LiveLimits, LOOSEN_DELAY_MS, requestLimits, tierFor } from "../src/trading/limits.js";
+import { currentLimits, effectiveLimits, isTightening, type LiveLimits, LOOSEN_DELAY_MS, requestLimits, tierFor } from "../src/trading/limits.js";
 import { readLedger } from "../src/portfolio/ledger.js";
 import {
   clientOrderIdFor,
@@ -166,6 +166,25 @@ describe("live limits", () => {
         { maxOrder: 1, maxDaily: 1, venues: ["kraken", "binance"], attestedNoWithdraw: [] },
       ),
     ).toBe(false);
+  });
+
+  it("do not refuse a tightening because another tightening landed between its read and its lock", () => {
+    requestLimits({ maxOrder: 250, maxDaily: 500, venues: ["kraken"], attestedNoWithdraw: [] }, true, new Date(Date.now() - 25 * 3_600_000));
+    requestLimits({ maxOrder: 250, maxDaily: 500, venues: ["kraken"], attestedNoWithdraw: [] }, false); // matured: now current
+    // Two `broker limits set` at once, each with only its own flag: what is left out is read under the lock.
+    expect(requestLimits({ maxOrder: 100 }, false)).toMatchObject({ applied: true }); // --max-order 100
+    // --venues none: switch every venue off. It lowers nothing, and is weighed against the 100 now in force.
+    expect(requestLimits({ venues: [] }, false)).toMatchObject({ applied: true });
+    expect(currentLimits()).toMatchObject({ maxOrder: 100, maxDaily: 500, venues: [] });
+    // A loosening's code approves the limits it would set, read under the lock.
+    const seen: unknown[] = [];
+    expect(
+      requestLimits({ maxOrder: 200 }, (full) => {
+        seen.push(full);
+        return true;
+      }),
+    ).toMatchObject({ applied: false, effectiveAt: expect.any(String) });
+    expect(seen).toEqual([{ maxOrder: 200, maxDaily: 500, venues: [], attestedNoWithdraw: [] }]);
   });
 
   it("keep every change when two processes set them at once", async () => {

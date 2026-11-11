@@ -44920,12 +44920,13 @@ function isTightening(cur, next2) {
   return next2.maxOrder <= cur.maxOrder && next2.maxDaily <= cur.maxDaily && next2.venues.every((v) => cur.venues.includes(v)) && next2.attestedNoWithdraw.every((v) => cur.attestedNoWithdraw.includes(v));
 }
 var limitsBinding = (l) => JSON.stringify([l.maxOrder, l.maxDaily, [...l.venues].sort(), [...l.attestedNoWithdraw].sort()]);
-function requestLimits(next2, approved, now = /* @__PURE__ */ new Date()) {
-  if (!(next2.maxOrder >= 0 && next2.maxDaily >= next2.maxOrder)) return { applied: false, reason: "the daily limit must be at least the order limit, both \u2265 0" };
-  return limitsLock(() => changeLimits(next2, approved, now));
+function requestLimits(change, approved, now = /* @__PURE__ */ new Date()) {
+  return limitsLock(() => changeLimits(change, approved, now));
 }
-function changeLimits(next2, approved, now) {
+function changeLimits(change, approved, now) {
   const s = load();
+  const next2 = { ...s.current, ...Object.fromEntries(Object.entries(change).filter(([, v]) => v !== void 0)) };
+  if (!(next2.maxOrder >= 0 && next2.maxDaily >= next2.maxOrder)) return { applied: false, reason: "the daily limit must be at least the order limit, both \u2265 0" };
   if (isTightening(s.current, next2)) {
     s.history.push({ at: now.toISOString(), from: s.current, to: next2, how: "tightened" });
     s.current = next2;
@@ -44933,7 +44934,8 @@ function changeLimits(next2, approved, now) {
     save2(s);
     return { applied: true };
   }
-  if (!approved) return { applied: false, reason: "loosening a limit needs an approval code (`broker code limits \u2026`) and takes effect 24 hours later" };
+  if (!(typeof approved === "function" ? approved(next2) : approved))
+    return { applied: false, reason: "loosening a limit needs an approval code (`broker code limits \u2026`) and takes effect 24 hours later" };
   const effectiveAt = new Date(now.getTime() + LOOSEN_DELAY_MS).toISOString();
   s.pending = { limits: next2, requestedAt: now.toISOString(), effectiveAt };
   save2(s);
@@ -46218,28 +46220,30 @@ function adapterFor(venue, env2) {
     tls: { caFile, fingerprint256: process.env.ULTRASTOCK_IBKR_CERT_SHA256 }
   });
 }
-function nextLimits(args, cur) {
-  const num16 = (f3, d) => {
+function limitChange(args) {
+  const num16 = (f3) => {
     const v = argValue(args, f3);
-    if (v === void 0) return d;
+    if (v === void 0) return void 0;
     const n2 = Number(v);
     if (!Number.isFinite(n2) || n2 < 0) throw new UsageError(`--${f3} is an amount \u2265 0`);
     return n2;
   };
-  const venues = (f3, d) => {
+  const venues = (f3) => {
     const l = argList(args, f3);
-    if (!l.length) return d;
+    if (!l.length) return void 0;
     if (l.length === 1 && l[0] === "none") return [];
     for (const v of l) if (!VENUES.includes(v)) throw new UsageError(`--${f3}: unknown venue ${v}`);
     return l;
   };
-  return {
-    maxOrder: num16("max-order", cur.maxOrder),
-    maxDaily: num16("max-daily", cur.maxDaily),
-    venues: venues("venues", cur.venues),
-    attestedNoWithdraw: venues("attest", cur.attestedNoWithdraw)
+  const change = {
+    maxOrder: num16("max-order"),
+    maxDaily: num16("max-daily"),
+    venues: venues("venues"),
+    attestedNoWithdraw: venues("attest")
   };
+  return Object.fromEntries(Object.entries(change).filter(([, v]) => v !== void 0));
 }
+var nextLimits = (args, cur) => ({ ...cur, ...limitChange(args) });
 async function brokerCommand(args, asJson) {
   const [sub = "status", id] = args.positional;
   const now = clockNow();
@@ -46271,12 +46275,20 @@ async function brokerCommand(args, asJson) {
         ].filter(Boolean).join("\n")
       );
     }
-    const next2 = nextLimits(args, currentLimits());
+    const change = limitChange(args);
     const code = argValue(args, "code");
-    const approved = code ? verifyCode("limits", limitsBinding(next2), code, now).ok : false;
-    if (code && !approved) throw new Error("the approval code does not match these limits (or expired): run `broker code limits` with the same flags");
-    const r3 = requestLimits(next2, approved, now);
-    audit({ event: "live-limits", next: next2, applied: r3.applied, effectiveAt: r3.effectiveAt });
+    let refused = false;
+    const r3 = requestLimits(
+      change,
+      (next2) => {
+        if (!code) return false;
+        refused = !verifyCode("limits", limitsBinding(next2), code, now).ok;
+        return !refused;
+      },
+      now
+    );
+    if (refused) throw new Error("the approval code does not match these limits (or expired): run `broker code limits` with the same flags");
+    audit({ event: "live-limits", change, applied: r3.applied, effectiveAt: r3.effectiveAt });
     return printResult(
       asJson,
       r3,

@@ -75,28 +75,33 @@ export function adapterFor(venue: Venue, env: Environment): BrokerAdapter {
   });
 }
 
-function nextLimits(args: CommandArgs, cur: LiveLimits): LiveLimits {
-  const num = (f: string, d: number) => {
+/** The limits the flags set; a field without its flag is left out, to be read under the limits' lock. */
+function limitChange(args: CommandArgs): Partial<LiveLimits> {
+  const num = (f: string) => {
     const v = argValue(args, f);
-    if (v === undefined) return d;
+    if (v === undefined) return undefined;
     const n = Number(v);
     if (!Number.isFinite(n) || n < 0) throw new UsageError(`--${f} is an amount ≥ 0`);
     return n;
   };
-  const venues = (f: string, d: Venue[]) => {
+  const venues = (f: string) => {
     const l = argList(args, f);
-    if (!l.length) return d;
+    if (!l.length) return undefined;
     if (l.length === 1 && l[0] === "none") return [];
     for (const v of l) if (!(VENUES as string[]).includes(v)) throw new UsageError(`--${f}: unknown venue ${v}`);
     return l as Venue[];
   };
-  return {
-    maxOrder: num("max-order", cur.maxOrder),
-    maxDaily: num("max-daily", cur.maxDaily),
-    venues: venues("venues", cur.venues),
-    attestedNoWithdraw: venues("attest", cur.attestedNoWithdraw),
+  const change: Partial<LiveLimits> = {
+    maxOrder: num("max-order"),
+    maxDaily: num("max-daily"),
+    venues: venues("venues"),
+    attestedNoWithdraw: venues("attest"),
   };
+  return Object.fromEntries(Object.entries(change).filter(([, v]) => v !== undefined));
 }
+
+/** The whole limits the flags would set, over `cur`: what a code is issued for and shown. */
+const nextLimits = (args: CommandArgs, cur: LiveLimits): LiveLimits => ({ ...cur, ...limitChange(args) });
 
 export async function brokerCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const [sub = "status", id] = args.positional;
@@ -137,12 +142,21 @@ export async function brokerCommand(args: CommandArgs, asJson: boolean): Promise
           .join("\n"),
       );
     }
-    const next = nextLimits(args, currentLimits());
+    // Only the flags given: the rest is the limits in force when the change is made, read under its lock.
+    const change = limitChange(args);
     const code = argValue(args, "code");
-    const approved = code ? verifyCode("limits", limitsBinding(next), code, now).ok : false;
-    if (code && !approved) throw new Error("the approval code does not match these limits (or expired): run `broker code limits` with the same flags");
-    const r = requestLimits(next, approved, now);
-    audit({ event: "live-limits", next, applied: r.applied, effectiveAt: r.effectiveAt });
+    let refused = false;
+    const r = requestLimits(
+      change,
+      (next) => {
+        if (!code) return false;
+        refused = !verifyCode("limits", limitsBinding(next), code, now).ok;
+        return !refused;
+      },
+      now,
+    );
+    if (refused) throw new Error("the approval code does not match these limits (or expired): run `broker code limits` with the same flags");
+    audit({ event: "live-limits", change, applied: r.applied, effectiveAt: r.effectiveAt });
     return out(
       asJson,
       r,

@@ -90,16 +90,29 @@ export function isTightening(cur: LiveLimits, next: LiveLimits): boolean {
 export const limitsBinding = (l: LiveLimits) => JSON.stringify([l.maxOrder, l.maxDaily, [...l.venues].sort(), [...l.attestedNoWithdraw].sort()]);
 
 /**
- * Change the limits. A tightening applies now. A loosening needs `approved`
- * (a verified out-of-band code) and becomes effective after 24 hours.
+ * Change the limits. `change` holds what the user set; every other field is
+ * the limit in force, read under the lock — not one read earlier, which a
+ * concurrent change may have tightened since (the request would then read as
+ * a loosening). A tightening applies now. A loosening needs `approved` (a
+ * verified out-of-band code; as a function, asked about the very limits it
+ * would set) and becomes effective after 24 hours.
  */
-export function requestLimits(next: LiveLimits, approved: boolean, now = new Date()): { applied: boolean; effectiveAt?: string; reason?: string } {
-  if (!(next.maxOrder >= 0 && next.maxDaily >= next.maxOrder)) return { applied: false, reason: "the daily limit must be at least the order limit, both ≥ 0" };
-  return limitsLock(() => changeLimits(next, approved, now));
+export function requestLimits(
+  change: Partial<LiveLimits>,
+  approved: boolean | ((next: LiveLimits) => boolean),
+  now = new Date(),
+): { applied: boolean; effectiveAt?: string; reason?: string } {
+  return limitsLock(() => changeLimits(change, approved, now));
 }
 
-function changeLimits(next: LiveLimits, approved: boolean, now: Date): { applied: boolean; effectiveAt?: string; reason?: string } {
+function changeLimits(
+  change: Partial<LiveLimits>,
+  approved: boolean | ((next: LiveLimits) => boolean),
+  now: Date,
+): { applied: boolean; effectiveAt?: string; reason?: string } {
   const s = load();
+  const next: LiveLimits = { ...s.current, ...Object.fromEntries(Object.entries(change).filter(([, v]) => v !== undefined)) };
+  if (!(next.maxOrder >= 0 && next.maxDaily >= next.maxOrder)) return { applied: false, reason: "the daily limit must be at least the order limit, both ≥ 0" };
   if (isTightening(s.current, next)) {
     s.history.push({ at: now.toISOString(), from: s.current, to: next, how: "tightened" });
     s.current = next;
@@ -108,7 +121,8 @@ function changeLimits(next: LiveLimits, approved: boolean, now: Date): { applied
     save(s);
     return { applied: true };
   }
-  if (!approved) return { applied: false, reason: "loosening a limit needs an approval code (`broker code limits …`) and takes effect 24 hours later" };
+  if (!(typeof approved === "function" ? approved(next) : approved))
+    return { applied: false, reason: "loosening a limit needs an approval code (`broker code limits …`) and takes effect 24 hours later" };
   const effectiveAt = new Date(now.getTime() + LOOSEN_DELAY_MS).toISOString();
   s.pending = { limits: next, requestedAt: now.toISOString(), effectiveAt };
   save(s);
