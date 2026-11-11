@@ -101,7 +101,10 @@ export function transactionId(t: Omit<Transaction, "id">): string {
     t.amount ?? "",
     t.fee ?? "",
     t.currency,
-    t.origin.split(":")[0],
+    // A ticket's fill belongs to that ticket: two tickets carrying the same order, filled in the same second, are two
+    // fills. Every other origin counts by its kind only, so a re-imported statement row keeps the id it always had
+    // (and rows already stored keep theirs: an id is computed once, on append).
+    t.origin.startsWith("ticket:") ? t.origin : t.origin.split(":")[0],
   ].join("|");
   // Without a reference the id is what it always was.
   return contentHash(t.ref ? `${norm}|ref:${t.ref}` : norm).slice(0, 16);
