@@ -119,6 +119,18 @@ export function americanBinomial(right: Right, input: BsInput, steps = 400): { p
     const g = atExpiry(right, spot, strike);
     return { price: g.price, delta: g.delta, earlyExercisePremium: 0 };
   }
+  if (vol <= 0) {
+    // Nothing moves but the carry (the tree degenerates: u = d): the spot follows S·e^((r−q)τ), so exercising at τ is
+    // worth ±(S·e^−qτ − K·e^−rτ) today. Its best is at an end of the life or where the derivative vanishes, at
+    // τ* = ln(rK / qS) / (r − q); the European is the value at τ = t, as blackScholes prices it.
+    const sign = right === "call" ? 1 : -1;
+    const at = (tau: number) => sign * (spot * Math.exp(-q * tau) - strike * Math.exp(-r * tau));
+    const star = r !== q && r > 0 && q > 0 ? Math.log((r * strike) / (q * spot)) / (r - q) : Number.NaN;
+    const best = [0, t, ...(star > 0 && star < t ? [star] : [])].reduce((a, b) => (at(b) > at(a) ? b : a));
+    if (!(at(best) > 0)) return { price: 0, delta: 0, earlyExercisePremium: 0 };
+    const price = at(best);
+    return { price, delta: sign * Math.exp(-q * best), earlyExercisePremium: price - blackScholes(right, input).price };
+  }
   const dt = t / steps;
   const u = Math.exp(vol * Math.sqrt(dt));
   const d = 1 / u;

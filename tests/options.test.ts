@@ -84,6 +84,27 @@ describe("American options", () => {
     expect(americanBinomial("put", { ...hull, t: 0 })).toEqual({ price: 0, delta: 0, earlyExercisePremium: 0 });
     expect(americanBinomial("put", { ...hull, spot: 36, t: 0 })).toEqual({ price: 4, delta: -1, earlyExercisePremium: 0 });
   });
+  it("is worth its best deterministic exercise at zero volatility, not NaN", () => {
+    // Deep in-the-money put, no dividend: exercise now (10) beats waiting (110·e^−0.05 − 100 ≈ 4.64, the European).
+    const put = americanBinomial("put", { spot: 100, strike: 110, t: 1, r: 0.05, vol: 0 });
+    expect(put.price).toBeCloseTo(10, 10);
+    expect(put.delta).toBe(-1);
+    expect(put.earlyExercisePremium).toBeCloseTo(10 - blackScholes("put", { spot: 100, strike: 110, t: 1, r: 0.05, vol: 0 }).price, 10);
+    // A call without dividend is never exercised early: the European's discounted forward.
+    const call = americanBinomial("call", { spot: 100, strike: 90, t: 1, r: 0.05, vol: 0 });
+    expect(call.price).toBeCloseTo(100 - 90 * Math.exp(-0.05), 10);
+    expect(call.earlyExercisePremium).toBeCloseTo(0, 10);
+    // Out of the money all the way: worthless.
+    expect(americanBinomial("call", { spot: 80, strike: 90, t: 1, r: 0.01, vol: -0.1 })).toEqual({ price: 0, delta: 0, earlyExercisePremium: 0 });
+    // A dividend-paying call whose best exercise falls inside the life: S·e^−qτ − K·e^−rτ peaks at τ* = ln(rK / qS) / (r − q).
+    const inside = { spot: 100, strike: 90, t: 20, r: 0.05, q: 0.04, vol: 0 };
+    const tau = Math.log((0.05 * 90) / (0.04 * 100)) / 0.01;
+    const best = 100 * Math.exp(-0.04 * tau) - 90 * Math.exp(-0.05 * tau);
+    expect(americanBinomial("call", inside).price).toBeCloseTo(best, 10);
+    expect(best).toBeGreaterThan(Math.max(10, blackScholes("call", inside).price));
+    // The tree agrees once the volatility is small (yet above the carry per step, where its probabilities stay in [0, 1]).
+    expect(americanBinomial("call", { ...inside, vol: 0.003 }, 2000).price).toBeCloseTo(best, 1);
+  });
 });
 
 describe("strategies", () => {
