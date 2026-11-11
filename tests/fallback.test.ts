@@ -84,6 +84,23 @@ describe("firstAnswer", () => {
   });
 });
 
+describe("firstAnswer, a crash before a refusal", () => {
+  it("still names the crash when the last source refuses, and keeps the refusal's status", async () => {
+    const crash = new TypeError("Cannot read properties of undefined (reading 'rows')");
+    const err = (await firstAnswer([failing("nasdaq", crash), failing("yahoo", new ProviderError("yahoo", "no such listing", 404))]).catch(
+      (e) => e,
+    )) as ProviderError;
+    expect(err.message).toMatch(/no such listing \(after nasdaq failed on an internal error \(TypeError: Cannot read properties/);
+    expect(err.cause).toBe(crash);
+    // Still a definitive answer: not routed around further up.
+    expect(err.status).toBe(404);
+    expect(err.transient).toBe(false);
+    // With no crash before it, the refusal is thrown as it came.
+    const plain = new ProviderError("yahoo", "no such listing", 404);
+    await expect(firstAnswer([failing("yahoo", plain)])).rejects.toBe(plain);
+  });
+});
+
 describe("failureNote", () => {
   it("says a source did not answer for an outage or a missing recording", () => {
     expect(failureNote({ source: "nasdaq", error: "nasdaq: HTTP 503", kind: "outage" }, "yahoo")).toBe(

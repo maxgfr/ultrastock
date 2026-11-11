@@ -64,8 +64,23 @@ export async function firstAnswer<T>(attempts: readonly Attempt<T>[], opts: { fa
     } catch (e) {
       const failure = classify(a.source, e);
       failures.push(failure);
-      if (failure.kind === "refusal" && !opts.fallThroughAll) throw e;
       if (failure.kind === "defect") defect ??= e;
+      if (failure.kind === "refusal" && !opts.fallThroughAll) {
+        if (defect === undefined) throw e;
+        // The refusal stays the answer (same status: definitive), but a reader that crashed before it is part of why there
+        // is no figure, and must not vanish behind "no such listing".
+        const pe = e as ProviderError;
+        const err = new ProviderError(
+          pe.source,
+          `${pe.message.replace(`${pe.source}: `, "")} (after ${failures
+            .filter((f) => f.kind === "defect")
+            .map(crashed)
+            .join("; ")})`,
+          pe.status,
+        );
+        err.cause = defect;
+        throw err;
+      }
     }
   }
   const why = failures.map((f) => (f.kind === "defect" ? crashed(f) : f.error)).join("; ");

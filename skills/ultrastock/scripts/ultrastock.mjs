@@ -13034,8 +13034,18 @@ async function firstAnswer(attempts, opts = {}) {
     } catch (e) {
       const failure4 = classify(a.source, e);
       failures.push(failure4);
-      if (failure4.kind === "refusal" && !opts.fallThroughAll) throw e;
       if (failure4.kind === "defect") defect ??= e;
+      if (failure4.kind === "refusal" && !opts.fallThroughAll) {
+        if (defect === void 0) throw e;
+        const pe = e;
+        const err2 = new ProviderError(
+          pe.source,
+          `${pe.message.replace(`${pe.source}: `, "")} (after ${failures.filter((f3) => f3.kind === "defect").map(crashed).join("; ")})`,
+          pe.status
+        );
+        err2.cause = defect;
+        throw err2;
+      }
     }
   }
   const why2 = failures.map((f3) => f3.kind === "defect" ? crashed(f3) : f3.error).join("; ");
