@@ -389,23 +389,28 @@ const PERIOD_LABEL = /(?<![\p{L}\p{N}.,])(?:\d{1,2}[MmYyWwDd](?![\p{L}\p{N}])(?!
 const withoutPeriodLabels = (text: string) => text.replace(PERIOD_LABEL, " ");
 
 /**
- * A table's header row is read like any row, but a header cell holding only a
- * whole number — a horizon (`+5`, `20`, `J+60`) or a year — labels its column:
- * it is blanked, the rest of the row is checked; so is a horizon or a period
- * label ("1M", "H1 26"). Lines are kept one for one.
+ * A table's header row is read like any row, but its labels are blanked and
+ * the rest of the row is checked (lines are kept one for one):
+ * - whole numbers, where the row is plainly a row of labels — two or more of
+ *   its cells are a whole number alone, a series of horizons or years (`+5`,
+ *   `20`, `J+60`, `2026`). A key/value table's first row (`| Price target |
+ *   450 |`) states a value;
+ * - a horizon or a period label ("1M", "H1 26");
+ * - the dates of a row that cites no [E#]: like a heading's, they label the
+ *   columns (`| Metric | 2025-12-31 | 2026-12-31 |`).
  */
 function withoutColumnLabels(answer: string): string {
   const separator = (l: string) => /\|/.test(l) && /^[\s:|-]+$/.test(l.trim()) && /-/.test(l);
+  const wholeNumber = (c: string) => /^\s*(?:\p{L}?[+\-−–])?\d+\s*$/u.test(c);
   const lines = answer.split("\n");
   return lines
-    .map((l, i) =>
-      /\|/.test(l) && !separator(l) && separator(lines[i + 1] ?? "")
-        ? l
-            .split("|")
-            .map((c) => (/^\s*(?:\p{L}?[+\-−–])?\d+\s*$/u.test(c) ? " " : withoutPeriodLabels(c)))
-            .join("|")
-        : l,
-    )
+    .map((l, i) => {
+      if (!(/\|/.test(l) && !separator(l) && separator(lines[i + 1] ?? ""))) return l;
+      const cells = l.split("|");
+      const labelRow = cells.filter(wholeNumber).length >= 2;
+      const cites = /\[E\d+\]/.test(l);
+      return cells.map((c) => (labelRow && wholeNumber(c) ? " " : withoutPeriodLabels(cites ? c : blankDates(c)))).join("|");
+    })
     .join("\n");
 }
 

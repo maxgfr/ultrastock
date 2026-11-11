@@ -18,14 +18,16 @@ above a list grounds nothing below it. `## Buy, target 450 €` with no `[E#]`
 is refused.
 
 Labels are not figures: a heading's section number (`## 1. Thesis`,
-`### 2.3 Risks`; `2.3 bn` opening a heading is still a figure), a header cell
-holding only a whole number (horizons and years heading columns: `+5`, `20`,
-`J+60`, `2026`), a horizon or period label in a header cell or a heading
+`### 2.3 Risks`; `2.3 bn` opening a heading is still a figure), the whole
+numbers of a header row of horizons or years — two or more cells each holding
+only a whole number (`| Horizon | +5 | 20 | J+60 |`; a key/value table's first
+row, `| Price target | 450 |`, states a value), a horizon or period label in a header cell or a heading
 (`| 1M | 3M | 1Y |`, `Perf 12m`, `## 12M performance`, `H1 26`, `9M 2026`;
 `3 M€` there is still an amount, and `12M shares` in prose is twelve
 million), and everything listed below. A heading with no figure and no
 `[E#]` is a title: a date in it labels the section and is not held to the rule
-for dates ahead.
+for dates ahead. So is a date in a header row that cites no `[E#]`: it labels
+its column (`| Metric | 2025-12-31 | 2026-12-31 |`).
 
 A **figure** is any number written as a quantity: `383,00 €`, `−1.24 %`,
 `$1.6 trillion`, `188,6 Md€`, `31.4x`, `12 bps`, `39,539,690 shares` — markup

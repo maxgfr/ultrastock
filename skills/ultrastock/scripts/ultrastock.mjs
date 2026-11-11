@@ -22017,10 +22017,15 @@ var PERIOD_LABEL = /(?<![\p{L}\p{N}.,])(?:\d{1,2}[MmYyWwDd](?![\p{L}\p{N}])(?!\s
 var withoutPeriodLabels = (text2) => text2.replace(PERIOD_LABEL, " ");
 function withoutColumnLabels(answer) {
   const separator = (l) => /\|/.test(l) && /^[\s:|-]+$/.test(l.trim()) && /-/.test(l);
+  const wholeNumber = (c) => new RegExp("^\\s*(?:\\p{L}?[+\\-\u2212\u2013])?\\d+\\s*$", "u").test(c);
   const lines = answer.split("\n");
-  return lines.map(
-    (l, i) => /\|/.test(l) && !separator(l) && separator(lines[i + 1] ?? "") ? l.split("|").map((c) => new RegExp("^\\s*(?:\\p{L}?[+\\-\u2212\u2013])?\\d+\\s*$", "u").test(c) ? " " : withoutPeriodLabels(c)).join("|") : l
-  ).join("\n");
+  return lines.map((l, i) => {
+    if (!(/\|/.test(l) && !separator(l) && separator(lines[i + 1] ?? ""))) return l;
+    const cells = l.split("|");
+    const labelRow = cells.filter(wholeNumber).length >= 2;
+    const cites = /\[E\d+\]/.test(l);
+    return cells.map((c) => labelRow && wholeNumber(c) ? " " : withoutPeriodLabels(cites ? c : blankDates(c))).join("|");
+  }).join("\n");
 }
 function headingText(heading) {
   const t = withoutPeriodLabels(heading.replace(/^#{1,6}\s+/, ""));

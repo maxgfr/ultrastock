@@ -59,6 +59,22 @@ describe("horizon and period labels in header rows and headings", () => {
   });
 });
 
+describe("what a header row labels", () => {
+  it("reads the whole number of a key/value table's first row as a figure", () => {
+    expect(refused("| Price target | 450 |\n|---|---|\n| Close | 383 € [E1] |\n")).toBe(true);
+    expect(refused("| Upside (%) | 45 |\n|---|---|\n| Close | 383 € [E1] |\n")).toBe(true);
+    // A row of horizons or years is a row of labels.
+    expect(kinds("| Horizon | 5 | 20 | 60 |\n|---|---|---|---|\n| Return | n/a | n/a | −37.7 % [E2] |\n")).toEqual([]);
+  });
+  it("reads period-end dates heading the columns as labels", () => {
+    expect(kinds("| Metric | 2025-12-31 | 2026-12-31 |\n|---|---|---|\n| Revenue | 84.7 bn [E4] | n/a |\n")).toEqual([]);
+    expect(kinds("| Metric | 31 Dec 2026 | 31/12/2027 |\n|---|---|---|\n| Revenue | 84.7 bn [E4] | n/a |\n")).toEqual([]);
+    // A date ahead in prose, uncited, is still refused; and a header row that cites holds its dates to the evidence.
+    expect(kinds("Results on 2026-12-01.\n")).toEqual(["uncited"]);
+    expect(kinds("| Close 383 € [E1] | 2026-12-01 |\n|---|---|\n| a | b |\n")).toEqual(["unsupported"]);
+  });
+});
+
 describe("figures behind markup and other code points", () => {
   it("reads a figure in emphasis, in full-width digits, as entities, as a vulgar fraction, as 'pc' or in superscript", () => {
     expect(refused("Close 383 € [E1]. Target _450_ and up _45 %_.\n")).toBe(true);
