@@ -59,6 +59,30 @@ describe("horizon and period labels in header rows and headings", () => {
   });
 });
 
+describe("the closing sources list", () => {
+  it("sets aside only a list of evidence ids or links under an exact sources title", () => {
+    expect(refused("Close 383 € [E1].\n\n## Sources of upside\n\nCloud is 45 % of revenue and grows 30 % a year. Target 450 €.\n")).toBe(true);
+    expect(refused("Close 383 € [E1].\n\n## Evidence and verdict\n\nBuy. Target 450 €, upside 17.5 %.\n")).toBe(true);
+    expect(refused("Close 383 € [E1].\n\n## Appendix: my own estimates\n\nTarget 450 €, upside 17.5 %, P/E 12.\n")).toBe(true);
+    expect(refused("Close 383 € [E1].\n\n## Sources\n\n- [E1] close\n\nBottom line: buy, target 450 €.\n")).toBe(true);
+    expect(refused("Close 383 € [E1].\n\n## Sources\n\n- [E1] close\n- target 450 €\n")).toBe(true);
+    expect(refused("Close 383 € [E1].\n\n```\n## Sources\n```\n\nBuy at 450 €.\n")).toBe(true);
+  });
+  it("still sets aside a genuine closing list, whatever its ids or links state", () => {
+    const listed = (answer: string) => {
+      const r = checkAnswer(run(), answer, { now });
+      return "error" in r ? ["error"] : r.problems.map((p) => p.kind);
+    };
+    expect(listed("Close 383 € [E1].\n\n## Sources\n\n- [E1] close, euronext, 2026-10-23\n- [E2] 1y return −37.683 %\n")).toEqual(["inert"]);
+    expect(
+      listed(
+        "Close 383 € [E1].\n\n### References:\n\n1. [E1] close\n2. https://live.euronext.com/en/product/equities/FR0000121014\n3. [LVMH 10-K, 2025](https://www.sec.gov/x)\n",
+      ),
+    ).toEqual([]);
+    expect(listed("Close 383 € [E1].\n\n## Sources\n\n| Id | Source |\n|---|---|\n| [E1] | euronext, 383 € |\n| [E2] | euronext |\n")).toEqual(["inert"]);
+  });
+});
+
 describe("a heading's section number", () => {
   it("drops a section number before a title starting with a scale letter", () => {
     expect(kinds("## 3.2 M&A outlook\n\nClose 383 € [E1].\n")).toEqual([]);

@@ -103,3 +103,10 @@ is the stalest and least official of its inputs.
 Notes, which do not fail: `inert` (an id only in code or a closing sources
 list) and `unsourced` (a long claim with no figure and no citation — fine for
 reasoning, not for a fact).
+
+A **closing sources list** is set aside: under the answer's last heading, when
+that heading is exactly a sources title (`## Sources`, `### References:`,
+`## Evidence`, `## Annexe`), the list items and table rows that name an `[E#]`
+or a link. Anything else under it — `## Sources of upside`, `## Appendix: my
+own estimates`, an item with no id or link, prose after the list — is read like
+any claim, and a `## Sources` line inside a code fence is no heading.

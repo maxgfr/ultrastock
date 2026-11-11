@@ -22005,12 +22005,29 @@ function nearClaim(doc, claim) {
   if (!hits.some(Boolean)) return text2;
   return lines.filter((_, i) => hits.slice(Math.max(0, i - NEAR_LINES), i + NEAR_LINES + 1).some(Boolean)).join("\n");
 }
-var SOURCES_HEADING = /^#{1,6}\s+(?:sources?|references?|citations?|évidences?|evidence|preuves|références?|annexe|appendix)\b/i;
+var SOURCES_HEADING = /^#{1,6}\s+(?:\d{1,2}(?:\.\d{1,2})*[.)]?\s+)?(?:sources?|references?|références?|citations?|evidences?|évidences?|preuves|bibliography|bibliographie|annexes?|appendix|appendices)\s*:?\s*#*$/i;
+var LIST_ITEM = /^\s*(?:[-*+]|\d{1,3}[.)])\s+/;
+var TABLE_ROW = /^\s*\|/;
+var TABLE_SEPARATOR = /^\s*\|?[\s:|-]*-[\s:|-]*$/;
+var SOURCE_REF = /\[E\d+\]|(?<![\p{L}\p{N}])E\d+(?![\p{L}\p{N}])|https?:\/\/|\]\(/u;
 function closingSourcesMask(lines) {
   const mask = lines.map(() => false);
-  const headings = lines.map((l, i) => /^#{1,6}\s/.test(l.trim()) ? i : -1).filter((i) => i >= 0);
+  const code = codeMask(lines);
+  const headings = lines.map((l, i) => !code[i] && /^#{1,6}\s/.test(l.trim()) ? i : -1).filter((i) => i >= 0);
   const last2 = headings[headings.length - 1];
-  if (last2 !== void 0 && SOURCES_HEADING.test(lines[last2].trim())) for (let i = last2; i < lines.length; i++) mask[i] = true;
+  if (last2 === void 0 || !SOURCES_HEADING.test(lines[last2].trim())) return mask;
+  mask[last2] = true;
+  let inItem = false;
+  for (let i = last2 + 1; i < lines.length; i++) {
+    const l = lines[i];
+    const listed = (LIST_ITEM.test(l) || TABLE_ROW.test(l) || /^\s*(?:\[E\d+\]|E\d+\b|https?:\/\/)/.test(l)) && SOURCE_REF.test(l);
+    const tableHead = TABLE_ROW.test(l) && TABLE_SEPARATOR.test(lines[i + 1] ?? "") && /-/.test(lines[i + 1] ?? "");
+    const separator = TABLE_ROW.test(l) && TABLE_SEPARATOR.test(l) && /-/.test(l);
+    const continuation = inItem && /^\s{2,}\S/.test(l) && !LIST_ITEM.test(l);
+    if (!(l.trim() === "" || listed || tableHead || separator || continuation)) break;
+    mask[i] = true;
+    if (l.trim() !== "") inItem = listed || continuation;
+  }
   return mask;
 }
 var PERIOD_LABEL = /(?<![\p{L}\p{N}.,])(?:\d{1,2}[MmYyWwDd](?![\p{L}\p{N}])(?!\s?(?:[$€£]|(?:EUR|USD|GBP|CHF)\b))|[HQST][1-4]\s?'?\d{2}(?![\p{N}.,]))/gu;

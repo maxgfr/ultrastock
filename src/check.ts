@@ -22,7 +22,7 @@
 // it must be a date one of the cited items holds (its value, label, key or
 // as-of day) or that a cited document writes — in any usual form, so "le 17
 // novembre" stands for 2026-11-17. A results date copied wrong is refused.
-import { bm25Tokenize, citationTokensIn, collectCitations, EVIDENCE_TOKEN, extractClaimUnits, unitTexts } from "./engine.js";
+import { bm25Tokenize, citationTokensIn, codeMask, collectCitations, EVIDENCE_TOKEN, extractClaimUnits, unitTexts } from "./engine.js";
 import { dateSpans, datesIn, extractDates, holdsDate, type WrittenDate } from "./core/dates.js";
 import { type EvidenceItem, EvidenceStore, readDocText } from "./core/evidence.js";
 
@@ -368,14 +368,40 @@ function nearClaim(doc: CitedDoc, claim: string): string {
   return lines.filter((_, i) => hits.slice(Math.max(0, i - NEAR_LINES), i + NEAR_LINES + 1).some(Boolean)).join("\n");
 }
 
-const SOURCES_HEADING = /^#{1,6}\s+(?:sources?|references?|citations?|évidences?|evidence|preuves|références?|annexe|appendix)\b/i;
+/** A sources title and nothing else: "## Sources", "### References:", "## 5. Annexe" — not "## Sources of upside". */
+const SOURCES_HEADING =
+  /^#{1,6}\s+(?:\d{1,2}(?:\.\d{1,2})*[.)]?\s+)?(?:sources?|references?|références?|citations?|evidences?|évidences?|preuves|bibliography|bibliographie|annexes?|appendix|appendices)\s*:?\s*#*$/i;
+const LIST_ITEM = /^\s*(?:[-*+]|\d{1,3}[.)])\s+/;
+const TABLE_ROW = /^\s*\|/;
+const TABLE_SEPARATOR = /^\s*\|?[\s:|-]*-[\s:|-]*$/;
+/** What a sources list names: an evidence id, a URL, a link. */
+const SOURCE_REF = /\[E\d+\]|(?<![\p{L}\p{N}])E\d+(?![\p{L}\p{N}])|https?:\/\/|\]\(/u;
 
-/** A closing sources/evidence list, from its heading to the end, when no heading follows it. */
+/**
+ * A closing sources list: under the last heading of the answer (outside code),
+ * when that heading is exactly a sources title, the lines that list evidence
+ * ids or links — list items and table rows naming one, a table's header and
+ * separator, an item's indented continuation, blank lines. The first line that
+ * is anything else ends the list: what follows is read like any claim.
+ */
 function closingSourcesMask(lines: readonly string[]): boolean[] {
   const mask = lines.map(() => false);
-  const headings = lines.map((l, i) => (/^#{1,6}\s/.test(l.trim()) ? i : -1)).filter((i) => i >= 0);
+  const code = codeMask(lines);
+  const headings = lines.map((l, i) => (!code[i] && /^#{1,6}\s/.test(l.trim()) ? i : -1)).filter((i) => i >= 0);
   const last = headings[headings.length - 1];
-  if (last !== undefined && SOURCES_HEADING.test(lines[last]!.trim())) for (let i = last; i < lines.length; i++) mask[i] = true;
+  if (last === undefined || !SOURCES_HEADING.test(lines[last]!.trim())) return mask;
+  mask[last] = true;
+  let inItem = false;
+  for (let i = last + 1; i < lines.length; i++) {
+    const l = lines[i]!;
+    const listed = (LIST_ITEM.test(l) || TABLE_ROW.test(l) || /^\s*(?:\[E\d+\]|E\d+\b|https?:\/\/)/.test(l)) && SOURCE_REF.test(l);
+    const tableHead = TABLE_ROW.test(l) && TABLE_SEPARATOR.test(lines[i + 1] ?? "") && /-/.test(lines[i + 1] ?? "");
+    const separator = TABLE_ROW.test(l) && TABLE_SEPARATOR.test(l) && /-/.test(l);
+    const continuation: boolean = inItem && /^\s{2,}\S/.test(l) && !LIST_ITEM.test(l);
+    if (!(l.trim() === "" || listed || tableHead || separator || continuation)) break;
+    mask[i] = true;
+    if (l.trim() !== "") inItem = listed || continuation;
+  }
   return mask;
 }
 
