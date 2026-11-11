@@ -1,232 +1,252 @@
-# Code audit — November 2026
+# Code audit — second pass, 11 November 2026
 
-Scope: the whole repository at `a26cc40` (v1.12.1), about 59 000 lines of TypeScript in `src/`
-(the vendored engine in `src/vendor/` excluded). Result: 39 commits on `main`, v1.12.1 → v1.12.37.
+Scope: the whole repository from `4cebb58` (v1.12.39) to `df90a04` (v1.13.9), about 61 700 lines of
+TypeScript in `src/` (the vendored engine excluded). The first pass (v1.12.1 → v1.12.37, 30 bugs, 6
+optimizations) is this file at `d97d6ed`: `git show d97d6ed:AUDIT.md`.
+
+Two sessions worked on `main` at the same time. This report covers the 37 commits of this pass. The other
+session worked through the first report's "Not fixed" list; its commits are named in "Closed by the other
+session" so the open list below is accurate at `df90a04`.
 
 ## Summary
 
-1. The codebase is in good shape: strict TypeScript, one door to the network, recorded fixtures, a
-   deterministic gate. Typecheck, lint, 1 094 tests and 58 offline evals were all green before the audit.
-2. The serious defects were in the paths tests reach least: live-order follow-up (a lost live order could
-   be declared "never placed" and sent again), concurrent writers, and the tax engines.
-3. 30 bugs are fixed, each with a test that fails without the fix; 6 optimizations are in, each measured.
-4. Three critical issues are **not** fixed because they need a design decision, all in live trading:
-   see "Not fixed". Live trading should stay off until they are settled.
-5. The suite is now 95 files, 1 138 tests and 59 evals, all green; coverage is 80 % statements, 67 %
-   branches, 83 % functions, 83 % lines, above the configured thresholds.
+1. The codebase was healthy at the start: typecheck, 1 141 tests, 59 offline evals, a reproducible build and
+   `pnpm audit` all green; one lint warning, since removed.
+2. 26 bugs are fixed in this pass, each with a test that fails without the fix. The serious ones were in the
+   citation check (three ways a made-up figure passed), in the live-order follow-up (a fill could be booked
+   twice) and in the journal (a decision could be back-dated and scored on prices already known).
+3. Two optimizations are in, both measured; three dead exports and two duplicated helpers are gone.
+4. One feature is new: `ultrastock serve`, a local read-only dashboard (v1.13.0).
+5. The suite is now 104 files, 1 231 tests and 59 evals, all green; coverage is 81.7 % statements, 68.3 %
+   branches, 84.4 % functions, 84.6 % lines. What is still open is listed below, ranked.
 
 ## Baseline and method
 
-| Gate | Before | After |
+| Gate | At `4cebb58` | At `df90a04` |
 |---|---|---|
 | `pnpm run typecheck` | clean | clean |
-| `pnpm run lint` | clean, 336 files | clean, 341 files |
-| `pnpm test` | 91 files, 1 094 passed, 1 skipped | 95 files, 1 138 passed, 1 skipped |
+| `pnpm run lint` | 1 warning (`commands/broker.ts:169`) | clean |
+| `pnpm test` | 95 files, 1 141 passed, 1 skipped | 104 files, 1 231 passed, 1 skipped |
 | `pnpm run check:build` | clean | clean |
-| `pnpm run eval` (offline) | 58 passed | 59 passed |
-| `pnpm audit` | no known vulnerability | no known vulnerability |
+| `pnpm run eval` (offline) | 59 passed | 59 passed |
+| `pnpm audit` | no known vulnerability | not re-run (no dependency changed) |
 
-Nothing failed at the start. One environment note: `node_modules` held an older `@maxgfr/webindex` than
-`package.json` pins; `pnpm install --frozen-lockfile` fixed it.
+Nothing failed at the start.
 
-Each change was one commit: a failing test first (or a measurement for an optimization), the fix, the
-rebuilt bundle, the full gate (`pnpm run engine:gate`), a signed commit, a push to `main`. As chosen, every
-commit was pushed on its own, so the 36 `fix`/`perf` commits cut 36 patch releases. The Release and CI runs
-of every commit are green.
+Each change is one signed commit: a failing test first (a measurement for an optimization), the fix, the
+rebuilt bundle. Every fix was checked a second time by putting `src/` back to the parent commit and running
+the commit's tests: all were red without their fix. The full gate (`pnpm run engine:gate`) ran before each
+push. Commits were pushed in six batches rather than one by one.
 
-The first pass over the code was done by reading, in three slices (security and state, providers and
-network, numeric and accounting). Findings marked *not reproduced* below come from that reading and were
-not confirmed by a run.
+The code was written by delegated engineers working in isolated worktrees and reviewed line by line before
+integration. This pass read what the first one reached least: the command layer and MCP, the statement
+importers, `check` and `calc`, the ETF, morning-brief, backtest and research code.
+
+Two things went wrong on the way, neither with a lasting effect:
+
+- The first push attempt failed on two tests that timed out while the machine slept during the gate. Rerun
+  on the newest `main`, everything passed.
+- One Release run failed (`c666c2d`): the next batch was pushed while it ran, so the release bot could not
+  push its version commit. The following run published v1.13.7 with both batches.
 
 ## Bugs fixed
 
-Every row has a test that reproduces the defect. Commit ids are on `main`.
+Commit ids are on `main`.
 
-### Live orders, the gate, paper trading
-
-| Commit | Where | Defect | Fix | Test |
-|---|---|---|---|---|
-| `baebd49` | `commands/broker.ts`, `trading/live.ts` | `broker reconcile` and `broker cancel` built their adapter from `--env` (default `test`), not from where the order went. A live order whose answer was lost was looked up on the testnet, read as "never placed" and became resendable. | Both use the ticket's own venue and environment and refuse a contradicting flag; `reconcile`/`liveCancel` refuse an adapter for anywhere else. | `tests/live.test.ts` |
-| `baebd49` | `trading/live.ts` | A refused cancel came back as `rejected`, which blocked the ticket and let it be approved and sent again while the order was working or already filled. | A refusal leaves the ticket pending and asks the venue what became of the order; a finished order is not cancelled. | `tests/live.test.ts` |
-| `baebd49` | `trading/live.ts`, `brokers/kalshi.ts` | What filled before a cancel was never booked; a Kalshi order cancelled after a partial fill stayed `submitted` for ever. | A cancel with fills books them; Kalshi reports it as `cancelled` with its fills. | `tests/live.test.ts`, `tests/brokers-kalshi.test.ts` |
-| `d7fb944` | `trading/paper.ts` | Two `paper submit`, or a submit racing `paper sweep`, each booked a fill: the ticket's state was read outside any lock. | One paper execution at a time, under a lock; the sweep re-reads the ticket inside it. | `tests/paper.test.ts` |
-| `69957f6` | `trading/context.ts` | Pending buys counted only checked and working tickets of the order's own venue. An order accepted by a venue (`submitted`), or waiting at another venue, did not count although every live venue settles in the one `real` book. | Every buy still to be paid from the same book counts; testnet orders do not. | `tests/ledger-gate.test.ts` |
-| `8026289` | `trading/breaker.ts` | A live fill is booked in UTC without its zone and was parsed as local time: the 24-hour cooling-off ended early in Europe, late in America. | Zone-less ledger timestamps are read as UTC. | `tests/ledger-gate.test.ts` |
-| `8026289` | `trading/breaker.ts` | A buy after units sold without a recorded buy (shares transferred in, then sold) divided by a quantity netting to zero: the cost became NaN and silently broke the losing streak and the paper readiness figures. | The average restarts from that buy. | `tests/ledger-gate.test.ts` |
-
-### Security and state
+### The citation check
 
 | Commit | Where | Defect | Fix | Test |
 |---|---|---|---|---|
-| `94407f5` | `research/ingest.ts`, `core/net.ts`, new `core/public-url.ts` | SSRF: `research` fetched any http(s) URL an agent, a search engine or a page named, redirects followed — `http://169.254.169.254/`, a service on localhost. | The net layer takes the engine's `authorizeUrl`; research passes `isPublicUrl` (http(s), public addresses only, every redirect checked). A refused link gets no rescue attempt. | `tests/public-url.test.ts` |
-| `e6fd1d7` | `core/net.ts`, `providers/macro/fred.ts`, `providers/crypto/solana.ts` | `--record` stored request URLs verbatim: the FRED API key, or a private Solana RPC URL, ended up in fixtures meant to be committed. | A request can name the URL it is recorded as; FRED redacts the key, Solana records the public endpoint. | `tests/net-record.test.ts` |
-| `8b15d73` | `alerts/alerts.ts` | The webhook allowlist was a string prefix: `https://hooks.example.com` also admitted `https://hooks.example.com.evil.net/` and `https://hooks.example.com@evil.net/`. | Same origin, no credentials, the entry's path as a whole-segment prefix. | `tests/journal-alerts.test.ts` |
-| `30327a2` | `report/html.ts` | The evidence table of the HTML report linked any URL: a `javascript:` one from a feed became a link that runs script. | http(s) only; the item id is escaped. | `tests/decision-report.test.ts` |
-| `23b681e` | `core/datasets.ts` | A headline's link was printed raw inside the `<<<UNTRUSTED_DATA` fence: a URL holding a line break and the closing marker ended the fence early. | Label and link are cleaned like the value. | `tests/datasets.test.ts` |
-| `50d9db7` | `core/evidence.ts`, `calc.ts`, `core/datasets.ts`, `core/lock.ts` | No lock on the evidence register: 8 parallel `calc` on one run returned 6 distinct ids and lost 2 results (measured on the released bundle). | `calc` and data commands writing a run directory read, number and write under a lock on the run. Same test: 8 ids, 8 items. | `evals/run.mjs` (concurrency), `tests/lock.test.ts` |
-| `00b3491` | `core/lock.ts` | A process killed while holding the `.recovery` lock, or between creating a lock file and writing it, left a lock nobody could ever recover. | A dead recovery owner is removed; an unwritten lock is stale after 5 s. | `tests/lock.test.ts` |
-| `52e2fdd` | `check.ts` | `check` compared magnitudes only: "−12.3 % [E2]" passed when E2 held +12.3 %. | A minus written on the number itself is refused against a positive value. Unsigned figures, a plus sign, a spaced dash and figures found in documents are unchanged. | `tests/check.test.ts` |
+| `7be6d35` | `check.ts`, `core/dates.ts` | Any word starting like a month was read as one and blanked with the number after it: "Operating margin 45 % [E1]" passed whatever E1 held ("margin 45" → "Mar 4"), as did "declined 12 %" and "marge 45 %". | A month is a whole word from the date reader's own list, the day a whole number. | `tests/check.test.ts` |
+| `e543806` | `check.ts` | Everything in square brackets was blanked before reading: "LVMH [rose 45 %](https://…) … [E1]" passed, as did a date written as a link. | Link and image text is read; only citation tokens, footnote markers and link targets are set aside. | `tests/check.test.ts` |
+| `955ed45` | `check.ts` | Headings and a table's header row were never read: "## Buy, target 450 €" passed with no evidence. | Both are claims. A heading's section number and a header cell holding only a whole number (`+5`, `20`, `2026`) stay labels. The 59 recorded answers give the same verdicts. | `tests/check.test.ts` |
 
-### Providers and network
+### Live orders, codes, profile and limits
 
 | Commit | Where | Defect | Fix | Test |
 |---|---|---|---|---|
-| `d35e535` | `research/ingest.ts` | A PDF served from a URL that does not look like one (`/static-files/<id>`) came back with an empty body and was dropped as "a near-empty page". | An empty text read is read again as bytes and sent down the PDF ladder. Older fixtures replay unchanged. | `tests/research.test.ts` |
-| `4184d36` | `analyze/full.ts` | At full depth, as soon as peers existed, the instrument's own statistics and its benchmark disappeared (`stats` reads `--benchmark` for one symbol only) while the slice was still titled "against SPY". | The instrument is always measured alone against its benchmark, then against benchmark and peers. | `tests/full-depth.test.ts` |
-| `d962113` | `core/net.ts` | A response without Content-Length cut at the size cap was returned as `ok` and recorded. | It is a failed read, with the reason. | `tests/net-record.test.ts` |
-| `37bfb24` | `providers/binance.ts`, `providers/markets/coinbase.ts` | Histories are paged forward a capped number of pages; past the cap the newest bars were silently missing (15-minute bars beyond 520 days on Binance, 187 on Coinbase). | The series carries a note naming where it stops. | `tests/providers.test.ts`, `tests/markets-crypto-fallbacks.test.ts` |
-| `da3ddb4` | `providers/types.ts`, Yahoo, Coinbase, Kraken, Binance quotes | A previous close of 0 (a first session) gave a change of Infinity, which the evidence register refuses: the whole quote, and `analyze` with it, failed. | One helper computes the change and returns nothing without a positive reference. | `tests/providers.test.ts` |
-| `d563909` | `providers/external/crible.ts` | The `crible mcp` client parsed JSON inside a stream listener: a bad line was an uncaught exception that ended the command. An early exit waited 120 s; stderr was never read. | Every case rejects the call with what happened. | `tests/crible-mcp.test.ts` |
-| `c995c9c` | `providers/crypto/binance-futures.ts` | Seven sequential endpoints, any failure discarding everything: a 429 on a statistics endpoint threw away the funding already read. | Price and funding stay required; open interest and ratios degrade to a note. | `tests/crypto-binance-futures.test.ts` |
-| `de6ef98` | `providers/macro/elections.ts` | "30 December – 2 January" ended in the page's year, eleven months before it began. | A span into an earlier month ends the next year. | `tests/events.test.ts` |
+| `f7f29ea` | `trading/live.ts` | `reconcile` and `liveCancel` ran outside `live.lock` and loaded the ticket before the network call: two follow-ups of a filled order each booked the fill (3 fills in the test). | One live operation at a time; each reads the ticket under the lock. | `tests/live.test.ts` |
+| `ec44f8e` | `trading/otp.ts` | The wrong-code counter was read, incremented and written unlocked: three processes guessing at once each saw "2 tries left". | Read-change-write under `state/codes.lock`, issuing included. | `tests/live.test.ts` |
+| `3960818` | `trading/live.ts` | `openOrders().catch(() => [])`: a failed read of the open orders counted as "not listed", and a not-placed code then freed the ticket. | A failed read leaves the ticket of unknown fate; the code is not consumed. | `tests/live.test.ts` |
+| `b2b8886` | `commands/profile.ts` | `profile set`, `envelope`, `suitability` and `init` were unlocked read-modify-writes: 73 of 120 concurrent changes survived. | One lock around each. | `tests/profile.test.ts` |
+| `df4326a` | `trading/limits.ts` | The same for the live limits (104–115 of 200 survived), and applying a matured loosening could erase a tightening. | One lock around every read-change-write. | `tests/live.test.ts` |
+| `c25aae9` | `trading/brokers/http.ts`, `brokers/ibkr.ts` | Venue answers were read whole, whatever their size. | A 4 MiB cap; an oversized answer is a failed read, never a truncated body parsed as whole. | `tests/brokers.test.ts` |
 
-### Numbers and accounting
+### Journal, alerts and the store
 
 | Commit | Where | Defect | Fix | Test |
 |---|---|---|---|---|
-| `5d9d6d7` | `backtest/metrics.ts` | Intraday bars of a listed security were annualised with 252 periods: a year of hourly bars counted as seven years (a +20 % year reported as 2.6 % CAGR, Sharpe divided by √7). | 252 × the bars a session holds, counted on the series. | `tests/backtest-validation.test.ts` |
-| `90836d5` | `backtest/simulate.ts` | MAE/MFE left out the bar a stop or target is hit in: a trade stopped at −10 % reported −1 %. | The excursions run to the exit price. | `tests/backtest-simulate.test.ts` |
-| `727fed6` | `analytics/sizing.ts` | `Math.floor(0.3 / 0.1)` is 2: a 3 % cap gave 0.2 instead of 0.3; 2.9 / 0.1 gave 28 shares instead of 29. | The lot count is taken within a billionth; rounding still only goes down. | `tests/portfolio.test.ts` |
-| `9d36f0c` | `backtest/allocation.ts` | 31 March minus one month became 3 March (a 28-day lookback). | The day is clamped to the month's last. | `tests/backtest-validation.test.ts` |
-| `58098d2` | `journal/settle.ts` | A horizon settled on the day it ended: run in the morning, a +5 call was scored on four sessions, and a settlement is never re-scored. | A horizon matures the day after it ends. | `tests/journal-alerts.test.ts` |
-| `3888ec5` | `tax/regime.ts`, `tax/inputs.ts` | The tax engines sorted on the day only. A statement listed newest-first sold before it bought: US basis 0 and a phantom lot; French gain computed before the acquisition. | Full-date order, as the portfolio book. | `tests/tax.test.ts` |
-| `f5916ed` | `tax/us.ts`, `tax/fr.ts` | A withholding reversed and taken again (−15, +15, −15) counted as 45 withheld. | The withholding is the opposite of the cash moved; a refund is shown as one. | `tests/tax.test.ts` |
-| `a0cab4e` | `tax/us.ts` | "Likely qualified" looked at lots sold out long ago. | Only lots with shares remaining. | `tests/tax.test.ts` |
-| `3620834` | `tax/fr.ts`, `tax/regime.ts` | The French report threw "no BNB→EUR rate" on any row quoted in a crypto-asset, even for a fee of zero — any Binance ledger. | A zero amount asks for no rate; the fee of a crypto-quoted trade is not converted. | `tests/tax.test.ts` |
-| `3f24e98` | `tax/fr.ts` | After a disposal of unknown portfolio value, later gains were computed on too high an acquisition price and reported as firm (300 € where the 2086 notice finds 675 €). | Those disposals carry a note and the report warns once. Figures unchanged. | `tests/tax.test.ts` |
+| `be3241d` | `commands/journal.ts` | `decide` let `decision.json` set `decidedAt`: a call dated in January was scored by `journal settle` on prices already known. Re-running `decide` also appended a duplicate. | A new decision is dated by the clock; a `decidedAt`, `id` or `run` in the file is ignored with a note; a file already recorded is not recorded twice. | `tests/decision-report.test.ts` |
+| `c666c2d` | `journal/settle.ts` | A horizon was scored on a history that stopped before its end: with a history ending on the decision day, a "hold" scored 0 % and "right", for good. | A horizon waits until the symbol's and the benchmark's history reach its end; `settle` lists what waits and why. | `tests/journal-settle.test.ts` |
+| `bdefcd3` | `alerts/alerts.ts` | `watch run` read the rules, waited on the network, then wrote the list back: a rule added meanwhile was lost, a removed one came back. | Re-read under a lock at save time; only the rules the run changed are written. | `tests/alerts-run.test.ts` |
+| `62a1eae` | `alerts/alerts.ts` | The `stops` rule read the stop of the oldest filled ticket of a line, and of tickets from before the line was sold out and bought again. | The newest ticket filled since the line was last opened. | `tests/alerts-stops.test.ts` |
+| `a685590` | `analyze/morning/run.ts` | The morning brief showed, and flagged HIGH on, a stop from before the line was closed and reopened. | Same rule; otherwise "no stop on record". | `tests/morning.test.ts` |
+| `3802a44` | `core/db.ts` | `user_version` was read before the write lock: a second process opening the store during a migration failed with "table already exists". | The version is read again under the lock. Shipped migration SQL untouched. | `tests/store.test.ts` |
+
+### Importers and numbers
+
+| Commit | Where | Defect | Fix | Test |
+|---|---|---|---|---|
+| `a4d3863` | `portfolio/import/binance.ts` | Amounts glued to a coin whose ticker starts with a digit: `100.51INCH` was booked as 100.51 INCH, `5000001000SATS` as 5 000 001 000 SATS. | The row's pair says which coin an amount can end with. | `tests/import-binance.test.ts` |
+| `b68c799` | `portfolio/import/kraken.ts` | `XTZEUR` split as "XT" + `ZEUR`: every Tezos trade was booked as `XTEUR`, which nothing prices. | A legacy X/Z quote needs a base of three characters or more. | `tests/import-kraken.test.ts` |
+| `d2fb93b` | `core/csv.ts` | "0,123" was read as 123. | A comma after a lone leading 0 is the decimal mark; every other reading is unchanged. | `tests/csv.test.ts` |
+| `6385124` | `commands/trading.ts`, `serve/` | The XIRR took each deposit in its own currency as if it were the base: 10 000 EUR + 5 000 USD read −23.7 % a year instead of −2.5 %. | Each flow is converted at the ECB rate of its own date; without a rate the XIRR is n/a with a note. | `tests/ledger-gate.test.ts`, `tests/serve.test.ts`, `tests/commands.test.ts` |
+| `919a554` | `analyze/etf.ts` | Fund overlap matched one line per name: two share classes of one company counted once (3.9 % instead of 7.3 %). | Every line under a key stays matchable. | `tests/etf.test.ts` |
+| `a57b5d3` | `analyze/etf-propose.ts` | `--max-funds 1` folded the bond sleeve into the equity line: "world 100 %" next to evidence saying 25 % equity. | A usage error naming the minimum number of funds. | `tests/etf-propose.test.ts`, `tests/commands.test.ts` |
+
+### Untrusted text and the morning brief
+
+| Commit | Where | Defect | Fix | Test |
+|---|---|---|---|---|
+| `f1d5ed8` | `journal/journal.ts` | An imported document holding the closing marker ended the `UNTRUSTED_DATA` fence early. | The body is sanitised as research sources are. | `tests/journal-alerts.test.ts` |
+| `c600c95` | `research/dossier.ts` | A dropped hit's URL was printed raw in `DOSSIER.md`: a line break in it started a line of dossier text. | URL and reason are written as one line of data. | `tests/research-rounds.test.ts` |
+| `dc7913e` | `research/dossier.ts` | A page read again in a later round overwrote `sources/E#.md`: an `[E#]` already cited pointed at other text. | A registered document keeps its text. | `tests/research-rounds.test.ts` |
+| `3c03d76` | `analyze/morning/confirm.ts` | A results date from Nasdaq was "confirmed by the issuer's own page www.nasdaq.com". | The feed's own pages confirm nothing for its own date. | `tests/morning-confirm.test.ts` |
+| `906ab7b` | `analyze/regime/catalysts.ts` | Counted from a closed day, the next session was 0: on a Saturday, Monday's earnings read "today". | The next session is 1. | `tests/regime-analysis.test.ts` |
 
 ## Optimizations
 
 | Commit | Change | Measured |
 |---|---|---|
-| `ce42157` | `core/net.ts`: within one process (one command, one MCP tool call) the same GET is sent once and shared, in flight included. Only answers are kept, bodies over 8 MB are not, nothing survives the command. | Live, same machine: `analyze AAPL --depth full` 111 → 90 requests (22 repeats → 0), 42 s → 37 s; `analyze SAP.DE --depth full` 41 → 33 (8 repeats → 0), 36 s → 32 s. Evidence identical key for key. |
-| `48f7ff0` | `backtest/strategy.ts`: each indicator is computed once per series and parameter set across a sweep's variants. | Preparing variants on 20 000 bars: sma-cross ×162, 1 001 → 355 ms; supertrend ×100, 1 343 → 444 ms; rsi-macd-trend-ride ×100, 3 585 → 344 ms. Same results to the last trade. |
-| `d1e009e` | `core/calendar.ts`: a market's holidays are worked out once per year instead of once per day asked. | Three horizons + next five sessions for 2 000 decisions: 4 616 → 209 ms. |
-| `11ebea3` | `tax/inputs.ts`: the ledger is sorted and classified once per report for the crypto portfolio values. | 5 000-row ledger, 1 000 disposals: 3 960 → 71 ms. |
-| `71ecc59` | `providers/macro/elections.ts`: the electoral calendar of a year that is over is kept a week. | Live, 24 past years: 14.5 s on the first study, 4.0 s on the next. |
-| `c990463` | VIX term structure and central-bank calendars: independent pages asked together, read in order. | Live, median of five: 281 → 106 ms; 487 → 426 ms. |
-
-Measured and **not** changed: caching the fixture clock (`clockNow` re-reads `fixture.json` on every call
-in replay) — no measurable gain on the eval or test run, so the change was discarded.
+| `65f18ee` | `providers/fundamentals/finra.ts`: the daily short-volume file of a day that is over is kept in the dataset cache; the last two days are always read again. | Stubbed CDN, 10 sessions, second run: 14 → 6 requests, 5.5 → 1.1 MB, about 2.0 s → 1.2 s. |
+| `4af6472` | `providers/macro/news.ts`: each headline is split into words once, not once per pair compared. Same result, proven against the old code on 300 random rounds. | 2 000 headlines, median of 7: 10.8 s → 0.48 s. |
 
 ## Quality
 
-- `b643967` — dead code removed: `topTradeShare` (no caller), a doubled `store.save()`, an impossible
-  condition around the approval-code check.
-- `593326c` — six identical "print the result" helpers under three names folded into `printResult`.
-- `67b34ac` — three comments corrected (`trading/transport.ts` does not exist; the profile's "will require
-  a confirmation once live trading exists"; `xirr` is a bisection).
+- `bfbf396` — three exports nothing referenced, tests included: `baseParams`, `llamaProtocols`, `cribleStatus`.
+- `2d513fe` — `isoDate`, `isoDayOf` and `isoDay` were one function three times.
+- `c683540` — the `perf` figures move into one pure function shared by the CLI and the dashboard.
+- `dbcf6c9` — the lint warning.
+- `df90a04` — the references describe the rules above.
+
+Not folded, because they differ: the three `splitPair` (currency hint, XBT/XDG mapping, quote lists), the
+two `envelopeOf`, the two binary fetchers (fixture keys), `tax/regime.ts`'s `day` (slices a string).
+
+## New: `ultrastock serve`
+
+`5e9a59e`, `9b76a5e`, `229cc33`, `3e49729` — `ultrastock serve [--port 8766] [--token …] [--book real|paper]`.
+
+- Pages: the book marked to market, its risk, stress, income, location and look-through figures, the
+  ledger, the journal, the watchlist and alert rules, the tickets and the audit trail; each has an `/api/…`
+  JSON twin. Server-rendered HTML, no script, no external asset.
+- Read-only: nothing under `ULTRASTOCK_HOME` is written (a test compares the directory byte for byte); the
+  dataset cache of quotes is written, as `portfolio show` does.
+- Security: 127.0.0.1 only, `Host` allowlist, own-origin check, a token traded for an `HttpOnly;
+  SameSite=Strict` cookie, `GET`/`HEAD` only, a CSP that allows no script.
+- Tried for real on a seeded book: every route answers, 401 without the token, 403 on a foreign `Host` or
+  `Origin`, 405 on `POST`; light and dark rendering checked on screenshots.
+
+Left out of this version: tax pages, headlines, optimize/rebalance/goals, any write.
 
 ## User-facing behaviour changes
 
-All are corrections, listed so nothing surprises:
+All are corrections except the last.
 
-- `broker reconcile|cancel` follow the ticket's venue and environment; a contradicting `--venue`/`--env`
-  is a usage error; cancelling a finished order is an error; a refused cancel leaves the ticket pending.
-- The risk gate is stricter: orders working at any live venue count as pending.
-- `research` refuses URLs at private addresses, including `--urls` pointing at localhost.
-- `check` fails "−12.3 %" against +12.3 (documented in `references/citation-format.md`).
-- `analyze --depth full` on a symbol with peers registers more evidence, so its `[E#]` numbering differs.
-- Intraday backtests of listed securities report different CAGR, Sharpe, Sortino and volatility; MAE/MFE
-  change wherever a stop or a target is hit.
-- `journal settle` settles a horizon one day later.
-- Tax reports: same-day trades are replayed by time; withholding totals change where a statement holds
-  reversals; the French report no longer stops on crypto-quoted rows and adds "understated" warnings.
-- Sizing can return one more lot at exact boundaries; dual momentum looks back from month ends correctly.
-- A fixture recorded with a FRED key or a private Solana RPC before `e6fd1d7` no longer replays (it held
-  the secret). None is in the repository.
-- Crypto histories longer than the page cap, Binance futures with a refused endpoint, truncated
-  responses and quotes without a previous close now say so instead of failing or staying silent.
+- `check` is stricter: figures after month-like words, in link text, in headings and in table header rows
+  are checked. An answer that leaned on any of these now fails.
+- `decide` ignores a `decidedAt`, `id` or `run` in `decision.json` (with a note) and does not record the same
+  file twice.
+- `journal settle` leaves a horizon pending while the history stops short; a delisted name stays pending.
+- `portfolio perf`: the XIRR changes for any book funded in another currency, and is n/a when a rate is
+  missing; the JSON gains `xirrNotes`.
+- `etf propose --max-funds` below the plan's sleeves is a usage error. `etf overlap` reads higher when a file
+  has no ISINs.
+- `broker reconcile|cancel` and `submit` run one at a time and can wait up to 10 s for each other; a
+  reconcile whose open-orders read fails changes nothing.
+- The morning brief and `watch` stops no longer use a stop from before a line was reopened; weekend briefs
+  count sessions one further; a Nasdaq date is no longer "confirmed" by Nasdaq.
+- Binance amounts in digit-led tickers, Kraken Tezos pairs and "0,123" are read differently. A statement
+  imported before these fixes holds the old reading: re-importing adds corrected rows next to the wrong ones.
+- A venue answer over 4 MiB is a failed read. Under `--offline`, an uncached past FINRA day is skipped.
+- A `'` in a report is now written `&#39;` (same rendering).
+- New command: `serve`.
+
+## Closed by the other session
+
+From the first report's "Not fixed" list, on `main` today: `c0abf51` (a crashed reader is a defect, not an
+outage), `c9678eb` (SEC 4/A, joint filers), `2e2ff5a` (ESEF currency), `bbf0fb9` (`X-USD` on fallbacks),
+`fb60a34` (Coinbase Convert in France), `b625d19` (profile ratchet — the last critical), `e186011` (dry-run
+orders), `a330396` (sector limit), `c8d3b3c` (`--fixture` writing state), `95b908d` (breaker across
+transfers and splits), `1c43f31` (closed-bar rule), `6adb37f` (crible quoting), `45033db` (negative
+numbers in CSV). Critical 2 and 3 were closed before this pass (`dcdd087`, `45bca79`).
 
 ## Not fixed
 
-### Critical — live trading
+Open at `df90a04`. The other session has announced it is working on the first report's remaining items
+(tax and ledger semantics, the evidence store saved whole after `analyze`, recursive `portfolio db query`,
+torn JSONL lines, cache eviction, `check` reading any path through MCP, `ULTRASTOCK_LIVE`, Piotroski,
+rolling indicators); they are not repeated here.
 
-1. **Profile limits and jurisdiction loosen at once** (`commands/profile.ts`, `core/profile.ts`).
-   `profile set limits.maxDailyLossPct 50` widens the breaker immediately; `profile set jurisdiction US`
-   skips the MiCA check and makes Kalshi "allowed". The header comment promised a confirmation and a
-   delay "once live trading exists". *Recommendation:* the same ratchet as the live limits — tightening
-   at once, loosening behind an out-of-band code and 24 hours.
-2. **The approval code is not bound to the environment or the venue symbol** (`trading/live.ts`). A code
-   approved for a test run is accepted with `--env live`, and `--conid` overrides the symbol on every
-   venue, not only IBKR. *Recommendation:* put the environment and the venue symbol in the code's
-   binding; accept `--conid` for IBKR only.
-3. **"Not found at the venue" is trusted as "never placed"** (`trading/live.ts`, every adapter's `query`).
-   Lookups are windowed (Coinbase 5 pages, Kalshi 200 orders, IBKR the current session, Kraken the first
-   closed page; Binance answers −2013 right after a timeout). *Recommendation:* never unblock on absence
-   alone — cross-check open orders, require a minimum delay and the user's explicit confirmation.
-   *Not reproduced.*
+### Critical
+
+None known.
 
 ### Important
 
-- **Orders, gate and state**
-  - Test-environment orders on Kraken (validate) and Coinbase (preview) are reported `accepted` and stay
-    `submitted` for ever (`brokers/kraken.ts`, `brokers/coinbase.ts`). Report a dry run as its own state.
-  - The sector limit is never enforced: nothing sets `sectorValueBase` or `order.sector`
-    (`trading/riskgate.ts`). Feed them from the instrument's sector, or remove the limit from the profile.
-  - `ticket check --fixture` writes real state on a replayed clock; a crafted `fixture.json` could move
-    the breaker's reference points (`trading/context.ts`). Refuse network flags on commands that write
-    state. *Not reproduced.*
-  - Realised results ignore transfers and splits (`trading/breaker.ts`): a sale of transferred-in shares
-    counts its whole proceeds as profit, a sale after a split as a loss.
-  - The wrong-code counter is not locked on the `limits` path (`trading/otp.ts`); alert rules are read,
-    used across network calls and written back (`alerts/alerts.ts`); `user_version` is read outside its
-    transaction and a recursive query can run until the MCP timeout (`core/db.ts`). *Not reproduced.*
-  - A store kept open for a whole `analyze` still saves what it read at its start: a `calc` written to
-    the same run meanwhile is lost. Merge on save, or lock the run for the whole command.
-- **Tax semantics** (each with its scenario, left for your decision)
-  - A Coinbase *Convert* is imported as a sell and a buy in euros, so France taxes a crypto-to-crypto
-    exchange: 1 ETH bought 1 000 €, converted at 3 000 € → 2 000 € taxed, expected 0.
-  - Pairs with the fiat as base (EURUSDT) are classified by their quote: neither the purchase nor the
-    cash-out is taxed in France.
-  - The US engine loses cost basis and holding period on a transfer between own accounts: bought at
-    $150 in 2020, moved in 2023, sold at $190 → $1 900 short-term, expected $400 long-term.
-  - A US wash sale moves the holding period of the whole replacement lot, and repeatedly.
-  - The envelope follows the account: crypto held at a stockbroker is taxed as securities.
-  - The US engine throws on a trade quoted in a crypto-asset (no rate), as the French one did.
-  - France pools cost by ticker, not by security: the same share under two symbols has two pools.
-- **Ledger**
-  - A date-only row sorts before a timed row of the same day, so an IBKR split (dated the day) is
-    replayed before that day's trades (`portfolio/ledger.ts`, `import/ibkr.ts`).
-  - Two genuine identical fills in the same second collapse into one: the transaction id ignores the
-    broker's trade id.
-  - A transfer in without a price enters a new account at a cost of 0.
-- **Providers** (*not reproduced*)
-  - SEC Form 4/A is summed on top of the form it restates; joint filers count as distinct buyers.
-  - ESEF statements keep their own currency and are divided into a price in another.
-  - Quote escaping in crible queries differs between three call sites.
-  - An `X-USD` crypto symbol becomes USDT on every fallback, so Coinbase is asked for BTC-USDT.
+- **`check` converts % and ratio for any unit** (`check.ts:161`): "XRP up 45 % [E2]" passes when E2 is a
+  price of 0.45 USD. *Recommendation:* convert only for unitless or ratio items, after checking how every
+  producer labels fractions.
+- **Tickets move on unlocked reads** (`trading/tickets.ts:99-111,137-150`): `recordCheck` checks the status
+  outside the ticket lock and `transition` accepts any from-state, so a check racing a submit could move a
+  `submitted` ticket back to `checked` (a resend is still blocked by the pending guard). *Recommendation:*
+  check the from-state inside `transition`. *Seen, not reproduced.*
+- **A cancelled order later reported filled is booked again** (`trading/live.ts`, the reconcile result
+  branch): only a recorded `filled` state skips the booking. *Seen, not reproduced.*
+- **Prediction-market lines are unpriced in every portfolio analysis and in `serve`**
+  (`analyze/portfolio/book.ts`): `loadMarkedBook` has no branch for them, unlike `markBook`.
+- **MCP annotations** (`mcp.ts`): `calc`, `portfolio show|perf` (they append an equity point the breaker
+  reads) and `analyze` are declared read-only and idempotent. A `string[]` element holding a comma is split
+  in two; `null` passes the required-argument check. *Not reproduced.*
+- **XIRR and transfers**: a transfer in or out is not a contribution, so its value reads as return (a note
+  says so). Fixing it depends on the ledger decision about the cost of a transfer. Crypto and stablecoin
+  deposits give n/a.
+- **`serve` on a ledger kept in SQLite**: `readLedger` opens the store writable and migrates an older
+  schema (`portfolio/ledger.ts:105`) — the one place the dashboard is not strictly read-only. Documented.
+- **Tax command inputs** (`commands/tax.ts:36,61,69`): `--income 85,000` becomes NaN and so do the US tax
+  figures; any `--household` other than "couple" means single; `--book foo` reads an empty ledger.
+  *Recommendation:* usage errors.
 
 ### Minor
 
-- The dataset cache never evicts; atomic writes are not fsync'd; one torn JSONL line blocks the gate
-  until repaired by hand; broker HTTP reads have no size cap; per-host pacing lives in one process, so
-  parallel MCP calls exceed published paces.
-- `check` (MCP) reads any path it is given; `ULTRASTOCK_LIVE=1` is read from the process environment.
-- Piotroski compares ROA on two asset conventions; `parseLooseNumber` reads "0,123" as 123.
-- Rolling indicators (`percentRank`, regression slope, Aroon, Vortex) are O(n·w). Not rewritten: running
-  sums change the last digits of figures that are registered as evidence.
-- The FINRA fallback downloads whole daily files uncached; `dedupeArticles` is quadratic.
-- Duplication left in place: two binary fetchers with different fixture keys, two CSV readers, two
-  `splitPair`, two `envelopeOf`, several date helpers, `redact` beside `scrubSecrets`.
-- Exported with no caller: `blsSeries`, `polymarketEvents`; several more are used by tests only.
-- Dev dependencies have majors available (TypeScript 7, vitest 5, tsup 9): left to dependabot.
+- `portfolio/import/index.ts:47`: `--map constructor` is looked up without `Object.hasOwn` and ends in a
+  misleading "needs --map".
+- `check.ts`: an item's `fetchedAt` day counts as a date it holds (`:285`); "15m RSI" reads as 15 million;
+  "## Week 46" and "60/40" in a heading are figures, as they are in a sentence. *Not reproduced, except the
+  last.*
+- `core/evidence.ts:178`: `addDerived` takes the newest `asOf`; its comment and `calc` say the stalest.
+- Importers: a positive tax or fee refund is forced negative (`generic.ts:231`); "2:30 PM" is not read, so an
+  AM and a PM fill collapse (`shared.ts:133`); 2026-02-30 is accepted (`ledger.ts:129`). *Not reproduced.*
+- `commands/markets.ts:186`: `predict order` creates the ticket before the gate's context is built.
+- Backtests: with a single variant `--trials` has no effect on the deflated Sharpe (`metrics.ts:167`); a
+  command-line stop overrides the swept grid, and the identical variants still count as trials
+  (`validation.ts:48,57`).
+- Morning brief: the same release from two calendars counts twice in the high-impact flag
+  (`catalysts.ts:254-276`); a line closed and reopened on one day, with date-only rows, keeps an older stop.
+- `research/run.ts:204`: a redirected page is fetched again every round (its text is now protected).
+- `journal.ts:128` ignores short round trips; `stats.ts:500` (`hmm2`) is fitted on the whole series, so it
+  must not drive a backtest; `etf.ts:769` can list a fund among its own peers. *Not reproduced.*
+- `analytics/options.ts:45,104`: at zero volatility the price is the undiscounted intrinsic value (no caller
+  reaches it); `americanBinomial` has no caller and returns NaN at `t = 0`.
+- `check.ts` `nearClaim` tokenises the whole cited document once per matching figure.
+- Browsers do not separate cookies by port: the dashboard's cookie is sent to any other server on
+  127.0.0.1. It is `HttpOnly`, named after the port, and a foreign `Origin` is refused.
+- The multi-process tests added in this pass take about 2 s each; one full run failed once under load
+  without the test being identified, and five reruns were green.
+- `filterProtocols` and `protocolListPoints` (`providers/crypto/defillama.ts`) are now used by tests only.
+- Every push to `main` cuts a release; a push made while a Release run is in flight makes that run fail.
 
 ## Open questions
 
-1. **Two defaults I took** (the questions timed out): tax fixes limited to the contained ones, and the
-   narrow sign rule in `check`. Say if you want the tax semantics above reworked, or the sign rule
-   stricter (also refuse "+" against a negative) or reverted.
-2. **Profile ratchet**: should loosening a profile limit or the jurisdiction need a code and a delay?
-3. **`ULTRASTOCK_LIVE=1`**: is it meant to hold against the agent, which can set it for its own command?
-4. **Fallback strictness** (`core/fallback.ts`): any error that is not a `ProviderError` routes to the next
-   source, a parser crash included. Fixture replays depend on that for missing recordings. Keep, or fail
-   loudly on programming errors?
-5. **Ledger identity**: adding the broker's trade id to the transaction id fixes collapsed fills but
-   changes ids, so re-imports would duplicate without a migration.
-6. **Ordering of date-only rows** against timed rows of the same day.
-7. **French 305 € exemption**: the rule's label says gross proceeds, its note says net of fees.
-8. **Breaker on equity including deposits and withdrawals**: a withdrawal trips it, a deposit hides a loss.
-9. **Orders per day** counts ticket transitions (working → filled counts twice), across books.
-10. **`research --urls` on localhost** is now refused: is an opt-in for local documents wanted?
-11. **`blsSeries` and `polymarketEvents`**: wire them to a command, or delete them?
+1. **This file.** The two sessions hold opposite instructions: deliver `AUDIT.md` here, remove it there.
+   It is delivered; say whether it stays.
+2. **`journal settle` on a delisted or renamed name**, or when a benchmark can never be read: such horizons
+   now wait for ever. Settle on the last bar after a delay, drop them, or leave them?
+3. **`check` and counts in headings**: "## Trades (12)" now needs an `[E#]`. Is that wanted?
+4. **`serve`**: read-only by choice. Are data entry (import, add a transaction, watchlist), tax pages and
+   headlines wanted?
+5. **MCP**: should a tool that appends an equity snapshot be declared a writing tool?
+6. **The dashboard's test fixture** holds no historical rate, so its XIRR is n/a in the test. Re-record it?
+7. **Already-imported statements** misread before the importer fixes: is a repair command wanted?
+8. Still open from the first report: the sign rule in `check`, ledger identity and same-day ordering, the
+   305 € exemption, the breaker on equity that includes deposits, orders per day, `research --urls` on
+   localhost, `blsSeries` and `polymarketEvents`.
