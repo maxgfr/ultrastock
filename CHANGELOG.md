@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.46](https://github.com/maxgfr/ultrastock/compare/v1.13.45...v1.13.46) (2026-11-11)
+
+
+### Bug Fixes
+
+* **serve:** never migrate the store, and read the breaker net of deposits; document the live switch ([9de7971](https://github.com/maxgfr/ultrastock/commit/9de79719f787f6d75a884474433a9412d33df196))
+
 ## [1.13.45](https://github.com/maxgfr/ultrastock/compare/v1.13.44...v1.13.45) (2026-11-11)
 
 
