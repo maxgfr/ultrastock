@@ -36,4 +36,17 @@ describe("csv", () => {
     expect(parseLooseNumber("12,345.67")).toBe(12345.67);
     expect(parseLooseNumber("1.234,56")).toBe(1234.56);
   });
+  it("reads an accounting negative in parentheses and a Unicode minus sign", () => {
+    expect(parseLooseNumber("(12.50)")).toBe(-12.5);
+    expect(parseLooseNumber("($1,234.56)")).toBe(-1234.56);
+    expect(parseLooseNumber("(0,123)")).toBe(-0.123);
+    expect(parseLooseNumber("−12,5")).toBe(-12.5);
+    expect(parseLooseNumber("−0,123")).toBe(-0.123);
+    expect(parseLooseNumber("−1 234,5 €")).toBe(-1234.5);
+    // Still not numbers.
+    expect(parseLooseNumber("()")).toBeUndefined();
+    expect(parseLooseNumber("(-12)")).toBeUndefined();
+    expect(parseLooseNumber("(12")).toBeUndefined();
+    expect(parseLooseNumber("−")).toBeUndefined();
+  });
 });

@@ -13273,7 +13273,9 @@ function csvRecords(text2, opts = {}) {
 }
 function parseLooseNumber(raw) {
   if (raw === void 0) return void 0;
-  let s = raw.replace(/[\s  $€£%]/g, "").trim();
+  let s = raw.replace(/[\s  $€£%]/g, "").trim().replace(/−/g, "-");
+  const paren = /^\(([^()-]+)\)$/.exec(s);
+  if (paren) s = `-${paren[1]}`;
   if (!s || s === "-" || s === "\u2014" || /^n\/?a$/i.test(s)) return void 0;
   const comma = s.lastIndexOf(",");
   const dot2 = s.lastIndexOf(".");

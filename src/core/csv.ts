@@ -60,11 +60,18 @@ export function csvRecords(text: string, opts: { delimiter?: string; headerRow?:
 
 /**
  * A number as an exchange or a broker writes it: "1,234.5", "1 234,5",
- * "$210.96", "-0.07%", "39,539,690". Undefined for blanks and dashes.
+ * "$210.96", "-0.07%", "39,539,690", an accounting negative "(12.50)", a
+ * typographic minus "−12,5". Undefined for blanks and dashes.
  */
 export function parseLooseNumber(raw: string | undefined): number | undefined {
   if (raw === undefined) return undefined;
-  let s = raw.replace(/[\s  $€£%]/g, "").trim();
+  let s = raw
+    .replace(/[\s  $€£%]/g, "")
+    .trim()
+    .replace(/−/g, "-");
+  // An accounting negative: "(12.50)" is -12.5; "(-12)" is not a number.
+  const paren = /^\(([^()-]+)\)$/.exec(s);
+  if (paren) s = `-${paren[1]}`;
   if (!s || s === "-" || s === "—" || /^n\/?a$/i.test(s)) return undefined;
   const comma = s.lastIndexOf(",");
   const dot = s.lastIndexOf(".");
