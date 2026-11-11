@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.46](https://github.com/maxgfr/ultrastock/compare/v1.12.45...v1.12.46) (2026-11-11)
+
+
+### Bug Fixes
+
+* **alerts:** a watch add or rm made during watch run is no longer undone ([bdefcd3](https://github.com/maxgfr/ultrastock/commit/bdefcd37e0be4db89e8eb91305b370d670111298))
+* **brokers:** cap the size of a venue answer ([c25aae9](https://github.com/maxgfr/ultrastock/commit/c25aae983caa01bf859be1eeaf9212caa8af0724))
+* **check:** a figure written as a link's text is checked like any other ([e543806](https://github.com/maxgfr/ultrastock/commit/e543806ea26973a877ee28bca44109a39ec3de93))
+* **check:** a word that starts like a month no longer hides the figure after it ([7be6d35](https://github.com/maxgfr/ultrastock/commit/7be6d358cab276e3422acf5f5cae0426d8aa718c))
+* **csv:** "0,123" is read as 0.123, not 123 ([d2fb93b](https://github.com/maxgfr/ultrastock/commit/d2fb93be40dbdcbd5347d36348d8dfcb81d7a267))
+* **db:** a store opened by two processes at once no longer fails to migrate ([3802a44](https://github.com/maxgfr/ultrastock/commit/3802a44d6ebb6b4783eb71b89f6e8947c66ccbd9))
+* **etf:** match every line of a company listed under one name twice ([919a554](https://github.com/maxgfr/ultrastock/commit/919a5548b45697dc445f92b532b7d13a9f6b8f5a))
+* **import:** Binance amounts in a coin whose ticker starts with a digit ([a4d3863](https://github.com/maxgfr/ultrastock/commit/a4d3863f5303950008fc39456c0a6d33e394d0df))
+* **import:** Kraken's Tezos pairs read as XTZ, not XT ([b68c799](https://github.com/maxgfr/ultrastock/commit/b68c79985487dd68756073ccabc0fb8c84732c4c))
+* **journal:** keep an imported source inside its untrusted fence ([f1d5ed8](https://github.com/maxgfr/ultrastock/commit/f1d5ed818543fad078e6628883ab3d5248fb2fb8))
+* **limits:** one change of the live limits at a time, so none is lost ([df4326a](https://github.com/maxgfr/ultrastock/commit/df4326a0ff88595a7b323d57a16e538a6e710808))
+* **live:** a failed read of the open orders is not an absence ([3960818](https://github.com/maxgfr/ultrastock/commit/396081895ed2557a8aedb21fc2a3b3f84c5dac0c))
+* **live:** one live operation at a time, so an order cannot be booked twice ([f7f29ea](https://github.com/maxgfr/ultrastock/commit/f7f29ea436bf6b3eee37d936ac8b0a0d1abf22d8))
+* **morning:** a results date is never confirmed by the feed it came from ([3c03d76](https://github.com/maxgfr/ultrastock/commit/3c03d765015dc5b136c86cafb53022231d2183b0))
+* **morning:** count sessions from a closed day from the next session ([906ab7b](https://github.com/maxgfr/ultrastock/commit/906ab7b170bec8eddf615235bda7b94481314a85))
+* **otp:** count every wrong guess when processes verify a code at once ([ec44f8e](https://github.com/maxgfr/ultrastock/commit/ec44f8ef581c98f22b036e77d965f67af1499f91))
+* **profile:** one profile write at a time, so a concurrent change is not lost ([b2b8886](https://github.com/maxgfr/ultrastock/commit/b2b888655194649c7c5ee8e41812b9d07b8f8508))
+* **research:** never rewrite the text of a registered document ([dc7913e](https://github.com/maxgfr/ultrastock/commit/dc7913e88c7c8ab6ac2f1531d0c4424dff96721c))
+* **research:** write a dropped hit's URL and reason as one line of data ([c600c95](https://github.com/maxgfr/ultrastock/commit/c600c9590d4909b42569baf5fa943a56c98e2b02))
+
 ## [1.12.45](https://github.com/maxgfr/ultrastock/compare/v1.12.44...v1.12.45) (2026-11-11)
 
 
