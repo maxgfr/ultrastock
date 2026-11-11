@@ -328,11 +328,22 @@ export function assertReadOnlySql(sql: string): string {
   return trimmed;
 }
 
-/** Run one guarded SELECT on a read-only handle; rows capped at `limit`. */
+const RECURSIVE_REFUSED =
+  "a recursive query is not allowed: it may run without end before its first row (the row cap cannot stop it) — node:sqlite has no way to interrupt a statement";
+
+/**
+ * Run one guarded SELECT on a read-only handle; rows capped at `limit`. A
+ * recursive CTE is refused, read from the query plan since SQLite runs one
+ * without the RECURSIVE keyword: under an aggregate it computes every row
+ * before yielding the first, so the cap never applies and nothing can stop it.
+ */
 export function readOnlyQuery(sql: string, limit = 1000): { columns: string[]; rows: Array<Record<string, SqlValue>>; truncated: boolean } {
   const q = assertReadOnlySql(sql);
+  if (/\brecursive\b/i.test(sqlSkeleton(q))) throw new Error(RECURSIVE_REFUSED);
   return withStore(
     (db) => {
+      const plan = db.prepare(`EXPLAIN QUERY PLAN ${q}`).all();
+      if (plan.some((r) => /^RECURSIVE STEP\b/.test(String(r.detail ?? "")))) throw new Error(RECURSIVE_REFUSED);
       const rows: Array<Record<string, SqlValue>> = [];
       let truncated = false;
       const stmt = db.prepare(q) as SqlStatement & { iterate?: () => Iterable<Record<string, SqlValue>> };

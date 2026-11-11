@@ -235,6 +235,13 @@ describe.skipIf(!HAS_SQLITE)("SQLite store", () => {
     } finally {
       ro.close();
     }
+    // A recursive CTE under an aggregate runs to its end before the first row: the row cap cannot stop
+    // `with c(x) as (select 1 union all select x+1 from c) select count(*) from c`. Refused, keyword or not
+    // (SQLite does not need RECURSIVE); these bounded ones would answer, and are refused the same.
+    expect(() => readOnlyQuery("with c(x) as (select 1 union all select x+1 from c where x < 5) select count(*) as n from c")).toThrow(/recursive/i);
+    expect(() => readOnlyQuery("WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 5) SELECT max(x) FROM c")).toThrow(/recursive/i);
+    expect(() => readOnlyQuery("select (with c(x) as (select 1 union all select x+1 from c where x < 5) select sum(x) from c) as s")).toThrow(/recursive/i);
+    expect(readOnlyQuery("with a as (select 1 as x) select x from a").rows).toEqual([{ x: 1 }]);
     const out = await run(["db", "query", "select count(*) as n from transactions"]);
     expect(JSON.parse(out).rows).toEqual([{ n: 7 }]);
     const status = JSON.parse(await run(["db", "status"], {}, [], true));

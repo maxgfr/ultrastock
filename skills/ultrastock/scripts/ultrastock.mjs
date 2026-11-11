@@ -23556,10 +23556,14 @@ function assertReadOnlySql(sql) {
   if (w) throw new Error(`a read-only query may not contain ${w[1].toUpperCase()}`);
   return trimmed;
 }
+var RECURSIVE_REFUSED = "a recursive query is not allowed: it may run without end before its first row (the row cap cannot stop it) \u2014 node:sqlite has no way to interrupt a statement";
 function readOnlyQuery(sql, limit = 1e3) {
   const q = assertReadOnlySql(sql);
+  if (/\brecursive\b/i.test(sqlSkeleton(q))) throw new Error(RECURSIVE_REFUSED);
   return withStore(
     (db) => {
+      const plan = db.prepare(`EXPLAIN QUERY PLAN ${q}`).all();
+      if (plan.some((r3) => /^RECURSIVE STEP\b/.test(String(r3.detail ?? "")))) throw new Error(RECURSIVE_REFUSED);
       const rows = [];
       let truncated = false;
       const stmt = db.prepare(q);
