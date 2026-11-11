@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.4](https://github.com/maxgfr/ultrastock/compare/v1.13.3...v1.13.4) (2026-11-11)
+
+
+### Bug Fixes
+
+* **breaker:** carry cost across transfers and splits in realised results ([95b908d](https://github.com/maxgfr/ultrastock/commit/95b908d7e55a5db69e44af2c3f528c54680e9335))
+
 ## [1.13.3](https://github.com/maxgfr/ultrastock/compare/v1.13.2...v1.13.3) (2026-11-11)
 
 
