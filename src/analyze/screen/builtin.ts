@@ -18,6 +18,7 @@ import { searchEuronext } from "../../providers/euronext.js";
 import { type Constituent, fetchConstituents, indexId } from "../../providers/macro/universe.js";
 import { classifySymbol, getHistory, resolveSymbol } from "../../providers/router.js";
 import { type Bar, type PriceSeries, ProviderError } from "../../providers/types.js";
+import { closedBars } from "../regime/common.js";
 import { applyUniverseRanks, type TechnicalId, technicalVerdict, type Verdict } from "./technical.js";
 
 export const BUILTIN_MAX_SYMBOLS = 120;
@@ -47,11 +48,6 @@ export function constituentSymbol(index: string, c: Constituent): string | undef
   if (!c.ticker) return undefined;
   const t = c.ticker.toUpperCase();
   return index === "UKX" ? `${t.replace(/\.$/, "").replace(/\./g, "-")}.L` : t;
-}
-
-/** Bars of the sessions before `today`: today's may still be trading. */
-export function closedBars(bars: readonly Bar[], today: string): Bar[] {
-  return bars.filter((b) => b.date.slice(0, 10) < today);
 }
 
 export interface BuiltinOptions {
@@ -117,7 +113,7 @@ export async function builtinScreen(id: TechnicalId, opts: BuiltinOptions): Prom
   const bench = benchmarkFor(opts.universe, symbols);
   const fetchBars = async (sym: string) => {
     const series = await getHistory(await resolveSymbol(sym), { from, to: now, interval: "1d" });
-    return { ...series, bars: closedBars(series.bars, today) };
+    return { ...series, bars: closedBars(series.bars, series.instrument.market, now) };
   };
   let benchBars: Bar[] | undefined;
   const needsBench = id === "minervini" || id === "canslim-technical" || id === "rs-leaders";
@@ -152,7 +148,7 @@ export async function builtinScreen(id: TechnicalId, opts: BuiltinOptions): Prom
 
   notes.push(
     `${matches} of ${rows.length} symbols pass ${id}${rows.length < symbols.length ? ` (${symbols.length - rows.length} could not be read)` : ""}`,
-    `computed by ultrastock on closed daily bars up to the last session before ${today}; benchmark ${bench.name}`,
+    `computed by ultrastock on closed daily bars (today's once its market's session is final) up to ${today}; benchmark ${bench.name}`,
   );
   if (shown.length < rows.length) notes.push(`showing ${shown.length} of ${rows.length} (matches first) — raise --limit to see the rest`);
   for (const f of failures) notes.push(`unavailable — ${f}`);

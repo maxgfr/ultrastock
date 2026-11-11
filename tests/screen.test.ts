@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sma } from "../src/analytics/indicators.js";
-import { benchmarkFor, closedBars, constituentSymbol } from "../src/analyze/screen/builtin.js";
+import { benchmarkFor, constituentSymbol } from "../src/analyze/screen/builtin.js";
 import { collapseForeignLines, cribleRowsToDataset, dslFields, issuerKey, looksLikePresetId, primaryListingsOnly } from "../src/analyze/screen/crible.js";
 import { BUILTIN_PRESETS, describeFilter, TV_COLUMNS, TV_PRESETS, tvPresetRules } from "../src/analyze/screen/presets.js";
 import { applyUniverseRanks, percentileRanks, TECHNICAL_IDS, technicalVerdict } from "../src/analyze/screen/technical.js";
@@ -253,8 +253,7 @@ describe("builtin technical screens", () => {
     expect(typeof v.pass).toBe("boolean");
     expect(v.metrics.find((m) => m.name === "status")).toBeDefined();
   });
-  it("closed bars, benchmarks and constituent symbols", () => {
-    expect(closedBars(fromCloses([1, 2, 3]), day(2)).map((b) => b.date)).toEqual([day(0), day(1)]);
+  it("benchmarks and constituent symbols", () => {
     expect(benchmarkFor("SPX", []).symbol).toBe("SPY");
     expect(benchmarkFor(undefined, ["AAPL", "BRK.B"]).symbol).toBe("SPY");
     expect(benchmarkFor("CAC40", []).symbol).toBe("FR0003500008");

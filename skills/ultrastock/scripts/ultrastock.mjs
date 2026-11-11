@@ -54832,9 +54832,6 @@ function constituentSymbol(index, c) {
   const t = c.ticker.toUpperCase();
   return index === "UKX" ? `${t.replace(/\.$/, "").replace(/\./g, "-")}.L` : t;
 }
-function closedBars2(bars, today) {
-  return bars.filter((b) => b.date.slice(0, 10) < today);
-}
 async function universeSymbols(opts) {
   const notes = [];
   if (opts.symbols?.length) return { symbols: [...new Set(opts.symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))], notes };
@@ -54875,7 +54872,7 @@ async function builtinScreen(id, opts) {
   const bench = benchmarkFor2(opts.universe, symbols);
   const fetchBars2 = async (sym3) => {
     const series = await getHistory(await resolveSymbol(sym3), { from, to: now, interval: "1d" });
-    return { ...series, bars: closedBars2(series.bars, today) };
+    return { ...series, bars: closedBars(series.bars, series.instrument.market, now) };
   };
   let benchBars;
   const needsBench = id === "minervini" || id === "canslim-technical" || id === "rs-leaders";
@@ -54909,7 +54906,7 @@ async function builtinScreen(id, opts) {
   const shown = rows.slice(0, opts.limit ?? rows.length);
   notes.push(
     `${matches} of ${rows.length} symbols pass ${id}${rows.length < symbols.length ? ` (${symbols.length - rows.length} could not be read)` : ""}`,
-    `computed by ultrastock on closed daily bars up to the last session before ${today}; benchmark ${bench.name}`
+    `computed by ultrastock on closed daily bars (today's once its market's session is final) up to ${today}; benchmark ${bench.name}`
   );
   if (shown.length < rows.length) notes.push(`showing ${shown.length} of ${rows.length} (matches first) \u2014 raise --limit to see the rest`);
   for (const f3 of failures) notes.push(`unavailable \u2014 ${f3}`);
