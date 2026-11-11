@@ -5,10 +5,10 @@ import { argvFor, mcpAdapter, serveMcp, TOOLS } from "../src/mcp.js";
 const tool = (n: string) => TOOLS.find((t) => t.name === n)!;
 
 describe("MCP tools", () => {
-  it("are read-only except ticket creation, and none submits, stores keys or edits state", () => {
+  it("submit nothing, store no key and edit no profile or ledger, and say what they write", () => {
     const names = TOOLS.map((t) => t.name);
     expect(new Set(names).size).toBe(names.length);
-    expect(TOOLS.filter((t) => t.writes).map((t) => t.name)).toEqual(["plan"]);
+    expect(TOOLS.filter((t) => t.writes).map((t) => t.name)).toEqual(["analyze", "research", "portfolio", "portfolio_news", "calc", "plan"]);
     for (const t of TOOLS) expect(t.command[0]).not.toMatch(/^(broker|paper|profile|decide|watch|knowledge)$/);
     expect(TOOLS.find((t) => t.command[0] === "portfolio")!.params.action!.enum).not.toContain("add");
     // The local store: read-only tools only — no db init/export/off, no track, no --mark-seen.
@@ -23,8 +23,40 @@ describe("MCP tools", () => {
       "--json",
     ]);
     const decls = mcpAdapter(async () => "").listTools("2025-06-18" as never);
-    expect(decls.find((d) => d.name === "plan")!.annotations!.readOnlyHint).toBe(false);
-    expect(decls.find((d) => d.name === "quote")!.annotations!.readOnlyHint).toBe(true);
+    const hints = (n: string) => decls.find((d) => d.name === n)!.annotations!;
+    expect(hints("plan").readOnlyHint).toBe(false);
+    // A run written (analyze, calc), an equity reading appended for the breaker (portfolio show|perf), a cache filled.
+    for (const n of ["analyze", "calc", "portfolio", "portfolio_news", "research"]) expect(hints(n).readOnlyHint, n).toBe(false);
+    for (const n of ["analyze", "portfolio", "portfolio_news", "research", "plan"]) expect(hints(n).idempotentHint, n).toBe(false);
+    // calc registers the same [E#] again for the same formula on the same evidence.
+    expect(hints("calc").idempotentHint).toBe(true);
+    // A tool given a run directory writes its evidence there.
+    expect(hints("quote").readOnlyHint).toBe(false);
+    for (const n of ["history", "evidence", "check", "journal", "portfolio_db", "watchlist_list"])
+      expect(hints(n), n).toMatchObject({ readOnlyHint: true, idempotentHint: true });
+  });
+
+  it("refuse a null or empty required argument, and a list element a flag would split", () => {
+    expect(() => argvFor(tool("calc"), { run: "/tmp/r", formula: null, label: "x" })).toThrow(/formula is required/);
+    expect(() => argvFor(tool("stats"), { symbols: [] })).toThrow(/symbols is required/);
+    expect(() => argvFor(tool("morning"), { symbols: ["ALO.PA,NVDA"] })).toThrow(/comma/);
+    expect(argvFor(tool("morning"), { symbols: ["ALO.PA", "NVDA"] })).toEqual(["morning", "--symbols=ALO.PA,NVDA", "--json"]);
+  });
+
+  it("read an answer or a search-results file only inside the run it is given with", async () => {
+    const { mkdtempSync, writeFileSync, symlinkSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const run = mkdtempSync(join(tmpdir(), "us-mcp-run-"));
+    writeFileSync(join(run, "answer.md"), "x");
+    expect(argvFor(tool("check"), { run, answer: join(run, "answer.md") })).toEqual(["check", run, join(run, "answer.md"), "--json"]);
+    expect(() => argvFor(tool("check"), { run, answer: "/etc/passwd" })).toThrow(/inside the run/);
+    expect(() => argvFor(tool("check"), { run, answer: join(run, "..", "elsewhere.md") })).toThrow(/inside the run/);
+    symlinkSync("/etc/passwd", join(run, "link.md"));
+    expect(() => argvFor(tool("check"), { run, answer: join(run, "link.md") })).toThrow(/inside the run/);
+    expect(() => argvFor(tool("research"), { out: run, "web-results": "/etc/passwd" })).toThrow(/inside the run/);
+    writeFileSync(join(run, "hits.json"), "[]");
+    expect(argvFor(tool("research"), { out: run, "web-results": join(run, "hits.json") })).toContain(`--web-results=${join(run, "hits.json")}`);
   });
 
   it("map arguments to a command line, positionals first, and refuse unknown or flag-like values", () => {
@@ -98,9 +130,9 @@ describe("1.1 tools", () => {
       "--out=/tmp/r",
       "--json",
     ]);
-    expect(argvFor(tool("research"), { "web-results": "/tmp/ws.json", out: "/tmp/r" })).toEqual([
+    expect(argvFor(tool("research"), { "web-results": "/tmp/r/ws.json", out: "/tmp/r" })).toEqual([
       "research",
-      "--web-results=/tmp/ws.json",
+      "--web-results=/tmp/r/ws.json",
       "--out=/tmp/r",
       "--json",
     ]);

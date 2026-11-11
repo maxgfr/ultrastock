@@ -1,10 +1,19 @@
 // `ultrastock mcp`: the commands as MCP tools, for a harness that prefers tools
-// to a shell. Read-only tools, plus ticket creation through `plan` — nothing
-// here submits an order (paper or live), changes the profile or the ledger,
-// stores a key or moves a limit: those stay on the command line, in front of
-// the user. The local store is read through `portfolio_db` (status, one
-// guarded SELECT on a read-only handle); db init/export/off, track and
-// --mark-seen stay on the command line.
+// to a shell. Nothing here submits an order (paper or live), changes the
+// profile or the ledger, stores a key or moves a limit: those stay on the
+// command line, in front of the user. The local store is read through
+// `portfolio_db` (status, one guarded SELECT on a read-only handle); db
+// init/export/off, track and --mark-seen stay on the command line.
+//
+// What a tool does write is declared, and its annotations follow: a tool given
+// a run directory (`out`) writes its evidence there, `analyze`, `research` and
+// `calc` write a run, `portfolio show|perf` append the equity reading the
+// circuit breaker reads, `portfolio_news` fills the news cache and `plan`
+// creates a ticket. Only a tool that writes nothing is read-only.
+//
+// A file a tool reads and may quote back — `check`'s answer, `research`'s
+// --web-results — must sit inside the run directory of the same call: a tool
+// call never gets to read an arbitrary file of the user's (~/.ssh, a key file).
 //
 // Each tool runs the bundle itself as a child process with --json (one
 // process per call: a command's stdout can never corrupt the protocol stream,
@@ -12,9 +21,9 @@
 // to 127.0.0.1 and requires a bearer token.
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type McpAdapter, runStdioServer, startHttpServer, type ToolDecl, ToolError } from "./engine.js";
 import { VERSION } from "./version.js";
@@ -27,14 +36,18 @@ interface Param {
   positional?: number;
   required?: boolean;
   enum?: string[];
+  /** A path that must lie inside the directory given as this other argument (which the call must give). */
+  inside?: string;
 }
 interface Tool {
   name: string;
   description: string;
   command: string[];
   params: Record<string, Param>;
-  /** Creates a ticket (not read-only), never sends one. */
-  writes?: boolean;
+  /** What a call writes beside its answer — and beside the evidence an `out` run directory receives. */
+  writes?: string;
+  /** A second identical call writes nothing more (a tool that writes nothing always is). */
+  idempotent?: boolean;
 }
 
 const OUT: Param = { kind: "string", description: "absolute run directory: figures become [E#] evidence there, to cite and to check" };
@@ -57,6 +70,7 @@ export const TOOLS: Tool[] = [
       since: { kind: "string", description: "an earlier run: writes DELTA.md" },
       out: OUT,
     },
+    writes: "a run directory: its evidence, BRIEF.md, RUNBOOK.md and the slices' reports",
   },
   { name: "quote", description: "The latest price of an instrument, with its source and delay.", command: ["quote"], params: { symbol: sym(), out: OUT } },
   {
@@ -206,7 +220,11 @@ export const TOOLS: Tool[] = [
         kind: "hits",
         description: "your web search's hits to ingest into the run, inline: [{url, title?, snippet?, angle?}] (the angle ids are in RESEARCH.todo.json)",
       },
-      "web-results": { kind: "string", description: "absolute path of a JSON file of search results to ingest into the run (instead of hits)" },
+      "web-results": {
+        kind: "string",
+        description: "absolute path of a JSON file of search results inside the run directory (out), to ingest (instead of hits)",
+        inside: "out",
+      },
       urls: { kind: "string[]", description: "pages to add directly (a report PDF you already know)" },
       "search-with": {
         kind: "string",
@@ -219,6 +237,7 @@ export const TOOLS: Tool[] = [
       for: { kind: "string", description: "the subject's tag in a run that researches several (a value run's top names: their symbol)" },
       out: { ...OUT, required: true },
     },
+    writes: "the run's worklist, its documents (sources/E#.md, DOSSIER.md) and their evidence",
   },
   {
     name: "value",
@@ -340,6 +359,7 @@ export const TOOLS: Tool[] = [
       book: { kind: "string", description: "real (default) or paper" },
       out: OUT,
     },
+    writes: "show and perf append the book's equity reading, which the circuit breaker reads",
   },
   {
     name: "portfolio_history",
@@ -362,6 +382,7 @@ export const TOOLS: Tool[] = [
       days: { kind: "number", description: "1–30 typically, default 7" },
       book: { kind: "string", description: "real (default) or paper", enum: ["real", "paper"] },
     },
+    writes: "the headlines found, in the local store's news cache",
   },
   {
     name: "portfolio_db",
@@ -426,6 +447,9 @@ export const TOOLS: Tool[] = [
       label: { kind: "string", description: "what it is", required: true },
       unit: { kind: "string", description: "%, EUR…" },
     },
+    writes: "the derived figure, as a new [E#] of the run",
+    // The same formula on the same evidence is the same key and value: the [E#] already registered is returned.
+    idempotent: true,
   },
   {
     name: "check",
@@ -433,7 +457,13 @@ export const TOOLS: Tool[] = [
     command: ["check"],
     params: {
       run: { kind: "string", description: "the run directory", positional: 0, required: true },
-      answer: { kind: "string", description: "the answer file (markdown)", positional: 1, required: true },
+      answer: {
+        kind: "string",
+        description: "the answer file (markdown), inside the run directory: <run>/answer.md",
+        positional: 1,
+        required: true,
+        inside: "run",
+      },
     },
   },
   {
@@ -451,7 +481,7 @@ export const TOOLS: Tool[] = [
       ticket: { kind: "boolean", description: "create the ticket" },
       out: OUT,
     },
-    writes: true,
+    writes: "with ticket=true, a ticket — never sent",
   },
 ];
 
@@ -489,6 +519,14 @@ export function argvFor(t: Tool, args: Record<string, unknown>): string[] {
     if (!p) throw new ToolError(`${t.name}: unknown argument "${k}"`);
     if (v === undefined || v === null || v === "") continue;
     const vals = Array.isArray(v) ? v.map(String) : [String(v)];
+    // A flag carries a list joined by commas: an element holding one would reach the command as two.
+    if (Array.isArray(v) && p.positional === undefined && vals.some((x) => x.includes(",")))
+      throw new ToolError(`${t.name}: an element of ${k} may not hold a comma — give each value as its own element`);
+    if (p.inside) {
+      const root = args[p.inside];
+      if (typeof root !== "string" || !root) throw new ToolError(`${t.name}: ${k} needs ${p.inside}, the run directory it must sit in`);
+      if (!vals.every((x) => isInside(x, root))) throw new ToolError(`${t.name}: ${k} must be a file inside the run directory ${p.inside} (${root})`);
+    }
     if (p.kind === "number" && !vals.every((x) => Number.isFinite(Number(x)))) throw new ToolError(`${t.name}: ${k} is a number`);
     if (p.enum && !vals.every((x) => p.enum!.includes(x))) throw new ToolError(`${t.name}: ${k} is one of ${p.enum.join(", ")}`);
     if (vals.some((x) => x.startsWith("-") && p.kind !== "number")) throw new ToolError(`${t.name}: ${k} may not start with "-"`);
@@ -498,8 +536,23 @@ export function argvFor(t: Tool, args: Record<string, unknown>): string[] {
     } else flags.push(`--${k}=${vals.join(",")}`);
   }
   for (const [k, p] of Object.entries(t.params))
-    if (p.required && (args[k] === undefined || args[k] === "")) throw new ToolError(`${t.name}: ${k} is required`);
+    if (p.required && (args[k] === undefined || args[k] === null || args[k] === "" || (Array.isArray(args[k]) && !args[k].length)))
+      throw new ToolError(`${t.name}: ${k} is required`);
   return [...t.command, ...positional.flat().filter((x) => x !== undefined), ...flags, "--json"];
+}
+
+/** Does `path` lie inside `dir`, links followed — so a link in the run cannot point a tool at another file? */
+function isInside(path: string, dir: string): boolean {
+  const real = (p: string): string => {
+    try {
+      return realpathSync(p);
+    } catch {
+      const parent = dirname(p);
+      return parent === p ? p : join(real(parent), basename(p));
+    }
+  };
+  const rel = relative(real(resolve(dir)), real(resolve(path)));
+  return !!rel && !rel.startsWith("..") && !isAbsolute(rel);
 }
 
 function runBundle(argv: string[], signal?: AbortSignal): Promise<string> {
@@ -512,6 +565,9 @@ function runBundle(argv: string[], signal?: AbortSignal): Promise<string> {
   });
 }
 
+/** A tool that writes nothing: no declared write, and no run directory to write evidence into. */
+const readOnly = (t: Tool) => !t.writes && !("out" in t.params);
+
 export function mcpAdapter(run: (argv: string[], signal?: AbortSignal) => Promise<string> = runBundle): McpAdapter {
   return {
     version: VERSION,
@@ -520,7 +576,9 @@ export function mcpAdapter(run: (argv: string[], signal?: AbortSignal) => Promis
         name: t.name,
         description: t.description,
         inputSchema: schemaOf(t) as ToolDecl["inputSchema"],
-        annotations: { readOnlyHint: !t.writes, destructiveHint: false, idempotentHint: !t.writes, openWorldHint: true },
+        annotations: readOnly(t)
+          ? { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
+          : { readOnlyHint: false, destructiveHint: false, idempotentHint: !!t.idempotent, openWorldHint: true },
       })),
     async callTool(name, args, ctx) {
       const t = TOOLS.find((x) => x.name === name);
@@ -532,6 +590,7 @@ export function mcpAdapter(run: (argv: string[], signal?: AbortSignal) => Promis
       if (hitsKey) delete given[hitsKey];
       if (hits === undefined) return { text: await run(argvFor(t, given), ctx?.signal) };
       if (!Array.isArray(hits)) throw new ToolError(`${t.name}: ${hitsKey} is an array of search hits`);
+      if (given["web-results"] !== undefined) throw new ToolError(`${t.name}: give ${hitsKey} or web-results, not both`);
       const dir = mkdtempSync(join(tmpdir(), "ultrastock-hits-"));
       try {
         const file = join(dir, "websearch.json");

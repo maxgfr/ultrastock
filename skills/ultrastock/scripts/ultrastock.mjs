@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { readFileSync as readFileSync50, realpathSync as realpathSync4 } from "fs";
-import { resolve as resolve19 } from "path";
+import { readFileSync as readFileSync50, realpathSync as realpathSync5 } from "fs";
+import { resolve as resolve20 } from "path";
 import { pathToFileURL } from "url";
 
 // src/analyze/pack.ts
@@ -14766,7 +14766,7 @@ function mcpToolCall(child, tool, toolArgs, timeoutMs) {
     if (child.stdin.writable) child.stdin.write(`${JSON.stringify(msg)}
 `);
   };
-  return new Promise((resolve20, reject) => {
+  return new Promise((resolve21, reject) => {
     let settled = false;
     let errors = "";
     const finish2 = (settle3) => {
@@ -14792,7 +14792,7 @@ function mcpToolCall(child, tool, toolArgs, timeoutMs) {
         if (r3.isError) return fail2(`crible ${tool}: ${r3.content?.[0]?.text ?? "error"}`, 400);
         const text2 = r3.content?.[0]?.text;
         const value2 = r3.structuredContent !== void 0 ? r3.structuredContent.result ?? r3.structuredContent : text2 === void 0 ? null : JSON.parse(text2);
-        finish2(() => resolve20(value2));
+        finish2(() => resolve21(value2));
       }
     };
     let buf = "";
@@ -44004,7 +44004,7 @@ function sameFingerprint(a, b) {
 function pinnedHttps(caPem, fingerprint256) {
   const own = new X509Certificate(caPem).fingerprint256;
   if (fingerprint256 && !sameFingerprint(own, fingerprint256)) throw new BrokerError("ibkr", "the pinned fingerprint does not match the certificate file");
-  return (req) => new Promise((resolve20, reject) => {
+  return (req) => new Promise((resolve21, reject) => {
     const u = new URL(req.url);
     if (u.protocol !== "https:") return reject(new BrokerError("ibkr", "the gateway must be reached over https"));
     const r3 = httpsRequest(
@@ -44034,7 +44034,7 @@ function pinnedHttps(caPem, fingerprint256) {
         });
         res.on("end", () => {
           clearTimeout(timer);
-          resolve20({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") });
+          resolve21({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") });
         });
         res.on("error", (e) => {
           clearTimeout(timer);
@@ -46047,9 +46047,9 @@ function pendingLive() {
 // src/mcp.ts
 import { execFile } from "child_process";
 import { randomBytes as randomBytes4 } from "crypto";
-import { mkdtempSync as mkdtempSync5, rmSync as rmSync10, writeFileSync as writeFileSync11 } from "fs";
+import { mkdtempSync as mkdtempSync5, realpathSync as realpathSync4, rmSync as rmSync10, writeFileSync as writeFileSync11 } from "fs";
 import { tmpdir as tmpdir6 } from "os";
-import { join as join49 } from "path";
+import { basename as basename3, dirname as dirname7, isAbsolute as isAbsolute4, join as join49, relative as relative3, resolve as resolve12 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 var OUT = { kind: "string", description: "absolute run directory: figures become [E#] evidence there, to cite and to check" };
 var sym2 = (d = "instrument: MC.PA, NVDA, CW8.PA, an EU ISIN, BTCUSDT") => ({ kind: "string", description: d, positional: 0, required: true });
@@ -46067,7 +46067,8 @@ var TOOLS = [
       },
       since: { kind: "string", description: "an earlier run: writes DELTA.md" },
       out: OUT
-    }
+    },
+    writes: "a run directory: its evidence, BRIEF.md, RUNBOOK.md and the slices' reports"
   },
   { name: "quote", description: "The latest price of an instrument, with its source and delay.", command: ["quote"], params: { symbol: sym2(), out: OUT } },
   {
@@ -46212,7 +46213,11 @@ var TOOLS = [
         kind: "hits",
         description: "your web search's hits to ingest into the run, inline: [{url, title?, snippet?, angle?}] (the angle ids are in RESEARCH.todo.json)"
       },
-      "web-results": { kind: "string", description: "absolute path of a JSON file of search results to ingest into the run (instead of hits)" },
+      "web-results": {
+        kind: "string",
+        description: "absolute path of a JSON file of search results inside the run directory (out), to ingest (instead of hits)",
+        inside: "out"
+      },
       urls: { kind: "string[]", description: "pages to add directly (a report PDF you already know)" },
       "search-with": {
         kind: "string",
@@ -46223,7 +46228,8 @@ var TOOLS = [
       limit: { kind: "number", description: "most sources kept (default 15)" },
       for: { kind: "string", description: "the subject's tag in a run that researches several (a value run's top names: their symbol)" },
       out: { ...OUT, required: true }
-    }
+    },
+    writes: "the run's worklist, its documents (sources/E#.md, DOSSIER.md) and their evidence"
   },
   {
     name: "value",
@@ -46341,7 +46347,8 @@ var TOOLS = [
       },
       book: { kind: "string", description: "real (default) or paper" },
       out: OUT
-    }
+    },
+    writes: "show and perf append the book's equity reading, which the circuit breaker reads"
   },
   {
     name: "portfolio_history",
@@ -46361,7 +46368,8 @@ var TOOLS = [
     params: {
       days: { kind: "number", description: "1\u201330 typically, default 7" },
       book: { kind: "string", description: "real (default) or paper", enum: ["real", "paper"] }
-    }
+    },
+    writes: "the headlines found, in the local store's news cache"
   },
   {
     name: "portfolio_db",
@@ -46424,7 +46432,10 @@ var TOOLS = [
       formula: { kind: "string", description: "e.g. (E1 / E6 - 1) * 100", positional: 1, required: true },
       label: { kind: "string", description: "what it is", required: true },
       unit: { kind: "string", description: "%, EUR\u2026" }
-    }
+    },
+    writes: "the derived figure, as a new [E#] of the run",
+    // The same formula on the same evidence is the same key and value: the [E#] already registered is returned.
+    idempotent: true
   },
   {
     name: "check",
@@ -46432,7 +46443,13 @@ var TOOLS = [
     command: ["check"],
     params: {
       run: { kind: "string", description: "the run directory", positional: 0, required: true },
-      answer: { kind: "string", description: "the answer file (markdown)", positional: 1, required: true }
+      answer: {
+        kind: "string",
+        description: "the answer file (markdown), inside the run directory: <run>/answer.md",
+        positional: 1,
+        required: true,
+        inside: "run"
+      }
     }
   },
   {
@@ -46449,7 +46466,7 @@ var TOOLS = [
       ticket: { kind: "boolean", description: "create the ticket" },
       out: OUT
     },
-    writes: true
+    writes: "with ticket=true, a ticket \u2014 never sent"
   }
 ];
 var HIT_SCHEMA = {
@@ -46476,6 +46493,13 @@ function argvFor(t, args) {
     if (!p) throw new ToolError(`${t.name}: unknown argument "${k}"`);
     if (v === void 0 || v === null || v === "") continue;
     const vals = Array.isArray(v) ? v.map(String) : [String(v)];
+    if (Array.isArray(v) && p.positional === void 0 && vals.some((x) => x.includes(",")))
+      throw new ToolError(`${t.name}: an element of ${k} may not hold a comma \u2014 give each value as its own element`);
+    if (p.inside) {
+      const root = args[p.inside];
+      if (typeof root !== "string" || !root) throw new ToolError(`${t.name}: ${k} needs ${p.inside}, the run directory it must sit in`);
+      if (!vals.every((x) => isInside(x, root))) throw new ToolError(`${t.name}: ${k} must be a file inside the run directory ${p.inside} (${root})`);
+    }
     if (p.kind === "number" && !vals.every((x) => Number.isFinite(Number(x)))) throw new ToolError(`${t.name}: ${k} is a number`);
     if (p.enum && !vals.every((x) => p.enum.includes(x))) throw new ToolError(`${t.name}: ${k} is one of ${p.enum.join(", ")}`);
     if (vals.some((x) => x.startsWith("-") && p.kind !== "number")) throw new ToolError(`${t.name}: ${k} may not start with "-"`);
@@ -46485,18 +46509,32 @@ function argvFor(t, args) {
     } else flags.push(`--${k}=${vals.join(",")}`);
   }
   for (const [k, p] of Object.entries(t.params))
-    if (p.required && (args[k] === void 0 || args[k] === "")) throw new ToolError(`${t.name}: ${k} is required`);
+    if (p.required && (args[k] === void 0 || args[k] === null || args[k] === "" || Array.isArray(args[k]) && !args[k].length))
+      throw new ToolError(`${t.name}: ${k} is required`);
   return [...t.command, ...positional.flat().filter((x) => x !== void 0), ...flags, "--json"];
+}
+function isInside(path2, dir2) {
+  const real2 = (p) => {
+    try {
+      return realpathSync4(p);
+    } catch {
+      const parent = dirname7(p);
+      return parent === p ? p : join49(real2(parent), basename3(p));
+    }
+  };
+  const rel = relative3(real2(resolve12(dir2)), real2(resolve12(path2)));
+  return !!rel && !rel.startsWith("..") && !isAbsolute4(rel);
 }
 function runBundle(argv, signal) {
   const bundle = fileURLToPath2(import.meta.url);
-  return new Promise((resolve20, reject) => {
+  return new Promise((resolve21, reject) => {
     execFile(process.execPath, [bundle, ...argv], { maxBuffer: 64 * 1024 * 1024, timeout: 15 * 6e4, signal, env: process.env }, (err, stdout, stderr) => {
       if (err && !stdout.trim()) reject(new ToolError((stderr || err.message).trim().split("\n").slice(-5).join("\n")));
-      else resolve20(stdout.trim() || stderr.trim());
+      else resolve21(stdout.trim() || stderr.trim());
     });
   });
 }
+var readOnly = (t) => !t.writes && !("out" in t.params);
 function mcpAdapter(run3 = runBundle) {
   return {
     version: VERSION,
@@ -46504,7 +46542,7 @@ function mcpAdapter(run3 = runBundle) {
       name: t.name,
       description: t.description,
       inputSchema: schemaOf(t),
-      annotations: { readOnlyHint: !t.writes, destructiveHint: false, idempotentHint: !t.writes, openWorldHint: true }
+      annotations: readOnly(t) ? { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true } : { readOnlyHint: false, destructiveHint: false, idempotentHint: !!t.idempotent, openWorldHint: true }
     })),
     async callTool(name, args, ctx) {
       const t = TOOLS.find((x) => x.name === name);
@@ -46515,6 +46553,7 @@ function mcpAdapter(run3 = runBundle) {
       if (hitsKey) delete given[hitsKey];
       if (hits === void 0) return { text: await run3(argvFor(t, given), ctx?.signal) };
       if (!Array.isArray(hits)) throw new ToolError(`${t.name}: ${hitsKey} is an array of search hits`);
+      if (given["web-results"] !== void 0) throw new ToolError(`${t.name}: give ${hitsKey} or web-results, not both`);
       const dir2 = mkdtempSync5(join49(tmpdir6(), "ultrastock-hits-"));
       try {
         const file = join49(dir2, "websearch.json");
@@ -47541,7 +47580,7 @@ async function notify(events) {
 
 // src/commands/import.ts
 import { existsSync as existsSync38, readFileSync as readFileSync42 } from "fs";
-import { resolve as resolve12 } from "path";
+import { resolve as resolve13 } from "path";
 
 // src/portfolio/import/shared.ts
 var emptyResult = () => ({ transactions: [], skipped: [], warnings: [] });
@@ -48849,8 +48888,8 @@ async function importCommand(args, asJson) {
   if (book2 !== "real" && book2 !== "paper") throw new UsageError("--book is real or paper");
   const dryRun = args.bools.has("dry-run");
   let mapRaw = argValue(args, "map");
-  if (mapRaw !== void 0 && !mapRaw.trim().startsWith("{") && /\.json$/i.test(mapRaw) && existsSync38(resolve12(mapRaw)))
-    mapRaw = readFileSync42(resolve12(mapRaw), "utf8");
+  if (mapRaw !== void 0 && !mapRaw.trim().startsWith("{") && /\.json$/i.test(mapRaw) && existsSync38(resolve13(mapRaw)))
+    mapRaw = readFileSync42(resolve13(mapRaw), "utf8");
   let mapOpt;
   try {
     mapOpt = resolveMapOption(format, mapRaw);
@@ -48859,7 +48898,7 @@ async function importCommand(args, asJson) {
   }
   if (format === "generic" && !mapOpt.map)
     throw new UsageError("--format generic needs --map (a JSON column map, a .json file holding one, or boursorama|fortuneo|trade-republic)");
-  const path2 = resolve12(file);
+  const path2 = resolve13(file);
   if (!existsSync38(path2)) throw new Error(`no such file: ${path2}`);
   const { text: text2, warning } = readStatement(path2);
   const res = parseStatement(format, text2, { account, quote: mapOpt.quote, map: mapOpt.map, presetName: mapOpt.presetName });
@@ -49355,7 +49394,7 @@ async function portfolioAnalyticsCommand(args, asJson) {
 }
 
 // src/commands/portfolio-store.ts
-import { resolve as resolve13 } from "path";
+import { resolve as resolve14 } from "path";
 
 // src/portfolio/store.ts
 import { existsSync as existsSync39, mkdirSync as mkdirSync28, readdirSync as readdirSync12, statSync as statSync7 } from "fs";
@@ -49699,7 +49738,7 @@ async function historyCommand(args, asJson) {
   const dir2 = argValue(args, "out");
   const ids = {};
   if (dir2 && h.last) {
-    const store = EvidenceStore.open(resolve13(dir2), { subject: `portfolio:${book2}` });
+    const store = EvidenceStore.open(resolve14(dir2), { subject: `portfolio:${book2}` });
     const fetchedAt = now.toISOString();
     const subj = symbol ? `${symbol}.` : "";
     const ev = { source: "ultrastock-store", fetchedAt, asOf: h.last.date, official: false };
@@ -49835,7 +49874,7 @@ async function newsCommand2(args, asJson) {
 }
 
 // src/commands/trading.ts
-import { resolve as resolve14 } from "path";
+import { resolve as resolve15 } from "path";
 
 // src/trading/plan.ts
 var round5 = (x, step) => Number((Math.round(x / step) * step).toFixed(Math.max(0, -Math.floor(Math.log10(step)))));
@@ -50269,7 +50308,7 @@ async function portfolioCommand(args, asJson) {
     const m = await markBook(book2);
     const dir2 = argValue(args, "out");
     if (dir2) {
-      const store = EvidenceStore.open(resolve14(dir2), { subject: `portfolio:${book2}` });
+      const store = EvidenceStore.open(resolve15(dir2), { subject: `portfolio:${book2}` });
       const fetchedAt = m.now.toISOString();
       const base2 = { source: "ultrastock-ledger", fetchedAt, asOf: fetchedAt.slice(0, 10), official: false };
       store.add({
@@ -50369,7 +50408,7 @@ async function planCommand(args, asJson) {
   });
   const dir2 = argValue(args, "out");
   if (dir2) {
-    const store = EvidenceStore.open(resolve14(dir2), { subject: p.symbol });
+    const store = EvidenceStore.open(resolve15(dir2), { subject: p.symbol });
     const base2 = { source: "ultrastock-plan", fetchedAt: clockNow().toISOString(), official: false, asOf: clockNow().toISOString().slice(0, 10) };
     const k = `${p.symbol}.plan`;
     store.add({ ...base2, key: `${k}.entry`, label: `${p.symbol} planned entry (limit)`, value: p.entry, unit: p.currency });
@@ -50387,7 +50426,7 @@ async function planCommand(args, asJson) {
   let ticketId;
   if (args.bools.has("ticket")) {
     if (p.quantity <= 0) throw new Error(`no ticket: ${p.verdict} \u2014 the size is zero (${p.sizingReasons.at(-1)})`);
-    const t = createTicket(p.order, { run: dir2 ? resolve14(dir2) : void 0, note: `plan: stop ${p.stopMethod}; targets ${p.targets.join(", ")}` });
+    const t = createTicket(p.order, { run: dir2 ? resolve15(dir2) : void 0, note: `plan: stop ${p.stopMethod}; targets ${p.targets.join(", ")}` });
     await recordCheck(t.id, p.gate);
     ticketId = t.id;
   }
@@ -51017,12 +51056,12 @@ async function startDashboard(opts = {}) {
       (e) => send(req, res, text(500, `Internal error: ${e.message}`))
     );
   });
-  await new Promise((resolve20, reject) => {
+  await new Promise((resolve21, reject) => {
     server.once(
       "error",
       (e) => reject(e.code === "EADDRINUSE" ? new Error(`port ${opts.port ?? DEFAULT_SERVE_PORT} is in use: pass --port <n> (0 picks a free one)`) : e)
     );
-    server.listen(opts.port ?? DEFAULT_SERVE_PORT, "127.0.0.1", () => resolve20());
+    server.listen(opts.port ?? DEFAULT_SERVE_PORT, "127.0.0.1", () => resolve21());
   });
   const port = server.address().port;
   hosts = /* @__PURE__ */ new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
@@ -51032,8 +51071,8 @@ async function startDashboard(opts = {}) {
     url: `http://127.0.0.1:${port}/?token=${token}`,
     port,
     token,
-    close: () => new Promise((resolve20) => {
-      server.close(() => resolve20());
+    close: () => new Promise((resolve21) => {
+      server.close(() => resolve21());
       server.closeAllConnections?.();
     })
   };
@@ -51057,14 +51096,14 @@ async function serveCommand(args) {
 
 // src/commands/journal.ts
 import { readFileSync as readFileSync44 } from "fs";
-import { basename as basename3, resolve as resolve15 } from "path";
+import { basename as basename5, resolve as resolve16 } from "path";
 async function decideCommand(args, asJson) {
   const [run3, file] = args.positional;
   if (!run3 || !file)
     throw new UsageError("usage: ultrastock decide <run> <decision.json> \u2014 validate the decision against the run's evidence and record it in the journal");
   let raw;
   try {
-    raw = JSON.parse(readFileSync44(resolve15(file), "utf8"));
+    raw = JSON.parse(readFileSync44(resolve16(file), "utf8"));
   } catch (e) {
     throw new Error(`cannot read ${file} as JSON: ${e.message}`);
   }
@@ -51073,9 +51112,9 @@ async function decideCommand(args, asJson) {
   const notes = known ? [] : [
     ...decidedAt !== void 0 ? [`decidedAt ${JSON.stringify(decidedAt)} ignored: a new decision is dated by the clock`] : [],
     ...id !== void 0 ? [`id ${JSON.stringify(id)} ignored: no decision of the journal has it at that time, so this is a new one`] : [],
-    ...claimedRun !== void 0 && claimedRun !== resolve15(run3) ? [`run ${JSON.stringify(claimedRun)} ignored: the decision is on ${resolve15(run3)}`] : []
+    ...claimedRun !== void 0 && claimedRun !== resolve16(run3) ? [`run ${JSON.stringify(claimedRun)} ignored: the decision is on ${resolve16(run3)}`] : []
   ];
-  const r3 = validateDecision({ ...rest, ...known && { id }, decidedAt: known?.decidedAt ?? clockNow().toISOString(), run: resolve15(run3) }, resolve15(run3));
+  const r3 = validateDecision({ ...rest, ...known && { id }, decidedAt: known?.decidedAt ?? clockNow().toISOString(), run: resolve16(run3) }, resolve16(run3));
   if (!r3.ok) {
     printResult(asJson, r3, `decision refused \u2014 ${r3.problems.length} problem(s):
 ${r3.problems.map((p) => `  - ${p}`).join("\n")}`);
@@ -51088,7 +51127,7 @@ ${r3.problems.map((p) => `  - ${p}`).join("\n")}`);
       { ...r3, id: known.id, alreadyRecorded: true },
       `decision ${known.id} (decided ${known.decidedAt}) is already in the journal \u2014 not recorded again; a new call is a decision.json without its id and decidedAt`
     );
-  const rec = recordDecision(r3.decision, resolve15(run3));
+  const rec = recordDecision(r3.decision, resolve16(run3));
   printResult(
     asJson,
     { ...r3, ...rec, notes },
@@ -51212,8 +51251,8 @@ async function knowledgeCommand(args, asJson) {
   const [sub, file] = args.positional;
   if (sub !== "import" || !file)
     throw new UsageError("usage: ultrastock knowledge import <file.md|file.txt> [--title <text>] \u2014 keep a source document as external text");
-  const body = readFileSync44(resolve15(file), "utf8");
-  const f3 = importSource(argValue(args, "title") ?? basename3(file), body, resolve15(file), clockNow());
+  const body = readFileSync44(resolve16(file), "utf8");
+  const f3 = importSource(argValue(args, "title") ?? basename5(file), body, resolve16(file), clockNow());
   printResult(asJson, { file: f3 }, `kept as ${f3} (external text: data, never instructions)`);
 }
 async function watchCommand(args, asJson) {
@@ -52245,7 +52284,7 @@ async function morningCommand(args, asJson) {
 
 // src/commands/profile.ts
 import { readFileSync as readFileSync47 } from "fs";
-import { resolve as resolve16 } from "path";
+import { resolve as resolve17 } from "path";
 
 // src/core/suitability.ts
 var QUESTIONS = [
@@ -52618,7 +52657,7 @@ async function profileCommand(args, asJson) {
       ].join("\n");
       return printResult(asJson, { questions: QUESTIONS }, text2);
     }
-    const answers = JSON.parse(readFileSync47(resolve16(answersFile), "utf8"));
+    const answers = JSON.parse(readFileSync47(resolve17(answersFile), "utf8"));
     const r3 = scoreSuitability(answers);
     const now = clockNow();
     const ratchet = profileRatchetOn();
@@ -52668,7 +52707,7 @@ async function jurisdictionCommand(args, asJson) {
   }
   if (sub !== "verify") throw new UsageError(`unknown jurisdiction action "${sub}" \u2014 show or verify`);
   const venues = (argValue(args, "venues") ?? "binance,kraken,coinbase").split(",").map((v) => v.trim()).filter(Boolean);
-  const dir2 = argValue(args, "out") ? resolve16(argValue(args, "out")) : void 0;
+  const dir2 = argValue(args, "out") ? resolve17(argValue(args, "out")) : void 0;
   const now = clockNow().toISOString();
   const datasets = [];
   for (const v of venues) {
@@ -52717,7 +52756,7 @@ ${checklist.map((c) => `- ${c.rule} (verified ${c.verifiedAt}): "${c.query}" \u2
 
 // src/commands/tax.ts
 import { mkdirSync as mkdirSync30, writeFileSync as writeFileSync12 } from "fs";
-import { join as join55, resolve as resolve17 } from "path";
+import { join as join55, resolve as resolve18 } from "path";
 
 // src/tax/export.ts
 var EXPORT_FORMATS = ["8949", "2086", "2074", "koinly"];
@@ -54179,8 +54218,8 @@ ${pn.join("\n")}` : ""}`
     );
     const out = argValue(args, "out");
     if (!out) return void process.stdout.write(csv);
-    mkdirSync30(resolve17(out), { recursive: true });
-    const file = join55(resolve17(out), `tax-${regime.id}-${year}-${format}.csv`);
+    mkdirSync30(resolve18(out), { recursive: true });
+    const file = join55(resolve18(out), `tax-${regime.id}-${year}-${format}.csv`);
     writeFileSync12(file, csv, { mode: 384 });
     return printResult(asJson, { file, rows: csv.split("\r\n").length - 2 }, `written ${file}`);
   }
@@ -54814,7 +54853,7 @@ async function screenCommand(args, asJson) {
 
 // src/commands/etf.ts
 import { readFileSync as readFileSync48 } from "fs";
-import { join as join57, resolve as resolve18 } from "path";
+import { join as join57, resolve as resolve19 } from "path";
 
 // src/analyze/etf-propose.ts
 import { join as join56 } from "path";
@@ -55670,7 +55709,7 @@ async function etfCommand(args, asJson) {
 ${USAGE6}`);
     const r3 = await etfCompare(syms);
     const out = argValue(args, "out");
-    const registered = registerDatasets(out ? resolve18(out) : void 0, r3.datasets);
+    const registered = registerDatasets(out ? resolve19(out) : void 0, r3.datasets);
     const byKey = new Map(registered.flatMap((x) => x.items.map((i) => [i.key, i])));
     const cell3 = (key) => {
       const i = key ? byKey.get(key) : void 0;
@@ -55682,7 +55721,7 @@ ${USAGE6}`);
     if (asJson) {
       process.stdout.write(
         jsonLine({
-          dir: out ? resolve18(out) : void 0,
+          dir: out ? resolve19(out) : void 0,
           symbols: r3.table.symbols,
           table: rows.map((x) => ({ label: x.label, cells: x.cells.map(({ id, value: value2, unit }) => ({ id, value: value2, unit })) })),
           datasets: registered.map((x) => ({ ...x.dataset, ids: x.ids, points: x.items })),
@@ -58133,8 +58172,8 @@ function configureNetwork(args) {
   const record = argValue(args, "record");
   const fixture = argValue(args, "fixture");
   if (record && fixture) usage("--record and --fixture are opposites: record a fixture, or replay one");
-  if (fixture) setNetMode({ kind: "fixture", dir: resolve19(fixture) });
-  else if (record) setNetMode({ kind: "record", dir: resolve19(record) });
+  if (fixture) setNetMode({ kind: "fixture", dir: resolve20(fixture) });
+  else if (record) setNetMode({ kind: "record", dir: resolve20(record) });
   setCacheMode({ refresh: argBool(args, "refresh"), offline: argBool(args, "offline") });
 }
 async function run2(args) {
@@ -58148,7 +58187,7 @@ async function run2(args) {
     if (!DEPTHS.includes(depth)) usage(`--depth is one of ${DEPTHS.join(", ")}`);
     const dir2 = runDirFor(argValue(args, "out"), `${symbol.toUpperCase().replace(/[^A-Z0-9.-]/g, "_")}-${runId()}`);
     const since = argValue(args, "since");
-    const r3 = await analyzeFull(symbol, dir2, { depth, since: since ? resolve19(since) : void 0 });
+    const r3 = await analyzeFull(symbol, dir2, { depth, since: since ? resolve20(since) : void 0 });
     if (asJson) process.stdout.write(jsonLine(r3));
     else process.stdout.write(`${readBrief(dir2)}
 run: ${dir2}
@@ -58163,7 +58202,7 @@ run: ${dir2}
     const out = argValue(args, "out");
     let id;
     if (out) {
-      const store = EvidenceStore.open(resolve19(out), { subject: q.instrument.symbol });
+      const store = EvidenceStore.open(resolve20(out), { subject: q.instrument.symbol });
       id = store.add({
         key: `${q.instrument.symbol}.quote.price`,
         label: `${q.instrument.symbol} latest price`,
@@ -58220,7 +58259,7 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
     let r3;
     try {
       const opts = { label: label2, unit: argValue(args, "unit"), key: argValue(args, "key") };
-      r3 = from ? calcFromDocument(resolve19(dir2), from, formula, opts) : calcEvidence(resolve19(dir2), formula, opts);
+      r3 = from ? calcFromDocument(resolve20(dir2), from, formula, opts) : calcEvidence(resolve20(dir2), formula, opts);
     } catch (e) {
       if (e instanceof ExprError) usage(`formula: ${e.message}`);
       return fail(e.message);
@@ -58233,9 +58272,9 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
   if (cmd === "evidence") {
     const dir2 = args.positional[0];
     if (!dir2) usage("usage: ultrastock evidence <run> [--json]");
-    const store = EvidenceStore.load(resolve19(dir2));
+    const store = EvidenceStore.load(resolve20(dir2));
     if (!store) fail(`${dir2} holds no evidence.json`);
-    if (asJson) process.stdout.write(jsonLine({ dir: resolve19(dir2), subject: store.subject, items: store.items }));
+    if (asJson) process.stdout.write(jsonLine({ dir: resolve20(dir2), subject: store.subject, items: store.items }));
     else process.stdout.write(`${store.items.map(formatEvidence).join("\n")}
 `);
     return;
@@ -58251,7 +58290,7 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
     } catch {
       return fail(`cannot read ${file}`);
     }
-    const r3 = checkAnswer(resolve19(dir2), answer, { maxAgeMs: maxAge ? parseDuration(maxAge) : void 0 });
+    const r3 = checkAnswer(resolve20(dir2), answer, { maxAgeMs: maxAge ? parseDuration(maxAge) : void 0 });
     if ("error" in r3) fail(r3.error);
     const failing = r3.problems.filter((p) => !NOTE_KINDS.has(p.kind));
     if (asJson) process.stdout.write(jsonLine({ ok: failing.length === 0, ...r3 }));
@@ -58363,7 +58402,7 @@ async function main(argv) {
 }
 function isStartedFile() {
   try {
-    return !!process.argv[1] && pathToFileURL(realpathSync4(process.argv[1])).href === import.meta.url;
+    return !!process.argv[1] && pathToFileURL(realpathSync5(process.argv[1])).href === import.meta.url;
   } catch {
     return false;
   }
