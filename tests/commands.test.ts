@@ -99,6 +99,15 @@ describe("portfolio perf", () => {
   }, 60_000);
 });
 
+describe("etf propose", () => {
+  it("refuses --max-funds below the sleeves the risk profile needs, as a usage error, before reading anything", async () => {
+    // A fixture recorded for another plan: any request this run sent would fail as unrecorded, not as usage.
+    const r = await cli(["etf", "propose", "--goal", "core", "--risk", "2", "--max-funds", "1", "--fixture", join(FIXTURES, "etf-propose-pea")]);
+    expect(r.code).toBe(2);
+    expect(r.err).toMatch(/--max-funds 1 is too few for goal core at risk 2: .*at least 2 funds/);
+  });
+});
+
 describe("data commands on fixtures", () => {
   it("options and universe register their figures as evidence", async () => {
     const run = mkdtempSync(join(tmpdir(), "us-cmd-"));

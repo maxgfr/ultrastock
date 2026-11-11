@@ -7,6 +7,7 @@ import {
   ETF_BUCKETS,
   ETF_PEA_BOND_REASON,
   type EtfScreenContext,
+  EtfProposeError,
   etfAllocation,
   etfEquityShare,
   etfPlacement,
@@ -106,8 +107,18 @@ describe("the allocation convention", () => {
       ["em", 15],
     ]);
     expect(two.lines[0]!.merged).toEqual([{ bucket: "small", why: "--max-funds 2" }]);
-    const one = etfAllocation({ goal: "core", risk: 4, maxFunds: 1 });
-    expect(one.lines.map((l) => [l.bucket.id, l.weightPct])).toEqual([["world", 100]]);
+    // All equity at risk 7: one sleeve, one fund is enough.
+    expect(etfAllocation({ goal: "core", risk: 7, maxFunds: 1 }).lines.map((l) => [l.bucket.id, l.weightPct])).toEqual([["world", 100]]);
+  });
+  it("refuses fewer funds than the plan has sleeves, rather than fold the bonds into the equity line", () => {
+    // risk 2 core is 25 % equity: one fund would have made it "world 100 %".
+    const refused = () => etfAllocation({ goal: "core", risk: 2, maxFunds: 1 });
+    expect(refused).toThrow(EtfProposeError);
+    expect(refused).toThrow(/--max-funds 1 is too few .*at least 2 funds, one per sleeve/);
+    expect(refused).toThrow(/World equity \(developed or all-country\) for the 25 % equity/);
+    expect(refused).toThrow(/Euro government bonds \(all maturities\) for the 75 % rest/);
+    // No equity at all (defensive, risk 1): the money market folds into the bonds, the split is unchanged.
+    expect(etfAllocation({ goal: "defensive", risk: 1, maxFunds: 1 }).lines.map((l) => [l.bucket.id, l.weightPct])).toEqual([["euro-gov", 100]]);
   });
   it("rounds by the largest remainder", () => {
     expect(etfRoundWeights([1, 1, 1])).toEqual([34, 33, 33]);

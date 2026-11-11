@@ -54663,6 +54663,13 @@ function etfAllocation(o) {
     (d) => `its ${formatNumber(d.w)} % is under the ${ETF_MIN_LINE_PCT} % a line is worth`
   );
   const max = Math.max(1, Math.floor(o.maxFunds));
+  const heads = lines.filter((x) => x.id === x.sleeveHead);
+  if (max < heads.length) {
+    const sleeve = (id) => ETF_BUCKETS[id].sleeve === "equity" ? `${equityPct} % equity` : `${100 - equityPct} % rest`;
+    throw new EtfProposeError(
+      `--max-funds ${max} is too few for goal ${o.goal} at risk ${o.risk}: this plan needs at least ${heads.length} funds, one per sleeve \u2014 ${heads.map((h) => `${ETF_BUCKETS[h.id].label} for the ${sleeve(h.id)}`).join(", ")}; pass --max-funds ${heads.length} or more`
+    );
+  }
   fold3(
     (_, i) => i < max,
     () => `--max-funds ${max}`
