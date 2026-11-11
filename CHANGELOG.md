@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.38](https://github.com/maxgfr/ultrastock/compare/v1.13.37...v1.13.38) (2026-11-11)
+
+
+### Bug Fixes
+
+* **tax:** ask the ECB for the fiat base of a pair such as GBPUSDT ([48b551d](https://github.com/maxgfr/ultrastock/commit/48b551d1af2d408e5988f787fff4de843d09f8fd))
+
 ## [1.13.37](https://github.com/maxgfr/ultrastock/compare/v1.13.36...v1.13.37) (2026-11-11)
 
 
