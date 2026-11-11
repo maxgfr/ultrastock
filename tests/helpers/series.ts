@@ -59,6 +59,14 @@ export function constantBars(n: number, price = 50): Bar[] {
   return Array.from({ length: n }, (_, i) => ({ date: day(i), open: price, high: price, low: price, close: price, volume: 1000 }));
 }
 
+/** `n` flat daily bars at `price`, the last one dated the day before `to` (the market as a read at `to` sees it). */
+export function constantBarsUntil(to: Date, n: number, price = 50): Bar[] {
+  return Array.from({ length: n }, (_, i) => {
+    const date = new Date(to.getTime() - (n - i) * 86_400_000).toISOString().slice(0, 10);
+    return { date, open: price, high: price, low: price, close: price, volume: 1000 };
+  });
+}
+
 export const bar = (date: string, open: number, high: number, low: number, close: number, volume = 1000): Bar => ({ date, open, high, low, close, volume });
 
 /** Index of the first defined element (−1 if none). */

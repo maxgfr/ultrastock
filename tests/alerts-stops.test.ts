@@ -6,12 +6,12 @@ import { addRule, runAlerts } from "../src/alerts/alerts.js";
 import { homeDir } from "../src/core/paths.js";
 import { appendTransactions } from "../src/portfolio/ledger.js";
 import type { PriceSeries } from "../src/providers/types.js";
-import { constantBars } from "./helpers/series.js";
+import { constantBarsUntil } from "./helpers/series.js";
 
-// Every symbol trades flat at 18: a stop at 19 is hit, a stop at 17 is not.
+// Every symbol trades flat at 18 up to the day of the read: a stop at 19 is hit, a stop at 17 is not.
 vi.mock("../src/providers/router.js", () => ({
   resolveSymbol: async (raw: string) => ({ symbol: raw }),
-  getHistory: async () => ({ bars: constantBars(30, 18) }) as unknown as PriceSeries,
+  getHistory: async (_r: unknown, o: { to: Date }) => ({ bars: constantBarsUntil(o.to, 30, 18) }) as unknown as PriceSeries,
 }));
 
 const buy = (account: string, date: string, quantity: number, origin = "manual") =>

@@ -48301,6 +48301,14 @@ function filledSinceOpened(t, since, lineRows) {
   if (lastExit < 0) return at >= since;
   return at.slice(0, 10) > since || day4.slice(lastExit + 1).some((r3) => r3.origin === `ticket:${t.id}`);
 }
+var carriesStop = (t) => t.order.side === "buy" && t.order.stop !== void 0 && (t.status === "filled" || t.fills.some((f3) => f3.quantity > 0));
+function tradedAfter(b, fill2) {
+  if (b.date.length > 10) {
+    const [at, filled] = [Date.parse(b.date), Date.parse(fill2)];
+    if (Number.isFinite(at) && Number.isFinite(filled)) return at > filled;
+  }
+  return b.date.slice(0, 10) > fill2.slice(0, 10);
+}
 async function runAlerts(now = clockNow()) {
   const read2 = loadRules();
   const rules = [...read2];
@@ -48339,28 +48347,32 @@ async function runAlerts(now = clockNow()) {
         rules[k] = { ...rule, seen: [...seen].slice(-200) };
       } else if (rule.kind === "stops") {
         const seen = new Set(rule.seen ?? []);
-        const stops = listTickets((t) => t.status === "filled" && t.order.side === "buy" && t.order.stop !== void 0);
+        const stops = listTickets(carriesStop);
         for (const bookName of ["real", "paper"]) {
           const book2 = buildBook(readLedger(bookName));
           const opened = lineOpenedAt(book2.transactions);
           for (const p of book2.positions.filter((x) => x.quantity > 0)) {
-            const since = opened.get(`${p.account}|${p.symbol}`) ?? "";
-            const rows = book2.transactions.filter((r3) => r3.account === p.account && r3.symbol === p.symbol);
-            const booked = new Set(rows.map((r3) => r3.origin));
-            const t = stops.filter((x) => booked.has(`ticket:${x.id}`) && filledSinceOpened(x, since, rows)).reduce((best, x) => !best || filledAt(x) > filledAt(best) ? x : best, void 0);
-            if (!t) continue;
-            const bars = await barsOf(p.symbol);
-            const last2 = bars[bars.length - 1];
-            const key = `${bookName}|${p.account}|${p.symbol}|${t.id}|${since}`;
-            if (last2.low <= t.order.stop && !seen.has(key)) {
+            try {
+              const since = opened.get(`${p.account}|${p.symbol}`) ?? "";
+              const rows = book2.transactions.filter((r3) => r3.account === p.account && r3.symbol === p.symbol);
+              const booked = new Set(rows.map((r3) => r3.origin));
+              const t = stops.filter((x) => booked.has(`ticket:${x.id}`) && filledSinceOpened(x, since, rows)).reduce((best, x) => !best || filledAt(x) > filledAt(best) ? x : best, void 0);
+              if (!t) continue;
+              const key = `${bookName}|${p.account}|${p.symbol}|${t.id}|${since}`;
+              if (seen.has(key)) continue;
+              const fill2 = filledAt(t);
+              const hit = (await barsOf(p.symbol)).find((b) => tradedAfter(b, fill2) && b.low <= t.order.stop);
+              if (!hit) continue;
               seen.add(key);
               events.push({
                 rule: rule.id,
                 symbol: p.symbol,
                 at,
-                message: `${p.symbol} (${bookName}, ${p.account}) traded at or below its stop ${t.order.stop} on ${last2.date} (low ${last2.low}) \u2014 act on the plan`,
-                values: { low: last2.low, stop: t.order.stop }
+                message: `${p.symbol} (${bookName}, ${p.account}) traded at or below its stop ${t.order.stop} on ${hit.date} (low ${hit.low}) \u2014 act on the plan`,
+                values: { low: hit.low, stop: t.order.stop }
               });
+            } catch (e) {
+              errors.push(`${rule.id} (stops, ${p.symbol} in ${bookName} ${p.account}): ${e.message}`);
             }
           }
         }

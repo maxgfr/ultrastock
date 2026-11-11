@@ -243,6 +243,26 @@ function filledSinceOpened(t: Ticket, since: string, lineRows: readonly Transact
   return at.slice(0, 10) > since || day.slice(lastExit + 1).some((r) => r.origin === `ticket:${t.id}`);
 }
 
+/**
+ * Does a ticket carry its stop onto the line? A buy with a stop that bought something: filled, or filled in part and
+ * then cancelled, expired or still working — the shares it bought are held under that stop all the same.
+ */
+const carriesStop = (t: Ticket): boolean =>
+  t.order.side === "buy" && t.order.stop !== undefined && (t.status === "filled" || t.fills.some((f) => f.quantity > 0));
+
+/**
+ * Did this bar trade after the fill? A daily bar dated the fill's day holds the hours before the fill too — its low
+ * may be the very dip the stop was set under — so only a later day counts; a bar with a time counts when it opens
+ * after the fill.
+ */
+function tradedAfter(b: Bar, fill: string): boolean {
+  if (b.date.length > 10) {
+    const [at, filled] = [Date.parse(b.date), Date.parse(fill)];
+    if (Number.isFinite(at) && Number.isFinite(filled)) return at > filled;
+  }
+  return b.date.slice(0, 10) > fill.slice(0, 10);
+}
+
 /** Run every rule once; fires only on edges and unseen events. */
 export async function runAlerts(now = clockNow()): Promise<{ events: AlertEvent[]; errors: string[] }> {
   const read = loadRules();
@@ -285,33 +305,39 @@ export async function runAlerts(now = clockNow()): Promise<{ events: AlertEvent[
         // Every open position with a stop from its entry ticket, real and paper books. A ticket protects only the line its
         // fill was booked to (a row of this book's line says `ticket:<id>`), and only the position held now — filled since
         // the line was last opened; of those, the one filled last gives the stop, whatever order they were created in.
+        // Only the bars that traded after that fill can hit it: a low from before the stop existed is no stop hit.
         const seen = new Set(rule.seen ?? []);
-        const stops = listTickets((t) => t.status === "filled" && t.order.side === "buy" && t.order.stop !== undefined);
+        const stops = listTickets(carriesStop);
         for (const bookName of ["real", "paper"]) {
           const book = buildBook(readLedger(bookName));
           const opened = lineOpenedAt(book.transactions);
           for (const p of book.positions.filter((x) => x.quantity > 0)) {
-            const since = opened.get(`${p.account}|${p.symbol}`) ?? "";
-            const rows = book.transactions.filter((r) => r.account === p.account && r.symbol === p.symbol);
-            const booked = new Set(rows.map((r) => r.origin));
-            const t = stops
-              .filter((x) => booked.has(`ticket:${x.id}`) && filledSinceOpened(x, since, rows))
-              .reduce<Ticket | undefined>((best, x) => (!best || filledAt(x) > filledAt(best) ? x : best), undefined);
-            if (!t) continue;
-            const bars = await barsOf(p.symbol);
-            const last = bars[bars.length - 1]!;
-            // Once per protecting ticket and line opening: a line sold out and reopened through a new ticket at the same
-            // level is a new position under a new stop, and is alerted on again.
-            const key = `${bookName}|${p.account}|${p.symbol}|${t.id}|${since}`;
-            if (last.low <= t.order.stop! && !seen.has(key)) {
+            // One line's history that cannot be read (a delisted name) is its own error: the other lines are still checked.
+            try {
+              const since = opened.get(`${p.account}|${p.symbol}`) ?? "";
+              const rows = book.transactions.filter((r) => r.account === p.account && r.symbol === p.symbol);
+              const booked = new Set(rows.map((r) => r.origin));
+              const t = stops
+                .filter((x) => booked.has(`ticket:${x.id}`) && filledSinceOpened(x, since, rows))
+                .reduce<Ticket | undefined>((best, x) => (!best || filledAt(x) > filledAt(best) ? x : best), undefined);
+              if (!t) continue;
+              // Once per protecting ticket and line opening: a line sold out and reopened through a new ticket at the same
+              // level is a new position under a new stop, and is alerted on again.
+              const key = `${bookName}|${p.account}|${p.symbol}|${t.id}|${since}`;
+              if (seen.has(key)) continue;
+              const fill = filledAt(t);
+              const hit = (await barsOf(p.symbol)).find((b) => tradedAfter(b, fill) && b.low <= t.order.stop!);
+              if (!hit) continue;
               seen.add(key);
               events.push({
                 rule: rule.id,
                 symbol: p.symbol,
                 at,
-                message: `${p.symbol} (${bookName}, ${p.account}) traded at or below its stop ${t.order.stop} on ${last.date} (low ${last.low}) — act on the plan`,
-                values: { low: last.low, stop: t.order.stop! },
+                message: `${p.symbol} (${bookName}, ${p.account}) traded at or below its stop ${t.order.stop} on ${hit.date} (low ${hit.low}) — act on the plan`,
+                values: { low: hit.low, stop: t.order.stop! },
               });
+            } catch (e) {
+              errors.push(`${rule.id} (stops, ${p.symbol} in ${bookName} ${p.account}): ${(e as Error).message}`);
             }
           }
         }
