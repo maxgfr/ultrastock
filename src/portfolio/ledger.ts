@@ -11,7 +11,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { contentHash } from "../engine.js";
-import { inTransaction, ledgerBackend, type SqlDatabase, StoreUnavailableError, withStore } from "../core/db.js";
+import { inTransaction, ledgerBackend, SCHEMA_VERSION, type SqlDatabase, StoreUnavailableError, schemaVersionOf, withStore } from "../core/db.js";
 import { withFileLock } from "../core/lock.js";
 import { homeDir } from "../core/paths.js";
 import { readJsonl, sealJsonlTail, type Warn } from "./jsonl.js";
@@ -110,14 +110,19 @@ export function transactionId(t: Omit<Transaction, "id">): string {
 /** The transactions of a book, in the order they were recorded (JSONL or SQLite, per store.json). */
 export function readLedger(book = "real", warn?: Warn): Transaction[] {
   ledgerPath(book);
-  if (ledgerBackend() === "sqlite") return withLedgerStore((db) => readSqliteLedger(db, book));
+  if (ledgerBackend() === "sqlite") {
+    // A read opens the store read-only (the dashboard writes nothing); only a store on an older schema is opened to
+    // write, to migrate it, once.
+    const read = withLedgerStore((db) => (schemaVersionOf(db) === SCHEMA_VERSION ? readSqliteLedger(db, book) : undefined), { readOnly: true });
+    return read ?? withLedgerStore((db) => readSqliteLedger(db, book));
+  }
   return readJsonlLedger(book, warn);
 }
 
 /** withStore for the ledger: on a Node without node:sqlite, say that THIS ledger lives in the store. */
-function withLedgerStore<T>(fn: (db: SqlDatabase) => T): T {
+function withLedgerStore<T>(fn: (db: SqlDatabase) => T, opts?: { readOnly?: boolean }): T {
   try {
-    return withStore(fn);
+    return withStore(fn, opts);
   } catch (e) {
     if (e instanceof StoreUnavailableError)
       throw new StoreUnavailableError(

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, statSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -135,6 +135,43 @@ describe.skipIf(!HAS_SQLITE)("SQLite store", () => {
     }
     withStore((d) => expect(migrate(d)).toEqual([]));
     expect(statSync(storePath()).mode & 0o777).toBe(0o600);
+  });
+
+  it("reads the ledger on a read-only handle while the schema is current, and opens it to write only to migrate", async () => {
+    // Every open, and whether it was read-only.
+    const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as {
+      DatabaseSync: new (path: string, opts?: { readOnly?: boolean }) => SqlDatabase;
+    };
+    const opened: boolean[] = [];
+    const spy = () => {
+      setSqliteLoaderForTests(() => ({
+        DatabaseSync: class extends (DatabaseSync as unknown as new (path: string, opts?: { readOnly?: boolean }) => object) {
+          constructor(path: string, opts?: { readOnly?: boolean }) {
+            super(path, opts);
+            opened.push(opts?.readOnly === true);
+          }
+        },
+      }));
+    };
+    // A store at version 0 (an empty file): migrated on the first read, once.
+    setLedgerBackend("sqlite");
+    writeFileSync(storePath(), "");
+    spy();
+    expect(readLedger()).toEqual([]);
+    expect(opened).toEqual([true, false]);
+    setSqliteLoaderForTests(undefined);
+    await appendTransactions(TXS.slice(0, 2));
+    // Current: one read-only open, nothing written (not even the file's mode).
+    chmodSync(storePath(), 0o400);
+    opened.length = 0;
+    spy();
+    try {
+      expect(readLedger()).toHaveLength(2);
+      expect(opened).toEqual([true]);
+      expect(statSync(storePath()).mode & 0o777).toBe(0o400);
+    } finally {
+      chmodSync(storePath(), 0o600);
+    }
   });
 
   it("a second opener migrating at the same time finds the schema up to date once it holds the write lock", () => {

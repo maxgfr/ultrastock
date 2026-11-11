@@ -23754,12 +23754,15 @@ function transactionId(t) {
 }
 function readLedger(book2 = "real", warn) {
   ledgerPath(book2);
-  if (ledgerBackend() === "sqlite") return withLedgerStore((db) => readSqliteLedger(db, book2));
+  if (ledgerBackend() === "sqlite") {
+    const read2 = withLedgerStore((db) => schemaVersionOf(db) === SCHEMA_VERSION ? readSqliteLedger(db, book2) : void 0, { readOnly: true });
+    return read2 ?? withLedgerStore((db) => readSqliteLedger(db, book2));
+  }
   return readJsonlLedger(book2, warn);
 }
-function withLedgerStore(fn) {
+function withLedgerStore(fn, opts) {
   try {
-    return withStore(fn);
+    return withStore(fn, opts);
   } catch (e) {
     if (e instanceof StoreUnavailableError)
       throw new StoreUnavailableError(
