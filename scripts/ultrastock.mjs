@@ -46178,6 +46178,9 @@ async function simulateFill(order, now) {
     note: eod ? `filled at the last official close ${q.at}: end-of-day data, the real fill would be at the next session's price` : void 0
   };
 }
+function asBooked(fill2) {
+  return netMode().kind === "live" ? fill2 : { ...fill2, at: (/* @__PURE__ */ new Date()).toISOString(), replayed: true };
+}
 async function book(t, fill2) {
   if (t.order.side === "sell") {
     const held = buildBook(readLedger("paper")).positions.find((p) => p.account === t.order.account && p.symbol === t.order.symbol)?.quantity ?? 0;
@@ -46209,7 +46212,8 @@ async function paperSubmit(id, now = /* @__PURE__ */ new Date()) {
     if (t.order.venue !== "paper") throw new Error(`ticket ${id} is for ${t.order.venue}, not paper \u2014 live venues have their own, stricter path`);
     const refusal2 = executionRefusal(t, now);
     if (refusal2) throw new Error(refusal2);
-    const outcome = await simulateFill(t.order, now);
+    const simulated = await simulateFill(t.order, now);
+    const outcome = simulated.kind === "fill" ? { ...simulated, fill: asBooked(simulated.fill) } : simulated;
     if (outcome.kind === "working") return { ticket: await transition(id, "working", outcome.reason, void 0, now, ["checked"]), outcome };
     const done = await transition(
       id,
@@ -46254,14 +46258,14 @@ async function paperSweep(now = /* @__PURE__ */ new Date()) {
     const gapped = t.order.side === "buy" ? bar.open <= t.order.price : bar.open >= t.order.price;
     const price = gapped ? bar.open : t.order.price;
     const market = resolved.instrument.market;
-    const fill2 = {
+    const fill2 = asBooked({
       at: bar.date.length > 10 ? bar.date : `${bar.date}T00:00:00.000Z`,
       quantity: t.order.quantity,
       price,
       fee: feeFor(market, t.order.quantity, price),
       venue: "paper",
       method: gapped ? `opened through the limit on ${bar.date}: filled at the open` : `traded through the limit on ${bar.date}`
-    };
+    });
     const booked = await paperLock(
       () => transition(
         t.id,
@@ -46278,6 +46282,26 @@ async function paperSweep(now = /* @__PURE__ */ new Date()) {
     out.push({ id: t.id, result: booked ? `filled at ${price}` : `no longer working (${loadTicket(t.id).status})` });
   }
   return out;
+}
+function paperRecord(txs, tickets) {
+  const paper = tickets.filter((t) => t.order.venue === "paper" && t.status === "filled" && t.fills.length > 0);
+  const replayed = new Set(paper.filter((t) => t.fills.some((f3) => f3.replayed)).map((t) => `ticket:${t.id}`));
+  const counted = new Set(paper.map((t) => `ticket:${t.id}`).filter((o) => !replayed.has(o)));
+  const trade = (t) => t.type === "buy" || t.type === "sell" || t.type === "transfer-in" || t.type === "transfer-out";
+  let typed = 0;
+  let onReplay = 0;
+  const kept = txs.filter((t) => {
+    if (!trade(t) || counted.has(t.origin)) return true;
+    if (replayed.has(t.origin)) onReplay++;
+    else typed++;
+    return false;
+  });
+  const excluded = [];
+  if (typed)
+    excluded.push(`${typed} paper ledger row(s) not filled by a paper ticket (typed with \`portfolio add\`, imported, transferred) are not part of the record`);
+  if (onReplay) excluded.push(`${onReplay} paper fill(s) made on a replayed fixture are not part of the record: the market was not live`);
+  const first = kept.filter((t) => t.type === "buy").map((t) => t.date).sort()[0];
+  return { txs: kept, first, excluded };
 }
 function readiness(trades2, equity, firstTrade, now = /* @__PURE__ */ new Date()) {
   const wins = trades2.filter((t) => t.pnl > 0).reduce((s, t) => s + t.pnl, 0);
@@ -46389,8 +46413,8 @@ async function preconditions(p) {
     const off = liveOffReason();
     if (off) no("LIVE_OFF", off);
     if (Number(process.versions.node.split(".")[0]) < 22) no("NODE", `live trading needs Node \u2265 22 (this is ${process.versions.node})`);
-    const txs = readLedger("paper");
-    const r3 = readiness(closedTradeResults(txs), readEquity("paper"), txs.find((t) => t.type === "buy")?.date, now);
+    const rec = paperRecord(readLedger("paper"), listTickets());
+    const r3 = readiness(closedTradeResults(rec.txs), readEquity("paper"), rec.first, now);
     if (!r3.ready)
       no(
         "NOT_READY",
@@ -51700,15 +51724,15 @@ async function paperCommand(args, asJson) {
     return printResult(asJson, r3, r3.map((x) => `${x.id}: ${x.result}`).join("\n") || "no working paper orders");
   }
   if (sub === "readiness") {
-    const txs = readLedger("paper");
-    const trades2 = closedTradeResults(txs);
-    const r3 = readiness(trades2, readEquity("paper"), txs.find((t) => t.type === "buy")?.date, clockNow());
+    const rec = paperRecord(readLedger("paper"), listTickets());
+    const r3 = readiness(closedTradeResults(rec.txs), readEquity("paper"), rec.first, /* @__PURE__ */ new Date());
     return printResult(
       asJson,
-      r3,
+      { ...r3, excluded: rec.excluded },
       [
         `ready for real money: ${r3.ready ? "YES (a necessary condition, not a sufficient one)" : "not yet"}`,
-        ...r3.criteria.map((c) => `  ${c.pass ? "ok  " : "TODO"} ${c.reason}`)
+        ...r3.criteria.map((c) => `  ${c.pass ? "ok  " : "TODO"} ${c.reason}`),
+        ...rec.excluded.length ? ["measured on the fills of paper tickets only (`paper submit`, `paper sweep`):", ...rec.excluded.map((e) => `  - ${e}`)] : []
       ].join("\n")
     );
   }
@@ -58994,7 +59018,8 @@ COMMANDS
             fees included), sweep working limit orders against the bars traded
             since, book, and readiness \u2014 whether the paper record is good enough
             (20 trades, 30 days, positive expectancy, profit factor > 1.2,
-            drawdown < 15 %) to consider real money.
+            drawdown < 15 %) to consider real money, measured on the fills
+            of paper tickets only (not typed trades, not --fixture fills).
   decide    Validate a decision (rating, horizon, conviction, thesis, the [E#] it
             rests on, falsifiers, an optional plan with a stop) against the run's
             evidence, then record it in the journal for settlement.

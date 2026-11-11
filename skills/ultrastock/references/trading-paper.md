@@ -68,4 +68,10 @@ to change.
   - a profit factor above 1.2;
   - a drawdown under 15 %.
 
+  It measures the fills of paper tickets only. A trade typed into the paper
+  ledger (`portfolio add … --book paper`) or imported is left out, and so is
+  a fill made with `--fixture`: replayed prices are not the market. Such a
+  fill is booked at the time it is made, never at the recording's date, and
+  marked replayed. The output says what it left out.
+
   Until it passes, say so plainly: the strategy has not shown an edge yet.

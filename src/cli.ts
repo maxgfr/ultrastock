@@ -442,7 +442,8 @@ COMMANDS
             fees included), sweep working limit orders against the bars traded
             since, book, and readiness — whether the paper record is good enough
             (20 trades, 30 days, positive expectancy, profit factor > 1.2,
-            drawdown < 15 %) to consider real money.
+            drawdown < 15 %) to consider real money, measured on the fills
+            of paper tickets only (not typed trades, not --fixture fills).
   decide    Validate a decision (rating, horizon, conviction, thesis, the [E#] it
             rests on, falsifiers, an optional plan with a stop) against the run's
             evidence, then record it in the journal for settlement.

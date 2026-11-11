@@ -22,7 +22,7 @@ import {
   transfersAcross,
 } from "../trading/breaker.js";
 import { fxToBase, gateContextFor } from "../trading/context.js";
-import { paperSubmit, paperSweep, readiness } from "../trading/paper.js";
+import { paperRecord, paperSubmit, paperSweep, readiness } from "../trading/paper.js";
 import { planTrade, tradeContextMarkdown } from "../trading/plan.js";
 import { historicalFx } from "../tax/inputs.js";
 import { riskGate } from "../trading/riskgate.js";
@@ -444,15 +444,18 @@ export async function paperCommand(args: CommandArgs, asJson: boolean): Promise<
     return out(asJson, r, r.map((x) => `${x.id}: ${x.result}`).join("\n") || "no working paper orders");
   }
   if (sub === "readiness") {
-    const txs = readLedger("paper");
-    const trades = closedTradeResults(txs);
-    const r = readiness(trades, readEquity("paper"), txs.find((t) => t.type === "buy")?.date, clockNow());
+    // What the live gate measures: paper tickets' fills only, on the wall clock (a fixture's clock is the recording's).
+    const rec = paperRecord(readLedger("paper"), listTickets());
+    const r = readiness(closedTradeResults(rec.txs), readEquity("paper"), rec.first, new Date());
     return out(
       asJson,
-      r,
+      { ...r, excluded: rec.excluded },
       [
         `ready for real money: ${r.ready ? "YES (a necessary condition, not a sufficient one)" : "not yet"}`,
         ...r.criteria.map((c) => `  ${c.pass ? "ok  " : "TODO"} ${c.reason}`),
+        ...(rec.excluded.length
+          ? ["measured on the fills of paper tickets only (`paper submit`, `paper sweep`):", ...rec.excluded.map((e) => `  - ${e}`)]
+          : []),
       ].join("\n"),
     );
   }

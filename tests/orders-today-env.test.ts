@@ -3,7 +3,7 @@ import { rmSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { homeDir } from "../src/core/paths.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
-import { appendTransactions, readLedger } from "../src/portfolio/ledger.js";
+import { readLedger } from "../src/portfolio/ledger.js";
 import type { BrokerAdapter, Environment, LiveOrder, OrderResult } from "../src/trading/brokers/types.js";
 import { ordersToday } from "../src/trading/context.js";
 import { LOOSEN_DELAY_MS, requestLimits } from "../src/trading/limits.js";
@@ -11,6 +11,7 @@ import { LIVE_SWITCH_BINDING, LIVE_SWITCH_SUBJECT, liveSubmit, orderBinding, swi
 import { type Channel, issueCode } from "../src/trading/otp.js";
 import { killSwitchPath, type Order, orderFingerprint } from "../src/trading/riskgate.js";
 import { createTicket, loadTicket, readAudit, recordCheck } from "../src/trading/tickets.js";
+import { readyPaperRecord } from "./helpers/paper-record.js";
 
 let captured: string[] = [];
 const capture: Channel = (m) => {
@@ -48,28 +49,6 @@ function venue(env: Environment, submit: (o: LiveOrder) => OrderResult): BrokerA
 }
 
 const pass = () => ({ verdict: "pass" as const, checks: [], fingerprint: orderFingerprint(order), riskReducing: false, notionalBase: 100 });
-
-/** A paper record that passes `readiness`: 20 winning round trips, the first 40 days ago. */
-async function readyPaperRecord() {
-  const day = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
-  const txs: Parameters<typeof appendTransactions>[0][number][] = [
-    { date: day(41), type: "deposit", account: "paper", amount: 10_000, currency: "EUR", origin: "manual" },
-  ];
-  for (let i = 0; i < 20; i++) {
-    txs.push({ date: `${day(40 - i)}T10:00:00`, type: "buy", account: "paper", symbol: "AAA", quantity: 1, price: 100 + i, currency: "EUR", origin: "manual" });
-    txs.push({
-      date: `${day(40 - i)}T15:00:00`,
-      type: "sell",
-      account: "paper",
-      symbol: "AAA",
-      quantity: 1,
-      price: 110 + i,
-      currency: "EUR",
-      origin: "manual",
-    });
-  }
-  await appendTransactions(txs, "paper");
-}
 
 const liveBefore = process.env.ULTRASTOCK_LIVE;
 beforeEach(() => {

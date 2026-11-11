@@ -30,6 +30,8 @@ export interface Fill {
   venue: string;
   /** How the price was obtained: "order-book walk", "last ± slippage". */
   method: string;
+  /** A paper fill read from a fixture, not the market: booked at the wall clock, never part of the paper record. */
+  replayed?: boolean;
 }
 
 export interface Ticket {

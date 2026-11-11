@@ -12,9 +12,9 @@
 //   fees          a fee model per market (a parameter, defaults below)
 import { join } from "node:path";
 import { withFileLock } from "../core/lock.js";
-import { fetchJson } from "../core/net.js";
+import { fetchJson, netMode } from "../core/net.js";
 import { homeDir } from "../core/paths.js";
-import { appendTransactions, buildBook, readLedger } from "../portfolio/ledger.js";
+import { appendTransactions, buildBook, readLedger, type Transaction } from "../portfolio/ledger.js";
 import { getHistory, getQuote, resolveSymbol } from "../providers/router.js";
 import { executionRefusal, type Fill, listTickets, loadTicket, type Ticket, transition } from "./tickets.js";
 import { simulatePredictionFill } from "./prediction.js";
@@ -112,6 +112,15 @@ export async function simulateFill(order: Order, now: Date): Promise<PaperOutcom
   };
 }
 
+/**
+ * A fill as it is booked. Read from a fixture (replayed, or recorded into one), its price is the recording's and its
+ * clock too: it is booked at the wall clock — never dated back to the recording — and marked replayed, so the paper
+ * record the live gate measures leaves it out (as a replayed check opens no live order).
+ */
+function asBooked(fill: Fill): Fill {
+  return netMode().kind === "live" ? fill : { ...fill, at: new Date().toISOString(), replayed: true };
+}
+
 async function book(t: Ticket, fill: Fill): Promise<void> {
   // A sell cannot exceed what the paper book holds: replaying the ledger proves it.
   if (t.order.side === "sell") {
@@ -153,7 +162,8 @@ export async function paperSubmit(id: string, now = new Date()): Promise<{ ticke
     if (t.order.venue !== "paper") throw new Error(`ticket ${id} is for ${t.order.venue}, not paper — live venues have their own, stricter path`);
     const refusal = executionRefusal(t, now);
     if (refusal) throw new Error(refusal);
-    const outcome = await simulateFill(t.order, now);
+    const simulated = await simulateFill(t.order, now);
+    const outcome: PaperOutcome = simulated.kind === "fill" ? { ...simulated, fill: asBooked(simulated.fill) } : simulated;
     // A user's cancel takes the ticket's lock only: the fill is booked under it, once the ticket is still checked.
     if (outcome.kind === "working") return { ticket: await transition(id, "working", outcome.reason, undefined, now, ["checked"]), outcome };
     const done = await transition(
@@ -209,14 +219,14 @@ export async function paperSweep(now = new Date()): Promise<Array<{ id: string; 
     const gapped = t.order.side === "buy" ? bar.open <= t.order.price : bar.open >= t.order.price;
     const price = gapped ? bar.open : t.order.price;
     const market = resolved.instrument.market;
-    const fill: Fill = {
+    const fill: Fill = asBooked({
       at: bar.date.length > 10 ? bar.date : `${bar.date}T00:00:00.000Z`,
       quantity: t.order.quantity,
       price,
       fee: feeFor(market, t.order.quantity, price),
       venue: "paper",
       method: gapped ? `opened through the limit on ${bar.date}: filled at the open` : `traded through the limit on ${bar.date}`,
-    };
+    });
     // The bars were read without the lock: the ticket may have been filled, swept or cancelled since.
     const booked = await paperLock(() =>
       transition(
@@ -241,11 +251,50 @@ export interface Readiness {
   criteria: Array<{ id: string; pass: boolean; value: number; threshold: number; reason: string }>;
 }
 
+export interface PaperRecord {
+  /** The paper ledger with only the trades of filled paper tickets (deposits, splits and the rest kept). */
+  txs: Transaction[];
+  /** The first counted paper buy. */
+  first?: string;
+  /** What was left out, and why: said with the readiness. */
+  excluded: string[];
+}
+
+/**
+ * The paper record the live gate measures: the trades paper tickets filled — a ticket checked by the gate, filled by
+ * the paper engine on market data. A trade typed into the paper ledger (`portfolio add … --book paper`), imported, or
+ * filled on a replayed fixture is not paper trading: it is left out, and `excluded` says how many.
+ */
+export function paperRecord(txs: readonly Transaction[], tickets: readonly Ticket[]): PaperRecord {
+  const paper = tickets.filter((t) => t.order.venue === "paper" && t.status === "filled" && t.fills.length > 0);
+  const replayed = new Set(paper.filter((t) => t.fills.some((f) => f.replayed)).map((t) => `ticket:${t.id}`));
+  const counted = new Set(paper.map((t) => `ticket:${t.id}`).filter((o) => !replayed.has(o)));
+  const trade = (t: Transaction) => t.type === "buy" || t.type === "sell" || t.type === "transfer-in" || t.type === "transfer-out";
+  let typed = 0;
+  let onReplay = 0;
+  const kept = txs.filter((t) => {
+    if (!trade(t) || counted.has(t.origin)) return true;
+    if (replayed.has(t.origin)) onReplay++;
+    else typed++;
+    return false;
+  });
+  const excluded: string[] = [];
+  if (typed)
+    excluded.push(`${typed} paper ledger row(s) not filled by a paper ticket (typed with \`portfolio add\`, imported, transferred) are not part of the record`);
+  if (onReplay) excluded.push(`${onReplay} paper fill(s) made on a replayed fixture are not part of the record: the market was not live`);
+  const first = kept
+    .filter((t) => t.type === "buy")
+    .map((t) => t.date)
+    .sort()[0];
+  return { txs: kept, first, excluded };
+}
+
 /**
  * Is the paper record good enough to risk real money? At least 20 closed
  * trades over at least 30 days, a positive expectancy, a profit factor above
  * 1.2 and a maximum drawdown of the paper equity under 15 %. Passing is a
- * necessary condition, not a sufficient one.
+ * necessary condition, not a sufficient one. Feed it `paperRecord`: the
+ * trades of paper tickets only.
  */
 export function readiness(
   trades: ReadonlyArray<{ date: string; pnl: number }>,

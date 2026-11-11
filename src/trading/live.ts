@@ -36,9 +36,9 @@ import type { BrokerAdapter, Environment, LiveOrder, OrderResult, Venue } from "
 import { attemptKey, fxToBase, unplacedAttempts } from "./context.js";
 import { effectiveLimits } from "./limits.js";
 import { verifyCode } from "./otp.js";
-import { readiness } from "./paper.js";
+import { paperRecord, readiness } from "./paper.js";
 import { killSwitchPath, type Order, orderFingerprint } from "./riskgate.js";
-import { audit, executionRefusal, loadTicket, readAudit, type Ticket, type TicketStatus, transition } from "./tickets.js";
+import { audit, executionRefusal, listTickets, loadTicket, readAudit, type Ticket, type TicketStatus, transition } from "./tickets.js";
 
 export const VENUES: Venue[] = ["binance", "kraken", "coinbase", "ibkr", "kalshi"];
 export const CRYPTO_VENUES: Venue[] = ["binance", "kraken", "coinbase"];
@@ -180,8 +180,9 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
     const off = liveOffReason();
     if (off) no("LIVE_OFF", off);
     if (Number(process.versions.node.split(".")[0]) < 22) no("NODE", `live trading needs Node ≥ 22 (this is ${process.versions.node})`);
-    const txs = readLedger("paper");
-    const r = readiness(closedTradeResults(txs), readEquity("paper"), txs.find((t) => t.type === "buy")?.date, now);
+    // Paper tickets' fills only: a trade typed into the paper ledger, or filled on a replayed fixture, is no record.
+    const rec = paperRecord(readLedger("paper"), listTickets());
+    const r = readiness(closedTradeResults(rec.txs), readEquity("paper"), rec.first, now);
     if (!r.ready)
       no(
         "NOT_READY",
