@@ -22,8 +22,11 @@ symbol ─► router ─► provider ──► bars / quote ─► analytics ─
 order it was registered: `id` (`E1`…), `key` (`MC.PA.rsi14`), `label`, `value`,
 `unit`, and its provenance — `source`, `url`, `fetchedAt`, `asOf`, `delay`,
 `official`, and for derived figures `derivedFrom` and `formula`. Ids never
-change once assigned; re-registering a key with the same value returns the same
-id, so a re-run into the same directory keeps an answer valid.
+change once assigned; re-registering a key with the same value, unit and label
+returns the same id, so a re-run into the same directory keeps an answer valid,
+and moves its `fetchedAt` and `asOf` to the later read, so `check --max-age`
+does not call a figure just read again stale. The same key in another unit or
+under another label gets an id of its own.
 
 ## The check
 

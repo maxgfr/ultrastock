@@ -12733,12 +12733,23 @@ var EvidenceStore = class _EvidenceStore {
   }
   /**
    * Register a figure and return its id. Re-adding the same key with the same
-   * value returns the existing id, so a re-run does not renumber a run.
+   * value, unit and label returns the existing id, so a re-run does not
+   * renumber a run — and the item is as fresh as that read: a later read moves
+   * its fetchedAt and as-of day forward, so `check --max-age` does not call a
+   * figure just read again stale. The same key in another unit or under
+   * another label is another figure, with an id of its own: what an answer
+   * already cites never changes meaning under it.
    */
   add(item) {
     if (typeof item.value === "number" && !Number.isFinite(item.value)) throw new Error(`evidence ${item.key}: not a finite number`);
     const existing = this.byKey(item.key);
-    if (existing && existing.value === item.value) return existing.id;
+    if (existing && existing.value === item.value && existing.unit === item.unit && existing.label === item.label) {
+      if (Date.parse(item.fetchedAt) > Date.parse(existing.fetchedAt)) {
+        existing.fetchedAt = item.fetchedAt;
+        if (item.asOf !== void 0) existing.asOf = item.asOf;
+      }
+      return existing.id;
+    }
     const id = `E${this.nextId()}`;
     this.data.items.push({ id, ...item });
     return id;
