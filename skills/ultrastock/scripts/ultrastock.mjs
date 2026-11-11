@@ -23145,16 +23145,18 @@ function listTickets(filter) {
   if (!existsSync20(ticketsDir())) return [];
   return readdirSync7(ticketsDir()).filter((f3) => f3.endsWith(".json")).map((f3) => JSON.parse(readFileSync23(join25(ticketsDir(), f3), "utf8"))).filter((t) => !filter || filter(t)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
-async function transition(id, to, why2, mutate, now = /* @__PURE__ */ new Date()) {
-  return withFileLock(`${ticketPath(id)}.lock`, () => {
+async function transition(id, to, why2, mutate, now = /* @__PURE__ */ new Date(), from, refused) {
+  return withFileLock(`${ticketPath(id)}.lock`, async () => {
     const t = loadTicket(id);
-    const from = t.status;
-    mutate?.(t);
+    if (from && !from.includes(t.status))
+      throw new Error(refused?.(t.status) ?? `ticket ${id} is ${t.status}, not ${from.join(" or ")}: it cannot move to ${to}`);
+    const prior = t.status;
+    await mutate?.(t);
     t.status = to;
     t.updatedAt = now.toISOString();
-    t.history.push({ at: t.updatedAt, from, to, why: why2 });
+    t.history.push({ at: t.updatedAt, from: prior, to, why: why2 });
     save(t);
-    audit({ event: "ticket", id, from, to, why: why2, fingerprint: t.fingerprint, order: t.order });
+    audit({ event: "ticket", id, from: prior, to, why: why2, fingerprint: t.fingerprint, order: t.order });
     return t;
   });
 }
@@ -23180,10 +23182,9 @@ function createTicket(order, opts = {}) {
   audit({ event: "ticket", id: t.id, from: "none", to: "draft", fingerprint, order });
   return t;
 }
+var CHECKABLE = ["draft", "checked", "blocked"];
 async function recordCheck(id, gate, now = /* @__PURE__ */ new Date()) {
-  const t = loadTicket(id);
-  if (!["draft", "checked", "blocked"].includes(t.status)) throw new Error(`ticket ${id} is ${t.status}: it can no longer be checked`);
-  if (gate.fingerprint !== t.fingerprint) throw new Error(`the risk check was run on a different order than ticket ${id} holds`);
+  if (gate.fingerprint !== loadTicket(id).fingerprint) throw new Error(`the risk check was run on a different order than ticket ${id} holds`);
   const blocks = gate.checks.filter((c) => c.status === "block");
   return transition(
     id,
@@ -23198,7 +23199,9 @@ async function recordCheck(id, gate, now = /* @__PURE__ */ new Date()) {
         ...netMode().kind === "fixture" ? { replayed: true } : {}
       };
     },
-    now
+    now,
+    CHECKABLE,
+    (status) => `ticket ${id} is ${status}: it can no longer be checked`
   );
 }
 function executionRefusal(t, now = /* @__PURE__ */ new Date()) {
@@ -45472,18 +45475,31 @@ async function paperSubmit(id, now = /* @__PURE__ */ new Date()) {
     const refusal2 = executionRefusal(t, now);
     if (refusal2) throw new Error(refusal2);
     const outcome = await simulateFill(t.order, now);
-    if (outcome.kind === "working") return { ticket: await transition(id, "working", outcome.reason, void 0, now), outcome };
-    await book(t, outcome.fill);
-    const done = await transition(id, "filled", `${outcome.fill.method}${outcome.note ? `; ${outcome.note}` : ""}`, (x) => x.fills.push(outcome.fill), now);
+    if (outcome.kind === "working") return { ticket: await transition(id, "working", outcome.reason, void 0, now, ["checked"]), outcome };
+    const done = await transition(
+      id,
+      "filled",
+      `${outcome.fill.method}${outcome.note ? `; ${outcome.note}` : ""}`,
+      async (x) => {
+        await book(x, outcome.fill);
+        x.fills.push(outcome.fill);
+      },
+      now,
+      ["checked"]
+    );
     return { ticket: done, outcome };
   });
 }
+var movedMeanwhile = (id) => (e) => {
+  if (loadTicket(id).status === "working") throw e;
+  return false;
+};
 async function paperSweep(now = /* @__PURE__ */ new Date()) {
   const out = [];
   for (const t of listTickets((x) => x.status === "working" && x.order.venue === "paper")) {
     if (t.validUntil && now.getTime() > Date.parse(t.validUntil)) {
-      await transition(t.id, "expired", "valid-until passed", void 0, now);
-      out.push({ id: t.id, result: "expired" });
+      const lapsed = await transition(t.id, "expired", "valid-until passed", void 0, now, ["working"]).then(() => true, movedMeanwhile(t.id));
+      out.push({ id: t.id, result: lapsed ? "expired" : `no longer working (${loadTicket(t.id).status})` });
       continue;
     }
     const resolved = await resolveSymbol(t.order.symbol);
@@ -45511,12 +45527,19 @@ async function paperSweep(now = /* @__PURE__ */ new Date()) {
       venue: "paper",
       method: gapped ? `opened through the limit on ${bar.date}: filled at the open` : `traded through the limit on ${bar.date}`
     };
-    const booked = await paperLock(async () => {
-      if (loadTicket(t.id).status !== "working") return false;
-      await book(t, fill2);
-      await transition(t.id, "filled", fill2.method, (x) => x.fills.push(fill2), now);
-      return true;
-    });
+    const booked = await paperLock(
+      () => transition(
+        t.id,
+        "filled",
+        fill2.method,
+        async (x) => {
+          await book(x, fill2);
+          x.fills.push(fill2);
+        },
+        now,
+        ["working"]
+      ).then(() => true, movedMeanwhile(t.id))
+    );
     out.push({ id: t.id, result: booked ? `filled at ${price}` : `no longer working (${loadTicket(t.id).status})` });
   }
   return out;
@@ -45712,6 +45735,7 @@ async function bookFill(t, r3, rec, now) {
     rec.env === "live" ? "real" : "live-test"
   );
 }
+var FOLLOWED = ["submitted", "cancelled", "blocked", "checked"];
 async function applyResult(t, r3, rec, now) {
   const next2 = { ...rec, state: r3.state, venueOrderId: r3.venueOrderId ?? rec.venueOrderId, at: now.toISOString(), message: r3.message };
   if (r3.validatedOnly && r3.state === "accepted") {
@@ -45723,7 +45747,8 @@ async function applyResult(t, r3, rec, now) {
       (x) => {
         x.live = done;
       },
-      now
+      now,
+      ["submitted"]
     );
   }
   const status = r3.state === "filled" ? "filled" : r3.state === "cancelled" ? "cancelled" : r3.state === "rejected" ? "blocked" : "submitted";
@@ -45743,7 +45768,8 @@ async function applyResult(t, r3, rec, now) {
           method: "venue fill"
         });
     },
-    now
+    now,
+    FOLLOWED
   );
   await bookFill(t, r3, next2, now);
   return updated;
@@ -45783,9 +45809,16 @@ async function liveSubmit(p) {
       at: now.toISOString()
     };
     audit({ event: "live-intent", ticket: t.id, venue: p.venue, env: p.env, clientOrderId: order.clientOrderId, order, notional, fingerprint: t.fingerprint });
-    await transition(t.id, "submitted", `sending to ${p.venue} ${p.env} as ${order.clientOrderId}`, (x) => {
-      x.live = rec;
-    });
+    await transition(
+      t.id,
+      "submitted",
+      `sending to ${p.venue} ${p.env} as ${order.clientOrderId}`,
+      (x) => {
+        x.live = rec;
+      },
+      void 0,
+      ["checked"]
+    );
     let result;
     try {
       result = await p.adapter.submit(order);
@@ -45869,7 +45902,9 @@ async function reconcileLocked(ticketId, adapter, now, opts) {
           at: now.toISOString(),
           message: "not found at the venue; declared never placed by the user"
         };
-      }
+      },
+      void 0,
+      ["submitted"]
     );
     return { ticket: ticket2, note: "not found at the venue, declared never placed: the ticket can be checked and approved again" };
   }
@@ -50669,9 +50704,15 @@ async function ticketCommand(args, asJson) {
     );
   }
   if (sub === "cancel") {
-    const t = loadTicket(id);
-    if (["filled", "cancelled", "expired", "submitted"].includes(t.status)) throw new Error(`ticket ${id} is ${t.status}: nothing to cancel`);
-    const after = await transition(id, "cancelled", "cancelled by the user");
+    const after = await transition(
+      id,
+      "cancelled",
+      "cancelled by the user",
+      void 0,
+      void 0,
+      ["draft", "checked", "blocked", "working"],
+      (status) => `ticket ${id} is ${status}: nothing to cancel`
+    );
     return printResult(asJson, after, `${id}: cancelled`);
   }
   throw new UsageError("usage: ultrastock ticket list|show|check|cancel [<ticket-id>]");

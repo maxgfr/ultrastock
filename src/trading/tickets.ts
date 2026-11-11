@@ -100,17 +100,35 @@ export function listTickets(filter?: (t: Ticket) => boolean): Ticket[] {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-/** Change a ticket's state under its lock, recording why, and audit the transition. */
-export async function transition(id: string, to: TicketStatus, why: string, mutate?: (t: Ticket) => void, now = new Date()): Promise<Ticket> {
-  return withFileLock(`${ticketPath(id)}.lock`, () => {
+/**
+ * Change a ticket's state under its lock, recording why, and audit the
+ * transition. `from` lists the states the move is valid from: it is checked on
+ * the ticket read under the lock, so a decision taken on an earlier read (a
+ * check, a cancel, a fill) cannot land on a ticket that moved meanwhile.
+ * `mutate` runs under the lock once the state is checked: a side effect that
+ * must happen once per move (booking a fill) belongs there.
+ */
+export async function transition(
+  id: string,
+  to: TicketStatus,
+  why: string,
+  mutate?: (t: Ticket) => void | Promise<void>,
+  now = new Date(),
+  from?: readonly TicketStatus[],
+  refused?: (status: TicketStatus) => string,
+): Promise<Ticket> {
+  return withFileLock(`${ticketPath(id)}.lock`, async () => {
     const t = loadTicket(id);
-    const from = t.status;
-    mutate?.(t);
+    if (from && !from.includes(t.status))
+      throw new Error(refused?.(t.status) ?? `ticket ${id} is ${t.status}, not ${from.join(" or ")}: it cannot move to ${to}`);
+    const prior = t.status;
+    // A mutation that throws (a fill the book refuses) leaves the ticket as it was.
+    await mutate?.(t);
     t.status = to;
     t.updatedAt = now.toISOString();
-    t.history.push({ at: t.updatedAt, from, to, why });
+    t.history.push({ at: t.updatedAt, from: prior, to, why });
     save(t);
-    audit({ event: "ticket", id, from, to, why, fingerprint: t.fingerprint, order: t.order });
+    audit({ event: "ticket", id, from: prior, to, why, fingerprint: t.fingerprint, order: t.order });
     return t;
   });
 }
@@ -138,11 +156,13 @@ export function createTicket(order: Order, opts: { run?: string; note?: string; 
   return t;
 }
 
+/** The states a risk check may be recorded on. */
+const CHECKABLE: readonly TicketStatus[] = ["draft", "checked", "blocked"];
+
 /** Record a risk-gate result on a ticket: checked if it passed, blocked otherwise. */
 export async function recordCheck(id: string, gate: GateResult, now = new Date()): Promise<Ticket> {
-  const t = loadTicket(id);
-  if (!["draft", "checked", "blocked"].includes(t.status)) throw new Error(`ticket ${id} is ${t.status}: it can no longer be checked`);
-  if (gate.fingerprint !== t.fingerprint) throw new Error(`the risk check was run on a different order than ticket ${id} holds`);
+  // The order (and so its fingerprint) never changes; the status does, so it is read under the lock.
+  if (gate.fingerprint !== loadTicket(id).fingerprint) throw new Error(`the risk check was run on a different order than ticket ${id} holds`);
   const blocks = gate.checks.filter((c) => c.status === "block");
   return transition(
     id,
@@ -158,6 +178,8 @@ export async function recordCheck(id: string, gate: GateResult, now = new Date()
       };
     },
     now,
+    CHECKABLE,
+    (status) => `ticket ${id} is ${status}: it can no longer be checked`,
   );
 }
 

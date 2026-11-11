@@ -36,7 +36,7 @@ import { effectiveLimits } from "./limits.js";
 import { verifyCode } from "./otp.js";
 import { readiness } from "./paper.js";
 import { killSwitchPath, type Order, orderFingerprint } from "./riskgate.js";
-import { audit, executionRefusal, loadTicket, readAudit, type Ticket, transition } from "./tickets.js";
+import { audit, executionRefusal, loadTicket, readAudit, type Ticket, type TicketStatus, transition } from "./tickets.js";
 
 export const VENUES: Venue[] = ["binance", "kraken", "coinbase", "ibkr", "kalshi"];
 export const CRYPTO_VENUES: Venue[] = ["binance", "kraken", "coinbase"];
@@ -276,6 +276,13 @@ async function bookFill(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date): 
   );
 }
 
+/**
+ * The states of a ticket whose order went to a venue and may still be heard of:
+ * sent, cancelled (a fill may surface after), declared never placed or checked
+ * again since. A filled one is final.
+ */
+const FOLLOWED: readonly TicketStatus[] = ["submitted", "cancelled", "blocked", "checked"];
+
 /** Apply a venue answer to the ticket (status, record, ledger). */
 async function applyResult(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date): Promise<Ticket> {
   const next: LiveRecord = { ...rec, state: r.state, venueOrderId: r.venueOrderId ?? rec.venueOrderId, at: now.toISOString(), message: r.message };
@@ -290,6 +297,7 @@ async function applyResult(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date
         (x as Ticket & { live?: LiveRecord }).live = done;
       },
       now,
+      ["submitted"],
     );
   }
   const status = r.state === "filled" ? "filled" : r.state === "cancelled" ? "cancelled" : r.state === "rejected" ? "blocked" : "submitted";
@@ -310,6 +318,7 @@ async function applyResult(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date
         });
     },
     now,
+    FOLLOWED,
   );
   await bookFill(t, r, next, now);
   return updated;
@@ -358,9 +367,17 @@ export async function liveSubmit(p: PreconditionInput): Promise<{ ticket: Ticket
     };
     audit({ event: "live-intent", ticket: t.id, venue: p.venue, env: p.env, clientOrderId: order.clientOrderId, order, notional, fingerprint: t.fingerprint });
     // Mark the ticket as submitted BEFORE the request: a crash in flight leaves it "unknown", never resendable.
-    await transition(t.id, "submitted", `sending to ${p.venue} ${p.env} as ${order.clientOrderId}`, (x) => {
-      (x as Ticket & { live?: LiveRecord }).live = rec;
-    });
+    // Checked under the ticket's lock: a cancel by the user since the preconditions read it stops the send.
+    await transition(
+      t.id,
+      "submitted",
+      `sending to ${p.venue} ${p.env} as ${order.clientOrderId}`,
+      (x) => {
+        (x as Ticket & { live?: LiveRecord }).live = rec;
+      },
+      undefined,
+      ["checked"],
+    );
     let result: OrderResult;
     try {
       result = await p.adapter.submit(order);
@@ -474,6 +491,8 @@ async function reconcileLocked(
           message: "not found at the venue; declared never placed by the user",
         };
       },
+      undefined,
+      ["submitted"],
     );
     return { ticket, note: "not found at the venue, declared never placed: the ticket can be checked and approved again" };
   }

@@ -372,9 +372,16 @@ export async function ticketCommand(args: CommandArgs, asJson: boolean): Promise
     );
   }
   if (sub === "cancel") {
-    const t = loadTicket(id);
-    if (["filled", "cancelled", "expired", "submitted"].includes(t.status)) throw new Error(`ticket ${id} is ${t.status}: nothing to cancel`);
-    const after = await transition(id, "cancelled", "cancelled by the user");
+    // A submitted order is cancelled at its venue (`broker cancel`); a closed ticket has nothing left to cancel.
+    const after = await transition(
+      id,
+      "cancelled",
+      "cancelled by the user",
+      undefined,
+      undefined,
+      ["draft", "checked", "blocked", "working"],
+      (status) => `ticket ${id} is ${status}: nothing to cancel`,
+    );
     return out(asJson, after, `${id}: cancelled`);
   }
   throw new UsageError("usage: ultrastock ticket list|show|check|cancel [<ticket-id>]");

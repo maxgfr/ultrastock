@@ -152,12 +152,30 @@ export async function paperSubmit(id: string, now = new Date()): Promise<{ ticke
     const refusal = executionRefusal(t, now);
     if (refusal) throw new Error(refusal);
     const outcome = await simulateFill(t.order, now);
-    if (outcome.kind === "working") return { ticket: await transition(id, "working", outcome.reason, undefined, now), outcome };
-    await book(t, outcome.fill);
-    const done = await transition(id, "filled", `${outcome.fill.method}${outcome.note ? `; ${outcome.note}` : ""}`, (x) => x.fills.push(outcome.fill), now);
+    // A user's cancel takes the ticket's lock only: the fill is booked under it, once the ticket is still checked.
+    if (outcome.kind === "working") return { ticket: await transition(id, "working", outcome.reason, undefined, now, ["checked"]), outcome };
+    const done = await transition(
+      id,
+      "filled",
+      `${outcome.fill.method}${outcome.note ? `; ${outcome.note}` : ""}`,
+      async (x) => {
+        await book(x, outcome.fill);
+        x.fills.push(outcome.fill);
+      },
+      now,
+      ["checked"],
+    );
     return { ticket: done, outcome };
   });
 }
+
+/** A sweep's move refused because the ticket left "working" meanwhile (filled, cancelled) is skipped; any other failure is not. */
+const movedMeanwhile =
+  (id: string) =>
+  (e: unknown): false => {
+    if (loadTicket(id).status === "working") throw e;
+    return false;
+  };
 
 /**
  * Re-examine working limit orders against the bars traded since they were
@@ -168,8 +186,8 @@ export async function paperSweep(now = new Date()): Promise<Array<{ id: string; 
   const out: Array<{ id: string; result: string }> = [];
   for (const t of listTickets((x) => x.status === "working" && x.order.venue === "paper")) {
     if (t.validUntil && now.getTime() > Date.parse(t.validUntil)) {
-      await transition(t.id, "expired", "valid-until passed", undefined, now);
-      out.push({ id: t.id, result: "expired" });
+      const lapsed = await transition(t.id, "expired", "valid-until passed", undefined, now, ["working"]).then(() => true, movedMeanwhile(t.id));
+      out.push({ id: t.id, result: lapsed ? "expired" : `no longer working (${loadTicket(t.id).status})` });
       continue;
     }
     const resolved = await resolveSymbol(t.order.symbol);
@@ -198,12 +216,19 @@ export async function paperSweep(now = new Date()): Promise<Array<{ id: string; 
       method: gapped ? `opened through the limit on ${bar.date}: filled at the open` : `traded through the limit on ${bar.date}`,
     };
     // The bars were read without the lock: the ticket may have been filled, swept or cancelled since.
-    const booked = await paperLock(async () => {
-      if (loadTicket(t.id).status !== "working") return false;
-      await book(t, fill);
-      await transition(t.id, "filled", fill.method, (x) => x.fills.push(fill), now);
-      return true;
-    });
+    const booked = await paperLock(() =>
+      transition(
+        t.id,
+        "filled",
+        fill.method,
+        async (x) => {
+          await book(x, fill);
+          x.fills.push(fill);
+        },
+        now,
+        ["working"],
+      ).then(() => true, movedMeanwhile(t.id)),
+    );
     out.push({ id: t.id, result: booked ? `filled at ${price}` : `no longer working (${loadTicket(t.id).status})` });
   }
   return out;
