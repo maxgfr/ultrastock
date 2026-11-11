@@ -7,6 +7,7 @@
 import { resolve } from "node:path";
 import { type Dataset, formatDatasets, type Point, registerDatasets } from "../../core/datasets.js";
 import { argValue, type CommandArgs, jsonLine, mapLimit } from "../../engine.js";
+import { isoDayOf as isoDay } from "../../providers/fundamentals/util.js";
 import { getHistory, resolveSymbol } from "../../providers/router.js";
 import type { Bar, Market, PriceSeries } from "../../providers/types.js";
 
@@ -16,7 +17,8 @@ const DAY = 86_400_000;
 
 export type DatasetProvenance = Dataset["provenance"];
 
-export const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+// A Date as YYYY-MM-DD (UTC): the fundamentals' isoDayOf, under the name this module's callers know.
+export { isoDay };
 export const shiftDay = (iso: string, days: number) => isoDay(new Date(Date.parse(`${iso}T00:00:00Z`) + days * DAY));
 export const round4 = (x: number) => Number(x.toFixed(4));
 

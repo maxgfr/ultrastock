@@ -24386,9 +24386,6 @@ async function tradingviewScan(market, opts = {}) {
 function requireOk(source2, res, what) {
   if (!res.ok) throw new ProviderError(source2, `${what} unavailable (HTTP ${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
 }
-function isoDate2(d) {
-  return d.toISOString().slice(0, 10);
-}
 function usSlashDate(s) {
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s ?? "").trim());
   return m ? `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}` : void 0;
@@ -26726,7 +26723,7 @@ function econEventsToDataset(events, meta2) {
     notes: meta2.notes ?? []
   };
 }
-async function nasdaqEconomicCalendar(date = isoDate2(clockNow())) {
+async function nasdaqEconomicCalendar(date = isoDayOf(clockNow())) {
   const res = await fetchJson(`${NASDAQ}/economicevents?date=${date}`, nasdaqOpts);
   requireOk("nasdaq", res, `economic calendar for ${date}`);
   const rows = res.data?.data?.rows;
@@ -26771,7 +26768,7 @@ function parseNasdaqEarnings(rows) {
     return [row];
   }).sort((a, b) => (b.marketCap ?? 0) - (a.marketCap ?? 0));
 }
-async function earningsCalendar(date = isoDate2(clockNow()), limit = 40) {
+async function earningsCalendar(date = isoDayOf(clockNow()), limit = 40) {
   const res = await fetchJson(`${NASDAQ}/earnings?date=${date}`, nasdaqOpts);
   requireOk("nasdaq", res, `earnings calendar for ${date}`);
   const rows = parseNasdaqEarnings(res.data?.data?.rows ?? []);
@@ -26823,7 +26820,7 @@ function parseNasdaqDividends2(rows) {
     ];
   });
 }
-async function dividendsCalendar(date = isoDate2(clockNow()), limit = 60) {
+async function dividendsCalendar(date = isoDayOf(clockNow()), limit = 60) {
   const res = await fetchJson(
     `${NASDAQ}/dividends?date=${date}`,
     nasdaqOpts
@@ -27059,11 +27056,10 @@ async function resultsReactionsDataset(sym3, now = clockNow()) {
 import { resolve as resolve5 } from "path";
 var FETCH_CONCURRENCY = 4;
 var DAY4 = 864e5;
-var isoDay8 = (d) => d.toISOString().slice(0, 10);
-var shiftDay = (iso5, days) => isoDay8(new Date(Date.parse(`${iso5}T00:00:00Z`) + days * DAY4));
+var shiftDay = (iso5, days) => isoDayOf(new Date(Date.parse(`${iso5}T00:00:00Z`) + days * DAY4));
 var round4 = (x) => Number(x.toFixed(4));
 function closedBars2(bars, market, now) {
-  const today = isoDay8(now);
+  const today = isoDayOf(now);
   const minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
   const closedToday = market === "crypto" ? false : market === "us" ? minutes >= 21 * 60 + 15 : minutes >= 16 * 60 + 45;
   return bars.filter((b) => b.date.slice(0, 10) < today || b.date.slice(0, 10) === today && closedToday);
@@ -27345,7 +27341,7 @@ async function catalystsReport(raw, days, now = clockNow(), opts = {}) {
   const { instrument: inst } = await resolveSymbol(raw);
   const sym3 = inst.symbol;
   const ns = `${sym3}.cat`;
-  const today = isoDay8(now);
+  const today = isoDayOf(now);
   const end = shiftDay(today, days);
   const inWindow = (d) => d >= today && d <= end;
   const market = calendarFor(inst);
@@ -27441,7 +27437,7 @@ async function catalystsReport(raw, days, now = clockNow(), opts = {}) {
   const tvNum2 = (col) => tv && tvTicker2 ? pointNumber(tv, `${tvTicker2}.tv.${col}`) : void 0;
   const tvDate = (col) => {
     const t = tvNum2(col);
-    return t !== void 0 && t > 0 ? isoDay8(new Date(t * 1e3)) : void 0;
+    return t !== void 0 && t > 0 ? isoDayOf(new Date(t * 1e3)) : void 0;
   };
   if (!earnings && tv && inst.kind === "equity") {
     const d = tvDate("earnings_release_next_date");
@@ -27964,7 +27960,7 @@ async function fredSeries(id, opts = {}) {
   const sid = id.toUpperCase();
   const preset = FRED_PRESETS[sid];
   const days = opts.days ?? (preset?.freq === "m" ? 400 : preset?.freq === "w" ? 120 : 60);
-  const start = isoDate2(new Date((opts.now ?? clockNow()).getTime() - days * 864e5));
+  const start = isoDayOf(new Date((opts.now ?? clockNow()).getTime() - days * 864e5));
   const key = fredKey();
   let obs;
   let url;
@@ -28054,7 +28050,7 @@ function parseCnnFearGreed(js) {
   return { points, asOf };
 }
 async function cnnFearGreed(now = clockNow()) {
-  const start = isoDate2(new Date(now.getTime() - 7 * 864e5));
+  const start = isoDayOf(new Date(now.getTime() - 7 * 864e5));
   const res = await fetchJson(`https://production.dataviz.cnn.io/index/fearandgreed/graphdata/${start}`, { headers: CNN_HEADERS });
   requireOk("cnn", res, "Fear & Greed index");
   const { points, asOf } = parseCnnFearGreed(res.data);
@@ -28176,12 +28172,12 @@ function previousSession(day4) {
   let d = /* @__PURE__ */ new Date(`${day4}T00:00:00Z`);
   for (let guard = 0; guard < 15; guard++) {
     d = new Date(d.getTime() - 864e5);
-    if (isTradingDay("XNYS", isoDate2(d))) break;
+    if (isTradingDay("XNYS", isoDayOf(d))) break;
   }
-  return isoDate2(d);
+  return isoDayOf(d);
 }
 async function cboePutCall(now = clockNow()) {
-  let day4 = isoDate2(now);
+  let day4 = isoDayOf(now);
   if (!isTradingDay("XNYS", day4) || now.getUTCHours() < 22) day4 = previousSession(day4);
   let lastStatus = 0;
   for (let i = 0; i < 3; i++, day4 = previousSession(day4)) {
@@ -32182,7 +32178,7 @@ function attention(views) {
   if (b <= 0) return void 0;
   return { recent: r3, baseline: b, ratio: r3 / b, recentDays: recent.length, baselineDays: base2.length, last: recent[recent.length - 1].date };
 }
-var ymd = (d) => isoDate2(d).replace(/-/g, "");
+var ymd = (d) => isoDayOf(d).replace(/-/g, "");
 async function wikipediaAttention(subject, ids, now = clockNow()) {
   let qid;
   if (ids.isin) qid = await wikidataItem("P946", ids.isin);
@@ -32730,7 +32726,7 @@ async function readYear(year) {
   return { rows: parseTreasuryCsv(res.body), url: res.url, fetchedAt: res.fetchedAt };
 }
 async function treasuryRows(days, now = clockNow()) {
-  const from = isoDate2(new Date(now.getTime() - days * 864e5));
+  const from = isoDayOf(new Date(now.getTime() - days * 864e5));
   const year = now.getUTCFullYear();
   const cur = await readYear(year);
   let rows = cur.rows;
@@ -40229,7 +40225,7 @@ async function bulkKlines(req) {
 // src/backtest/data.ts
 var INTERVAL_MS = { "15m": 9e5, "1h": 36e5, "4h": 144e5, "1d": 864e5, "1w": 6048e5 };
 var DAY6 = 864e5;
-var isoDay9 = (d) => d.toISOString().slice(0, 10);
+var isoDay8 = (d) => d.toISOString().slice(0, 10);
 async function loadBars(raw, req) {
   const resolved = await resolveSymbol(raw);
   const inst = resolved.instrument;
@@ -40261,7 +40257,7 @@ async function loadBars(raw, req) {
     return { resolved, series: await getHistory(resolved, req) };
   }
   const series = await getHistory(resolved, req);
-  const wanted = isoDay9(new Date(req.from.getTime() + 7 * DAY6));
+  const wanted = isoDay8(new Date(req.from.getTime() + 7 * DAY6));
   if (inst.market === "euronext" && series.bars[0] && series.bars[0].date > wanted) {
     try {
       const y = await resolveYahoo(inst.symbol);
@@ -40275,7 +40271,7 @@ async function loadBars(raw, req) {
             provenance: { ...longer.provenance, fallbackFrom: "euronext" },
             notes: [
               ...longer.notes,
-              `Euronext keeps about two years (its bars start ${series.bars[0].date}); the window from ${isoDay9(req.from)} was read from Yahoo instead \u2014 unofficial, split-adjusted`
+              `Euronext keeps about two years (its bars start ${series.bars[0].date}); the window from ${isoDay8(req.from)} was read from Yahoo instead \u2014 unofficial, split-adjusted`
             ]
           }
         };
@@ -46051,7 +46047,7 @@ function namesCompany(headline, name, symbol) {
 }
 async function morningRun(dir2, opts = {}) {
   const now = opts.now ?? clockNow();
-  const today = isoDay8(now);
+  const today = isoDayOf(now);
   const days = opts.days ?? 14;
   const end = shiftDay(today, days);
   const bookName = opts.book ?? "real";

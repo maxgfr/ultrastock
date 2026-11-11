@@ -4,6 +4,7 @@
 // so a Treasury yield, an INSEE index and a FRED series cite the same way.
 import type { Dataset, Point } from "../../core/datasets.js";
 import type { NetResponse } from "../../core/net.js";
+import { isoDayOf as isoDate } from "../fundamentals/util.js";
 import { ProviderError } from "../types.js";
 
 /** One dated value of a series. `date` is YYYY-MM-DD, YYYY-MM (monthly), YYYY-Qn or YYYY (annual) as the source dates it. */
@@ -19,10 +20,8 @@ export function requireOk(source: string, res: NetResponse, what: string): void 
   if (!res.ok) throw new ProviderError(source, `${what} unavailable (HTTP ${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
 }
 
-/** A Date as YYYY-MM-DD (UTC). */
-export function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
+// A Date as YYYY-MM-DD (UTC): the fundamentals' isoDayOf, under the name this module's callers know.
+export { isoDate };
 
 /** "10/23/2026" (or "9/3/2026") → "2026-10-23", without the local time zone. */
 export function usSlashDate(s: string | undefined): string | undefined {
