@@ -54612,12 +54612,13 @@ var UsRegime = class extends TaxRegime {
       }
       if (!pieces2.length) return false;
       const rest = need > 1e-12 ? { ...into, quantity: need, remaining: need } : void 0;
+      const arrived = { ...into };
       pieces2.forEach(({ from, qty }, i) => {
-        const piece = i === 0 ? into : { ...into, id: lots.length };
+        const piece = i === 0 ? into : { ...arrived, id: lots.length };
         if (from.sheltered && !into.sheltered) {
           Object.assign(piece, { quantity: qty, remaining: qty });
           warnings.push(
-            `${into.symbol} moved out of ${from.account} (${envelopeOf2(from.account, input.envelopes).type}) into ${into.account} on ${into.bought}: a distribution, whose basis is the fair market value on that date (IRS Pub. 590-B) \u2014 give the transfer-in that value as its price (basis 0 until then)`
+            `${into.symbol} moved out of ${from.account} (${envelopeOf2(from.account, input.envelopes).type}) into ${into.account} on ${arrived.bought}: a distribution, whose basis is the fair market value on that date (IRS Pub. 590-B) \u2014 give the transfer-in that value as its price (basis 0 until then)`
           );
           if (i > 0) lots.push(piece);
           active2.add(piece);

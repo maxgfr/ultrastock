@@ -249,14 +249,17 @@ export class UsRegime extends TaxRegime {
       }
       if (!pieces.length) return false;
       const rest = need > 1e-12 ? { ...into, quantity: need, remaining: need } : undefined;
+      // The transfer-in as it arrived: the first piece reuses `into` and takes its source's basis and dates, so every
+      // other piece starts from this copy, never from the first piece.
+      const arrived = { ...into };
       pieces.forEach(({ from, qty }, i) => {
-        const piece = i === 0 ? into : { ...into, id: lots.length };
+        const piece = i === 0 ? into : { ...arrived, id: lots.length };
         if (from.sheltered && !into.sheltered) {
           // Out of an IRA into a taxable account: a distribution, not a move. The shares take their fair market value on
           // that date as basis and their holding period starts then (IRS Pub. 590-B) — a value the ledger does not hold.
           Object.assign(piece, { quantity: qty, remaining: qty });
           warnings.push(
-            `${into.symbol} moved out of ${from.account} (${envelopeOf(from.account, input.envelopes).type}) into ${into.account} on ${into.bought}: a distribution, whose basis is the fair market value on that date (IRS Pub. 590-B) — give the transfer-in that value as its price (basis 0 until then)`,
+            `${into.symbol} moved out of ${from.account} (${envelopeOf(from.account, input.envelopes).type}) into ${into.account} on ${arrived.bought}: a distribution, whose basis is the fair market value on that date (IRS Pub. 590-B) — give the transfer-in that value as its price (basis 0 until then)`,
           );
           if (i > 0) lots.push(piece);
           active.add(piece);
