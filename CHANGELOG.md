@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.48](https://github.com/maxgfr/ultrastock/compare/v1.13.47...v1.13.48) (2026-11-11)
+
+
+### Bug Fixes
+
+* **import:** recognise a 12-hour-clock row a ledger holds under its old time ([9fc4b65](https://github.com/maxgfr/ultrastock/commit/9fc4b6549a667b3ee697856db5a2044a845c4e19))
+* **import:** recognise a Kraken trade a ledger holds under the symbol misread before c2fdfc7 ([cf9226a](https://github.com/maxgfr/ultrastock/commit/cf9226afbfd0ae9fb6e40c76bfe5ea7ee4a2458e))
+* **ledger:** replay an IBKR split dated by its report date before that day's trades ([8473698](https://github.com/maxgfr/ultrastock/commit/84736982fd232d1d3012a643c99bda8e1ba45525))
+* **tax:** carry the French cost through a move listed arrival first ([e632071](https://github.com/maxgfr/ultrastock/commit/e632071d67cb51c2863bc6e9b040f74961b5b506))
+* **tax:** count a holding period from the last day of February by calendar months ([0363e15](https://github.com/maxgfr/ultrastock/commit/0363e15e675008224245130c3a1813c08d9aea0b))
+* **tax:** count the shares a loss sale leaves of a recent purchase as wash-sale replacements ([69be045](https://github.com/maxgfr/ultrastock/commit/69be045fccb409b323ac96bb14a86eb931b6fb74))
+* **tax:** keep a listed bitcoin trust a security in an account the profile does not list ([f945011](https://github.com/maxgfr/ultrastock/commit/f945011212a0b040a83921427469f498cc972044))
+* **tax:** keep the French average cost across an ISIN change under the same ticker ([87bf528](https://github.com/maxgfr/ultrastock/commit/87bf528e76b94e05ba0c53478c31d7e56e6c1475))
+* **tax:** never match a crypto reward to coins moved from another account ([42a368b](https://github.com/maxgfr/ultrastock/commit/42a368b26381d689e75688c35aa0991f6c8fbd7b))
+* **tax:** read fiat sold for a stablecoin as a currency exchange in the US regime ([0c93616](https://github.com/maxgfr/ultrastock/commit/0c93616e4daf725ce55b6fc77fd0c2b874093209))
+* **tax:** read the 30 days after the year end for a December wash sale ([0f16fe0](https://github.com/maxgfr/ultrastock/commit/0f16fe0b9d4cfec04ad12bc39e4e20965332373c))
+* **tax:** split the French household pool once per security and date ([4c1e942](https://github.com/maxgfr/ultrastock/commit/4c1e94245f4a720ebe95497cd295e5ff22e55bde))
+* **tax:** value every French crypto disposal of the replay, not only the report year's ([34d8e73](https://github.com/maxgfr/ultrastock/commit/34d8e73d6f4c68458dd0305c2b205c83807c365a))
+* **tax:** value the IRA part of a mixed transfer-in as a distribution ([e750287](https://github.com/maxgfr/ultrastock/commit/e7502874e7a5c728f7a42d87d2c19dd37d0c8951))
+
 ## [1.13.47](https://github.com/maxgfr/ultrastock/compare/v1.13.46...v1.13.47) (2026-11-11)
 
 
