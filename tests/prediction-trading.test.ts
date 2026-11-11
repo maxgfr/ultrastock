@@ -1,4 +1,9 @@
+import { rmSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { predictCommand } from "../src/commands/markets.js";
+import { homeDir } from "../src/core/paths.js";
+import type { CommandArgs } from "../src/engine.js";
+import { listTickets } from "../src/trading/tickets.js";
 import { defaultProfile } from "../src/core/profile.js";
 import { kalshiTakerFee, outcomeBook, parsePredictionSymbol, walkOutcome } from "../src/trading/prediction.js";
 import { type GateContext, type Order, riskGate } from "../src/trading/riskgate.js";
@@ -79,5 +84,20 @@ describe("prediction contracts", () => {
     const off = ctx("FR");
     off.profile.constraints.allowPredictionMarkets = false;
     expect(codes(riskGate(contract(), off), "block")).toContain("NO_PREDICTION");
+  });
+});
+
+describe("predict order", () => {
+  it("leaves no ticket behind when the gate's context cannot be built", async () => {
+    rmSync(homeDir(), { recursive: true, force: true });
+    // No profile: the gate cannot run, so there is nothing to ticket — not a draft left for ever.
+    const args: CommandArgs = {
+      command: "predict",
+      positional: ["order", "kalshi", "FED-26DEC-T4.25", "yes", "buy"],
+      values: { contracts: "10", price: "0.4" },
+      bools: new Set(),
+    };
+    await expect(predictCommand(args, true)).rejects.toThrow(/no profile/);
+    expect(listTickets()).toEqual([]);
   });
 });

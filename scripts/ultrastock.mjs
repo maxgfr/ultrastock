@@ -39059,9 +39059,9 @@ async function predictOrder(args, asJson) {
     assetKind: "prediction",
     venue: "paper"
   };
-  const t = createTicket(order, { note: "prediction-market contract (paper)" });
   const built = await gateContextFor(order, { book: "paper" });
   const gate = riskGate(order, built.ctx);
+  const t = createTicket(order, { note: "prediction-market contract (paper)" });
   const after = await recordCheck(t.id, gate);
   process.stdout.write(
     asJson ? jsonLine({ ticket: after, checks: gate.checks, notes: built.notes }) : `${[

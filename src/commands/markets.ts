@@ -181,9 +181,11 @@ async function predictOrder(args: CommandArgs, asJson: boolean): Promise<void> {
     assetKind: "prediction",
     venue: "paper",
   };
-  const t = createTicket(order, { note: "prediction-market contract (paper)" });
+  // The gate's context first: a context that cannot be built (no profile, no quote, an empty book) leaves no draft
+  // ticket behind. The ticket does not exist yet, so its own order is not among the pending ones.
   const built = await gateContextFor(order, { book: "paper" });
   const gate = riskGate(order, built.ctx);
+  const t = createTicket(order, { note: "prediction-market contract (paper)" });
   const after = await recordCheck(t.id, gate);
   process.stdout.write(
     asJson
