@@ -23,7 +23,7 @@ import {
 const DASHBOARD_CSS = `:root{--pos:#1f6f3a;--neg:#a8261b}@media (prefers-color-scheme:dark){:root{--pos:#7fcf97;--neg:#f2998f}}
 main{max-width:1180px}table{display:table}.wrap{overflow-x:auto}.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .pos{color:var(--pos)}.neg{color:var(--neg)}header .meta{margin-top:-.6rem}
-nav ul{list-style:none;display:flex;flex-wrap:wrap;gap:.3rem 1.1rem;padding:0;margin:0}nav{border-bottom:1px solid var(--rule);padding:.6rem 0}nav a[aria-current=page]{font-weight:700;text-decoration:none;color:var(--fg)}
+nav ul{list-style:none;display:flex;flex-wrap:wrap;gap:.3rem 1.1rem;padding:0;margin:0}nav{border-bottom:1px solid var(--rule);padding:.6rem 16px}nav a[aria-current=page]{font-weight:700;text-decoration:none;color:var(--fg)}
 .kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.75rem;margin:1rem 0}.kpi div{background:var(--card);border:1px solid var(--rule);border-radius:6px;padding:.6rem .8rem}
 .kpi dt{color:var(--muted);font-size:.85rem}.kpi dd{margin:0;font-size:1.25rem;font-variant-numeric:tabular-nums}
 .hint{background:var(--card);border:1px solid var(--rule);border-radius:6px;padding:.2rem 1rem}.flag{font-weight:600}

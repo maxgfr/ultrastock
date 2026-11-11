@@ -169,7 +169,9 @@ It writes nothing to `ULTRASTOCK_HOME`. The book is marked without recording
 an equity snapshot (the breaker reads the recorded curve plus today's value,
 in memory), the analyses register nothing, the SQLite store is opened
 read-only without migrating, alerts are not evaluated and decisions are not
-settled. The one file a page can cause to be written is the dataset cache of
+settled. One exception: when the ledger itself lives in the SQLite store
+(`portfolio db init`), it is read the way every command reads it, which
+brings a store written by an older version up to the current schema. The one file a page can cause to be written is the dataset cache of
 the quotes and rates it reads (`ULTRASTOCK_CACHE_DIR`, by default
 `ULTRASTOCK_HOME/cache`), exactly as `portfolio show` does. A test hits every
 route and checks the home directory is unchanged byte for byte. The value over
