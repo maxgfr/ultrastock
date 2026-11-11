@@ -49702,6 +49702,141 @@ function tradeContextMarkdown(p) {
   ].join("\n");
 }
 
+// src/tax/inputs.ts
+var FRANKFURTER = "https://api.frankfurter.dev/v1";
+async function historicalFx(base2, currencies, from, to) {
+  const want = [...new Set(currencies.map((c) => isStablecoin(c) ? c.startsWith("EUR") ? "EUR" : "USD" : c.toUpperCase()))].filter(
+    (c) => c !== base2 && isFiat(c)
+  );
+  const table2 = /* @__PURE__ */ new Map();
+  const notes = [];
+  if (want.length) {
+    const start = new Date(Date.parse(`${from}T00:00:00Z`) - 7 * 864e5).toISOString().slice(0, 10);
+    const res = await fetchJson(`${FRANKFURTER}/${start}..${to}?base=${base2}&symbols=${want.join(",")}`, {
+      maxBytes: 16 * 1024 * 1024
+    });
+    if (!res.ok || !res.data) throw new Error(`ECB rates via Frankfurter unavailable (${res.status}): the tax report needs them`);
+    for (const d of Object.keys(res.data.rates).sort())
+      for (const [c, v] of Object.entries(res.data.rates[d] ?? {})) {
+        const list = table2.get(c) ?? [];
+        list.push([d, 1 / v]);
+        table2.set(c, list);
+      }
+    notes.push(`ECB reference rates (via Frankfurter) for ${want.join(", ")} \u2192 ${base2}, ${start} to ${to}; a weekend or holiday takes the previous fixing`);
+  }
+  const fx = (currency, date) => {
+    const c = currency.toUpperCase();
+    if (c === base2) return 1;
+    const list = table2.get(c);
+    if (!list?.length) return void 0;
+    let lo = 0;
+    let hi = list.length - 1;
+    if (list[0][0] > date) return void 0;
+    while (lo < hi) {
+      const mid2 = lo + hi + 1 >> 1;
+      if (list[mid2][0] <= date) lo = mid2;
+      else hi = mid2 - 1;
+    }
+    return list[lo][1];
+  };
+  return { fx, notes };
+}
+var CRYPTO_MOVES = /* @__PURE__ */ new WeakMap();
+function cryptoMoves(txs, envelopes) {
+  const held = CRYPTO_MOVES.get(txs);
+  if (held && held.envelopes === envelopes && held.length === txs.length) return held.moves;
+  const moves = [];
+  for (const t of chronological(txs)) {
+    if (envelopeOf2(t.account, envelopes, t.symbol).type !== "CRYPTO") continue;
+    const changes = [];
+    const q = t.quantity ?? 0;
+    const cur = t.currency.toUpperCase();
+    if (t.type === "buy" || t.type === "sell") {
+      const { base: base2 } = splitPair(t.symbol ?? "", cur);
+      const sign2 = t.type === "buy" ? 1 : -1;
+      changes.push([base2, sign2 * q]);
+      if (!isFiat(cur)) changes.push([cur, -sign2 * gross2(t) - (t.fee ?? 0)]);
+    } else if (t.type === "transfer-in" || t.type === "transfer-out") {
+      changes.push([splitPair(t.symbol ?? cur, cur).base, (t.type === "transfer-in" ? 1 : -1) * q]);
+    } else if (!isFiat(cur) && typeof t.amount === "number") changes.push([cur, t.amount]);
+    moves.push({ t, day: day3(t.date), changes });
+  }
+  CRYPTO_MOVES.set(txs, { envelopes, length: txs.length, moves });
+  return moves;
+}
+function cryptoHoldings(txs, envelopes, upTo) {
+  const h = /* @__PURE__ */ new Map();
+  const last2 = upTo ? day3(upTo.date) : void 0;
+  for (const m of cryptoMoves(txs, envelopes)) {
+    if (m.t === upTo) break;
+    if (last2 !== void 0 && m.day > last2) break;
+    for (const [asset, quantity] of m.changes) h.set(asset, (h.get(asset) ?? 0) + quantity);
+  }
+  for (const [k, v] of h) if (Math.abs(v) < 1e-12) h.delete(k);
+  return h;
+}
+async function cryptoValuer(txs, envelopes, dates, fx) {
+  const notes = [];
+  if (!dates.length) return { value: () => void 0, notes };
+  const assets = /* @__PURE__ */ new Set();
+  for (const t of txs) {
+    if (envelopeOf2(t.account, envelopes, t.symbol).type !== "CRYPTO") continue;
+    if (t.symbol) assets.add(splitPair(t.symbol, t.currency).base);
+    if (!isFiat(t.currency)) assets.add(t.currency.toUpperCase());
+  }
+  const first = [...dates].sort()[0];
+  const last2 = [...dates].sort().at(-1);
+  const closes = /* @__PURE__ */ new Map();
+  for (const a of assets) {
+    if (isStablecoin(a)) continue;
+    try {
+      const series = await getHistory(await resolveSymbol(`${a}USDT`), {
+        from: new Date(Date.parse(`${first}T00:00:00Z`) - 5 * 864e5),
+        to: new Date(Date.parse(`${last2}T00:00:00Z`) + 864e5)
+      });
+      closes.set(a, new Map(series.bars.map((b) => [b.date.slice(0, 10), b.close])));
+    } catch (e) {
+      notes.push(`${a}: no USDT price history (${e.message}) \u2014 the portfolio value omits it`);
+    }
+  }
+  notes.push(
+    "crypto portfolio valued at each asset's daily close (USDT pair, ECB USD rate) on the disposal day \u2014 the law asks for the value at the moment of the disposal: keep the platforms' statements"
+  );
+  const value2 = (date, tx) => {
+    const h = cryptoHoldings(txs, envelopes, tx);
+    const usd = fx("USD", date);
+    if (usd === void 0) return void 0;
+    let total = 0;
+    for (const [a, q] of h) {
+      if (q <= 0) continue;
+      if (isStablecoin(a)) {
+        total += q * (a.startsWith("EUR") ? fx("EUR", date) ?? 1 : usd);
+        continue;
+      }
+      const m = closes.get(a);
+      if (!m) return void 0;
+      let px;
+      for (let i = 0; i < 6 && px === void 0; i++) px = m.get(new Date(Date.parse(`${date}T00:00:00Z`) - i * 864e5).toISOString().slice(0, 10));
+      if (px === void 0) return void 0;
+      total += q * px * usd;
+    }
+    return total;
+  };
+  return { value: value2, notes };
+}
+async function currentPrices(symbols) {
+  const prices = {};
+  const notes = [];
+  for (const s of symbols) {
+    try {
+      prices[s.toUpperCase()] = (await getQuote(await resolveSymbol(s))).price;
+    } catch (e) {
+      notes.push(`${s}: no price (${e.message})`);
+    }
+  }
+  return { prices, notes };
+}
+
 // src/commands/trading.ts
 var num12 = (v, flag) => {
   if (v === void 0) return void 0;
@@ -49743,8 +49878,36 @@ async function markBook(book2) {
   if (v.totalBase > 0) recordEquity(book2, v.totalBase, now);
   return { profile, txs, book: b, valued: v, fxRates: fx.rates, sources, notes: [...notes, ...fx.notes, ...v.missing.map((m) => `missing ${m}`)], now };
 }
-function bookPerformance(txs, book2, totalBase, curve, limits, now) {
-  const flows = txs.filter((t) => t.type === "deposit" || t.type === "withdrawal").map((t) => ({ date: t.date.slice(0, 10), amount: -(t.amount ?? 0) }));
+var isFlow = (t) => t.type === "deposit" || t.type === "withdrawal";
+async function flowRates(txs, base2, now) {
+  const flows = txs.filter(isFlow);
+  const foreign = [...new Set(flows.map((t) => t.currency.toUpperCase()))].filter((c) => c !== base2);
+  if (!foreign.length) return { base: base2, rate: () => void 0, notes: [] };
+  const from = flows.map((t) => t.date.slice(0, 10)).sort()[0];
+  try {
+    const { fx, notes } = await historicalFx(base2, foreign, from, now.toISOString().slice(0, 10));
+    return { base: base2, rate: fx, notes };
+  } catch (e) {
+    return { base: base2, rate: () => void 0, notes: [`ECB rates for ${foreign.join(", ")} unavailable (${e.message.split("\n")[0]})`] };
+  }
+}
+function bookPerformance(txs, book2, totalBase, curve, limits, now, fx) {
+  const xirrNotes = [...fx.notes];
+  const flows = [];
+  const missing = /* @__PURE__ */ new Set();
+  for (const t of txs.filter(isFlow)) {
+    const date = t.date.slice(0, 10);
+    const currency = t.currency.toUpperCase();
+    const rate2 = currency === fx.base ? 1 : fx.rate(currency, date);
+    if (rate2 === void 0) missing.add(`${currency} on ${date}`);
+    else flows.push({ date, amount: -(t.amount ?? 0) * rate2 });
+  }
+  if (missing.size)
+    xirrNotes.push(`XIRR not computed: no ${fx.base} rate for ${[...missing].join(", ")} \u2014 taking those amounts as ${fx.base} would give a wrong return`);
+  if (txs.some((t) => t.type === "transfer-in"))
+    xirrNotes.push("transfers in are not counted as contributions: the value they brought reads as return, so the XIRR overstates it");
+  if (txs.some((t) => t.type === "transfer-out"))
+    xirrNotes.push("transfers out are not counted as withdrawals: the value they took out reads as a loss, so the XIRR understates it");
   flows.push({ date: now.toISOString().slice(0, 10), amount: totalBase });
   const byCurrency = {};
   for (const p of book2.positions) {
@@ -49753,7 +49916,8 @@ function bookPerformance(txs, book2, totalBase, curve, limits, now) {
     c.dividends += p.dividends;
   }
   return {
-    xirr: xirr(flows),
+    xirr: missing.size ? void 0 : xirr(flows),
+    xirrNotes,
     realized: book2.positions.reduce((s, p) => s + p.realizedPmp, 0),
     dividends: book2.positions.reduce((s, p) => s + p.dividends, 0),
     byCurrency,
@@ -49879,13 +50043,21 @@ async function portfolioCommand(args, asJson) {
   }
   if (sub === "perf") {
     const m = await markBook(book2);
-    const { xirr: irr, realized, dividends, breaker: br } = bookPerformance(m.txs, m.book, m.valued.totalBase, readEquity(book2), m.profile.limits, m.now);
+    const rates = await flowRates(m.txs, m.profile.baseCurrency, m.now);
+    const {
+      xirr: irr,
+      xirrNotes,
+      realized,
+      dividends,
+      breaker: br
+    } = bookPerformance(m.txs, m.book, m.valued.totalBase, readEquity(book2), m.profile.limits, m.now, rates);
     return printResult(
       asJson,
-      { book: book2, xirr: irr, realized, dividends, breaker: br, total: m.valued.totalBase },
+      { book: book2, xirr: irr, xirrNotes, realized, dividends, breaker: br, total: m.valued.totalBase },
       [
         `${book2} book \u2014 total ${m.valued.totalBase.toFixed(2)} ${m.profile.baseCurrency}`,
-        `  money-weighted return (XIRR) ${irr === void 0 ? "n/a (needs deposits and time)" : `${(irr * 100).toFixed(2)} % a year`}`,
+        `  money-weighted return (XIRR) ${irr === void 0 ? `n/a (${xirrNotes.length ? "see the notes" : "needs deposits and time"})` : `${(irr * 100).toFixed(2)} % a year`}`,
+        ...xirrNotes.map((n2) => `  note: ${n2}`),
         `  realised (average cost) ${realized.toFixed(2)}, dividends ${dividends.toFixed(2)} (in each position's currency)`,
         `  circuit breaker: ${br.tripped ? `TRIPPED \u2014 ${br.reason} (until ${br.until})` : "not tripped"}; drawdown ${br.drawdownPct?.toFixed(2) ?? "?"} %, size multiplier ${br.sizeMultiplier}`
       ].join("\n")
@@ -50114,6 +50286,7 @@ async function portfolioView(book2, now) {
   const f3 = new Findings();
   const m = await loadMarkedBook(book2, f3, now, { dayChange: true });
   const curve = m.totalBase > 0 ? [...readEquity(book2), { at: now.toISOString(), equity: m.totalBase }] : readEquity(book2);
+  const rates = await flowRates(m.txs, m.base, now);
   return {
     book: book2,
     base: m.base,
@@ -50123,7 +50296,7 @@ async function portfolioView(book2, now) {
     positions: positionRows(m, f3),
     cashByAccount: m.cash,
     unpriced: m.holdings.filter((h) => h.valueBase === void 0).map((h) => h.symbol),
-    performance: bookPerformance(m.txs, m.book, m.totalBase, curve, m.profile.limits, now),
+    performance: bookPerformance(m.txs, m.book, m.totalBase, curve, m.profile.limits, now, rates),
     history: historyOf(book2, now),
     sources: sourcesOf(f3),
     notes: f3.notes
@@ -50270,7 +50443,7 @@ function portfolioPage(v) {
 <div><dt>Invested</dt><dd>${fmt6(v.total - v.cash)} ${b}</dd></div>
 <div><dt>Money-weighted return (XIRR)</dt><dd>${perf.xirr === void 0 ? "n/a" : `${signed(perf.xirr * 100, 2, " %")} a year`}</dd></div>
 <div><dt>Circuit breaker</dt><dd>${br.tripped ? `<span class="flag">TRIPPED</span>` : "not tripped"}</dd></div>
-</dl>`;
+</dl>${perf.xirrNotes.length ? `<p class="meta" role="note">XIRR: ${perf.xirrNotes.map(esc2).join("; ")}.</p>` : ""}`;
   const positions = v.positions.length ? table(
     `Positions, marked to market; P&L against the average cost (PMP, fees included), in ${v.base}`,
     ["Symbol", "Class", "Accounts", "Quantity", "Average cost", "Price", "Day", `Value (${v.base})`, "Weight", `P&L (${v.base})`, "P&L", "Source"],
@@ -53414,141 +53587,6 @@ function regimeFor(id, year) {
   if (r3 === "fr") return new FranceRegime(year);
   if (r3 === "us") return new UsRegime(year);
   throw new Error(`no tax regime for "${id}" \u2014 ultrastock knows ${REGIMES.join(", ")}; another residence needs its own rules (see tax/regime.ts)`);
-}
-
-// src/tax/inputs.ts
-var FRANKFURTER = "https://api.frankfurter.dev/v1";
-async function historicalFx(base2, currencies, from, to) {
-  const want = [...new Set(currencies.map((c) => isStablecoin(c) ? c.startsWith("EUR") ? "EUR" : "USD" : c.toUpperCase()))].filter(
-    (c) => c !== base2 && isFiat(c)
-  );
-  const table2 = /* @__PURE__ */ new Map();
-  const notes = [];
-  if (want.length) {
-    const start = new Date(Date.parse(`${from}T00:00:00Z`) - 7 * 864e5).toISOString().slice(0, 10);
-    const res = await fetchJson(`${FRANKFURTER}/${start}..${to}?base=${base2}&symbols=${want.join(",")}`, {
-      maxBytes: 16 * 1024 * 1024
-    });
-    if (!res.ok || !res.data) throw new Error(`ECB rates via Frankfurter unavailable (${res.status}): the tax report needs them`);
-    for (const d of Object.keys(res.data.rates).sort())
-      for (const [c, v] of Object.entries(res.data.rates[d] ?? {})) {
-        const list = table2.get(c) ?? [];
-        list.push([d, 1 / v]);
-        table2.set(c, list);
-      }
-    notes.push(`ECB reference rates (via Frankfurter) for ${want.join(", ")} \u2192 ${base2}, ${start} to ${to}; a weekend or holiday takes the previous fixing`);
-  }
-  const fx = (currency, date) => {
-    const c = currency.toUpperCase();
-    if (c === base2) return 1;
-    const list = table2.get(c);
-    if (!list?.length) return void 0;
-    let lo = 0;
-    let hi = list.length - 1;
-    if (list[0][0] > date) return void 0;
-    while (lo < hi) {
-      const mid2 = lo + hi + 1 >> 1;
-      if (list[mid2][0] <= date) lo = mid2;
-      else hi = mid2 - 1;
-    }
-    return list[lo][1];
-  };
-  return { fx, notes };
-}
-var CRYPTO_MOVES = /* @__PURE__ */ new WeakMap();
-function cryptoMoves(txs, envelopes) {
-  const held = CRYPTO_MOVES.get(txs);
-  if (held && held.envelopes === envelopes && held.length === txs.length) return held.moves;
-  const moves = [];
-  for (const t of chronological(txs)) {
-    if (envelopeOf2(t.account, envelopes, t.symbol).type !== "CRYPTO") continue;
-    const changes = [];
-    const q = t.quantity ?? 0;
-    const cur = t.currency.toUpperCase();
-    if (t.type === "buy" || t.type === "sell") {
-      const { base: base2 } = splitPair(t.symbol ?? "", cur);
-      const sign2 = t.type === "buy" ? 1 : -1;
-      changes.push([base2, sign2 * q]);
-      if (!isFiat(cur)) changes.push([cur, -sign2 * gross2(t) - (t.fee ?? 0)]);
-    } else if (t.type === "transfer-in" || t.type === "transfer-out") {
-      changes.push([splitPair(t.symbol ?? cur, cur).base, (t.type === "transfer-in" ? 1 : -1) * q]);
-    } else if (!isFiat(cur) && typeof t.amount === "number") changes.push([cur, t.amount]);
-    moves.push({ t, day: day3(t.date), changes });
-  }
-  CRYPTO_MOVES.set(txs, { envelopes, length: txs.length, moves });
-  return moves;
-}
-function cryptoHoldings(txs, envelopes, upTo) {
-  const h = /* @__PURE__ */ new Map();
-  const last2 = upTo ? day3(upTo.date) : void 0;
-  for (const m of cryptoMoves(txs, envelopes)) {
-    if (m.t === upTo) break;
-    if (last2 !== void 0 && m.day > last2) break;
-    for (const [asset, quantity] of m.changes) h.set(asset, (h.get(asset) ?? 0) + quantity);
-  }
-  for (const [k, v] of h) if (Math.abs(v) < 1e-12) h.delete(k);
-  return h;
-}
-async function cryptoValuer(txs, envelopes, dates, fx) {
-  const notes = [];
-  if (!dates.length) return { value: () => void 0, notes };
-  const assets = /* @__PURE__ */ new Set();
-  for (const t of txs) {
-    if (envelopeOf2(t.account, envelopes, t.symbol).type !== "CRYPTO") continue;
-    if (t.symbol) assets.add(splitPair(t.symbol, t.currency).base);
-    if (!isFiat(t.currency)) assets.add(t.currency.toUpperCase());
-  }
-  const first = [...dates].sort()[0];
-  const last2 = [...dates].sort().at(-1);
-  const closes = /* @__PURE__ */ new Map();
-  for (const a of assets) {
-    if (isStablecoin(a)) continue;
-    try {
-      const series = await getHistory(await resolveSymbol(`${a}USDT`), {
-        from: new Date(Date.parse(`${first}T00:00:00Z`) - 5 * 864e5),
-        to: new Date(Date.parse(`${last2}T00:00:00Z`) + 864e5)
-      });
-      closes.set(a, new Map(series.bars.map((b) => [b.date.slice(0, 10), b.close])));
-    } catch (e) {
-      notes.push(`${a}: no USDT price history (${e.message}) \u2014 the portfolio value omits it`);
-    }
-  }
-  notes.push(
-    "crypto portfolio valued at each asset's daily close (USDT pair, ECB USD rate) on the disposal day \u2014 the law asks for the value at the moment of the disposal: keep the platforms' statements"
-  );
-  const value2 = (date, tx) => {
-    const h = cryptoHoldings(txs, envelopes, tx);
-    const usd = fx("USD", date);
-    if (usd === void 0) return void 0;
-    let total = 0;
-    for (const [a, q] of h) {
-      if (q <= 0) continue;
-      if (isStablecoin(a)) {
-        total += q * (a.startsWith("EUR") ? fx("EUR", date) ?? 1 : usd);
-        continue;
-      }
-      const m = closes.get(a);
-      if (!m) return void 0;
-      let px;
-      for (let i = 0; i < 6 && px === void 0; i++) px = m.get(new Date(Date.parse(`${date}T00:00:00Z`) - i * 864e5).toISOString().slice(0, 10));
-      if (px === void 0) return void 0;
-      total += q * px * usd;
-    }
-    return total;
-  };
-  return { value: value2, notes };
-}
-async function currentPrices(symbols) {
-  const prices = {};
-  const notes = [];
-  for (const s of symbols) {
-    try {
-      prices[s.toUpperCase()] = (await getQuote(await resolveSymbol(s))).price;
-    } catch (e) {
-      notes.push(`${s}: no price (${e.message})`);
-    }
-  }
-  return { prices, notes };
 }
 
 // src/commands/tax.ts

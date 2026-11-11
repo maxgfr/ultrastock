@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { bookPerformance } from "../src/commands/trading.js";
 import { defaultProfile } from "../src/core/profile.js";
 import { appendTransactions, buildBook, readLedger, type Transaction, transactionId, valueBook, xirr } from "../src/portfolio/ledger.js";
 import { breakerState, closedTradeResults } from "../src/trading/breaker.js";
@@ -57,6 +58,47 @@ describe("ledger", () => {
       ]),
     ).toBeCloseTo(0.1, 3);
     expect(xirr([{ date: "2025-01-01", amount: -1 }])).toBeUndefined();
+  });
+});
+
+describe("book performance", () => {
+  const limits = defaultProfile("FR", "EUR").limits;
+  const NOW = new Date("2026-11-11T12:00:00Z");
+  const funded = [
+    tx({ date: "2026-09-01", type: "deposit", account: "pea", amount: 10_000 }),
+    tx({ date: "2026-09-01", type: "deposit", account: "cto", amount: 5000, currency: "USD" }),
+  ];
+  // A dollar worth 0.86 EUR on the day of the deposit; the lookup knows no other date.
+  const usd = { base: "EUR", rate: (c: string, d: string) => (c === "USD" && d === "2026-09-01" ? 0.86 : undefined), notes: [] };
+
+  it("converts each deposit and withdrawal to the base currency at the rate of its own date", () => {
+    const p = bookPerformance(funded, buildBook(funded), 14_231, [], limits, NOW, usd);
+    const expected = xirr([
+      { date: "2026-09-01", amount: -10_000 },
+      { date: "2026-09-01", amount: -4300 },
+      { date: "2026-11-11", amount: 14_231 },
+    ])!;
+    // The 5 000 USD read as 5 000 EUR gave −23.7 % a year.
+    expect(expected).toBeCloseTo(-0.0246, 3);
+    expect(p.xirr).toBeCloseTo(expected, 8);
+    expect(p.xirrNotes).toEqual([]);
+  });
+
+  it("reports the XIRR as not computable, naming the currency and the date, when a flow has no rate", () => {
+    const p = bookPerformance(funded, buildBook(funded), 14_231, [], limits, NOW, { base: "EUR", rate: () => undefined, notes: [] });
+    expect(p.xirr).toBeUndefined();
+    expect(p.xirrNotes.join("\n")).toMatch(/not computed: no EUR rate for USD on 2026-09-01/);
+  });
+
+  it("says a transfer is not counted as a contribution or a withdrawal", () => {
+    const moved = [
+      ...funded,
+      tx({ date: "2026-09-05", type: "transfer-in", account: "cto", symbol: "NVDA", quantity: 2, price: 150, currency: "USD" }),
+      tx({ date: "2026-10-05", type: "transfer-out", account: "cto", symbol: "NVDA", quantity: 1, currency: "USD" }),
+    ];
+    const notes = bookPerformance(moved, buildBook(moved), 14_400, [], limits, NOW, usd).xirrNotes.join("\n");
+    expect(notes).toMatch(/transfers in are not counted as contributions.*overstates/);
+    expect(notes).toMatch(/transfers out are not counted as withdrawals.*understates/);
   });
 });
 

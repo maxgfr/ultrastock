@@ -132,7 +132,7 @@ export function portfolioPage(v: PortfolioView): string {
 <div><dt>Invested</dt><dd>${fmt(v.total - v.cash)} ${b}</dd></div>
 <div><dt>Money-weighted return (XIRR)</dt><dd>${perf.xirr === undefined ? "n/a" : `${signed(perf.xirr * 100, 2, " %")} a year`}</dd></div>
 <div><dt>Circuit breaker</dt><dd>${br.tripped ? `<span class="flag">TRIPPED</span>` : "not tripped"}</dd></div>
-</dl>`;
+</dl>${perf.xirrNotes.length ? `<p class="meta" role="note">XIRR: ${perf.xirrNotes.map(esc).join("; ")}.</p>` : ""}`;
   const positions = v.positions.length
     ? table(
         `Positions, marked to market; P&L against the average cost (PMP, fees included), in ${v.base}`,

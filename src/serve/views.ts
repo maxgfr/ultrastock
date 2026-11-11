@@ -11,7 +11,7 @@ import { Findings } from "../analyze/portfolio/findings.js";
 import { incomeAnalysis, locationAnalysis, lookthroughAnalysis } from "../analyze/portfolio/run-book.js";
 import { riskAnalysis, stressAnalysis } from "../analyze/portfolio/run-risk.js";
 import { loadRules } from "../alerts/alerts.js";
-import { bookPerformance } from "../commands/trading.js";
+import { bookPerformance, flowRates } from "../commands/trading.js";
 import { sqliteSupported, storeAvailable, withStore } from "../core/db.js";
 import { loadProfile } from "../core/profile.js";
 import { listTheses, overdueTheses, readLessons } from "../journal/journal.js";
@@ -156,6 +156,8 @@ export async function portfolioView(book: BookName, now: Date): Promise<Portfoli
   // The breaker reads the equity curve as `perf` would see it right after marking — the recorded curve plus
   // today's value — without appending that value to the file.
   const curve = m.totalBase > 0 ? [...readEquity(book), { at: now.toISOString(), equity: m.totalBase }] : readEquity(book);
+  // Each deposit's rate on its own date: read here, so that bookPerformance stays pure; a failed read leaves the XIRR n/a, with why.
+  const rates = await flowRates(m.txs, m.base, now);
   return {
     book,
     base: m.base,
@@ -165,7 +167,7 @@ export async function portfolioView(book: BookName, now: Date): Promise<Portfoli
     positions: positionRows(m, f),
     cashByAccount: m.cash,
     unpriced: m.holdings.filter((h) => h.valueBase === undefined).map((h) => h.symbol),
-    performance: bookPerformance(m.txs, m.book, m.totalBase, curve, m.profile.limits, now),
+    performance: bookPerformance(m.txs, m.book, m.totalBase, curve, m.profile.limits, now, rates),
     history: historyOf(book, now),
     sources: sourcesOf(f),
     notes: f.notes,

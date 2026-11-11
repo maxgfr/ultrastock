@@ -251,6 +251,19 @@ describe("serve: the pages", () => {
     });
   }, 60_000);
 
+  it("shows no XIRR, and says why, when a deposit's rate on its own date cannot be read", async () => {
+    // The 5 000 USD deposit of 2026-09-01 needs that day's ECB rate, which the fixture never recorded:
+    // counting the dollars as euros would show a wrong return as a fact.
+    await withFixture("portfolio-analytics-paper", async () => {
+      const api = JSON.parse((await call("/api/portfolio?book=paper")).body);
+      expect(api.performance.xirr).toBeUndefined();
+      expect(api.performance.xirrNotes.join("\n")).toMatch(/not computed: no EUR rate for USD on 2026-09-01/);
+      const r = await call("/?book=paper");
+      expect(r.body).toMatch(/Money-weighted return \(XIRR\)<\/dt><dd>n\/a<\/dd>/);
+      expect(r.body).toMatch(/not computed: no EUR rate for USD on 2026-09-01/);
+    });
+  }, 60_000);
+
   it("renders each analysis from the same fixture", async () => {
     await withFixture("portfolio-analytics-paper", async () => {
       const expected: Record<string, RegExp[]> = {

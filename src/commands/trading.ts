@@ -15,6 +15,7 @@ import { breakerState, closedTradeResults, type EquityPoint, readEquity, recordE
 import { fxToBase, gateContextFor } from "../trading/context.js";
 import { paperSubmit, paperSweep, readiness } from "../trading/paper.js";
 import { planTrade, tradeContextMarkdown } from "../trading/plan.js";
+import { historicalFx } from "../tax/inputs.js";
 import { riskGate } from "../trading/riskgate.js";
 import { createTicket, listTickets, loadTicket, recordCheck, transition } from "../trading/tickets.js";
 
@@ -61,15 +62,71 @@ export async function markBook(book: string) {
   return { profile, txs, book: b, valued: v, fxRates: fx.rates, sources, notes: [...notes, ...fx.notes, ...v.missing.map((m) => `missing ${m}`)], now };
 }
 
+/** How `bookPerformance` converts a deposit or a withdrawal: units of `base` per one unit of a currency on a date, and how the rates were read. */
+export interface FlowRates {
+  base: string;
+  rate: (currency: string, date: string) => number | undefined;
+  notes: string[];
+}
+
+const isFlow = (t: Transaction) => t.type === "deposit" || t.type === "withdrawal";
+
+/**
+ * The ECB rate of each deposit's and withdrawal's own date (the tax engine's
+ * `historicalFx`), read once for `bookPerformance`. A book funded in its base
+ * currency only sends no request. Never throws: a read that fails (offline, a
+ * fixture without it) leaves the lookup empty and says why, and the XIRR is
+ * then not computed — never computed on amounts taken as base currency.
+ */
+export async function flowRates(txs: readonly Transaction[], base: string, now: Date): Promise<FlowRates> {
+  const flows = txs.filter(isFlow);
+  const foreign = [...new Set(flows.map((t) => t.currency.toUpperCase()))].filter((c) => c !== base);
+  if (!foreign.length) return { base, rate: () => undefined, notes: [] };
+  const from = flows.map((t) => t.date.slice(0, 10)).sort()[0]!;
+  try {
+    const { fx, notes } = await historicalFx(base, foreign, from, now.toISOString().slice(0, 10));
+    return { base, rate: fx, notes };
+  } catch (e) {
+    return { base, rate: () => undefined, notes: [`ECB rates for ${foreign.join(", ")} unavailable (${(e as Error).message.split("\n")[0]})`] };
+  }
+}
+
 /**
  * The `perf` figures of a book valued at `totalBase` now: the money-weighted
- * return (XIRR) on its deposits and withdrawals, the realised P&L (average
+ * return (XIRR) on its deposits and withdrawals, each converted to the base
+ * currency at the rate of its own date (`fx`), the realised P&L (average
  * cost) and the dividends — summed across currencies, as `perf` prints them,
  * and per currency — and the circuit breaker read on `curve`. Pure: the
- * caller decides which equity curve it reads, and nothing is written here.
+ * caller reads the rates and decides which equity curve it reads, and nothing
+ * is written here. A flow without a rate leaves the XIRR undefined, with a
+ * note naming it: a return computed on a wrong amount is worse than none.
  */
-export function bookPerformance(txs: readonly Transaction[], book: Book, totalBase: number, curve: readonly EquityPoint[], limits: Limits, now: Date) {
-  const flows = txs.filter((t) => t.type === "deposit" || t.type === "withdrawal").map((t) => ({ date: t.date.slice(0, 10), amount: -(t.amount ?? 0) }));
+export function bookPerformance(
+  txs: readonly Transaction[],
+  book: Book,
+  totalBase: number,
+  curve: readonly EquityPoint[],
+  limits: Limits,
+  now: Date,
+  fx: FlowRates,
+) {
+  const xirrNotes = [...fx.notes];
+  const flows: Array<{ date: string; amount: number }> = [];
+  const missing = new Set<string>();
+  for (const t of txs.filter(isFlow)) {
+    const date = t.date.slice(0, 10);
+    const currency = t.currency.toUpperCase();
+    const rate = currency === fx.base ? 1 : fx.rate(currency, date);
+    if (rate === undefined) missing.add(`${currency} on ${date}`);
+    else flows.push({ date, amount: -(t.amount ?? 0) * rate });
+  }
+  if (missing.size)
+    xirrNotes.push(`XIRR not computed: no ${fx.base} rate for ${[...missing].join(", ")} — taking those amounts as ${fx.base} would give a wrong return`);
+  // Their cost is a ledger decision still open: until it is made, a transfer moves value without a cash flow.
+  if (txs.some((t) => t.type === "transfer-in"))
+    xirrNotes.push("transfers in are not counted as contributions: the value they brought reads as return, so the XIRR overstates it");
+  if (txs.some((t) => t.type === "transfer-out"))
+    xirrNotes.push("transfers out are not counted as withdrawals: the value they took out reads as a loss, so the XIRR understates it");
   flows.push({ date: now.toISOString().slice(0, 10), amount: totalBase });
   const byCurrency: Record<string, { realized: number; dividends: number }> = {};
   for (const p of book.positions) {
@@ -78,7 +135,8 @@ export function bookPerformance(txs: readonly Transaction[], book: Book, totalBa
     c.dividends += p.dividends;
   }
   return {
-    xirr: xirr(flows),
+    xirr: missing.size ? undefined : xirr(flows),
+    xirrNotes,
     realized: book.positions.reduce((s, p) => s + p.realizedPmp, 0),
     dividends: book.positions.reduce((s, p) => s + p.dividends, 0),
     byCurrency,
@@ -207,13 +265,21 @@ export async function portfolioCommand(args: CommandArgs, asJson: boolean): Prom
   }
   if (sub === "perf") {
     const m = await markBook(book);
-    const { xirr: irr, realized, dividends, breaker: br } = bookPerformance(m.txs, m.book, m.valued.totalBase, readEquity(book), m.profile.limits, m.now);
+    const rates = await flowRates(m.txs, m.profile.baseCurrency, m.now);
+    const {
+      xirr: irr,
+      xirrNotes,
+      realized,
+      dividends,
+      breaker: br,
+    } = bookPerformance(m.txs, m.book, m.valued.totalBase, readEquity(book), m.profile.limits, m.now, rates);
     return out(
       asJson,
-      { book, xirr: irr, realized, dividends, breaker: br, total: m.valued.totalBase },
+      { book, xirr: irr, xirrNotes, realized, dividends, breaker: br, total: m.valued.totalBase },
       [
         `${book} book — total ${m.valued.totalBase.toFixed(2)} ${m.profile.baseCurrency}`,
-        `  money-weighted return (XIRR) ${irr === undefined ? "n/a (needs deposits and time)" : `${(irr * 100).toFixed(2)} % a year`}`,
+        `  money-weighted return (XIRR) ${irr === undefined ? `n/a (${xirrNotes.length ? "see the notes" : "needs deposits and time"})` : `${(irr * 100).toFixed(2)} % a year`}`,
+        ...xirrNotes.map((n) => `  note: ${n}`),
         `  realised (average cost) ${realized.toFixed(2)}, dividends ${dividends.toFixed(2)} (in each position's currency)`,
         `  circuit breaker: ${br.tripped ? `TRIPPED — ${br.reason} (until ${br.until})` : "not tripped"}; drawdown ${br.drawdownPct?.toFixed(2) ?? "?"} %, size multiplier ${br.sizeMultiplier}`,
       ].join("\n"),

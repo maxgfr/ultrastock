@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
 import { EvidenceStore } from "../src/core/evidence.js";
 import { setNetMode } from "../src/core/net.js";
+import { defaultProfile, saveProfile } from "../src/core/profile.js";
+import { appendTransactions } from "../src/portfolio/ledger.js";
 import { FIXTURES } from "./helpers/fixtures.js";
 
 afterEach(() => {
@@ -71,6 +73,30 @@ describe("calendar command", () => {
     expect((await cli(["calendar", "earnings", "not-a-date"])).code).toBe(2);
     expect((await cli(["calendar", "sessions", "--market", "MOON"])).code).toBe(2);
   });
+});
+
+describe("portfolio perf", () => {
+  it("leaves the XIRR not computed, and says why, when a deposit's rate on its own date cannot be read", async () => {
+    process.env.ULTRASTOCK_HOME = mkdtempSync(join(tmpdir(), "perf-home-"));
+    saveProfile(defaultProfile("FR", "EUR"));
+    await appendTransactions(
+      [
+        { date: "2026-09-01", type: "deposit", account: "pea", amount: 10_000, currency: "EUR", origin: "manual" },
+        { date: "2026-09-01", type: "deposit", account: "cto", amount: 5000, currency: "USD", origin: "manual" },
+        { date: "2026-09-02", type: "buy", account: "pea", symbol: "MC.PA", quantity: 5, price: 600, fee: 3, currency: "EUR", origin: "paper" },
+        { date: "2026-09-02", type: "buy", account: "cto", symbol: "NVDA", quantity: 10, price: 180, fee: 1, currency: "USD", origin: "paper" },
+      ],
+      "paper",
+    );
+    // The fixture holds the quotes and today's rate, not the ECB rate of 2026-09-01.
+    const fixture = ["--fixture", join(FIXTURES, "portfolio-analytics-paper")];
+    const text = await cli(["portfolio", "perf", "--book", "paper", ...fixture]);
+    expect(text.out).toMatch(/money-weighted return \(XIRR\) n\/a/);
+    expect(text.out).toMatch(/note: XIRR not computed: no EUR rate for USD on 2026-09-01/);
+    const json = JSON.parse((await cli(["portfolio", "perf", "--book", "paper", "--json", ...fixture])).out);
+    expect(json.xirr).toBeUndefined();
+    expect(json.xirrNotes.join("\n")).toMatch(/no EUR rate for USD on 2026-09-01/);
+  }, 60_000);
 });
 
 describe("data commands on fixtures", () => {
