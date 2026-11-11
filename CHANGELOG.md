@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.13.0](https://github.com/maxgfr/ultrastock/compare/v1.12.48...v1.13.0) (2026-11-11)
+
+
+### Features
+
+* **serve:** a local, read-only dashboard of the book and the user's state ([5e9a59e](https://github.com/maxgfr/ultrastock/commit/5e9a59e6732de5a120e8d0629b69e63b9a09fc88))
+* **serve:** only the dashboard's own origin may ask, and the cookie is named after the port ([9b76a5e](https://github.com/maxgfr/ultrastock/commit/9b76a5e8af98758c3d51dfbcc6418b50eac0a7f4))
+
 ## [1.12.48](https://github.com/maxgfr/ultrastock/compare/v1.12.47...v1.12.48) (2026-11-11)
 
 
