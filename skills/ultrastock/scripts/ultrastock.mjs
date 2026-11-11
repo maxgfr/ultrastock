@@ -53301,6 +53301,7 @@ var UsRegime = class extends TaxRegime {
     const events = [];
     const warnings = [];
     const active2 = /* @__PURE__ */ new Set();
+    const pieces = /* @__PURE__ */ new Map();
     const method = input.lotMethod ?? "fifo";
     const washCrypto = this.param("washSale.crypto") !== "not applied";
     const window = this.param("washSale.windowDays");
@@ -53310,18 +53311,18 @@ var UsRegime = class extends TaxRegime {
     let unmatched = [];
     const carry = (into) => {
       let need = into.quantity;
-      const pieces = [];
+      const pieces2 = [];
       for (const s of inTransit) {
         if (need <= 1e-12) break;
         if (s.symbol !== into.symbol || s.account === into.account || s.qty <= 1e-12) continue;
         const q = Math.min(need, s.qty);
         s.qty -= q;
         need -= q;
-        pieces.push({ from: s.lot, qty: q });
+        pieces2.push({ from: s.lot, qty: q });
       }
-      if (!pieces.length) return false;
+      if (!pieces2.length) return false;
       const rest = need > 1e-12 ? { ...into, quantity: need, remaining: need } : void 0;
-      pieces.forEach(({ from, qty }, i) => {
+      pieces2.forEach(({ from, qty }, i) => {
         const piece = i === 0 ? into : { ...into, id: lots.length };
         Object.assign(piece, { quantity: qty, remaining: qty, basis: from.basis, acquired: from.acquired, bought: from.bought, replaced: qty });
         if (i > 0) lots.push(piece);
@@ -53341,6 +53342,7 @@ var UsRegime = class extends TaxRegime {
       const lot = byTx.get(t);
       if (lot) {
         active2.add(lot);
+        for (const w of pieces.get(lot) ?? []) active2.add(w);
         if (t.type === "transfer-in" && t.price === void 0 && !carry(lot)) unmatched.push(lot);
         continue;
       }
@@ -53427,9 +53429,19 @@ var UsRegime = class extends TaxRegime {
               if (r3.sheltered)
                 notes.push(`wash sale against a purchase in ${r3.account} (${r3.bought}): the ${round22(loss)} $ loss is lost for good (IRA replacement)`);
               else {
-                r3.basis += loss / r3.quantity;
+                let w = r3;
+                if (q < r3.quantity - 1e-12) {
+                  w = { ...r3, id: lots.length, quantity: q, remaining: Math.min(q, r3.remaining), replaced: q };
+                  r3.quantity -= q;
+                  r3.remaining -= w.remaining;
+                  r3.replaced -= q;
+                  lots.push(w);
+                  if (active2.has(r3)) active2.add(w);
+                  else pieces.set(r3, [...pieces.get(r3) ?? [], w]);
+                }
+                w.basis += loss / q;
                 const held = Date.parse(`${day3(t.date)}T00:00:00Z`) - Date.parse(`${l.acquired}T00:00:00Z`);
-                r3.acquired = new Date(Date.parse(`${r3.acquired}T00:00:00Z`) - held).toISOString().slice(0, 10);
+                w.acquired = new Date(Date.parse(`${w.bought}T00:00:00Z`) - held).toISOString().slice(0, 10);
                 notes.push(`wash sale: ${round22(loss)} $ added to the basis of ${round22(q)} share(s) bought ${r3.bought} in ${r3.account}`);
               }
             }

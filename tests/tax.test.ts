@@ -447,6 +447,31 @@ describe("United States", () => {
     expect(c[0]).toMatchObject({ kind: "crypto-disposal", gain: -20 });
   });
 
+  it("wash sale: only the replacement shares take the loss and the holding period", () => {
+    const txs = [
+      u({ date: "2024-01-02", type: "buy", symbol: "AAPL", quantity: 10, price: 100 }),
+      u({ date: "2024-12-01", type: "sell", symbol: "AAPL", quantity: 10, price: 80 }),
+      u({ date: "2024-12-10", type: "buy", symbol: "AAPL", quantity: 100, price: 85 }),
+      u({ date: "2025-02-01", type: "sell", symbol: "AAPL", quantity: 100, price: 90 }),
+    ];
+    const ev = new UsRegime(2025).realize(usIn(txs)).filter((e) => e.kind === "securities-disposal");
+    // 10 replacement shares: 85 + 20 of disallowed loss each, held since 2024-12-10 less the 334 days of the shares sold.
+    // The other 90: their own price and date.
+    expect(ev.map((e) => [e.quantity, e.cost, e.term, e.acquired]).sort((a, b) => Number(a[0]) - Number(b[0]))).toEqual([
+      [10, 1050, "long", "2024-01-11"],
+      [90, 7650, "short", "2024-12-10"],
+    ]);
+    // A second loss sale within the window finds no replacement left in the 10 already used: nothing moves twice.
+    const again = [
+      ...txs.slice(0, 3),
+      u({ date: "2024-12-12", type: "buy", symbol: "AAPL", quantity: 10, price: 70 }),
+      u({ date: "2024-12-20", type: "sell", symbol: "AAPL", quantity: 10, price: 60 }),
+    ];
+    const lots = new UsRegime(2025).replay(usIn(again)).open.map((l) => [l.quantity, l.basis, l.acquired]);
+    expect(lots).toContainEqual([10, 105, "2024-01-11"]);
+    expect(lots.filter((l) => l[2] === "2024-01-11")).toHaveLength(1);
+  });
+
   it("the $3,000 limit, carryforward, LTCG brackets and NIIT", () => {
     const loss = [
       u({ date: "2025-01-02", type: "buy", symbol: "X", quantity: 100, price: 100 }),

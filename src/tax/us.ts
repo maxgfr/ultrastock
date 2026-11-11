@@ -120,6 +120,8 @@ export class UsRegime extends TaxRegime {
     const events: TaxEvent[] = [];
     const warnings: string[] = [];
     const active = new Set<UsLot>();
+    /** Replacement shares split off a purchase not replayed yet: they enter the book with it. */
+    const pieces = new Map<UsLot, UsLot[]>();
     const method = input.lotMethod ?? "fifo";
     const washCrypto = this.param<string>("washSale.crypto") !== "not applied";
     const window = this.param("washSale.windowDays");
@@ -163,6 +165,7 @@ export class UsRegime extends TaxRegime {
       const lot = byTx.get(t);
       if (lot) {
         active.add(lot);
+        for (const w of pieces.get(lot) ?? []) active.add(w);
         if (t.type === "transfer-in" && t.price === undefined && !carry(lot)) unmatched.push(lot);
         continue;
       }
@@ -252,10 +255,22 @@ export class UsRegime extends TaxRegime {
               if (r.sheltered)
                 notes.push(`wash sale against a purchase in ${r.account} (${r.bought}): the ${round2(loss)} $ loss is lost for good (IRA replacement)`);
               else {
-                // The basis grows by the loss; the holding period starts earlier by the sold shares' holding time.
-                r.basis += loss / r.quantity;
+                // Only the q replacement shares take the loss in their basis and the sold shares' holding time before
+                // their own purchase date: they split off the lot into one of their own, used up as a replacement. The
+                // rest of the lot keeps its basis and date.
+                let w = r;
+                if (q < r.quantity - 1e-12) {
+                  w = { ...r, id: lots.length, quantity: q, remaining: Math.min(q, r.remaining), replaced: q };
+                  r.quantity -= q;
+                  r.remaining -= w.remaining;
+                  r.replaced -= q;
+                  lots.push(w);
+                  if (active.has(r)) active.add(w);
+                  else pieces.set(r, [...(pieces.get(r) ?? []), w]);
+                }
+                w.basis += loss / q;
                 const held = Date.parse(`${day(t.date)}T00:00:00Z`) - Date.parse(`${l.acquired}T00:00:00Z`);
-                r.acquired = new Date(Date.parse(`${r.acquired}T00:00:00Z`) - held).toISOString().slice(0, 10);
+                w.acquired = new Date(Date.parse(`${w.bought}T00:00:00Z`) - held).toISOString().slice(0, 10);
                 notes.push(`wash sale: ${round2(loss)} $ added to the basis of ${round2(q)} share(s) bought ${r.bought} in ${r.account}`);
               }
             }
