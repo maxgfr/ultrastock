@@ -197,7 +197,9 @@ describe("catalysts", () => {
     expect(sessionOrdinal("2026-11-16", "2026-11-14", "XNYS")).toBe(1);
     expect(sessionOrdinal("2026-11-17", "2026-11-14", "XNYS")).toBe(2);
     expect(sessionOrdinal("2026-11-27", "2026-11-26", "XNYS")).toBe(1);
-    expect(sessionOrdinal("2026-11-14", "2026-11-14", "XNYS")).toBe(0);
+    // The closed day itself maps to that next session too, as the Sunday does: differences never depend on `from`.
+    expect(sessionOrdinal("2026-11-14", "2026-11-14", "XNYS")).toBe(1);
+    expect(sessionOrdinal("2026-11-15", "2026-11-14", "XNYS")).toBe(1);
     expect(sessionOrdinal("2026-11-16", "2026-11-13", "XNYS")).toBe(1);
     const c = (date: string, kind: "earnings" | "ex-dividend" | "macro") => ({ date, kind, key: `${date}.${kind}` });
     const clusters = eventClusters(
