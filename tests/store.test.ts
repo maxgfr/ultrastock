@@ -1,4 +1,5 @@
 import { existsSync, mkdtempSync, readFileSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +14,7 @@ import {
   openStore,
   readOnlyQuery,
   SCHEMA_VERSION,
+  type SqlDatabase,
   StoreUnavailableError,
   schemaVersionOf,
   setLedgerBackend,
@@ -133,6 +135,28 @@ describe.skipIf(!HAS_SQLITE)("SQLite store", () => {
     }
     withStore((d) => expect(migrate(d)).toEqual([]));
     expect(statSync(storePath()).mode & 0o777).toBe(0o600);
+  });
+
+  it("a second opener migrating at the same time finds the schema up to date once it holds the write lock", () => {
+    const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as { DatabaseSync: new (path: string) => SqlDatabase };
+    const first = new DatabaseSync(storePath());
+    const second = new DatabaseSync(storePath());
+    try {
+      // The second opener reads the version, then the first migrates before the second gets the write lock.
+      const raced: SqlDatabase = {
+        prepare: (sql) => second.prepare(sql),
+        close: () => second.close(),
+        exec: (sql) => {
+          if (sql === "BEGIN IMMEDIATE" && schemaVersionOf(first) === 0) expect(migrate(first)).toHaveLength(SCHEMA_VERSION);
+          second.exec(sql);
+        },
+      };
+      expect(migrate(raced)).toEqual([]);
+      expect(schemaVersionOf(second)).toBe(SCHEMA_VERSION);
+    } finally {
+      first.close();
+      second.close();
+    }
   });
 
   it("needs db init before use", () => {

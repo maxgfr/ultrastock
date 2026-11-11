@@ -176,6 +176,11 @@ export function migrate(db: SqlDatabase): number[] {
   for (let v = current + 1; v <= SCHEMA_VERSION; v++) {
     db.exec("BEGIN IMMEDIATE");
     try {
+      // Another process may have migrated between the read above and the write lock: its version is the one that counts.
+      if (userVersion(db) >= v) {
+        db.exec("COMMIT");
+        continue;
+      }
       db.exec(MIGRATIONS[v - 1]!);
       db.exec(`PRAGMA user_version = ${v}`);
       db.exec("COMMIT");

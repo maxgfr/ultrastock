@@ -23083,6 +23083,10 @@ function migrate(db) {
   for (let v = current2 + 1; v <= SCHEMA_VERSION; v++) {
     db.exec("BEGIN IMMEDIATE");
     try {
+      if (userVersion(db) >= v) {
+        db.exec("COMMIT");
+        continue;
+      }
       db.exec(MIGRATIONS[v - 1]);
       db.exec(`PRAGMA user_version = ${v}`);
       db.exec("COMMIT");
