@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.52](https://github.com/maxgfr/ultrastock/compare/v1.13.51...v1.13.52) (2026-11-11)
+
+
+### Bug Fixes
+
+* **journal:** record a horizon with nothing to measure as unresolved ([23e39b9](https://github.com/maxgfr/ultrastock/commit/23e39b954b74ea603cc90af20733e2686b7543b9))
+
 ## [1.13.51](https://github.com/maxgfr/ultrastock/compare/v1.13.50...v1.13.51) (2026-11-11)
 
 
