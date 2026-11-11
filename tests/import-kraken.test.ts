@@ -29,6 +29,12 @@ describe("Kraken asset codes and pairs", () => {
     expect(krakenPair("XTZEUR")).toEqual({ base: "XTZ", quote: "EUR" });
     expect(krakenPair("XTZUSD")).toEqual({ base: "XTZ", quote: "USD" });
     expect(krakenPair("USDTZUSD")).toEqual({ base: "USDT", quote: "USD" });
+    // A four-letter ticker ending in X before XBT: Avalanche and dYdX in bitcoin, not "AVA" and "DYD" in XXBT.
+    expect(krakenPair("AVAXXBT")).toEqual({ base: "AVAX", quote: "BTC" });
+    expect(krakenPair("DYDXXBT")).toEqual({ base: "DYDX", quote: "BTC" });
+    expect(krakenPair("AVAXETH")).toEqual({ base: "AVAX", quote: "ETH" });
+    expect(krakenPair("XETHXXBT")).toEqual({ base: "ETH", quote: "BTC" });
+    expect(krakenPair("XXBTUSDT")).toEqual({ base: "BTC", quote: "USDT" });
   });
 });
 

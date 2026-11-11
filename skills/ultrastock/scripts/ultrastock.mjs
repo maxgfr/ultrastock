@@ -49147,7 +49147,8 @@ function krakenPair(pair) {
   const slash = /^([A-Z0-9.]+)\/([A-Z0-9.]+)$/.exec(s);
   if (slash) return { base: krakenAsset(slash[1]), quote: krakenAsset(slash[2]) };
   if (s.length === 8 && LEGACY[s.slice(0, 4)] && LEGACY[s.slice(4)]) return { base: LEGACY[s.slice(0, 4)], quote: LEGACY[s.slice(4)] };
-  const q = PAIR_QUOTES2.find((x) => s.endsWith(x) && s.length - x.length >= (x.length === 4 && /^[XZ]/.test(x) ? 3 : 1));
+  const known = (base2) => base2 in LEGACY || PAIR_QUOTES2.includes(base2);
+  const q = PAIR_QUOTES2.find((x) => s.endsWith(x) && s.length > x.length && (x.length === 4 && /^[XZ]/.test(x) ? known(s.slice(0, -x.length)) : true));
   return q ? { base: krakenAsset(s.slice(0, -q.length)), quote: krakenAsset(q) } : void 0;
 }
 function parseKraken(text2, opts) {
