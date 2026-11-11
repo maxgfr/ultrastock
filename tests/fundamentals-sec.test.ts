@@ -188,6 +188,88 @@ describe("SEC parsers", () => {
     expect(summarizeInsiders([f], new Date("2027-03-01T00:00:00Z")).buyValue).toBe(0);
   });
 
+  describe("Form 4 amendments and joint filings", () => {
+    const now = new Date("2026-10-20T00:00:00Z");
+    const jane = { cik: "01", name: "Doe Jane", title: "CEO" };
+    const buy = (date: string, shares: number, price: number) => ({ date, code: "P", shares, price, acquired: true, direct: true });
+
+    it("reads that a form is an amendment, and the day its original was filed", () => {
+      const xml = (head: string) =>
+        `<ownershipDocument><schemaVersion>X0609</schemaVersion>${head}<periodOfReport>2026-10-01</periodOfReport></ownershipDocument>`;
+      expect(parseForm4(xml("<documentType>4</documentType>"))).toMatchObject({ amendment: false });
+      expect(parseForm4(xml("<documentType>4</documentType>")).originalFiled).toBeUndefined();
+      expect(parseForm4(xml("<documentType>4/A</documentType><dateOfOriginalSubmission>2026-10-02</dateOfOriginalSubmission>"))).toMatchObject({
+        amendment: true,
+        originalFiled: "2026-10-02",
+      });
+    });
+
+    it("counts a purchase once when a 4/A restates it with a corrected price", () => {
+      const original = { owners: [jane], transactions: [buy("2026-10-01", 1000, 10.5)], filed: "2026-10-02", accession: "0001-26-000001" };
+      const amended = {
+        owners: [jane],
+        transactions: [buy("2026-10-01", 1000, 10.4)],
+        filed: "2026-10-06",
+        accession: "0001-26-000002",
+        amendment: true,
+        originalFiled: "2026-10-02",
+      };
+      const s = summarizeInsiders([amended, original], now);
+      expect(s).toMatchObject({ buyShares: 1000, buyValue: 10400, netValue: 10400, buyers30d: 1 });
+      expect(s.notes.join(" ")).toMatch(/Form 4\/A 0001-26-000002 .*amends the form filed 2026-10-02.*1 of its 1 line/);
+      // The order the filings are given in does not matter.
+      expect(summarizeInsiders([original, amended], now)).toMatchObject({ buyShares: 1000, buyValue: 10400 });
+    });
+
+    it("keeps the lines a 4/A leaves alone and adds the ones it reports for the first time", () => {
+      const original = { owners: [jane], transactions: [buy("2026-10-01", 1000, 10), buy("2026-10-02", 200, 10)], filed: "2026-10-03" };
+      const amended = {
+        owners: [jane],
+        transactions: [buy("2026-10-01", 1000, 10), buy("2026-10-05", 500, 11)],
+        filed: "2026-10-08",
+        amendment: true,
+        originalFiled: "2026-10-03",
+      };
+      expect(summarizeInsiders([amended, original], now)).toMatchObject({ buyShares: 1700, buyValue: 10000 + 2000 + 5500 });
+    });
+
+    it("applies a second amendment to what the first one left", () => {
+      const original = { owners: [jane], transactions: [buy("2026-10-01", 1000, 10)], filed: "2026-10-02" };
+      const first = { owners: [jane], transactions: [buy("2026-10-01", 1000, 11)], filed: "2026-10-05", amendment: true, originalFiled: "2026-10-02" };
+      const second = { owners: [jane], transactions: [buy("2026-10-01", 900, 11)], filed: "2026-10-07", amendment: true, originalFiled: "2026-10-02" };
+      expect(summarizeInsiders([second, first, original], now)).toMatchObject({ buyShares: 900, buyValue: 9900 });
+    });
+
+    it("counts an amendment as filed, and says so, when the form it amends was not read", () => {
+      const amended = {
+        owners: [jane],
+        transactions: [buy("2026-10-01", 1000, 10)],
+        filed: "2026-10-06",
+        accession: "0001-26-000002",
+        amendment: true,
+        originalFiled: "2026-10-02",
+      };
+      const someoneElse = { owners: [{ cik: "02", name: "Roe Rick", title: "CFO" }], transactions: [buy("2026-10-01", 1000, 10)], filed: "2026-10-02" };
+      const s = summarizeInsiders([amended, someoneElse], now);
+      expect(s).toMatchObject({ buyShares: 2000, buyers30d: 2 });
+      expect(s.notes.join(" ")).toMatch(/Form 4\/A 0001-26-000002 \(filed 2026-10-06\) amends a form filed 2026-10-02 that is not among the filings read/);
+    });
+
+    it("counts the reporting persons of one joint filing as one buyer", () => {
+      const fund = { cik: "10", name: "Example Capital Fund LP", title: "10% owner" };
+      const gp = { cik: "11", name: "Example Capital GP LLC", title: "10% owner" };
+      const partner = { cik: "12", name: "Roe Rick", title: "Director, 10% owner" };
+      const joint = { owners: [fund, gp, partner], transactions: [buy("2026-10-01", 5000, 10)] };
+      expect(summarizeInsiders([joint], now)).toMatchObject({ buyers30d: 1, clusterBuy: false });
+      // The partner then reports a purchase of his own: still the same interest.
+      const alone = { owners: [partner], transactions: [buy("2026-10-08", 100, 10)] };
+      expect(summarizeInsiders([alone, joint], now)).toMatchObject({ buyers30d: 1, clusterBuy: false });
+      const two = { owners: [jane], transactions: [buy("2026-10-09", 100, 10)] };
+      const three = { owners: [{ cik: "02", name: "Poe Pat", title: "CFO" }], transactions: [buy("2026-10-10", 100, 10)] };
+      expect(summarizeInsiders([joint, alone, two, three], now)).toMatchObject({ buyers30d: 3, clusterBuy: true });
+    });
+  });
+
   it("aggregates a 13F information table and diffs two quarters", () => {
     const row = (cusip: string, value: number, shares: number, putCall = "") =>
       `<ns1:infoTable><ns1:nameOfIssuer>CO ${cusip}</ns1:nameOfIssuer><ns1:titleOfClass>COM</ns1:titleOfClass><ns1:cusip>${cusip}</ns1:cusip><ns1:value>${value}</ns1:value><ns1:shrsOrPrnAmt><ns1:sshPrnamt>${shares}</ns1:sshPrnamt><ns1:sshPrnamtType>SH</ns1:sshPrnamtType></ns1:shrsOrPrnAmt>${putCall ? `<ns1:putCall>${putCall}</ns1:putCall>` : ""}</ns1:infoTable>`;

@@ -16732,35 +16732,96 @@ function parseForm4(xml) {
       direct: xmlValue(t, "ownershipNature", "directOrIndirectOwnership", "value") !== "I"
     });
   }
+  const originalFiled = xmlValue(xml, "dateOfOriginalSubmission")?.slice(0, 10);
   return {
     issuerCik: xmlValue(xml, "issuer", "issuerCik"),
     symbol: xmlValue(xml, "issuer", "issuerTradingSymbol"),
     periodOfReport: xmlValue(xml, "periodOfReport"),
     owners,
     transactions,
-    plan10b51: truthy(xmlValue(xml, "aff10b5One"))
+    plan10b51: truthy(xmlValue(xml, "aff10b5One")),
+    amendment: /\/A$/i.test(xmlValue(xml, "documentType") ?? ""),
+    ...originalFiled ? { originalFiled } : {}
   };
+}
+var ownerKey = (o) => o.cik || o.name;
+var sameLine = (a, b) => a.date === b.date && a.code === b.code && a.shares === b.shares && a.price === b.price && a.acquired === b.acquired && a.direct === b.direct;
+function netOfAmendments(filings) {
+  const live = filings.map((f3) => [...f3.transactions]);
+  const notes = [];
+  const amendments = filings.map((_, i) => i).filter((i) => filings[i].amendment).sort((a, b) => (filings[a].filed ?? "").localeCompare(filings[b].filed ?? ""));
+  const applied = /* @__PURE__ */ new Set();
+  for (const i of amendments) {
+    const a = filings[i];
+    applied.add(i);
+    if (!a.transactions.length) continue;
+    const name = `Form 4/A${a.accession ? ` ${a.accession}` : ""}${a.filed ? ` (filed ${a.filed})` : ""}`;
+    if (!a.originalFiled) {
+      notes.push(`${name} does not name the form it amends: its lines are counted as filed`);
+      continue;
+    }
+    const persons = new Set(a.owners.map(ownerKey));
+    const targets = filings.map((_, j) => j).filter((j) => {
+      const f3 = filings[j];
+      if (j === i || !f3.owners.some((o) => persons.has(ownerKey(o)))) return false;
+      return f3.amendment ? applied.has(j) && f3.originalFiled === a.originalFiled : f3.filed === a.originalFiled;
+    });
+    if (!targets.length) {
+      notes.push(`${name} amends a form filed ${a.originalFiled} that is not among the filings read: its lines are counted as filed`);
+      continue;
+    }
+    const supersede = (match) => {
+      for (const j of targets) {
+        const k = live[j].findIndex(match);
+        if (k >= 0) {
+          live[j].splice(k, 1);
+          return true;
+        }
+      }
+      return false;
+    };
+    const changed = a.transactions.filter((r3) => !supersede((t) => sameLine(t, r3)));
+    const added = changed.filter((r3) => !supersede((t) => t.date === r3.date && t.code === r3.code));
+    const n2 = a.transactions.length;
+    notes.push(
+      `${name} amends the form filed ${a.originalFiled}: ${n2 - added.length} of its ${n2} line${n2 > 1 ? "s" : ""} replace${n2 - added.length === 1 ? "s" : ""} what that form reported${added.length ? `, ${added.length} ${added.length > 1 ? "are" : "is"} counted as new (a line whose date or code was corrected cannot be matched to the one it replaces)` : ""}`
+    );
+  }
+  return { transactions: live, notes };
 }
 function summarizeInsiders(filings, now, windowDays = 90) {
   const since = isoDayOf(new Date(now.getTime() - windowDays * 864e5));
   const since30 = isoDayOf(new Date(now.getTime() - 30 * 864e5));
   const s = { buyShares: 0, buyValue: 0, sellShares: 0, sellValue: 0 };
-  const buyers = /* @__PURE__ */ new Set();
+  const group = /* @__PURE__ */ new Map();
+  const interestOf = (key) => {
+    const up = group.get(key);
+    if (up === void 0 || up === key) return key;
+    const root = interestOf(up);
+    group.set(key, root);
+    return root;
+  };
   for (const f3 of filings) {
-    for (const t of f3.transactions) {
+    const [first, ...rest] = f3.owners.map(ownerKey);
+    if (first !== void 0) for (const k of rest) group.set(interestOf(k), interestOf(first));
+  }
+  const { transactions, notes } = netOfAmendments(filings);
+  const buyers = /* @__PURE__ */ new Set();
+  filings.forEach((f3, i) => {
+    for (const t of transactions[i]) {
       if (t.date < since) continue;
       const value = t.shares * (t.price ?? 0);
       if (t.code === "P") {
         s.buyShares += t.shares;
         s.buyValue += value;
-        if (t.date >= since30) for (const o of f3.owners) buyers.add(o.cik || o.name);
+        if (t.date >= since30 && f3.owners[0]) buyers.add(interestOf(ownerKey(f3.owners[0])));
       } else if (t.code === "S") {
         s.sellShares += t.shares;
         s.sellValue += value;
       }
     }
-  }
-  return { windowDays, ...s, netValue: s.buyValue - s.sellValue, buyers30d: buyers.size, clusterBuy: buyers.size >= 3 };
+  });
+  return { windowDays, ...s, netValue: s.buyValue - s.sellValue, buyers30d: buyers.size, clusterBuy: buyers.size >= 3, notes };
 }
 async function form4Xml(cik, f3) {
   const base2 = archiveBase(cik, f3.accession);
@@ -16801,11 +16862,13 @@ async function secInsiders(tickerOrCik, opts = {}) {
       throw e;
     }
     const form = parseForm4(doc.xml);
-    parsed.push(form);
+    const amendment = form.amendment || f3.form === "4/A";
+    parsed.push({ ...form, amendment, filed: f3.filingDate, accession: f3.accession });
     const acc = f3.accession;
+    const formName = amendment ? "Form 4/A" : "Form 4";
     points.push({
       key: `${subject}.insider.${acc}.owner`,
-      label: `${subject} Form 4 filer (filed ${f3.filingDate})`,
+      label: `${subject} ${formName} filer (filed ${f3.filingDate}${amendment && form.originalFiled ? `, amends the form filed ${form.originalFiled}` : ""})`,
       value: form.owners.map((o) => `${o.name}${o.title ? ` \u2014 ${o.title}` : ""}`).join("; "),
       untrusted: true,
       asOf: f3.filingDate,
@@ -16814,7 +16877,7 @@ async function secInsiders(tickerOrCik, opts = {}) {
     form.transactions.forEach((t, i) => {
       points.push({
         key: `${subject}.insider.${acc}.${i + 1}`,
-        label: `${subject} Form 4 ${t.code} (${FORM4_CODES[t.code] ?? "other"}) on ${t.date}${t.price !== void 0 ? ` at ${t.price} USD` : ""}${t.direct ? "" : ", indirect"}${form.plan10b51 ? ", 10b5-1 plan" : ""}`,
+        label: `${subject} ${formName} ${t.code} (${FORM4_CODES[t.code] ?? "other"}) on ${t.date}${t.price !== void 0 ? ` at ${t.price} USD` : ""}${t.direct ? "" : ", indirect"}${form.plan10b51 ? ", 10b5-1 plan" : ""}`,
         value: t.acquired ? t.shares : -t.shares,
         unit: "shares",
         asOf: t.date,
@@ -16845,6 +16908,7 @@ async function secInsiders(tickerOrCik, opts = {}) {
     { key: `${subject}.insider.clusterBuy`, label: `${subject} insider cluster buy (\u22653 distinct buyers in 30 days)`, value: s.clusterBuy, asOf: today }
   );
   notes.push(
+    ...s.notes,
     `summary over the ${list.length} most recent Form 4 filings only \u2014 raise the limit for a fuller window`,
     "share counts are signed: + acquired, \u2212 disposed; P = open-market purchase is the buying signal, S/A/M/F are mostly sales and compensation mechanics"
   );
