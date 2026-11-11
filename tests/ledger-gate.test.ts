@@ -5,7 +5,7 @@ import { defaultProfile } from "../src/core/profile.js";
 import { appendTransactions, buildBook, readLedger, type Transaction, transactionId, valueBook, xirr } from "../src/portfolio/ledger.js";
 import { chronological } from "../src/tax/regime.js";
 import { breakerState, closedTradeResults, netContributed } from "../src/trading/breaker.js";
-import { pendingBuys } from "../src/trading/context.js";
+import { ordersToday, pendingBuys } from "../src/trading/context.js";
 import type { Ticket } from "../src/trading/tickets.js";
 import { type GateContext, killSwitchPath, type Order, orderFingerprint, riskGate } from "../src/trading/riskgate.js";
 
@@ -226,6 +226,31 @@ describe("risk gate", () => {
     expect(pendingBuys(all, "real").map((t) => t.id)).toEqual(["checked-kraken", "sent-binance"]);
     expect(pendingBuys(all, "real", "checked-kraken").map((t) => t.id)).toEqual(["sent-binance"]);
     expect(pendingBuys(all, "paper").map((t) => t.id)).toEqual(["working-paper"]);
+  });
+  it("counts today's orders once each, in the order's book only", () => {
+    const now = new Date("2026-10-24T15:00:00Z");
+    const ev = (at: string, id: string, to: string, venue: string) => ({ at, event: "ticket", id, to, order: order({ venue }) });
+    const trail = [
+      // A paper limit order that worked, then filled: one order.
+      ev("2026-10-24T09:00:00Z", "t-paper-1", "working", "paper"),
+      ev("2026-10-24T11:00:00Z", "t-paper-1", "filled", "paper"),
+      // A live order sent, then filled: one order, in the real book.
+      { at: "2026-10-24T10:00:00Z", event: "live-intent", ticket: "t-live-1", env: "live" },
+      ev("2026-10-24T10:00:00Z", "t-live-1", "submitted", "kraken"),
+      ev("2026-10-24T10:00:01Z", "t-live-1", "submitted", "kraken"),
+      ev("2026-10-24T12:00:00Z", "t-live-1", "filled", "kraken"),
+      // A testnet order moves no money.
+      { at: "2026-10-24T10:30:00Z", event: "live-intent", ticket: "t-test-1", env: "test" },
+      ev("2026-10-24T10:30:00Z", "t-test-1", "submitted", "kraken"),
+      // Left working yesterday, filled today: it reached "filled" today, and counts once.
+      ev("2026-10-23T16:00:00Z", "t-paper-0", "working", "paper"),
+      ev("2026-10-24T08:00:00Z", "t-paper-0", "filled", "paper"),
+      // Checked or cancelled is not an order.
+      ev("2026-10-24T13:00:00Z", "t-paper-2", "checked", "paper"),
+      ev("2026-10-23T10:00:00Z", "t-paper-3", "filled", "paper"),
+    ];
+    expect(ordersToday(trail, "paper", now)).toBe(2);
+    expect(ordersToday(trail, "real", now)).toBe(1);
   });
   it("shrinks the allowed risk in a drawdown", () => {
     const r = riskGate(order({ quantity: 12, stop: 360 }), ctx({ breaker: { tripped: false, sizeMultiplier: 0.5 } }));

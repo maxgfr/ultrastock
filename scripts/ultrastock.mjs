@@ -38746,6 +38746,18 @@ function pendingBuys(tickets, book2, ticketId) {
     (t) => t.id !== ticketId && t.order.side === "buy" && bookOf(t.order.venue) === book2 && (t.status === "working" || t.status === "checked" || t.status === "submitted" && t.live?.env !== "test")
   );
 }
+function ordersToday(trail, book2, now) {
+  const today = now.toISOString().slice(0, 10);
+  const test = new Set(trail.filter((e) => e.event === "live-intent" && e.env === "test").map((e) => String(e.ticket)));
+  const ids = /* @__PURE__ */ new Set();
+  for (const e of trail) {
+    if (e.event !== "ticket" || !e.at.startsWith(today) || !(e.to === "filled" || e.to === "submitted" || e.to === "working")) continue;
+    const venue = e.order?.venue;
+    if (venue === void 0 || bookOf(venue) !== book2 || test.has(String(e.id))) continue;
+    ids.add(String(e.id));
+  }
+  return ids.size;
+}
 var tradingviewSector = async (symbol, instrument) => {
   const ticker = tvTicker({ symbol, instrument });
   if (!ticker) return void 0;
@@ -38801,10 +38813,6 @@ async function gateContextFor(order, opts = {}) {
   const pendingBuysBase = {};
   for (const t of pending)
     pendingBuysBase[t.order.symbol] = (pendingBuysBase[t.order.symbol] ?? 0) + t.order.quantity * t.order.price * (fx.rates[t.order.currency] ?? 1);
-  const today = now.toISOString().slice(0, 10);
-  const ordersToday = readAudit(warn).filter(
-    (e) => e.at.startsWith(today) && e.event === "ticket" && (e.to === "filled" || e.to === "submitted" || e.to === "working")
-  ).length;
   let sector = order.sector;
   let sectorValueBase;
   if (order.assetKind === "equity" && order.side === "buy") {
@@ -38837,7 +38845,7 @@ async function gateContextFor(order, opts = {}) {
     cryptoValueBase: valued2.positions.filter((v) => kinds[v.symbol] === "crypto").reduce((s, v) => s + (v.valueBase ?? 0), 0),
     openSymbols: [.../* @__PURE__ */ new Set([...held.map((p) => p.symbol), ...Object.keys(pendingBuysBase)])],
     pendingBuysBase,
-    ordersToday,
+    ordersToday: ordersToday(readAudit(warn), bookName, now),
     lastPrice: quote2.price,
     // End-of-day data is "fresh" for its last session: allow a long weekend.
     quoteAt: eod ? `${quote2.at.slice(0, 10)}T23:59:59Z` : quote2.at,

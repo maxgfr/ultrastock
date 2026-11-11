@@ -60,6 +60,26 @@ export function pendingBuys(tickets: readonly Ticket[], book: string, ticketId?:
 }
 
 /**
+ * The orders placed in `book` today, from the audit trail: the distinct tickets
+ * that reached working, submitted or filled today (UTC). A ticket moves several
+ * times (working then filled; submitted, accepted, then filled) and is still one
+ * order; an order in another book does not count, nor one sent to a testnet or
+ * a validate-only endpoint, which moves no money.
+ */
+export function ordersToday(trail: ReadonlyArray<Record<string, unknown> & { at: string }>, book: string, now: Date): number {
+  const today = now.toISOString().slice(0, 10);
+  const test = new Set(trail.filter((e) => e.event === "live-intent" && e.env === "test").map((e) => String(e.ticket)));
+  const ids = new Set<string>();
+  for (const e of trail) {
+    if (e.event !== "ticket" || !e.at.startsWith(today) || !(e.to === "filled" || e.to === "submitted" || e.to === "working")) continue;
+    const venue = (e.order as { venue?: string } | undefined)?.venue;
+    if (venue === undefined || bookOf(venue) !== book || test.has(String(e.id))) continue;
+    ids.add(String(e.id));
+  }
+  return ids.size;
+}
+
+/**
  * The sector of a listed share, in TradingView's classification (the one the
  * portfolio risk report uses), or undefined when it cannot be told. Kept a
  * week: a company rarely changes sector.
@@ -140,10 +160,6 @@ export async function gateContextFor(
   const pendingBuysBase: Record<string, number> = {};
   for (const t of pending)
     pendingBuysBase[t.order.symbol] = (pendingBuysBase[t.order.symbol] ?? 0) + t.order.quantity * t.order.price * (fx.rates[t.order.currency] ?? 1);
-  const today = now.toISOString().slice(0, 10);
-  const ordersToday = readAudit(warn).filter(
-    (e) => e.at.startsWith(today) && e.event === "ticket" && (e.to === "filled" || e.to === "submitted" || e.to === "working"),
-  ).length;
   // The sector cap: what the book (and the buys still to be paid) already holds in the order's sector, shares only.
   let sector = order.sector;
   let sectorValueBase: number | undefined;
@@ -181,7 +197,7 @@ export async function gateContextFor(
     cryptoValueBase: valued.positions.filter((v) => kinds[v.symbol] === "crypto").reduce((s, v) => s + (v.valueBase ?? 0), 0),
     openSymbols: [...new Set([...held.map((p) => p.symbol), ...Object.keys(pendingBuysBase)])],
     pendingBuysBase,
-    ordersToday,
+    ordersToday: ordersToday(readAudit(warn), bookName, now),
     lastPrice: quote.price,
     // End-of-day data is "fresh" for its last session: allow a long weekend.
     quoteAt: eod ? `${quote.at.slice(0, 10)}T23:59:59Z` : quote.at,
