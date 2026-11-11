@@ -143,6 +143,13 @@ function parseDigits(d: string): { value: number; decimals: number } {
 }
 
 /**
+ * The units a fraction is stored under — none, or a ratio or multiple ("ratio",
+ * "x"): only these can be written as a percentage. A price, a count or an index
+ * of 0.45 is not 45 %.
+ */
+const FRACTION_UNITS: ReadonlySet<string | undefined> = new Set([undefined, "", "ratio", "x"]);
+
+/**
  * Is the written figure one of the values these evidence items hold?
  *
  * Magnitudes are compared: prose carries the direction in words ("fell 12.3 %"
@@ -158,7 +165,7 @@ export function figureMatches(f: Figure, items: readonly EvidenceItem[], opts: {
     if (typeof it.value !== "number") continue;
     const candidates = [it.value];
     // A fraction stored as a ratio can be written as a percentage, and back.
-    if (f.percent && it.unit !== "%") candidates.push(it.value * 100);
+    if (f.percent && FRACTION_UNITS.has(it.unit)) candidates.push(it.value * 100);
     if (!f.percent && it.unit === "%") candidates.push(it.value / 100);
     for (const v of candidates) {
       const a = Math.abs(Math.abs(v) - Math.abs(f.value));

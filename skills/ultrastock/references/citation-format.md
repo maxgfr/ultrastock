@@ -47,7 +47,9 @@ A figure matches a cited `[E#]` when it is that value at the precision written:
 `383` and `383,00` for 383.00; `12.3 %` for 12.34 %; `41,5 %` for −41.4999 %
 (the sign may be carried by words: "41.5 % below" — but a minus written on the
 figure is a claim too: `−41,5 %` is refused against +41.5); `188.6 bn` for
-188 576 644 501; a fraction written as a percentage and back. French and
+188 576 644 501; a fraction written as a percentage and back (`27.3 %` for
+a unitless or ratio item of 0.2733 — a price, a count or an index of 0.45 is
+not `45 %`). French and
 English separators both read: `1 234,5`, `1,234.5`, `0,25`.
 
 ## Derived figures

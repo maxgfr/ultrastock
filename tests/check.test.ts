@@ -55,6 +55,15 @@ describe("figureMatches", () => {
   it("converts between a fraction and a percentage", () => {
     expect(figureMatches(f("27.3%"), [item(0.2733, "ratio")])).toBe(true);
     expect(figureMatches(f("0.27"), [item(27.33, "%")])).toBe(true);
+    expect(figureMatches(f("27.3%"), [item(0.2733)])).toBe(true);
+    expect(figureMatches(f("145 %"), [item(1.45, "x")])).toBe(true);
+  });
+  it("reads a percentage as a fraction only for a unitless or ratio item, not a price or a count", () => {
+    expect(figureMatches(f("45 %"), [item(0.45, "USD")])).toBe(false);
+    expect(figureMatches(f("45 %"), [item(0.45, "price")])).toBe(false);
+    expect(figureMatches(f("45 %"), [item(0.45, "index")])).toBe(false);
+    expect(figureMatches(f("45 %"), [item(0.45, "count")])).toBe(false);
+    expect(figureMatches(f("45 %"), [item(45, "index")])).toBe(true);
   });
 });
 

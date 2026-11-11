@@ -21658,13 +21658,14 @@ function parseDigits(d) {
   const decimals = s.includes(".") ? s.split(".")[1].length : 0;
   return { value: Number(s), decimals };
 }
+var FRACTION_UNITS = /* @__PURE__ */ new Set([void 0, "", "ratio", "x"]);
 function figureMatches(f3, items, opts = {}) {
   const tol = 0.5 * 10 ** -f3.decimals * f3.scale;
   const writtenNegative = !!opts.signed && /^[-−](?:[$€£]\s?)?\d/.test(f3.raw);
   for (const it of items) {
     if (typeof it.value !== "number") continue;
     const candidates2 = [it.value];
-    if (f3.percent && it.unit !== "%") candidates2.push(it.value * 100);
+    if (f3.percent && FRACTION_UNITS.has(it.unit)) candidates2.push(it.value * 100);
     if (!f3.percent && it.unit === "%") candidates2.push(it.value / 100);
     for (const v of candidates2) {
       const a = Math.abs(Math.abs(v) - Math.abs(f3.value));
