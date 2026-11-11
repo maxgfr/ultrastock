@@ -128,25 +128,33 @@ export function statementDate(raw: string | undefined, order: "DMY" | "MDY" = "D
   let y: string;
   let mo: string;
   let d: string;
-  let time: [string, string, string?] | undefined;
-  const iso = /^(\d{4})-?(\d{2})-?(\d{2})(?:(?:[T ;]|,\s*)(\d{2}):?(\d{2})(?::?(\d{2}))?)?/.exec(s);
-  const dmy = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:(?:[T ]|,\s*)(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
+  let time: [string, string, string | undefined, string | undefined] | undefined;
+  // A 12-hour clock ("2:30 PM", "12:05 am") is read too: without it a morning and an afternoon fill fell on one day.
+  const ampm = String.raw`(?:\s*([AaPp])\.?[Mm]\.?)?`;
+  const iso = new RegExp(String.raw`^(\d{4})-?(\d{2})-?(\d{2})(?:(?:[T ;]|,\s*)(\d{1,2}):?(\d{2})(?::?(\d{2}))?(?:\.\d+)?Z?${ampm})?`).exec(s);
+  const dmy = new RegExp(String.raw`^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:(?:[T ]|,\s*)(\d{1,2}):(\d{2})(?::(\d{2}))?${ampm})?`).exec(s);
   if (iso) {
     [y, mo, d] = [iso[1]!, iso[2]!, iso[3]!];
-    if (iso[4]) time = [iso[4], iso[5]!, iso[6]];
+    if (iso[4]) time = [iso[4], iso[5]!, iso[6], iso[7]];
   } else if (dmy) {
     y = dmy[3]!;
     [d, mo] = order === "DMY" ? [dmy[1]!, dmy[2]!] : [dmy[2]!, dmy[1]!];
-    if (dmy[4]) time = [dmy[4], dmy[5]!, dmy[6]];
+    if (dmy[4]) time = [dmy[4], dmy[5]!, dmy[6], dmy[7]];
   } else return undefined;
   const M = Number(mo);
   const D = Number(d);
-  if (M < 1 || M > 12 || D < 1 || D > 31) return undefined;
+  // A day the calendar has: 2026-02-30 and 31/04 are not dates.
+  if (M < 1 || M > 12 || D < 1 || D > new Date(Date.UTC(Number(y), M, 0)).getUTCDate()) return undefined;
   const day = `${y}-${String(M).padStart(2, "0")}-${String(D).padStart(2, "0")}`;
   if (!time) return day;
-  const [hh, mm, ss] = time;
-  if (Number(hh) > 23 || Number(mm) > 59) return undefined;
-  return `${day}T${hh.padStart(2, "0")}:${mm}:${(ss ?? "00").padStart(2, "0")}`;
+  const [hh, mm, ss, half] = time;
+  let h = Number(hh);
+  if (half) {
+    if (h < 1 || h > 12) return undefined;
+    h = (h % 12) + (half.toUpperCase() === "P" ? 12 : 0);
+  }
+  if (h > 23 || Number(mm) > 59) return undefined;
+  return `${day}T${String(h).padStart(2, "0")}:${mm}:${(ss ?? "00").padStart(2, "0")}`;
 }
 
 /**
@@ -156,12 +164,20 @@ export function statementDate(raw: string | undefined, order: "DMY" | "MDY" = "D
  */
 export function statementNumber(raw: string | undefined, decimal?: "," | "."): number | undefined {
   if (raw === undefined) return undefined;
-  if (!decimal) return parseLooseNumber(raw);
-  let s = raw.replace(/[\s  $€£%]/g, "");
+  // An accounting negative "(12,50)" and a typographic minus (U+2212, dashes) are a minus sign, with a hint or without.
+  let s = raw.trim().replace(/^[−‒–]/, "-");
+  const paren = /^\((.*)\)$/.exec(s);
+  if (paren) s = paren[1]!.trim();
+  const sign = paren ? -1 : 1;
+  if (!decimal) {
+    const n = parseLooseNumber(s);
+    return n === undefined ? undefined : sign * n;
+  }
+  s = s.replace(/[\s  $€£%]/g, "").replace(/^[−‒–]/, "-");
   if (!s || s === "-" || s === "—") return undefined;
   s = decimal === "," ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
   const n = Number(s);
-  return Number.isFinite(n) ? n : undefined;
+  return Number.isFinite(n) ? sign * n : undefined;
 }
 
 /** Fiat currencies and dollar/euro stablecoins: balances in them are cash, not positions. */

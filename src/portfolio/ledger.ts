@@ -143,7 +143,11 @@ export function readJsonlLedger(book = "real", warn?: Warn): Transaction[] {
 }
 
 function validate(t: Omit<Transaction, "id">): void {
-  if (!/^\d{4}-\d{2}-\d{2}/.test(t.date)) throw new Error(`transaction date "${t.date}" is not YYYY-MM-DD`);
+  const ymd = /^(\d{4})-(\d{2})-(\d{2})/.exec(t.date);
+  if (!ymd) throw new Error(`transaction date "${t.date}" is not YYYY-MM-DD`);
+  // A day the calendar has: 2026-02-30 would sort and group as if it existed.
+  const [y, m, d] = [Number(ymd[1]), Number(ymd[2]), Number(ymd[3])];
+  if (m < 1 || m > 12 || d < 1 || d > new Date(Date.UTC(y, m, 0)).getUTCDate()) throw new Error(`transaction date "${t.date}" is not a date`);
   if (!/^[A-Z]{3,5}$/.test(t.currency)) throw new Error(`transaction currency "${t.currency}" is not a currency code`);
   const trade = t.type === "buy" || t.type === "sell" || t.type === "transfer-in" || t.type === "transfer-out";
   if (trade || t.type === "split") {

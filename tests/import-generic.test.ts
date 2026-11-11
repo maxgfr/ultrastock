@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type ColumnMap, GENERIC_PRESETS, parseStatement, typeFromWord } from "../src/portfolio/import/index.js";
+import { type ColumnMap, GENERIC_PRESETS, parseStatement, resolveMapOption, typeFromWord } from "../src/portfolio/import/index.js";
 import { checkColumnMap } from "../src/portfolio/import/generic.js";
 import { splitPair, statementDate, statementNumber } from "../src/portfolio/import/shared.js";
 import { appendTransactions } from "../src/portfolio/ledger.js";
@@ -38,6 +38,27 @@ describe("statement readers", () => {
     expect(statementNumber("1,234.56", ".")).toBe(1234.56);
     expect(statementNumber("€-12.00")).toBe(-12);
     expect(statementNumber("")).toBeUndefined();
+  });
+  it("times with AM or PM, so a morning and an afternoon fill stay two", () => {
+    expect(statementDate("01/05/2026 2:30 PM", "MDY")).toBe("2026-01-05T14:30:00");
+    expect(statementDate("01/05/2026 2:30 AM", "MDY")).toBe("2026-01-05T02:30:00");
+    expect(statementDate("2026-01-05 12:05:09 am")).toBe("2026-01-05T00:05:09");
+    expect(statementDate("2026-01-05 12:05 PM")).toBe("2026-01-05T12:05:00");
+    expect(statementDate("2026-01-05 13:05 PM")).toBeUndefined();
+  });
+  it("dates that exist", () => {
+    expect(statementDate("2026-02-30")).toBeUndefined();
+    expect(statementDate("31/04/2026")).toBeUndefined();
+    expect(statementDate("29/02/2028")).toBe("2028-02-29");
+    expect(statementDate("2026-02-29")).toBeUndefined();
+  });
+  it("accounting negatives and the Unicode minus with a decimal hint, as without", () => {
+    expect(statementNumber("(12,50)")).toBe(-12.5);
+    expect(statementNumber("−12,5")).toBe(-12.5);
+    expect(statementNumber("(12,50)", ",")).toBe(-12.5);
+    expect(statementNumber("−12,5", ",")).toBe(-12.5);
+    expect(statementNumber("−1 234,56", ",")).toBe(-1234.56);
+    expect(statementNumber("(1,234.50)", ".")).toBe(-1234.5);
   });
   it("crypto pairs", () => {
     expect(splitPair("BTCUSDT")).toEqual({ base: "BTC", quote: "USDT" });
@@ -118,5 +139,31 @@ describe("generic CSV with a column map", () => {
     expect(() => checkColumnMap({ date: "Date", defaultType: "purchase" })).toThrow(/defaultType/);
     expect(() => checkColumnMap({ date: "Date", type: "T", types: { OST: "nope" } })).toThrow(/types\["OST"\]/);
     expect(checkColumnMap({ date: "Date", defaultType: "buy", decimal: "," })).toMatchObject({ defaultType: "buy" });
+  });
+});
+
+describe("importer edge cases", () => {
+  const signMap: ColumnMap = { date: "Date", type: "Type", amount: "Amount", defaultCurrency: "EUR" };
+  it("keeps a fee or tax refund positive in a file whose amounts carry their sign", () => {
+    const csv = ["Date;Type;Amount", "05/01/2026;Fee;-2,50", "06/01/2026;Fee;1,20", "07/01/2026;Tax;3,00", "08/01/2026;Tax;-4,00"].join("\n");
+    const r = parseStatement("generic", csv, { account: "cto", map: signMap });
+    expect(r.transactions.map((t) => t.amount)).toEqual([-2.5, 1.2, 3, -4]);
+    // A file that writes every fee as a positive charge: still taken out.
+    const unsigned = ["Date;Type;Amount", "05/01/2026;Fee;2,50", "07/01/2026;Tax;3,00", "08/01/2026;Deposit;100,00"].join("\n");
+    const u = parseStatement("generic", unsigned, { account: "cto", map: signMap });
+    expect(u.transactions.map((t) => t.amount)).toEqual([-2.5, -3, 100]);
+  });
+
+  it("does not take an Object property for a named map", () => {
+    expect(() => resolveMapOption("generic", "constructor")).toThrow(/--map is a JSON column map or one of boursorama/);
+    expect(() => resolveMapOption("generic", "toString")).toThrow(/--map is a JSON column map/);
+    expect(resolveMapOption("generic", "fortuneo")).toMatchObject({ presetName: "fortuneo" });
+  });
+
+  it("refuses a ledger date that does not exist", async () => {
+    const deposit = (date: string) => ({ date, type: "deposit" as const, account: "cto", amount: 1, currency: "EUR", origin: "manual" });
+    await expect(appendTransactions([deposit("2026-02-30")], "dates")).rejects.toThrow(/2026-02-30.*not a date/);
+    await expect(appendTransactions([deposit("2026-04-31T10:00:00")], "dates")).rejects.toThrow(/not a date/);
+    expect((await appendTransactions([deposit("2028-02-29")], "dates")).added).toHaveLength(1);
   });
 });

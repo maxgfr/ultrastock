@@ -48,7 +48,8 @@ function parseFormat(format: ImportFormat, text: string, opts: StatementOptions)
 export function resolveMapOption(format: ImportFormat, raw: string | undefined): { map?: ColumnMap; presetName?: string; quote?: string } {
   if (raw === undefined) return {};
   const trimmed = raw.trim();
-  if (format === "generic" && GENERIC_PRESETS[trimmed]) return { map: GENERIC_PRESETS[trimmed]!.map, presetName: trimmed };
+  // Own keys only: "constructor" or "toString" is not a named map.
+  if (format === "generic" && Object.hasOwn(GENERIC_PRESETS, trimmed)) return { map: GENERIC_PRESETS[trimmed]!.map, presetName: trimmed };
   let parsed: unknown;
   try {
     parsed = JSON.parse(trimmed);

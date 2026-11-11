@@ -20,7 +20,8 @@
 // impôt/taxe/prélèvements/retenue/withholding/CSG → tax; frais/fee/commission/
 // courtage/droits de garde → fee; split/division → split. Amount signs are
 // normalised by type (deposits, dividends and interest +, withdrawals, fees and
-// taxes −); a buy or sell without a price takes it from a net amount:
+// taxes −, except that a positive fee or tax is a refund in a file that writes
+// other fees, or taxes, negative); a buy or sell without a price takes it from a net amount:
 // buy price = (|amount| − fee) / quantity, sell price = (|amount| + fee) / quantity.
 // A row without a symbol uses its ISIN (the router resolves EU ISINs).
 //
@@ -187,12 +188,28 @@ export function parseGeneric(text: string, opts: ImportOptions & { map: ColumnMa
     if (fatal) throw new Error(`${msg}${hint}`);
     res.warnings.push(`${msg} — those fields are left empty`);
   }
-  if (opts.presetName && GENERIC_PRESETS[opts.presetName] && !GENERIC_PRESETS[opts.presetName]!.verified)
+  if (opts.presetName && Object.hasOwn(GENERIC_PRESETS, opts.presetName) && !GENERIC_PRESETS[opts.presetName]!.verified)
     res.warnings.push(`the "${opts.presetName}" column map is best-effort (${GENERIC_PRESETS[opts.presetName]!.source}) — check the result with --dry-run`);
   const defaultCurrency = (map.defaultCurrency ?? "EUR").toUpperCase();
   if (col.currency === undefined && !map.defaultCurrency) res.warnings.push("no currency column: every row is booked in EUR (set defaultCurrency in the map)");
   let pricedFromAmount = 0;
   let isinAsSymbol = 0;
+  // The fee and tax rows of a file that writes some of them negative carry their sign: a positive one there is a
+  // refund. Where every fee (or every tax) is written positive, the type says the money went out. Decided per type: a
+  // French export signs its buys and its withholding but writes custody fees as positive charges.
+  const typeOfRow = (r: (typeof rows)[number]) => {
+    const w = col.type === undefined ? undefined : (r.cells[col.type] ?? "").trim() || undefined;
+    return w !== undefined ? typeFromWord(w, map.types) : map.defaultType;
+  };
+  const signedTypes = new Set<TxType | undefined>(
+    col.amount === undefined
+      ? []
+      : rows
+          .slice(h + 1)
+          .filter((r) => (statementNumber(r.cells[col.amount!]?.trim(), decimal) ?? 0) < 0)
+          .map(typeOfRow)
+          .filter((t) => t === "fee" || t === "tax"),
+  );
   for (const r of rows.slice(h + 1)) {
     const cell = (k: (typeof COLUMN_KEYS)[number]) => {
       const i = col[k];
@@ -228,7 +245,14 @@ export function parseGeneric(text: string, opts: ImportOptions & { map: ColumnMa
     }
     const cashType = type === "deposit" || type === "withdrawal" || type === "dividend" || type === "interest" || type === "fee" || type === "tax";
     if (cashType && amount === undefined && quantity !== undefined && price !== undefined) amount = round(quantity * price);
-    if (cashType && amount !== undefined) amount = type === "deposit" || type === "dividend" || type === "interest" ? Math.abs(amount) : -Math.abs(amount);
+    if (cashType && amount !== undefined)
+      amount =
+        type === "deposit" || type === "dividend" || type === "interest"
+          ? Math.abs(amount)
+          : // Where this file signs its fees (or taxes), a positive one is a refund: it stays in.
+            signedTypes.has(type)
+            ? amount
+            : -Math.abs(amount);
     accept(res, r.line, {
       date,
       type,

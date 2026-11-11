@@ -23776,7 +23776,10 @@ function readJsonlLedger(book2 = "real", warn) {
   return readJsonl(ledgerPath(book2), warn);
 }
 function validate(t) {
-  if (!/^\d{4}-\d{2}-\d{2}/.test(t.date)) throw new Error(`transaction date "${t.date}" is not YYYY-MM-DD`);
+  const ymd2 = /^(\d{4})-(\d{2})-(\d{2})/.exec(t.date);
+  if (!ymd2) throw new Error(`transaction date "${t.date}" is not YYYY-MM-DD`);
+  const [y, m, d] = [Number(ymd2[1]), Number(ymd2[2]), Number(ymd2[3])];
+  if (m < 1 || m > 12 || d < 1 || d > new Date(Date.UTC(y, m, 0)).getUTCDate()) throw new Error(`transaction date "${t.date}" is not a date`);
   if (!/^[A-Z]{3,5}$/.test(t.currency)) throw new Error(`transaction currency "${t.currency}" is not a currency code`);
   const trade = t.type === "buy" || t.type === "sell" || t.type === "transfer-in" || t.type === "transfer-out";
   if (trade || t.type === "split") {
@@ -48155,33 +48158,46 @@ function statementDate(raw, order = "DMY") {
   let mo;
   let d;
   let time2;
-  const iso4 = /^(\d{4})-?(\d{2})-?(\d{2})(?:(?:[T ;]|,\s*)(\d{2}):?(\d{2})(?::?(\d{2}))?)?/.exec(s);
-  const dmy = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:(?:[T ]|,\s*)(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
+  const ampm = String.raw`(?:\s*([AaPp])\.?[Mm]\.?)?`;
+  const iso4 = new RegExp(String.raw`^(\d{4})-?(\d{2})-?(\d{2})(?:(?:[T ;]|,\s*)(\d{1,2}):?(\d{2})(?::?(\d{2}))?(?:\.\d+)?Z?${ampm})?`).exec(s);
+  const dmy = new RegExp(String.raw`^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:(?:[T ]|,\s*)(\d{1,2}):(\d{2})(?::(\d{2}))?${ampm})?`).exec(s);
   if (iso4) {
     [y, mo, d] = [iso4[1], iso4[2], iso4[3]];
-    if (iso4[4]) time2 = [iso4[4], iso4[5], iso4[6]];
+    if (iso4[4]) time2 = [iso4[4], iso4[5], iso4[6], iso4[7]];
   } else if (dmy) {
     y = dmy[3];
     [d, mo] = order === "DMY" ? [dmy[1], dmy[2]] : [dmy[2], dmy[1]];
-    if (dmy[4]) time2 = [dmy[4], dmy[5], dmy[6]];
+    if (dmy[4]) time2 = [dmy[4], dmy[5], dmy[6], dmy[7]];
   } else return void 0;
   const M2 = Number(mo);
   const D = Number(d);
-  if (M2 < 1 || M2 > 12 || D < 1 || D > 31) return void 0;
+  if (M2 < 1 || M2 > 12 || D < 1 || D > new Date(Date.UTC(Number(y), M2, 0)).getUTCDate()) return void 0;
   const day4 = `${y}-${String(M2).padStart(2, "0")}-${String(D).padStart(2, "0")}`;
   if (!time2) return day4;
-  const [hh, mm, ss] = time2;
-  if (Number(hh) > 23 || Number(mm) > 59) return void 0;
-  return `${day4}T${hh.padStart(2, "0")}:${mm}:${(ss ?? "00").padStart(2, "0")}`;
+  const [hh, mm, ss, half] = time2;
+  let h = Number(hh);
+  if (half) {
+    if (h < 1 || h > 12) return void 0;
+    h = h % 12 + (half.toUpperCase() === "P" ? 12 : 0);
+  }
+  if (h > 23 || Number(mm) > 59) return void 0;
+  return `${day4}T${String(h).padStart(2, "0")}:${mm}:${(ss ?? "00").padStart(2, "0")}`;
 }
 function statementNumber(raw, decimal) {
   if (raw === void 0) return void 0;
-  if (!decimal) return parseLooseNumber(raw);
-  let s = raw.replace(/[\s  $€£%]/g, "");
+  let s = raw.trim().replace(/^[−‒–]/, "-");
+  const paren = /^\((.*)\)$/.exec(s);
+  if (paren) s = paren[1].trim();
+  const sign2 = paren ? -1 : 1;
+  if (!decimal) {
+    const n3 = parseLooseNumber(s);
+    return n3 === void 0 ? void 0 : sign2 * n3;
+  }
+  s = s.replace(/[\s  $€£%]/g, "").replace(/^[−‒–]/, "-");
   if (!s || s === "-" || s === "\u2014") return void 0;
   s = decimal === "," ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
   const n2 = Number(s);
-  return Number.isFinite(n2) ? n2 : void 0;
+  return Number.isFinite(n2) ? sign2 * n2 : void 0;
 }
 var CASH_ASSETS = /* @__PURE__ */ new Set([
   "EUR",
@@ -48660,12 +48676,19 @@ function parseGeneric(text2, opts) {
     if (fatal) throw new Error(`${msg}${hint}`);
     res.warnings.push(`${msg} \u2014 those fields are left empty`);
   }
-  if (opts.presetName && GENERIC_PRESETS[opts.presetName] && !GENERIC_PRESETS[opts.presetName].verified)
+  if (opts.presetName && Object.hasOwn(GENERIC_PRESETS, opts.presetName) && !GENERIC_PRESETS[opts.presetName].verified)
     res.warnings.push(`the "${opts.presetName}" column map is best-effort (${GENERIC_PRESETS[opts.presetName].source}) \u2014 check the result with --dry-run`);
   const defaultCurrency = (map.defaultCurrency ?? "EUR").toUpperCase();
   if (col.currency === void 0 && !map.defaultCurrency) res.warnings.push("no currency column: every row is booked in EUR (set defaultCurrency in the map)");
   let pricedFromAmount = 0;
   let isinAsSymbol = 0;
+  const typeOfRow = (r3) => {
+    const w = col.type === void 0 ? void 0 : (r3.cells[col.type] ?? "").trim() || void 0;
+    return w !== void 0 ? typeFromWord(w, map.types) : map.defaultType;
+  };
+  const signedTypes = new Set(
+    col.amount === void 0 ? [] : rows.slice(h + 1).filter((r3) => (statementNumber(r3.cells[col.amount]?.trim(), decimal) ?? 0) < 0).map(typeOfRow).filter((t) => t === "fee" || t === "tax")
+  );
   for (const r3 of rows.slice(h + 1)) {
     const cell3 = (k) => {
       const i = col[k];
@@ -48701,7 +48724,11 @@ function parseGeneric(text2, opts) {
     }
     const cashType = type === "deposit" || type === "withdrawal" || type === "dividend" || type === "interest" || type === "fee" || type === "tax";
     if (cashType && amount === void 0 && quantity !== void 0 && price !== void 0) amount = round3(quantity * price);
-    if (cashType && amount !== void 0) amount = type === "deposit" || type === "dividend" || type === "interest" ? Math.abs(amount) : -Math.abs(amount);
+    if (cashType && amount !== void 0)
+      amount = type === "deposit" || type === "dividend" || type === "interest" ? Math.abs(amount) : (
+        // Where this file signs its fees (or taxes), a positive one is a refund: it stays in.
+        signedTypes.has(type) ? amount : -Math.abs(amount)
+      );
     accept(res, r3.line, {
       date,
       type,
@@ -49336,7 +49363,7 @@ function parseFormat(format, text2, opts) {
 function resolveMapOption(format, raw) {
   if (raw === void 0) return {};
   const trimmed = raw.trim();
-  if (format === "generic" && GENERIC_PRESETS[trimmed]) return { map: GENERIC_PRESETS[trimmed].map, presetName: trimmed };
+  if (format === "generic" && Object.hasOwn(GENERIC_PRESETS, trimmed)) return { map: GENERIC_PRESETS[trimmed].map, presetName: trimmed };
   let parsed;
   try {
     parsed = JSON.parse(trimmed);
