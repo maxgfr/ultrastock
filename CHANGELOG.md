@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.30](https://github.com/maxgfr/ultrastock/compare/v1.13.29...v1.13.30) (2026-11-11)
+
+
+### Bug Fixes
+
+* **csv:** read "+0,123" as 0.123, and say which MCP tools write ([6400d24](https://github.com/maxgfr/ultrastock/commit/6400d24d618404783ae871d458289f0d0ce183d0))
+
 ## [1.13.29](https://github.com/maxgfr/ultrastock/compare/v1.13.28...v1.13.29) (2026-11-11)
 
 
