@@ -156,11 +156,18 @@ export function periodSharpe(returns: readonly number[]): number {
 
 /**
  * Deflated Sharpe of the chosen variant: its PSR against the Sharpe the best
- * of `nTrials` skill-less variants would show, with the variance of the
- * per-period Sharpe across the variants actually tried. With fewer than two
- * distinct variants that variance is unknown, not zero — trials declared with
- * `--trials` would then deflate nothing — so the sampling variance of a
- * skill-less Sharpe over the same bars, 1 / (T − 1), stands in for it.
+ * of `nTrials` skill-less variants would show (Bailey & López de Prado 2014),
+ * given the variance of the per-period Sharpe across those trials.
+ *
+ * The variants actually tried give that variance. Trials declared beyond them
+ * (`--trials`) were not observed, so their spread is unknown, not the spread
+ * of the grid: the sampling variance of a skill-less Sharpe over the same
+ * bars, 1 / (T − 1), is the least they can carry, and the variance used is
+ * the larger of the two. A grid of near-identical variants therefore cannot
+ * price a thousand declared trials at its own tiny spread; with fewer than two
+ * distinct variants the stand-in is used alone. For one series and one set of
+ * variants, the variance never shrinks and E[max] only grows as trials are
+ * added, so more trials never raise the deflated Sharpe.
  */
 export function deflatedSharpeOf(chosen: readonly number[], variantSharpes: readonly number[], nTrials: number): number {
   // A flat series (no trade) shows no skill at all.
@@ -168,6 +175,8 @@ export function deflatedSharpeOf(chosen: readonly number[], variantSharpes: read
   const sr = periodSharpe(chosen);
   const finite = variantSharpes.filter(Number.isFinite);
   const across = finite.length > 1 ? variance(finite) : 0;
-  const v = across > 0 ? across : 1 / Math.max(1, chosen.length - 1);
+  const skillless = 1 / Math.max(1, chosen.length - 1);
+  const declared = nTrials > finite.length;
+  const v = across > 0 ? (declared ? Math.max(across, skillless) : across) : skillless;
   return deflatedSharpe(sr, chosen.length, skewness(chosen), excessKurtosis(chosen), Math.max(1, nTrials), v);
 }

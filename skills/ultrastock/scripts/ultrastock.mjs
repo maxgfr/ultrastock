@@ -42098,7 +42098,9 @@ function deflatedSharpeOf(chosen, variantSharpes, nTrials) {
   const sr = periodSharpe(chosen);
   const finite4 = variantSharpes.filter(Number.isFinite);
   const across = finite4.length > 1 ? variance(finite4) : 0;
-  const v = across > 0 ? across : 1 / Math.max(1, chosen.length - 1);
+  const skillless = 1 / Math.max(1, chosen.length - 1);
+  const declared = nTrials > finite4.length;
+  const v = across > 0 ? declared ? Math.max(across, skillless) : across : skillless;
   return deflatedSharpe(sr, chosen.length, skewness(chosen), excessKurtosis(chosen), Math.max(1, nTrials), v);
 }
 
