@@ -1,8 +1,12 @@
 // The dashboard's pages: server-rendered, self-contained HTML in the visual
 // language of `report` (its CSS, `esc`, `markdownToHtml`, `priceSvg`) — no
 // script, no external asset. Every value from the user's state or a source
-// goes through `esc`; a sign is always written out, so a loss never relies on
-// colour alone to read as one.
+// goes through `esc`, whatever its declared type: the state is JSON read from
+// disk unchecked, so a field typed `number` may hold markup. Unescaped, a page
+// prints only its own text, the length of an array it lists, and `fmt`'s
+// output: digits, separators and a sign, or "n/a" for anything that is not a
+// finite number (`Number.isFinite` does not coerce). A sign is always written
+// out, so a loss never relies on colour alone to read as one.
 import { formatNumber } from "../core/evidence.js";
 import { CSS, esc, markdownToHtml, priceSvg } from "../report/html.js";
 import {
@@ -47,6 +51,7 @@ function signed(n: number | undefined, decimals = 2, unit = ""): string {
   const text = `${zero || s.startsWith(MINUS) ? "" : "+"}${s}${unit}`;
   return zero ? esc(text) : `<span class="${n < 0 ? "neg" : "pos"}">${esc(text)}</span>`;
 }
+// `formatNumber` is applied to a number only: on anything else (a string from disk) it would throw, and fail the page.
 const value = (v: number | string | boolean) => (typeof v === "number" ? formatNumber(v) : String(v));
 const opt = (s: string | undefined) => esc(s ?? "");
 const num = (html: string) => `<td class="num">${html}</td>`;
@@ -139,7 +144,7 @@ export function portfolioPage(v: PortfolioView): string {
         ["Symbol", "Class", "Accounts", "Quantity", "Average cost", "Price", "Day", `Value (${v.base})`, "Weight", `P&L (${v.base})`, "P&L", "Source"],
         v.positions.map(
           (p) =>
-            `<tr><th scope="row">${esc(p.symbol)}</th>${cell(p.assetClass)}${cell(p.accounts.join(", "))}${num(esc(formatNumber(p.quantity)))}${num(`${fmt(p.averageCost, 4)} ${esc(p.currency)}`)}${num(p.price === undefined ? "n/a" : `${esc(formatNumber(p.price))} ${esc(p.currency)}`)}${num(signed(p.changePct, 2, " %"))}${num(fmt(p.valueBase))}${num(p.weightPct === undefined ? "n/a" : `${fmt(p.weightPct)} %`)}${num(signed(p.pnlBase))}${num(signed(p.pnlPct, 2, " %"))}<td>${opt(p.source)}${p.delay ? `, ${esc(p.delay)}` : ""}${p.quoteAsOf ? ` (${esc(p.quoteAsOf)})` : ""}</td></tr>`,
+            `<tr><th scope="row">${esc(p.symbol)}</th>${cell(p.assetClass)}${cell(p.accounts.join(", "))}${num(esc(value(p.quantity)))}${num(`${fmt(p.averageCost, 4)} ${esc(p.currency)}`)}${num(p.price === undefined ? "n/a" : `${esc(value(p.price))} ${esc(p.currency)}`)}${num(signed(p.changePct, 2, " %"))}${num(fmt(p.valueBase))}${num(p.weightPct === undefined ? "n/a" : `${fmt(p.weightPct)} %`)}${num(signed(p.pnlBase))}${num(signed(p.pnlPct, 2, " %"))}<td>${opt(p.source)}${p.delay ? `, ${esc(p.delay)}` : ""}${p.quoteAsOf ? ` (${esc(p.quoteAsOf)})` : ""}</td></tr>`,
         ),
         [3, 4, 5, 6, 7, 8, 9, 10],
       )
@@ -215,7 +220,7 @@ export function analysisPage(v: AnalysisView): string {
     page: `analysis/${v.analysis}`,
     book: v.book,
     asOf: v.asOf,
-    meta: `base currency ${esc(v.base)} · the figures of <code>ultrastock portfolio ${v.analysis}</code>, not registered as a run`,
+    meta: `base currency ${esc(v.base)} · the figures of <code>ultrastock portfolio ${esc(v.analysis)}</code>, not registered as a run`,
     body: `${sections}${notesHtml(v.notes)}${sourcesHtml(v.sources)}`,
   });
 }
@@ -226,7 +231,7 @@ export function ledgerPage(v: LedgerView): string {
   const form = `<form class="filter" method="get" action="/ledger"><input type="hidden" name="book" value="${esc(v.book)}">${select("account", "Account", v.accounts, v.filter.account)}${select("symbol", "Symbol", v.symbols, v.filter.symbol)}<button type="submit">Filter</button></form>`;
   const rows = v.transactions.map(
     (t) =>
-      `<tr><td>${esc(t.date)}</td><th scope="row">${esc(t.type)}</th>${cell(t.account)}${cell(t.symbol)}${num(t.quantity === undefined ? "" : esc(formatNumber(t.quantity)))}${num(t.price === undefined ? "" : esc(formatNumber(t.price)))}${num(t.amount === undefined ? "" : signed(t.amount))}${num(t.fee === undefined ? "" : fmt(t.fee))}${cell(t.currency)}${cell(t.note)}${cell(t.origin)}</tr>`,
+      `<tr><td>${esc(t.date)}</td><th scope="row">${esc(t.type)}</th>${cell(t.account)}${cell(t.symbol)}${num(t.quantity === undefined ? "" : esc(value(t.quantity)))}${num(t.price === undefined ? "" : esc(value(t.price)))}${num(t.amount === undefined ? "" : signed(t.amount))}${num(t.fee === undefined ? "" : fmt(t.fee))}${cell(t.currency)}${cell(t.note)}${cell(t.origin)}</tr>`,
   );
   return layout({
     title: `${v.book} book — ledger`,
@@ -265,7 +270,7 @@ export function journalPage(v: JournalView, book: BookName): string {
         ["Rating", "Horizon", "Settled", "Hit rate", "Mean alpha"],
         v.hitRates.map(
           (h) =>
-            `<tr><th scope="row">${esc(h.rating)}</th>${num(`${h.horizon} sessions`)}${num(String(h.n))}${num(`${fmt(h.hitRate * 100, 0)} %`)}${num(signed(h.meanAlphaPct, 2, " %"))}</tr>`,
+            `<tr><th scope="row">${esc(h.rating)}</th>${num(`${esc(String(h.horizon))} sessions`)}${num(esc(String(h.n)))}${num(`${fmt(h.hitRate * 100, 0)} %`)}${num(signed(h.meanAlphaPct, 2, " %"))}</tr>`,
         ),
         [1, 2, 3, 4],
       )
@@ -276,7 +281,7 @@ export function journalPage(v: JournalView, book: BookName): string {
         ["Symbol", "Rating", "Horizon", "Decided", "Ended", "Return", "Alpha", "Hit"],
         v.settlements.map(
           (s) =>
-            `<tr><th scope="row">${esc(s.symbol)}</th>${cell(s.rating)}${num(`${s.horizon} sessions`)}${cell(s.decidedAt.slice(0, 10))}${cell(s.endDate)}${num(signed(s.returnPct, 2, " %"))}${num(signed(s.alphaPct, 2, " %"))}<td>${s.hit === undefined ? "n/a" : s.hit ? "yes" : "no"}</td></tr>`,
+            `<tr><th scope="row">${esc(s.symbol)}</th>${cell(s.rating)}${num(`${esc(String(s.horizon))} sessions`)}${cell(s.decidedAt.slice(0, 10))}${cell(s.endDate)}${num(signed(s.returnPct, 2, " %"))}${num(signed(s.alphaPct, 2, " %"))}<td>${s.hit === undefined ? "n/a" : s.hit ? "yes" : "no"}</td></tr>`,
         ),
         [2, 5, 6],
       )
@@ -331,7 +336,7 @@ export function ticketsPage(v: TicketsView, book: BookName): string {
         ["Id", "Status", "Side", "Quantity", "Symbol", "Price", "Stop", "Venue", "Account", "Risk check", "Created"],
         v.tickets.map(
           (t) =>
-            `<tr><th scope="row"><code>${esc(t.id)}</code></th><td class="flag">${esc(t.status)}</td>${cell(t.order.side)}${num(esc(formatNumber(t.order.quantity)))}${cell(t.order.symbol)}${num(`${esc(formatNumber(t.order.price))} ${esc(t.order.currency)}`)}${num(t.order.stop === undefined ? "" : esc(formatNumber(t.order.stop)))}${cell(t.order.venue)}${cell(t.order.account)}${cell(t.check?.verdict)}${cell(t.createdAt)}</tr>`,
+            `<tr><th scope="row"><code>${esc(t.id)}</code></th><td class="flag">${esc(t.status)}</td>${cell(t.order.side)}${num(esc(value(t.order.quantity)))}${cell(t.order.symbol)}${num(`${esc(value(t.order.price))} ${esc(t.order.currency)}`)}${num(t.order.stop === undefined ? "" : esc(value(t.order.stop)))}${cell(t.order.venue)}${cell(t.order.account)}${cell(t.check?.verdict)}${cell(t.createdAt)}</tr>`,
         ),
         [3, 5, 6],
       )

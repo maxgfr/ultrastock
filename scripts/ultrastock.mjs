@@ -50774,7 +50774,7 @@ function portfolioPage(v) {
     `Positions, marked to market; P&L against the average cost (PMP, fees included), in ${v.base}`,
     ["Symbol", "Class", "Accounts", "Quantity", "Average cost", "Price", "Day", `Value (${v.base})`, "Weight", `P&L (${v.base})`, "P&L", "Source"],
     v.positions.map(
-      (p) => `<tr><th scope="row">${esc2(p.symbol)}</th>${cell2(p.assetClass)}${cell2(p.accounts.join(", "))}${num13(esc2(formatNumber(p.quantity)))}${num13(`${fmt6(p.averageCost, 4)} ${esc2(p.currency)}`)}${num13(p.price === void 0 ? "n/a" : `${esc2(formatNumber(p.price))} ${esc2(p.currency)}`)}${num13(signed(p.changePct, 2, " %"))}${num13(fmt6(p.valueBase))}${num13(p.weightPct === void 0 ? "n/a" : `${fmt6(p.weightPct)} %`)}${num13(signed(p.pnlBase))}${num13(signed(p.pnlPct, 2, " %"))}<td>${opt(p.source)}${p.delay ? `, ${esc2(p.delay)}` : ""}${p.quoteAsOf ? ` (${esc2(p.quoteAsOf)})` : ""}</td></tr>`
+      (p) => `<tr><th scope="row">${esc2(p.symbol)}</th>${cell2(p.assetClass)}${cell2(p.accounts.join(", "))}${num13(esc2(value(p.quantity)))}${num13(`${fmt6(p.averageCost, 4)} ${esc2(p.currency)}`)}${num13(p.price === void 0 ? "n/a" : `${esc2(value(p.price))} ${esc2(p.currency)}`)}${num13(signed(p.changePct, 2, " %"))}${num13(fmt6(p.valueBase))}${num13(p.weightPct === void 0 ? "n/a" : `${fmt6(p.weightPct)} %`)}${num13(signed(p.pnlBase))}${num13(signed(p.pnlPct, 2, " %"))}<td>${opt(p.source)}${p.delay ? `, ${esc2(p.delay)}` : ""}${p.quoteAsOf ? ` (${esc2(p.quoteAsOf)})` : ""}</td></tr>`
     ),
     [3, 4, 5, 6, 7, 8, 9, 10]
   ) : "<p>No open position.</p>";
@@ -50833,7 +50833,7 @@ function analysisPage(v) {
     page: `analysis/${v.analysis}`,
     book: v.book,
     asOf: v.asOf,
-    meta: `base currency ${esc2(v.base)} \xB7 the figures of <code>ultrastock portfolio ${v.analysis}</code>, not registered as a run`,
+    meta: `base currency ${esc2(v.base)} \xB7 the figures of <code>ultrastock portfolio ${esc2(v.analysis)}</code>, not registered as a run`,
     body: `${sections}${notesHtml2(v.notes)}${sourcesHtml(v.sources)}`
   });
 }
@@ -50841,7 +50841,7 @@ function ledgerPage(v) {
   const select = (name, label2, options, current2) => `<label>${esc2(label2)}<select name="${name}"><option value="">all</option>${options.map((o) => `<option value="${esc2(o)}"${o === current2 ? " selected" : ""}>${esc2(o)}</option>`).join("")}</select></label>`;
   const form = `<form class="filter" method="get" action="/ledger"><input type="hidden" name="book" value="${esc2(v.book)}">${select("account", "Account", v.accounts, v.filter.account)}${select("symbol", "Symbol", v.symbols, v.filter.symbol)}<button type="submit">Filter</button></form>`;
   const rows = v.transactions.map(
-    (t) => `<tr><td>${esc2(t.date)}</td><th scope="row">${esc2(t.type)}</th>${cell2(t.account)}${cell2(t.symbol)}${num13(t.quantity === void 0 ? "" : esc2(formatNumber(t.quantity)))}${num13(t.price === void 0 ? "" : esc2(formatNumber(t.price)))}${num13(t.amount === void 0 ? "" : signed(t.amount))}${num13(t.fee === void 0 ? "" : fmt6(t.fee))}${cell2(t.currency)}${cell2(t.note)}${cell2(t.origin)}</tr>`
+    (t) => `<tr><td>${esc2(t.date)}</td><th scope="row">${esc2(t.type)}</th>${cell2(t.account)}${cell2(t.symbol)}${num13(t.quantity === void 0 ? "" : esc2(value(t.quantity)))}${num13(t.price === void 0 ? "" : esc2(value(t.price)))}${num13(t.amount === void 0 ? "" : signed(t.amount))}${num13(t.fee === void 0 ? "" : fmt6(t.fee))}${cell2(t.currency)}${cell2(t.note)}${cell2(t.origin)}</tr>`
   );
   return layout({
     title: `${v.book} book \u2014 ledger`,
@@ -50870,7 +50870,7 @@ function journalPage(v, book2) {
     "Hit rates by rating and horizon",
     ["Rating", "Horizon", "Settled", "Hit rate", "Mean alpha"],
     v.hitRates.map(
-      (h) => `<tr><th scope="row">${esc2(h.rating)}</th>${num13(`${h.horizon} sessions`)}${num13(String(h.n))}${num13(`${fmt6(h.hitRate * 100, 0)} %`)}${num13(signed(h.meanAlphaPct, 2, " %"))}</tr>`
+      (h) => `<tr><th scope="row">${esc2(h.rating)}</th>${num13(`${esc2(String(h.horizon))} sessions`)}${num13(esc2(String(h.n)))}${num13(`${fmt6(h.hitRate * 100, 0)} %`)}${num13(signed(h.meanAlphaPct, 2, " %"))}</tr>`
     ),
     [1, 2, 3, 4]
   ) : "<p>No settled decision yet (<code>ultrastock journal settle</code>).</p>";
@@ -50878,7 +50878,7 @@ function journalPage(v, book2) {
     "Settlements, newest first",
     ["Symbol", "Rating", "Horizon", "Decided", "Ended", "Return", "Alpha", "Hit"],
     v.settlements.map(
-      (s) => `<tr><th scope="row">${esc2(s.symbol)}</th>${cell2(s.rating)}${num13(`${s.horizon} sessions`)}${cell2(s.decidedAt.slice(0, 10))}${cell2(s.endDate)}${num13(signed(s.returnPct, 2, " %"))}${num13(signed(s.alphaPct, 2, " %"))}<td>${s.hit === void 0 ? "n/a" : s.hit ? "yes" : "no"}</td></tr>`
+      (s) => `<tr><th scope="row">${esc2(s.symbol)}</th>${cell2(s.rating)}${num13(`${esc2(String(s.horizon))} sessions`)}${cell2(s.decidedAt.slice(0, 10))}${cell2(s.endDate)}${num13(signed(s.returnPct, 2, " %"))}${num13(signed(s.alphaPct, 2, " %"))}<td>${s.hit === void 0 ? "n/a" : s.hit ? "yes" : "no"}</td></tr>`
     ),
     [2, 5, 6]
   ) : "";
@@ -50920,7 +50920,7 @@ function ticketsPage(v, book2) {
     "Tickets, newest first",
     ["Id", "Status", "Side", "Quantity", "Symbol", "Price", "Stop", "Venue", "Account", "Risk check", "Created"],
     v.tickets.map(
-      (t) => `<tr><th scope="row"><code>${esc2(t.id)}</code></th><td class="flag">${esc2(t.status)}</td>${cell2(t.order.side)}${num13(esc2(formatNumber(t.order.quantity)))}${cell2(t.order.symbol)}${num13(`${esc2(formatNumber(t.order.price))} ${esc2(t.order.currency)}`)}${num13(t.order.stop === void 0 ? "" : esc2(formatNumber(t.order.stop)))}${cell2(t.order.venue)}${cell2(t.order.account)}${cell2(t.check?.verdict)}${cell2(t.createdAt)}</tr>`
+      (t) => `<tr><th scope="row"><code>${esc2(t.id)}</code></th><td class="flag">${esc2(t.status)}</td>${cell2(t.order.side)}${num13(esc2(value(t.order.quantity)))}${cell2(t.order.symbol)}${num13(`${esc2(value(t.order.price))} ${esc2(t.order.currency)}`)}${num13(t.order.stop === void 0 ? "" : esc2(value(t.order.stop)))}${cell2(t.order.venue)}${cell2(t.order.account)}${cell2(t.check?.verdict)}${cell2(t.createdAt)}</tr>`
     ),
     [3, 5, 6]
   ) : "<p>No ticket (<code>ultrastock plan \u2026 --ticket</code>).</p>";

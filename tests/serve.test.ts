@@ -12,14 +12,18 @@ import { defaultProfile, saveProfile } from "../src/core/profile.js";
 import { addThesis } from "../src/journal/journal.js";
 import { appendTransactions, type Transaction } from "../src/portfolio/ledger.js";
 import { writeSnapshots } from "../src/portfolio/tracking.js";
-import { fmt } from "../src/serve/pages.js";
+import { fmt, journalPage } from "../src/serve/pages.js";
 import { type Dashboard, serveToken, startDashboard } from "../src/serve/server.js";
+import { journalView } from "../src/serve/views.js";
 import { createTicket } from "../src/trading/tickets.js";
 import { withFixture } from "./helpers/fixtures.js";
 
 const TOKEN = "test-token-0123456789abcdef";
 const XSS = `<script>alert(1)</script>"'`;
 const XSS_ESCAPED = "&lt;script&gt;alert(1)&lt;/script&gt;&quot;&#39;";
+/** Markup the CSP would not stop (an element, an event attribute), then both quotes. */
+const HOSTILE = `<script>alert(1)</script><img src=x onerror=alert(2)>"'`;
+const HOSTILE_ESCAPED = "&lt;script&gt;alert(1)&lt;/script&gt;&lt;img src=x onerror=alert(2)&gt;&quot;&#39;";
 
 /** The paper book of tests/portfolio-analytics.test.ts: its fixture holds every request these pages send. */
 const PAPER: Array<Omit<Transaction, "id">> = [
@@ -317,6 +321,90 @@ describe("serve: the pages", () => {
         expect(r.body, path).not.toMatch(/<script/i);
       }
     });
+  }, 60_000);
+
+  it("escapes hostile text read from disk in a field typed as a number, on every page", async () => {
+    // The state is JSON read unchecked: nothing stops a file from holding markup where the code expects a number.
+    const h = newHome("numbers");
+    saveProfile(defaultProfile("FR", "EUR"));
+    const put = (rel: string, body: string) => {
+      mkdirSync(join(h, rel, ".."), { recursive: true });
+      writeFileSync(join(h, rel), body);
+    };
+    put(
+      "ledger/real.jsonl",
+      [
+        { id: "x-1", date: "2026-09-01", type: "deposit", account: "pea", amount: 1000, currency: "EUR", origin: "manual" },
+        {
+          id: "x-2",
+          date: "2026-09-02",
+          type: "fee",
+          account: "pea",
+          quantity: HOSTILE,
+          price: HOSTILE,
+          amount: HOSTILE,
+          fee: HOSTILE,
+          currency: "EUR",
+          origin: "manual",
+        },
+      ]
+        .map((t) => JSON.stringify(t))
+        .join("\n"),
+    );
+    put(
+      "journal/decisions.jsonl",
+      `${JSON.stringify({ id: "d-1", symbol: "MC.PA", decidedAt: "2026-09-01T10:00:00.000Z", rating: "buy", horizon: HOSTILE, conviction: HOSTILE, thesis: "t" })}\n`,
+    );
+    put(
+      "journal/settlements.jsonl",
+      `${JSON.stringify({ decisionId: "d-1", symbol: "MC.PA", rating: "buy", horizon: HOSTILE, decidedAt: "2026-09-01T10:00:00.000Z", endDate: "2026-09-29", returnPct: HOSTILE, alphaPct: HOSTILE, hit: true })}\n`,
+    );
+    put(
+      "state/alerts.json",
+      JSON.stringify([{ id: "a-1", kind: "events", symbol: "MC.PA", days: HOSTILE, minWeight: HOSTILE, message: "m", createdAt: "2026-09-01T00:00:00.000Z" }]),
+    );
+    const t = createTicket(
+      {
+        account: "pea",
+        symbol: "MC.PA",
+        side: "buy",
+        quantity: 1,
+        price: 600,
+        orderType: "limit",
+        currency: "EUR",
+        stop: 550,
+        assetKind: "equity",
+        venue: "paper",
+      },
+      { now: new Date("2026-09-01T00:00:00Z") },
+    );
+    const file = join(h, "tickets", `${t.id}.json`);
+    const saved = JSON.parse(readFileSync(file, "utf8"));
+    writeFileSync(file, JSON.stringify({ ...saved, order: { ...saved.order, quantity: HOSTILE, price: HOSTILE, stop: HOSTILE } }));
+
+    // Every trace of the hostile text is the escaped whole: nothing of it is left as markup or as a closing quote.
+    const traces = (body: string, s: string) => body.split(s).length - 1;
+    const safe = (body: string, where: string) => {
+      expect(body, where).not.toMatch(/<script|<img|<[^>]*\bonerror/i);
+      expect(traces(body, "alert(1)"), where).toBe(traces(body, HOSTILE_ESCAPED));
+      expect(traces(body, "alert(2)"), where).toBe(traces(body, HOSTILE_ESCAPED));
+    };
+    // Where a page prints the field as text, it shows it escaped; `fmt` and `signed` print "n/a" for anything not a number.
+    const shown: Record<string, number> = { "/ledger": 2, "/journal": 3, "/watch": 2, "/tickets": 3 };
+    await withFixture("portfolio-analytics-paper", async () => {
+      for (const r of ROUTES) {
+        const page = await call(`${r}?book=real`);
+        safe(page.body, r);
+        if (shown[r] !== undefined) {
+          expect(page.status, r).toBe(200);
+          expect(traces(page.body, HOSTILE_ESCAPED), r).toBe(shown[r]);
+        }
+      }
+    });
+    // The hit rates are derived, so no file can put text in them: the page is given some directly.
+    const view = journalView(new Date("2026-11-11T10:00:00Z"));
+    const text = HOSTILE as unknown as number;
+    safe(journalPage({ ...view, hitRates: [{ rating: HOSTILE, horizon: text, n: text, hitRate: text, meanAlphaPct: text }] }, "real"), "hit rates");
   }, 60_000);
 
   it("leaves the home directory byte for byte as it was, after every route", async () => {
