@@ -248,12 +248,14 @@ const LOOSER_WHEN_HIGHER = new Set([
 
 /**
  * Does this change lower a guard? A limit moved the permissive way, a
- * constraint lifted, an exclusion dropped — and any change of jurisdiction,
- * since the country decides which venues may take a real order. Everything
- * else (the horizon, the tax residence, an experience level) guards nothing.
+ * constraint lifted, an exclusion dropped — and any change of jurisdiction or
+ * of base currency. Everything else (the horizon, the tax residence, an
+ * experience level) guards nothing.
  */
 export function loosens(path: string, from: unknown, to: unknown): boolean {
-  if (path === "jurisdiction") return from !== to;
+  // The country decides which venues may take a real order; the base currency is the unit of every limit, of the
+  // live limits and of the equity curve the breaker reads: changing either, any way, lowers a guard.
+  if (path === "jurisdiction" || path === "baseCurrency") return from !== to;
   if (LOOSER_WHEN_HIGHER.has(path)) return Number(to) > Number(from);
   if (path === "limits.cashBufferPct") return Number(to) < Number(from);
   if (path === "constraints.exclusions") {

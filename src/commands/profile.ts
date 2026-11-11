@@ -20,7 +20,7 @@ import {
   upsertEnvelope,
 } from "../core/profile.js";
 import { applySuitability, QUESTIONS, scoreSuitability, suitabilityBinding } from "../core/suitability.js";
-import { currentLimits } from "../trading/limits.js";
+import { liveEverApproved } from "../trading/limits.js";
 import { issueCode, verifyCode } from "../trading/otp.js";
 import { clockNow } from "../core/net.js";
 import { argValue, type CommandArgs, UsageError } from "../engine.js";
@@ -29,12 +29,14 @@ import { printResult as out } from "./emit.js";
 const ENVELOPES: EnvelopeType[] = ["PEA", "PEA-PME", "CTO", "AV", "PER", "CRYPTO", "TAXABLE", "IRA", "ROTH-IRA", "401K", "OTHER"];
 
 /**
- * The profile ratchets once live trading has been switched on for any venue:
- * from then on its limits and its jurisdiction guard real money, and lowering
- * them takes a code and 24 hours, like the live limits themselves.
+ * The profile ratchets once live trading has ever been approved for a venue
+ * (in force, waiting out its 24 hours, or switched off since): from then on its
+ * limits and its jurisdiction guard real money, and lowering them takes a code
+ * and 24 hours, like the live limits themselves. Switching every venue off — a
+ * tightening, with no code — does not lift it.
  */
 export function profileRatchetOn(): boolean {
-  return currentLimits().venues.length > 0;
+  return liveEverApproved();
 }
 
 function requireProfile() {

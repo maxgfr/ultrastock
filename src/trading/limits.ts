@@ -118,3 +118,14 @@ function changeLimits(next: LiveLimits, approved: boolean, now: Date): { applied
 export function currentLimits(): LiveLimits {
   return load().current;
 }
+
+/**
+ * Has live trading ever been switched on? A venue approved by code — in force, waiting out its 24 hours, or
+ * switched off since: from the first approval on, the guards the profile holds protect real money, and
+ * switching every venue off again (a tightening, no code) must not lift them.
+ */
+export function liveEverApproved(): boolean {
+  const s = load();
+  const any = (l?: LiveLimits) => !!l && l.venues.length > 0;
+  return any(s.current) || any(s.pending?.limits) || s.history.some((h) => any(h.to) || any(h.from));
+}

@@ -17459,7 +17459,7 @@ var LOOSER_WHEN_HIGHER = /* @__PURE__ */ new Set([
   "limits.maxOpenPositions"
 ]);
 function loosens(path2, from, to) {
-  if (path2 === "jurisdiction") return from !== to;
+  if (path2 === "jurisdiction" || path2 === "baseCurrency") return from !== to;
   if (LOOSER_WHEN_HIGHER.has(path2)) return Number(to) > Number(from);
   if (path2 === "limits.cashBufferPct") return Number(to) < Number(from);
   if (path2 === "constraints.exclusions") {
@@ -44560,6 +44560,11 @@ function changeLimits(next2, approved, now) {
 function currentLimits() {
   return load().current;
 }
+function liveEverApproved() {
+  const s = load();
+  const any = (l) => !!l && l.venues.length > 0;
+  return any(s.current) || any(s.pending?.limits) || s.history.some((h) => any(h.to) || any(h.from));
+}
 
 // src/trading/live.ts
 import { existsSync as existsSync34 } from "fs";
@@ -52448,7 +52453,7 @@ function applySuitability(p, r3, now = /* @__PURE__ */ new Date(), opts = {}) {
 // src/commands/profile.ts
 var ENVELOPES = ["PEA", "PEA-PME", "CTO", "AV", "PER", "CRYPTO", "TAXABLE", "IRA", "ROTH-IRA", "401K", "OTHER"];
 function profileRatchetOn() {
-  return currentLimits().venues.length > 0;
+  return liveEverApproved();
 }
 function requireProfile() {
   const p = loadProfile(clockNow());
