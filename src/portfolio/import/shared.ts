@@ -5,7 +5,7 @@
 // ledger's own validation — a parser hands back only transactions the ledger
 // will accept, and reports the rest in `skipped` with a reason.
 import { parseLooseNumber } from "../../core/csv.js";
-import type { Transaction } from "../ledger.js";
+import { type Transaction, transactionId } from "../ledger.js";
 
 export type ImportTx = Omit<Transaction, "id">;
 
@@ -249,6 +249,28 @@ export function accept(res: ImportResult, line: number, t: ImportTx): void {
   const why = ledgerRefusal(clean);
   if (why) res.skipped.push({ line, reason: why });
   else res.transactions.push(clean);
+}
+
+/**
+ * Keep genuine identical fills apart. Parsers put the broker's trade id in `ref`; the transaction id ignores it unless
+ * it is needed: two fills of the same second, quantity and price would share an id and the ledger would keep one. So
+ * `ref` stays only on the rows of such a group, and not on the one with the lowest broker id — that row keeps the id
+ * it always had, which a ledger imported before references were kept already holds (it collapsed the group into it):
+ * re-importing adds the lost fills and nothing else. Rows of their own lose `ref`, so their ids do not change.
+ */
+export function keepDistinctFills(res: ImportResult): ImportResult {
+  const groups = new Map<string, ImportTx[]>();
+  for (const t of res.transactions) {
+    if (!t.ref) continue;
+    const { ref: _, ...plain } = t;
+    const k = transactionId(plain);
+    groups.set(k, [...(groups.get(k) ?? []), t]);
+  }
+  for (const g of groups.values()) {
+    g.sort((a, b) => a.ref!.localeCompare(b.ref!, "en", { numeric: true }));
+    delete g[0]!.ref;
+  }
+  return res;
 }
 
 /** Round away binary noise (0.1 + 0.2) without losing satoshis. */

@@ -23461,7 +23461,7 @@ function transactionId(t) {
     t.currency,
     t.origin.split(":")[0]
   ].join("|");
-  return contentHash(norm2).slice(0, 16);
+  return contentHash(t.ref ? `${norm2}|ref:${t.ref}` : norm2).slice(0, 16);
 }
 function readLedger(book2 = "real") {
   ledgerPath(book2);
@@ -47602,6 +47602,20 @@ function accept(res, line, t) {
   if (why2) res.skipped.push({ line, reason: why2 });
   else res.transactions.push(clean3);
 }
+function keepDistinctFills(res) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const t of res.transactions) {
+    if (!t.ref) continue;
+    const { ref: _, ...plain3 } = t;
+    const k = transactionId(plain3);
+    groups.set(k, [...groups.get(k) ?? [], t]);
+  }
+  for (const g of groups.values()) {
+    g.sort((a, b) => a.ref.localeCompare(b.ref, "en", { numeric: true }));
+    delete g[0].ref;
+  }
+  return res;
+}
 var round3 = (n2, dp = 10) => Number(n2.toFixed(dp));
 
 // src/portfolio/import/binance.ts
@@ -48344,6 +48358,7 @@ function parseIbkr(text2, opts) {
       currency,
       fxToBase: fx && fx > 0 ? fx : void 0,
       note: tradeId ? `IBKR trade ${tradeId}` : void 0,
+      ref: tradeId,
       // Crypto sits in the same account as the shares: the tax engine needs to know it is crypto.
       assetClass: cat.startsWith("CRYPTO") ? "crypto" : void 0,
       origin: ORIGIN4
@@ -48357,6 +48372,7 @@ function parseIbkr(text2, opts) {
         amount: -commission,
         currency: commCcy,
         note: `commission in ${commCcy} on a ${currency} trade${tradeId ? ` (IBKR trade ${tradeId})` : ""}`,
+        ref: tradeId,
         origin: ORIGIN4
       });
   }
@@ -48522,6 +48538,7 @@ function trades(recs, opts) {
       fee: Math.abs(fee) || void 0,
       currency: pair.quote,
       note: rec.txid ? `kraken trade ${rec.txid}` : void 0,
+      ref: rec.txid || void 0,
       origin: ORIGIN5
     });
   }
@@ -48617,6 +48634,7 @@ function ledgers(recs, opts) {
         fee: spend.fee || void 0,
         currency: spend.asset,
         note: `kraken instant buy ${ref}`,
+        ref,
         origin: ORIGIN5
       });
     } else {
@@ -48631,6 +48649,7 @@ function ledgers(recs, opts) {
         fee: recv.fee || void 0,
         currency: recv.asset,
         note: `kraken instant sell ${ref}`,
+        ref,
         origin: ORIGIN5
       });
     }
@@ -48644,6 +48663,9 @@ function ledgers(recs, opts) {
 // src/portfolio/import/index.ts
 var IMPORT_FORMATS = ["ibkr-flex", "binance", "kraken", "coinbase", "generic"];
 function parseStatement(format, text2, opts) {
+  return keepDistinctFills(parseFormat(format, text2, opts));
+}
+function parseFormat(format, text2, opts) {
   switch (format) {
     case "ibkr-flex":
       return parseIbkr(text2, opts);

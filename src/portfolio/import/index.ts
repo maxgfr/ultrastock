@@ -7,7 +7,7 @@ import { parseCoinbase } from "./coinbase.js";
 import { type ColumnMap, checkColumnMap, GENERIC_PRESETS, parseGeneric } from "./generic.js";
 import { parseIbkr } from "./ibkr.js";
 import { parseKraken } from "./kraken.js";
-import type { ImportOptions, ImportResult } from "./shared.js";
+import { type ImportOptions, type ImportResult, keepDistinctFills } from "./shared.js";
 
 export const IMPORT_FORMATS = ["ibkr-flex", "binance", "kraken", "coinbase", "generic"] as const;
 export type ImportFormat = (typeof IMPORT_FORMATS)[number];
@@ -21,6 +21,10 @@ export interface StatementOptions extends ImportOptions {
 
 /** Parse a statement of `format`. Throws only for whole-file problems (a generic map that does not fit the header). */
 export function parseStatement(format: ImportFormat, text: string, opts: StatementOptions): ImportResult {
+  return keepDistinctFills(parseFormat(format, text, opts));
+}
+
+function parseFormat(format: ImportFormat, text: string, opts: StatementOptions): ImportResult {
   switch (format) {
     case "ibkr-flex":
       return parseIbkr(text, opts);

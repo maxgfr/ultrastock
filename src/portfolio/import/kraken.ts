@@ -144,6 +144,7 @@ function trades(recs: Array<{ line: number; rec: Record<string, string> }>, opts
       fee: Math.abs(fee) || undefined,
       currency: pair.quote,
       note: rec.txid ? `kraken trade ${rec.txid}` : undefined,
+      ref: rec.txid || undefined,
       origin: ORIGIN,
     });
   }
@@ -242,6 +243,7 @@ function ledgers(recs: Array<{ line: number; rec: Record<string, string> }>, opt
         fee: spend.fee || undefined,
         currency: spend.asset,
         note: `kraken instant buy ${ref}`,
+        ref,
         origin: ORIGIN,
       });
     } else {
@@ -256,6 +258,7 @@ function ledgers(recs: Array<{ line: number; rec: Record<string, string> }>, opt
         fee: recv.fee || undefined,
         currency: recv.asset,
         note: `kraken instant sell ${ref}`,
+        ref,
         origin: ORIGIN,
       });
     }

@@ -43,6 +43,12 @@ export interface Transaction {
    * beside shares). Not part of the id. Absent on older rows: the tax engine then reads the account and the symbol.
    */
   assetClass?: "crypto";
+  /**
+   * The broker's own id of the trade, part of the transaction id — set only where two fills of a statement would
+   * otherwise share one (same second, quantity and price), and then on all of them but the lowest id, which keeps the
+   * id it always had: a ledger imported before references were kept finds it there.
+   */
+  ref?: string;
   /** Where the transaction came from: "manual", "import:ibkr-flex", "paper", "ticket:<id>". */
   origin: string;
 }
@@ -96,7 +102,8 @@ export function transactionId(t: Omit<Transaction, "id">): string {
     t.currency,
     t.origin.split(":")[0],
   ].join("|");
-  return contentHash(norm).slice(0, 16);
+  // Without a reference the id is what it always was.
+  return contentHash(t.ref ? `${norm}|ref:${t.ref}` : norm).slice(0, 16);
 }
 
 /** The transactions of a book, in the order they were recorded (JSONL or SQLite, per store.json). */

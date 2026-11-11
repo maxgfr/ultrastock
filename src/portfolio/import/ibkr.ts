@@ -403,6 +403,7 @@ export function parseIbkr(text: string, opts: ImportOptions): ImportResult {
       currency,
       fxToBase: fx && fx > 0 ? fx : undefined,
       note: tradeId ? `IBKR trade ${tradeId}` : undefined,
+      ref: tradeId,
       // Crypto sits in the same account as the shares: the tax engine needs to know it is crypto.
       assetClass: cat.startsWith("CRYPTO") ? "crypto" : undefined,
       origin: ORIGIN,
@@ -416,6 +417,7 @@ export function parseIbkr(text: string, opts: ImportOptions): ImportResult {
         amount: -commission,
         currency: commCcy,
         note: `commission in ${commCcy} on a ${currency} trade${tradeId ? ` (IBKR trade ${tradeId})` : ""}`,
+        ref: tradeId,
         origin: ORIGIN,
       });
   }

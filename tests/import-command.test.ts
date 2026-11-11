@@ -1,10 +1,11 @@
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { importCommand } from "../src/commands/import.js";
 import type { CommandArgs } from "../src/engine.js";
-import { ledgerPath, readLedger } from "../src/portfolio/ledger.js";
+import { parseStatement } from "../src/portfolio/import/index.js";
+import { appendTransactions, buildBook, ledgerPath, readLedger, type Transaction, transactionId } from "../src/portfolio/ledger.js";
 
 const fixture = (name: string) => new URL(`./fixtures/import/${name}`, import.meta.url).pathname;
 
@@ -62,6 +63,31 @@ describe("portfolio import", () => {
     expect(await run(file, { format: "generic", account: "us", map }, ["dry-run"])).toMatch(/warning: the real book would no longer replay: .*missing a buy/);
     await expect(run(file, { format: "generic", account: "us", map })).rejects.toThrow(/not imported: the real book would no longer replay/);
     expect(existsSync(ledgerPath("real"))).toBe(false);
+  });
+  it("keeps two identical fills apart by their trade id, and an older ledger gains only the one it lost", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ultrastock-import-src-"));
+    const file = join(dir, "fills.xml");
+    const trade = (id: string, side: string, qty: number) =>
+      `<Trade currency="USD" assetCategory="STK" symbol="NVDA" listingExchange="NASDAQ" tradeID="${id}" dateTime="20260105;153000" quantity="${qty}" tradePrice="100" ibCommission="-1" ibCommissionCurrency="USD" buySell="${side}" levelOfDetail="EXECUTION" />`;
+    // Bought 10 in one fill, sold 4 in two fills of 2, same second, same price: listed with the higher id first.
+    const rows = [trade("9000", "BUY", 10), trade("9002", "SELL", -2), trade("9001", "SELL", -2)];
+    writeFileSync(
+      file,
+      `<FlexQueryResponse><FlexStatements><FlexStatement><Trades>\n${rows.join("\n")}\n</Trades></FlexStatement></FlexStatements></FlexQueryResponse>`,
+    );
+    const parsed = parseStatement("ibkr-flex", readFileSync(file, "utf8"), { account: "ibkr" }).transactions;
+    // Only the second of the identical fills carries its reference (and so another id); the rest keep today's ids.
+    expect(parsed.map((t) => t.ref)).toEqual([undefined, "9002", undefined]);
+    expect(new Set(parsed.map((t) => transactionId(t))).size).toBe(3);
+    // A ledger written before references were kept: the two sales collapsed into one.
+    const legacy = parsed.map(({ ref: _, ...t }) => t);
+    expect((await appendTransactions(legacy)).added).toHaveLength(2);
+    const re = JSON.parse(await run(file, { format: "ibkr-flex", account: "ibkr" }, [], true));
+    expect(re).toMatchObject({ duplicates: 2, replay: "ok" });
+    expect(re.added.map((t: Transaction) => [t.type, t.ref])).toEqual([["sell", "9002"]]);
+    expect(buildBook(readLedger("real")).positions[0]!.quantity).toBe(6);
+    // And again: nothing more.
+    expect(JSON.parse(await run(file, { format: "ibkr-flex", account: "ibkr" }, [], true))).toMatchObject({ added: [], duplicates: 3 });
   });
   it("reads a Latin-1 file and a named or file-held map", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ultrastock-import-src-"));
