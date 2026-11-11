@@ -172,6 +172,19 @@ describe("serve: the HTTP guard", () => {
     expect(page.body).toMatch(/<h1>real book — ledger<\/h1>/);
     // An off-route path is never echoed into the redirect.
     expect((await call(`/.//evil.example/?token=${TOKEN}`, { auth: false })).headers.location).toBe("/");
+    expect((await call(`//evil.example/?token=${TOKEN}`, { auth: false })).headers.location).toBe("/");
+  });
+
+  it("answers a request target the URL parser refuses with a 400, token or not, and without the parser's words", async () => {
+    for (const target of ["//", "http://[", `//?token=${TOKEN}`])
+      for (const auth of [false, true]) {
+        const r = await call(target, { auth });
+        expect(r.status, target).toBe(400);
+        expect(r.headers["content-type"]).toMatch(/^text\/plain/);
+        expect(r.headers["content-security-policy"]).toMatch(/^default-src 'none'/);
+        expect(r.headers["x-content-type-options"]).toBe("nosniff");
+        expect(r.body).toBe("Bad request: the request target is not a valid URL.\n");
+      }
   });
 
   it("accepts a bearer token, even next to a stale cookie", async () => {

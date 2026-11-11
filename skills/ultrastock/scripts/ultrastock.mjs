@@ -51000,7 +51000,12 @@ async function startDashboard(opts = {}) {
     if (!hosts.has(host)) return text(403, "Forbidden: this dashboard answers on 127.0.0.1 and localhost only.");
     if (req.headers.origin !== void 0 && !origins.has(req.headers.origin)) return text(403, "Forbidden: cross-origin request.");
     if (req.method !== "GET" && req.method !== "HEAD") return text(405, "Method not allowed: the dashboard is read-only.", { allow: "GET, HEAD" });
-    const url = new URL(req.url ?? "/", `http://${host}`);
+    let url;
+    try {
+      url = new URL(req.url ?? "/", `http://${host}`);
+    } catch {
+      return text(400, "Bad request: the request target is not a valid URL.");
+    }
     const route2 = routeOf(url.pathname);
     const queryToken = url.searchParams.get("token");
     if (queryToken !== null) {

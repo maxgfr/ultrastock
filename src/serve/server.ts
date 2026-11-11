@@ -180,7 +180,14 @@ export async function startDashboard(opts: DashboardOptions = {}): Promise<Dashb
     // not another local server on a different port (same site for the cookie, but not the same origin).
     if (req.headers.origin !== undefined && !origins.has(req.headers.origin)) return text(403, "Forbidden: cross-origin request.");
     if (req.method !== "GET" && req.method !== "HEAD") return text(405, "Method not allowed: the dashboard is read-only.", { allow: "GET, HEAD" });
-    const url = new URL(req.url ?? "/", `http://${host}`);
+    let url: URL;
+    try {
+      url = new URL(req.url ?? "/", `http://${host}`);
+    } catch {
+      // A target the URL parser refuses (`//`, `http://[`) is the client's fault, not an internal error: a 400 that
+      // repeats nothing of the parser's message, answered before anything reads the URL.
+      return text(400, "Bad request: the request target is not a valid URL.");
+    }
     const route = routeOf(url.pathname);
     const queryToken = url.searchParams.get("token");
     if (queryToken !== null) {
