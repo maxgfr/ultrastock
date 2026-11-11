@@ -7,7 +7,7 @@
 // the same `fetchedAt`, which is what makes the offline evals deterministic.
 // A replay that misses throws: silently going live, or returning nothing, would
 // turn a broken gate into a green one.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { awaitHostSlot, contentHash, httpGet, httpJson, sleep, writeFileAtomic } from "../engine.js";
 import { VERSION } from "../version.js";
@@ -190,10 +190,51 @@ export async function fetchText(url: string, opts: FetchOptions = {}): Promise<N
 // calls within this process and holds them after a 429; across processes each
 // call also reserves the host's next free instant in <cache>/hosts/<host>.next,
 // read and moved on under a lock held for the read and the write only, then
-// sleeps outside it until its instant comes.
+// sleeps outside it until its instant comes. The files of hosts no one reserved
+// lately are swept now and then, so a host read once leaves none behind.
 
 /** A reservation further ahead than this many intervals is a clock moved back or a garbled file, not a queue. */
 const MAX_QUEUED_INTERVALS = 200;
+/** `research` paces whatever host it reads, so the files are swept at most this often (across processes, by a marker's time)… */
+const HOST_SWEEP_INTERVAL_MS = 10 * 60_000;
+/** …dropping a file untouched for this long whose reserved instant has passed: it holds no one back any more. */
+const HOST_STALE_MS = 5 * 60_000;
+const HOST_SWEEP_MARKER = ".swept";
+
+/** Drop the pacing files of hosts no one has reserved lately. Never throws; a file whose lock is held is left alone. */
+function sweepHostSlotsIfDue(dir: string): void {
+  const now = Date.now();
+  const marker = join(dir, HOST_SWEEP_MARKER);
+  try {
+    if (now - statSync(marker).mtimeMs < HOST_SWEEP_INTERVAL_MS) return;
+  } catch {
+    // never swept
+  }
+  try {
+    mkdirSync(dir, { recursive: true });
+    if (existsSync(marker)) utimesSync(marker, now / 1000, now / 1000);
+    else writeFileSync(marker, "");
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith(".next")) continue;
+      const path = join(dir, name);
+      try {
+        if (now - statSync(path).mtimeMs < HOST_STALE_MS) continue;
+        withFileLockSync(
+          `${path}.lock`,
+          () => {
+            // Read again under the lock: a reservation still ahead is a queue another process waits on.
+            if ((Number(readFileSync(path, "utf8")) || 0) <= Date.now()) rmSync(path, { force: true });
+          },
+          0,
+        );
+      } catch {
+        // gone meanwhile, or in use
+      }
+    }
+  } catch {
+    // an unreadable directory is left alone
+  }
+}
 
 function reserveSharedSlot(url: string, intervalMs: number): number {
   let host: string;
@@ -203,7 +244,9 @@ function reserveSharedSlot(url: string, intervalMs: number): number {
     return 0;
   }
   if (!host) return 0;
-  const path = join(dataCacheDir(), "hosts", `${host.replace(/[^a-z0-9.-]/g, "_")}.next`);
+  const dir = join(dataCacheDir(), "hosts");
+  sweepHostSlotsIfDue(dir);
+  const path = join(dir, `${host.replace(/[^a-z0-9.-]/g, "_")}.next`);
   try {
     return withFileLockSync(
       `${path}.lock`,
