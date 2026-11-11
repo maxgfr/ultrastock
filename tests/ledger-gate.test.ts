@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { bookPerformance } from "../src/commands/trading.js";
 import { defaultProfile } from "../src/core/profile.js";
 import { appendTransactions, buildBook, readLedger, type Transaction, transactionId, valueBook, xirr } from "../src/portfolio/ledger.js";
+import { chronological } from "../src/tax/regime.js";
 import { breakerState, closedTradeResults } from "../src/trading/breaker.js";
 import { pendingBuys } from "../src/trading/context.js";
 import type { Ticket } from "../src/trading/tickets.js";
@@ -33,6 +34,31 @@ describe("ledger", () => {
     ]);
     expect(s.positions[0]).toMatchObject({ quantity: 10, averageCost: 100 });
     expect(() => buildBook([tx({ date: "2026-01-05", type: "sell", account: "x", symbol: "A", quantity: 1, price: 1 })])).toThrow(/missing a buy/);
+  });
+  it("replays an IBKR split, posted the evening before it takes effect, after that day's trades", () => {
+    const ib = (t: Omit<Transaction, "id" | "origin" | "currency">): Transaction => {
+      const raw = { origin: "import:ibkr-flex", currency: "USD", ...t };
+      return { ...raw, id: transactionId(raw) } as Transaction;
+    };
+    // IBKR books the 2-for-1 on the evening of 2026-04-01 (dated that day, without a time); the shares trade split
+    // from the 2nd.
+    const split = ib({ date: "2026-04-01", type: "split", account: "ibkr", symbol: "AAPL", quantity: 2 });
+    const rows = [
+      split,
+      ib({ date: "2026-04-01T15:30:00", type: "buy", account: "ibkr", symbol: "AAPL", quantity: 10, price: 200 }),
+      ib({ date: "2026-04-02T15:30:00", type: "sell", account: "ibkr", symbol: "AAPL", quantity: 15, price: 101 }),
+    ];
+    const b = buildBook(rows);
+    expect(b.positions[0]).toMatchObject({ quantity: 5, averageCost: 100 });
+    expect(b.transactions.map((t) => t.type)).toEqual(["buy", "split", "sell"]);
+    // The tax engines replay in the same order.
+    expect(chronological(rows).map((t) => t.type)).toEqual(["buy", "split", "sell"]);
+    // The stored row is unchanged: same date, same id.
+    expect(b.transactions[1]).toBe(split);
+    // A split typed by hand is dated the day it takes effect: still before that day's trades.
+    const manual = tx({ date: "2026-04-02", type: "split", account: "x", symbol: "NVDA", quantity: 2, currency: "USD" });
+    const buy = tx({ date: "2026-04-02T10:00:00", type: "buy", account: "x", symbol: "NVDA", quantity: 1, price: 50, currency: "USD" });
+    expect(buildBook([buy, manual]).transactions).toEqual([manual, buy]);
   });
   it("appends under a lock, skips duplicates, and refuses malformed transactions", async () => {
     const t = { date: "2026-01-05", type: "buy" as const, account: "pea", symbol: "CW8.PA", quantity: 2, price: 500, currency: "EUR", origin: "import:test" };

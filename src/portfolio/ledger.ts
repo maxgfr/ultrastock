@@ -246,6 +246,24 @@ const tradeCash = (t: Transaction) => {
   return t.type === "buy" ? -(gross + (t.fee ?? 0)) : t.type === "sell" ? gross - (t.fee ?? 0) : 0;
 };
 
+/**
+ * When a transaction takes effect, for ordering: its date, the time of day included when it has one. A row with a
+ * date only sorts at the start of its day — except a split imported from IBKR: IBKR posts it on the evening before
+ * the shares trade split and the importer keeps that day, without the time (the id depends on the stored date), so it
+ * takes effect at the end of that day, after the day's trades.
+ */
+function effectiveDate(t: Pick<Transaction, "date" | "type" | "origin">): string {
+  return t.type === "split" && t.origin === "import:ibkr-flex" && t.date.length === 10 ? `${t.date}T23:59:59.999` : t.date;
+}
+
+/** Transactions in the order they take effect (`effectiveDate`), ledger order between equals: the order every replay uses. */
+export function inReplayOrder<T extends Pick<Transaction, "date" | "type" | "origin">>(txs: readonly T[]): T[] {
+  return txs
+    .map((t, i) => ({ t, i, at: effectiveDate(t) }))
+    .sort((a, b) => a.at.localeCompare(b.at) || a.i - b.i)
+    .map(({ t }) => t);
+}
+
 /** Replay the transactions, in date order, into positions and cash. */
 export function buildBook(txs: readonly Transaction[]): Book {
   const positions = new Map<string, Position>();
@@ -260,7 +278,7 @@ export function buildBook(txs: readonly Transaction[]): Book {
     }
     return p;
   };
-  const sorted = [...txs].sort((a, b) => a.date.localeCompare(b.date));
+  const sorted = inReplayOrder(txs);
   for (const t of sorted) {
     switch (t.type) {
       case "deposit":

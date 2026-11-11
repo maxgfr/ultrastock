@@ -23576,6 +23576,12 @@ var tradeCash = (t) => {
   const gross3 = (t.quantity ?? 0) * (t.price ?? 0);
   return t.type === "buy" ? -(gross3 + (t.fee ?? 0)) : t.type === "sell" ? gross3 - (t.fee ?? 0) : 0;
 };
+function effectiveDate(t) {
+  return t.type === "split" && t.origin === "import:ibkr-flex" && t.date.length === 10 ? `${t.date}T23:59:59.999` : t.date;
+}
+function inReplayOrder(txs) {
+  return txs.map((t, i) => ({ t, i, at: effectiveDate(t) })).sort((a, b) => a.at.localeCompare(b.at) || a.i - b.i).map(({ t }) => t);
+}
 function buildBook(txs) {
   const positions = /* @__PURE__ */ new Map();
   const cash = /* @__PURE__ */ new Map();
@@ -23589,7 +23595,7 @@ function buildBook(txs) {
     }
     return p;
   };
-  const sorted = [...txs].sort((a, b) => a.date.localeCompare(b.date));
+  const sorted = inReplayOrder(txs);
   for (const t of sorted) {
     switch (t.type) {
       case "deposit":
@@ -44925,7 +44931,7 @@ var TaxRegime = class {
   }
 };
 function chronological(txs) {
-  return txs.map((t, i) => ({ t, i })).sort((a, b) => a.t.date.localeCompare(b.t.date) || a.i - b.i).map(({ t }) => t);
+  return inReplayOrder(txs);
 }
 
 // src/trading/otp.ts
