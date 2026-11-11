@@ -55146,7 +55146,7 @@ async function buildInput(args, regime, year, opts = {}) {
   }
   if (regime.id === "fr") {
     const isCrypto = (t) => isCryptoTx(t, envelopes);
-    const dates = txs.filter((t) => isCrypto(t) && cryptoTradeKind(t) === "disposal" && yearOf2(t.date) === year).map((t) => day3(t.date));
+    const dates = txs.filter((t) => isCrypto(t) && cryptoTradeKind(t) === "disposal" && yearOf2(t.date) <= year).map((t) => day3(t.date));
     if (opts.asOf && txs.some(isCrypto)) dates.push(opts.asOf);
     if (dates.length) {
       const v = await cryptoValuer(txs, envelopes, dates, fx);

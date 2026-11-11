@@ -116,8 +116,9 @@ async function buildInput(args: CommandArgs, regime: TaxRegime, year: number, op
   if (regime.id === "fr") {
     const isCrypto = (t: Transaction) => isCryptoTx(t, envelopes);
     // The disposals the formula needs a portfolio value for: crypto given for fiat (a sale of BTCEUR, a purchase of
-    // EURUSDT), a convert's leg priced in fiat excepted.
-    const dates = txs.filter((t) => isCrypto(t) && cryptoTradeKind(t) === "disposal" && yearOf(t.date) === year).map((t) => day(t.date));
+    // EURUSDT), a convert's leg priced in fiat excepted — those of earlier years too: each one took its share of the
+    // acquisition price out of the pool (art. 150 VH bis III, form 2086 lines 221 and 223), and the replay recomputes it.
+    const dates = txs.filter((t) => isCrypto(t) && cryptoTradeKind(t) === "disposal" && yearOf(t.date) <= year).map((t) => day(t.date));
     if (opts.asOf && txs.some(isCrypto)) dates.push(opts.asOf);
     if (dates.length) {
       const v = await cryptoValuer(txs, envelopes, dates, fx);
