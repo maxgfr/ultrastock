@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.47](https://github.com/maxgfr/ultrastock/compare/v1.12.46...v1.12.47) (2026-11-11)
+
+
+### Performance Improvements
+
+* **finra:** keep the daily short-volume file of a day that is over ([65f18ee](https://github.com/maxgfr/ultrastock/commit/65f18ee97c9d7af8c6e08cc400f05e95a8ce0242))
+* **news:** split each headline into words once when deduplicating ([4af6472](https://github.com/maxgfr/ultrastock/commit/4af6472eb36cf5dab2d754a228825a8146865f79))
+
 ## [1.12.46](https://github.com/maxgfr/ultrastock/compare/v1.12.45...v1.12.46) (2026-11-11)
 
 
