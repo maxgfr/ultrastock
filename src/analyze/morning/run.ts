@@ -525,24 +525,21 @@ export async function morningRun(dir: string, opts: MorningOptions = {}): Promis
   const stopTickets = tickets.filter((t) => t.status === "filled" && t.order.side === "buy" && t.order.stop !== undefined);
   const stopFor = new Map<string, { ticket: Ticket; symbol: string }>();
   // A stop protects the position its ticket built: once the line was sold out, that level was left behind with it, and
-  // reading it as current would flag a level the user abandoned. Only a ticket filled since the line was last opened counts.
+  // reading it as current would flag a level the user abandoned. Only a ticket booked to this book's line (its fill's
+  // row says `ticket:<id>`) and filled since the line was last opened counts — the one filled last.
   const txs = marked?.book.transactions ?? [];
   const opened = lineOpenedAt(txs);
   const unprotected: MarkdownContext["unprotected"] = [];
   for (const p of marked?.book.positions.filter((x) => x.quantity > 0) ?? []) {
     const since = opened.get(`${p.account}|${p.symbol}`) ?? "";
-    const line = (x: Ticket) => x.order.account === p.account && x.order.symbol.toUpperCase() === p.symbol.toUpperCase();
-    const t = stopTickets.find(
-      (x) =>
-        line(x) &&
-        filledSinceOpened(
-          x,
-          since,
-          txs.filter((r) => r.account === p.account && r.symbol === p.symbol),
-        ),
-    );
+    const rows = txs.filter((r) => r.account === p.account && r.symbol === p.symbol);
+    const booked = new Set(rows.map((r) => r.origin));
+    const mine = stopTickets.filter((x) => booked.has(`ticket:${x.id}`));
+    const t = mine
+      .filter((x) => filledSinceOpened(x, since, rows))
+      .reduce<Ticket | undefined>((best, x) => (!best || filledAt(x) > filledAt(best) ? x : best), undefined);
     if (t && !stopFor.has(t.id)) stopFor.set(t.id, { ticket: t, symbol: p.symbol.toUpperCase() });
-    else if (!t && stopTickets.some(line)) unprotected.push({ symbol: p.symbol.toUpperCase(), account: p.account, since: since.slice(0, 10) });
+    else if (!t && mine.length) unprotected.push({ symbol: p.symbol.toUpperCase(), account: p.account, since: since.slice(0, 10) });
   }
   for (const { ticket: t } of stopFor.values())
     ticketPoints.push({

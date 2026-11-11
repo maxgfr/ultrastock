@@ -51907,16 +51907,12 @@ async function morningRun(dir2, opts = {}) {
   const unprotected = [];
   for (const p of marked?.book.positions.filter((x) => x.quantity > 0) ?? []) {
     const since = opened.get(`${p.account}|${p.symbol}`) ?? "";
-    const line = (x) => x.order.account === p.account && x.order.symbol.toUpperCase() === p.symbol.toUpperCase();
-    const t = stopTickets.find(
-      (x) => line(x) && filledSinceOpened(
-        x,
-        since,
-        txs.filter((r3) => r3.account === p.account && r3.symbol === p.symbol)
-      )
-    );
+    const rows2 = txs.filter((r3) => r3.account === p.account && r3.symbol === p.symbol);
+    const booked = new Set(rows2.map((r3) => r3.origin));
+    const mine = stopTickets.filter((x) => booked.has(`ticket:${x.id}`));
+    const t = mine.filter((x) => filledSinceOpened(x, since, rows2)).reduce((best, x) => !best || filledAt(x) > filledAt(best) ? x : best, void 0);
     if (t && !stopFor.has(t.id)) stopFor.set(t.id, { ticket: t, symbol: p.symbol.toUpperCase() });
-    else if (!t && stopTickets.some(line)) unprotected.push({ symbol: p.symbol.toUpperCase(), account: p.account, since: since.slice(0, 10) });
+    else if (!t && mine.length) unprotected.push({ symbol: p.symbol.toUpperCase(), account: p.account, since: since.slice(0, 10) });
   }
   for (const { ticket: t } of stopFor.values())
     ticketPoints.push({

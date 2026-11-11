@@ -175,7 +175,17 @@ describe("morning on a recorded fixture", () => {
     await appendTransactions(
       [
         { date: "2026-06-01", type: "deposit", account: "pea", amount: 10_000, currency: "EUR", origin: "manual" },
-        { date: "2026-06-01", type: "buy", account: "pea", symbol: "ALO.PA", quantity: 100, price: 20, fee: 0, currency: "EUR", origin: "manual" },
+        {
+          date: "2026-06-01",
+          type: "buy",
+          account: "pea",
+          symbol: "ALO.PA",
+          quantity: 100,
+          price: 20,
+          fee: 0,
+          currency: "EUR",
+          origin: "ticket:t-morning-test",
+        },
       ],
       "real",
     );
@@ -327,13 +337,13 @@ describe("morning on a recorded fixture", () => {
   it("shows no stop for a line closed and reopened on the ticket's own day, in a statement's date-only rows", async () => {
     process.env.ULTRASTOCK_HOME = mkdtempSync(join(tmpdir(), "morning-same-day-"));
     saveProfile(defaultProfile("FR", "EUR"));
-    const row = (type: "buy" | "sell", quantity: number) =>
-      ({ date: "2026-08-03", type, account: "pea", symbol: "ALO.PA", quantity, price: 20, fee: 0, currency: "EUR", origin: "import:broker" }) as const;
-    // The broker's statement: bought (the ticket's fill, at 09:00), sold out, bought again — all dated 3 August, no time.
+    const row = (type: "buy" | "sell", quantity: number, origin = "import:broker") =>
+      ({ date: "2026-08-03", type, account: "pea", symbol: "ALO.PA", quantity, price: 20, fee: 0, currency: "EUR", origin }) as const;
+    // Bought by the ticket (its fill at 09:00, booked date-only), sold out, bought again from a statement — all on 3 August.
     await appendTransactions(
       [
         { date: "2026-06-01", type: "deposit", account: "pea", amount: 10_000, currency: "EUR", origin: "manual" },
-        row("buy", 100),
+        row("buy", 100, "ticket:t-same-day-first"),
         row("sell", 100),
         row("buy", 80),
       ],
@@ -372,6 +382,69 @@ describe("morning on a recorded fixture", () => {
       expect(EvidenceStore.load(dir)!.byKey("TICKET.t-same-day-first.stop")).toBeUndefined();
       expect(r.flags.filter((f) => f.kind === "stop")).toEqual([]);
       expect(readFileSync(r.file, "utf8")).toMatch(/- ALO\.PA \(pea\): no stop on record since the line was last opened on 2026-08-03/);
+    });
+  }, 120_000);
+
+  it("reads a line's stop from the tickets booked to that book, the one filled last", async () => {
+    process.env.ULTRASTOCK_HOME = mkdtempSync(join(tmpdir(), "morning-books-"));
+    saveProfile(defaultProfile("FR", "EUR"));
+    const buy = (account: string, date: string, origin: string) =>
+      ({ date, type: "buy", account, symbol: "ALO.PA", quantity: 100, price: 20, fee: 0, currency: "EUR", origin }) as const;
+    const deposit = (account: string) => ({ date: "2026-06-01", type: "deposit", account, amount: 10_000, currency: "EUR", origin: "manual" }) as const;
+    // Real book: pea bought by hand; cto bought by two tickets.
+    await appendTransactions(
+      [
+        deposit("pea"),
+        deposit("cto"),
+        buy("pea", "2026-06-01T09:00:00", "manual"),
+        buy("cto", "2026-06-02T09:00:00", "ticket:t-market"),
+        buy("cto", "2026-08-03T09:00:00", "ticket:t-limit"),
+      ],
+      "real",
+    );
+    // Paper book: the same account id and symbol, through a paper ticket whose stop sits far above the price.
+    await appendTransactions([deposit("pea"), buy("pea", "2026-08-03T09:00:00", "ticket:t-paper")], "paper");
+    const ticket = (id: string, account: string, createdAt: string, filledAt: string, stop: number) => ({
+      id,
+      createdAt,
+      updatedAt: filledAt,
+      status: "filled",
+      order: {
+        account,
+        symbol: "ALO.PA",
+        side: "buy",
+        quantity: 100,
+        price: 20,
+        orderType: "limit",
+        currency: "EUR",
+        stop,
+        assetKind: "equity",
+        venue: "paper",
+      },
+      fingerprint: "test",
+      fills: [{ at: filledAt, quantity: 100, price: 20, fee: 0, venue: "paper", method: "test" }],
+      history: [{ at: filledAt, from: "working", to: "filled", why: "test" }],
+    });
+    mkdirSync(join(homeDir(), "tickets"), { recursive: true });
+    for (const t of [
+      ticket("t-paper", "pea", "2026-08-03T08:00:00.000Z", "2026-08-03T09:00:00.000Z", 1000),
+      // A limit ticket created first and filled in August; a market ticket created a day later, filled at once in June.
+      ticket("t-limit", "cto", "2026-06-01T08:00:00.000Z", "2026-08-03T09:00:00.000Z", 15),
+      ticket("t-market", "cto", "2026-06-02T08:00:00.000Z", "2026-06-02T09:00:00.000Z", 16),
+    ])
+      writeFileSync(join(homeDir(), "tickets", `${t.id}.json`), JSON.stringify(t));
+    await withFixture("morning-alo", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "morning-books-run-"));
+      const r = await morningRun(dir, { markets: ["eu"] });
+      const store = EvidenceStore.load(dir)!;
+      // The paper ticket protects the paper line only: the real pea line has no stop, and is not called unprotected for it.
+      expect(store.byKey("TICKET.t-paper.stop")).toBeUndefined();
+      // The cto line's latest stop is the last FILL's, not the last-created ticket's.
+      expect(store.byKey("TICKET.t-limit.stop")?.value).toBe(15);
+      expect(store.byKey("TICKET.t-market.stop")).toBeUndefined();
+      expect(store.byKey("TICKET.t-limit.stopDistance")).toBeDefined();
+      expect(readFileSync(r.file, "utf8")).toMatch(/- ALO\.PA: stop 15 EUR \[E\d+\]/);
+      expect(readFileSync(r.file, "utf8")).not.toMatch(/ALO\.PA \(pea\): no stop on record/);
     });
   }, 120_000);
 });
