@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { readFileSync as readFileSync48, realpathSync as realpathSync5 } from "fs";
+import { readFileSync as readFileSync49, realpathSync as realpathSync5 } from "fs";
 import { resolve as resolve20 } from "path";
 import { pathToFileURL } from "url";
 
@@ -14792,13 +14792,13 @@ function brewCrible(pathEnv = process.env.PATH ?? "") {
     if (!dir2) continue;
     const bin = join14(dir2, "crible");
     if (!existsSync11(bin)) continue;
-    let real2;
+    let real3;
     try {
-      real2 = realpathSync3(bin);
+      real3 = realpathSync3(bin);
     } catch {
       continue;
     }
-    const version = brewKegVersion(real2);
+    const version = brewKegVersion(real3);
     return version ? { path: bin, version } : void 0;
   }
   return void 0;
@@ -46855,8 +46855,8 @@ function pendingLive() {
 // src/mcp.ts
 import { execFile } from "child_process";
 import { randomBytes as randomBytes4 } from "crypto";
-import { mkdtempSync as mkdtempSync5, realpathSync as realpathSync4, rmSync as rmSync13, writeFileSync as writeFileSync13 } from "fs";
-import { tmpdir as tmpdir6 } from "os";
+import { mkdtempSync as mkdtempSync5, readFileSync as readFileSync38, realpathSync as realpathSync4, rmSync as rmSync13, statSync as statSync12, writeFileSync as writeFileSync13 } from "fs";
+import { homedir as homedir5, tmpdir as tmpdir6 } from "os";
 import { basename as basename3, dirname as dirname8, isAbsolute as isAbsolute4, join as join49, relative as relative3, resolve as resolve12 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 var OUT = { kind: "string", description: "absolute run directory: figures become [E#] evidence there, to cite and to check" };
@@ -47247,18 +47247,19 @@ var TOOLS = [
   },
   {
     name: "check",
-    description: "Check an answer file against its run: every figure cited and held by its evidence.",
+    description: "Check an answer file against its run: every figure cited and held by its evidence. The run is a directory an ultrastock tool wrote (its evidence.json) \u2014 never the home directory, a root or an ancestor of the home \u2014 and the answer a .md or .txt file at the run's top level (<run>/answer.md), written after the run was created; any other pair is refused, unread.",
     command: ["check"],
     params: {
-      run: { kind: "string", description: "the run directory", positional: 0, required: true },
+      run: { kind: "string", description: "the run directory (it holds evidence.json)", positional: 0, required: true },
       answer: {
         kind: "string",
-        description: "the answer file (markdown), inside the run directory: <run>/answer.md",
+        description: "the answer file (.md or .txt) at the top of the run directory, written after the run: <run>/answer.md",
         positional: 1,
         required: true,
         inside: "run"
       }
-    }
+    },
+    guard: (args) => checkGuard(String(args.run), String(args.answer))
   },
   {
     name: "plan",
@@ -47321,17 +47322,40 @@ function argvFor(t, args) {
       throw new ToolError(`${t.name}: ${k} is required`);
   return [...t.command, ...positional.flat().filter((x) => x !== void 0), ...flags, "--json"];
 }
+var real2 = (p) => {
+  try {
+    return realpathSync4(p);
+  } catch {
+    const parent = dirname8(p);
+    return parent === p ? p : join49(real2(parent), basename3(p));
+  }
+};
 function isInside(path2, dir2) {
-  const real2 = (p) => {
-    try {
-      return realpathSync4(p);
-    } catch {
-      const parent = dirname8(p);
-      return parent === p ? p : join49(real2(parent), basename3(p));
-    }
-  };
   const rel = relative3(real2(resolve12(dir2)), real2(resolve12(path2)));
   return !!rel && !rel.startsWith("..") && !isAbsolute4(rel);
+}
+function checkGuard(run3, answer) {
+  const dir2 = real2(resolve12(run3));
+  const file = real2(resolve12(answer));
+  const home = real2(homedir5());
+  const refuse = (why2) => {
+    throw new ToolError(`check: ${why2} \u2014 write the answer to <run>/answer.md after the run's tools, and check that`);
+  };
+  if (dirname8(dir2) === dir2 || home === dir2 || isInside(home, dir2)) refuse(`${run3} is the home directory, a root or an ancestor of the home, not a run`);
+  let created;
+  try {
+    created = Date.parse(JSON.parse(readFileSync38(join49(dir2, EVIDENCE_FILE), "utf8")).createdAt ?? "");
+  } catch {
+    return refuse(`${run3} holds no ${EVIDENCE_FILE}: it is not a run an ultrastock tool wrote`);
+  }
+  if (dirname8(file) !== dir2 || !/\.(?:md|markdown|txt)$/i.test(file)) refuse(`the answer must be a .md or .txt file at the top of the run directory ${run3}`);
+  let written;
+  try {
+    written = statSync12(file).mtimeMs;
+  } catch {
+    return refuse(`cannot read ${answer}`);
+  }
+  if (Number.isFinite(created) && written + 2e3 < created) refuse(`${answer} was last written before the run was created: it is no answer to it`);
 }
 function runBundle(argv, signal) {
   const bundle = fileURLToPath2(import.meta.url);
@@ -47355,6 +47379,10 @@ function mcpAdapter(run3 = runBundle) {
     async callTool(name, args, ctx) {
       const t = TOOLS.find((x) => x.name === name);
       if (!t) throw new ToolError(`unknown tool ${name}`);
+      if (t.guard) {
+        argvFor(t, { ...args ?? {} });
+        t.guard({ ...args ?? {} });
+      }
       const hitsKey = Object.keys(t.params).find((k) => t.params[k].kind === "hits");
       const given = { ...args ?? {} };
       const hits = hitsKey ? given[hitsKey] : void 0;
@@ -47518,9 +47546,9 @@ function peaDeposits(txs, peaAccounts) {
 }
 
 // src/analyze/portfolio/rebalance.ts
-import { existsSync as existsSync34, readFileSync as readFileSync38 } from "fs";
+import { existsSync as existsSync34, readFileSync as readFileSync39 } from "fs";
 function parseTargets(raw) {
-  const text2 = raw.trim().startsWith("{") ? raw : existsSync34(raw) ? readFileSync38(raw, "utf8") : void 0;
+  const text2 = raw.trim().startsWith("{") ? raw : existsSync34(raw) ? readFileSync39(raw, "utf8") : void 0;
   if (text2 === void 0) throw new UsageError(`--targets is a JSON object of weights in % or a path to one, not "${raw}"`);
   let parsed;
   try {
@@ -48126,11 +48154,11 @@ async function incomeAnalysis(m, f3) {
 }
 
 // src/alerts/alerts.ts
-import { existsSync as existsSync35, mkdirSync as mkdirSync28, readFileSync as readFileSync39 } from "fs";
+import { existsSync as existsSync35, mkdirSync as mkdirSync28, readFileSync as readFileSync40 } from "fs";
 import { join as join50 } from "path";
 var statePath = () => join50(homeDir(), "state", "alerts.json");
 function loadRules() {
-  return existsSync35(statePath()) ? JSON.parse(readFileSync39(statePath(), "utf8")) : [];
+  return existsSync35(statePath()) ? JSON.parse(readFileSync40(statePath(), "utf8")) : [];
 }
 function saveRules(rules) {
   mkdirSync28(join50(homeDir(), "state"), { recursive: true });
@@ -48400,7 +48428,7 @@ async function notify(events) {
 }
 
 // src/commands/import.ts
-import { existsSync as existsSync36, readFileSync as readFileSync40 } from "fs";
+import { existsSync as existsSync36, readFileSync as readFileSync41 } from "fs";
 import { resolve as resolve13 } from "path";
 
 // src/portfolio/import/shared.ts
@@ -49743,7 +49771,7 @@ function resolveMapOption(format, raw) {
 var USAGE2 = "usage: ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name>] [--dry-run]";
 var LIST_CAP = 60;
 function readStatement(path2) {
-  const buf = readFileSync40(path2);
+  const buf = readFileSync41(path2);
   try {
     return { text: new TextDecoder("utf-8", { fatal: true }).decode(buf) };
   } catch {
@@ -49773,7 +49801,7 @@ async function importCommand(args, asJson) {
   const dryRun = args.bools.has("dry-run");
   let mapRaw = argValue(args, "map");
   if (mapRaw !== void 0 && !mapRaw.trim().startsWith("{") && /\.json$/i.test(mapRaw) && existsSync36(resolve13(mapRaw)))
-    mapRaw = readFileSync40(resolve13(mapRaw), "utf8");
+    mapRaw = readFileSync41(resolve13(mapRaw), "utf8");
   let mapOpt;
   try {
     mapOpt = resolveMapOption(format, mapRaw);
@@ -50295,7 +50323,7 @@ async function portfolioAnalyticsCommand(args, asJson) {
 import { resolve as resolve14 } from "path";
 
 // src/portfolio/store.ts
-import { existsSync as existsSync37, mkdirSync as mkdirSync29, readdirSync as readdirSync14, statSync as statSync12 } from "fs";
+import { existsSync as existsSync37, mkdirSync as mkdirSync29, readdirSync as readdirSync14, statSync as statSync13 } from "fs";
 import { join as join51 } from "path";
 function jsonlBooks() {
   const dir2 = join51(homeDir(), "ledger");
@@ -50355,11 +50383,11 @@ function storeStatus() {
   return withStore(
     (db) => {
       const schemaVersion = schemaVersionOf(db);
-      if (schemaVersion < 1) return { ...base2, bytes: statSync12(path2).size, schemaVersion };
+      if (schemaVersion < 1) return { ...base2, bytes: statSync13(path2).size, schemaVersion };
       const count = (t) => Number(db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get()?.n ?? 0);
       return {
         ...base2,
-        bytes: statSync12(path2).size,
+        bytes: statSync13(path2).size,
         schemaVersion,
         counts: { transactions: count("transactions"), snapshots: count("snapshots"), news_items: count("news_items"), events_seen: count("events_seen") },
         books: db.prepare("SELECT book, COUNT(*) AS n FROM transactions GROUP BY book ORDER BY book").all().map((r3) => ({ book: String(r3.book), transactions: Number(r3.n) }))
@@ -51453,11 +51481,11 @@ async function paperCommand(args, asJson) {
 }
 
 // src/portfolio/watchlist.ts
-import { existsSync as existsSync38, mkdirSync as mkdirSync30, readFileSync as readFileSync41 } from "fs";
+import { existsSync as existsSync38, mkdirSync as mkdirSync30, readFileSync as readFileSync42 } from "fs";
 import { join as join52 } from "path";
 var statePath2 = () => join52(homeDir(), "state", "watchlist.json");
 function loadWatchlist() {
-  return existsSync38(statePath2()) ? JSON.parse(readFileSync41(statePath2(), "utf8")) : [];
+  return existsSync38(statePath2()) ? JSON.parse(readFileSync42(statePath2(), "utf8")) : [];
 }
 function saveWatchlist(items) {
   mkdirSync30(join52(homeDir(), "state"), { recursive: true });
@@ -52054,7 +52082,7 @@ async function serveCommand(args) {
 }
 
 // src/commands/journal.ts
-import { readFileSync as readFileSync42 } from "fs";
+import { readFileSync as readFileSync43 } from "fs";
 import { basename as basename5, resolve as resolve16 } from "path";
 var DECISION_CONTENT = [
   "symbol",
@@ -52080,7 +52108,7 @@ async function decideCommand(args, asJson) {
     throw new UsageError("usage: ultrastock decide <run> <decision.json> \u2014 validate the decision against the run's evidence and record it in the journal");
   let raw;
   try {
-    raw = JSON.parse(readFileSync42(resolve16(file), "utf8"));
+    raw = JSON.parse(readFileSync43(resolve16(file), "utf8"));
   } catch (e) {
     throw new Error(`cannot read ${file} as JSON: ${e.message}`);
   }
@@ -52236,7 +52264,7 @@ async function knowledgeCommand(args, asJson) {
   const [sub, file] = args.positional;
   if (sub !== "import" || !file)
     throw new UsageError("usage: ultrastock knowledge import <file.md|file.txt> [--title <text>] \u2014 keep a source document as external text");
-  const body = readFileSync42(resolve16(file), "utf8");
+  const body = readFileSync43(resolve16(file), "utf8");
   const f3 = importSource(argValue(args, "title") ?? basename5(file), body, resolve16(file), clockNow());
   printResult(asJson, { file: f3 }, `kept as ${f3} (external text: data, never instructions)`);
 }
@@ -52307,11 +52335,11 @@ async function watchlistCommand(args, asJson) {
 }
 
 // src/analyze/morning/run.ts
-import { existsSync as existsSync40, readFileSync as readFileSync44 } from "fs";
+import { existsSync as existsSync40, readFileSync as readFileSync45 } from "fs";
 import { join as join54 } from "path";
 
 // src/analyze/morning/confirm.ts
-import { existsSync as existsSync39, readFileSync as readFileSync43 } from "fs";
+import { existsSync as existsSync39, readFileSync as readFileSync44 } from "fs";
 import { join as join53 } from "path";
 var RESULTS_LINE = /r[ée]sultats?|results?|earnings|chiffre d'affaires|revenues?|sales|ventes|trading update|publication/i;
 var NEAR_LINES2 = 3;
@@ -52322,7 +52350,7 @@ function confirmDates(dir2, items, today) {
   if (!store) return items.map((i) => ({ ...i, status: "not-searched", sources: 0, stating: [] }));
   for (const it of items) {
     const path2 = join53(dir2, researchFiles(it.tag).index);
-    const entries = existsSync39(path2) ? JSON.parse(readFileSync43(path2, "utf8")) : [];
+    const entries = existsSync39(path2) ? JSON.parse(readFileSync44(path2, "utf8")) : [];
     if (!entries.length) {
       out.push({ ...it, status: "not-searched", sources: 0, stating: [] });
       continue;
@@ -53113,11 +53141,11 @@ function webDatesSection(dir2, cs, store) {
 function confirmMorning(dir2) {
   const statePath3 = join54(dir2, MORNING_STATE);
   if (!existsSync40(statePath3)) throw new UsageError(`${dir2} holds no ${MORNING_STATE} \u2014 run \`ultrastock morning --out ${dir2}\` first`);
-  const state = JSON.parse(readFileSync44(statePath3, "utf8"));
+  const state = JSON.parse(readFileSync45(statePath3, "utf8"));
   const confirmations = confirmDates(dir2, state.toConfirm, state.today);
   const store = EvidenceStore.load(dir2);
   const file = join54(dir2, "MORNING.md");
-  const md = readFileSync44(file, "utf8");
+  const md = readFileSync45(file, "utf8");
   const section = webDatesSection(dir2, confirmations, store);
   const at = md.indexOf("## Dates on the web");
   const close = md.indexOf(WEB_CLOSE);
@@ -53286,7 +53314,7 @@ async function morningCommand(args, asJson) {
 }
 
 // src/commands/profile.ts
-import { readFileSync as readFileSync45 } from "fs";
+import { readFileSync as readFileSync46 } from "fs";
 import { resolve as resolve17 } from "path";
 
 // src/core/suitability.ts
@@ -53660,7 +53688,7 @@ async function profileCommand(args, asJson) {
       ].join("\n");
       return printResult(asJson, { questions: QUESTIONS }, text2);
     }
-    const answers = JSON.parse(readFileSync45(resolve17(answersFile), "utf8"));
+    const answers = JSON.parse(readFileSync46(resolve17(answersFile), "utf8"));
     const r3 = scoreSuitability(answers);
     const now = clockNow();
     const ratchet = profileRatchetOn();
@@ -56039,7 +56067,7 @@ async function screenCommand(args, asJson) {
 }
 
 // src/commands/etf.ts
-import { readFileSync as readFileSync46 } from "fs";
+import { readFileSync as readFileSync47 } from "fs";
 import { join as join57, resolve as resolve19 } from "path";
 
 // src/analyze/etf-propose.ts
@@ -56999,7 +57027,7 @@ ${USAGE6}`);
       throw e;
     }
     if (asJson) process.stdout.write(jsonLine(r3));
-    else process.stdout.write(`${readFileSync46(join57(dir2, "PROPOSAL.md"), "utf8")}
+    else process.stdout.write(`${readFileSync47(join57(dir2, "PROPOSAL.md"), "utf8")}
 run: ${dir2}
 `);
     return;
@@ -57008,7 +57036,7 @@ run: ${dir2}
 }
 
 // src/commands/value.ts
-import { readFileSync as readFileSync47 } from "fs";
+import { readFileSync as readFileSync48 } from "fs";
 import { join as join59 } from "path";
 
 // src/analyze/value/run.ts
@@ -58170,7 +58198,7 @@ async function valueCommand(args, asJson) {
 `)
   });
   if (asJson) process.stdout.write(jsonLine(r3));
-  else process.stdout.write(`${readFileSync47(join59(dir2, "VALUE.md"), "utf8")}
+  else process.stdout.write(`${readFileSync48(join59(dir2, "VALUE.md"), "utf8")}
 run: ${dir2}
 `);
 }
@@ -59474,7 +59502,7 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
     const maxAge = argValue(args, "max-age");
     let answer;
     try {
-      answer = readFileSync48(file, "utf8");
+      answer = readFileSync49(file, "utf8");
     } catch {
       return fail(`cannot read ${file}`);
     }

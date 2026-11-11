@@ -14,6 +14,11 @@
 // A file a tool reads and may quote back — `check`'s answer, `research`'s
 // --web-results — must sit inside the run directory of the same call: a tool
 // call never gets to read an arbitrary file of the user's (~/.ssh, a key file).
+// Since any tool given `out` makes a directory hold an evidence.json, `check`
+// asks more of its pair (see `checkGuard`): the run is no home, root or
+// ancestor of the home, the answer is a markdown or text file of the run's own
+// top level, written after the run was created — so naming a folder of notes
+// as a "run" quotes none of them back.
 //
 // Each tool runs the bundle itself as a child process with --json (one
 // process per call: a command's stdout can never corrupt the protocol stream,
@@ -21,10 +26,11 @@
 // to 127.0.0.1 and requires a bearer token.
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { EVIDENCE_FILE } from "./core/evidence.js";
 import { type McpAdapter, runStdioServer, startHttpServer, type ToolDecl, ToolError } from "./engine.js";
 import { VERSION } from "./version.js";
 
@@ -48,6 +54,8 @@ interface Tool {
   writes?: string;
   /** A second identical call writes nothing more (a tool that writes nothing always is). */
   idempotent?: boolean;
+  /** Refuses a call before it runs, beyond what each argument's own checks see. */
+  guard?: (args: Record<string, unknown>) => void;
 }
 
 const OUT: Param = { kind: "string", description: "absolute run directory: figures become [E#] evidence there, to cite and to check" };
@@ -453,18 +461,20 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "check",
-    description: "Check an answer file against its run: every figure cited and held by its evidence.",
+    description:
+      "Check an answer file against its run: every figure cited and held by its evidence. The run is a directory an ultrastock tool wrote (its evidence.json) — never the home directory, a root or an ancestor of the home — and the answer a .md or .txt file at the run's top level (<run>/answer.md), written after the run was created; any other pair is refused, unread.",
     command: ["check"],
     params: {
-      run: { kind: "string", description: "the run directory", positional: 0, required: true },
+      run: { kind: "string", description: "the run directory (it holds evidence.json)", positional: 0, required: true },
       answer: {
         kind: "string",
-        description: "the answer file (markdown), inside the run directory: <run>/answer.md",
+        description: "the answer file (.md or .txt) at the top of the run directory, written after the run: <run>/answer.md",
         positional: 1,
         required: true,
         inside: "run",
       },
     },
+    guard: (args) => checkGuard(String(args.run), String(args.answer)),
   },
   {
     name: "plan",
@@ -541,18 +551,51 @@ export function argvFor(t: Tool, args: Record<string, unknown>): string[] {
   return [...t.command, ...positional.flat().filter((x) => x !== undefined), ...flags, "--json"];
 }
 
+/** A path with its links followed, as far as it exists. */
+const real = (p: string): string => {
+  try {
+    return realpathSync(p);
+  } catch {
+    const parent = dirname(p);
+    return parent === p ? p : join(real(parent), basename(p));
+  }
+};
+
 /** Does `path` lie inside `dir`, links followed — so a link in the run cannot point a tool at another file? */
 function isInside(path: string, dir: string): boolean {
-  const real = (p: string): string => {
-    try {
-      return realpathSync(p);
-    } catch {
-      const parent = dirname(p);
-      return parent === p ? p : join(real(parent), basename(p));
-    }
-  };
   const rel = relative(real(resolve(dir)), real(resolve(path)));
   return !!rel && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+/**
+ * What `check` reads and quotes back must be an answer of a run, not a file of the user's that a directory named as
+ * a "run" happens to hold — any tool given `out` writes an evidence.json wherever it is told. So the run holds an
+ * evidence.json and is not the home directory, a root or an ancestor of the home; the answer is a .md or .txt file at
+ * the run's top level, last written after the run was created (a note that was there before is no answer to it).
+ */
+function checkGuard(run: string, answer: string): void {
+  const dir = real(resolve(run));
+  const file = real(resolve(answer));
+  const home = real(homedir());
+  const refuse = (why: string): never => {
+    throw new ToolError(`check: ${why} — write the answer to <run>/answer.md after the run's tools, and check that`);
+  };
+  if (dirname(dir) === dir || home === dir || isInside(home, dir)) refuse(`${run} is the home directory, a root or an ancestor of the home, not a run`);
+  let created: number;
+  try {
+    created = Date.parse((JSON.parse(readFileSync(join(dir, EVIDENCE_FILE), "utf8")) as { createdAt?: string }).createdAt ?? "");
+  } catch {
+    return refuse(`${run} holds no ${EVIDENCE_FILE}: it is not a run an ultrastock tool wrote`);
+  }
+  if (dirname(file) !== dir || !/\.(?:md|markdown|txt)$/i.test(file)) refuse(`the answer must be a .md or .txt file at the top of the run directory ${run}`);
+  let written: number;
+  try {
+    written = statSync(file).mtimeMs;
+  } catch {
+    return refuse(`cannot read ${answer}`);
+  }
+  // Two seconds of slack: a file system that keeps whole seconds rounds an answer written just after the run down.
+  if (Number.isFinite(created) && written + 2000 < created) refuse(`${answer} was last written before the run was created: it is no answer to it`);
 }
 
 function runBundle(argv: string[], signal?: AbortSignal): Promise<string> {
@@ -583,6 +626,11 @@ export function mcpAdapter(run: (argv: string[], signal?: AbortSignal) => Promis
     async callTool(name, args, ctx) {
       const t = TOOLS.find((x) => x.name === name);
       if (!t) throw new ToolError(`unknown tool ${name}`);
+      // The arguments' own checks first (a required run, an answer inside it), then the tool's.
+      if (t.guard) {
+        argvFor(t, { ...(args ?? {}) });
+        t.guard({ ...(args ?? {}) });
+      }
       // Inline hits travel to the command as a temporary --web-results file.
       const hitsKey = Object.keys(t.params).find((k) => t.params[k]!.kind === "hits");
       const given = { ...(args ?? {}) } as Record<string, unknown>;

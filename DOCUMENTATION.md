@@ -162,7 +162,12 @@ warning, and `tax verify` prints the checklist to re-check by web search.
 `mcp` exposes the commands as tools, each one running the bundle in a child
 process with `--json`, so a command's output can never corrupt the protocol
 stream. The tools are read-only, plus ticket creation. HTTP binds to
-127.0.0.1 and requires a bearer token.
+127.0.0.1 and requires a bearer token. A file a tool reads must sit in the
+run directory of the same call; `check` asks more, since any tool given `out`
+writes an `evidence.json` where it is told: the run holds one and is not the
+home directory, a root or an ancestor of the home, and the answer is a `.md` or
+`.txt` file at the run's top level written after the run was created. Any
+other pair is refused before the file is read.
 
 ## Local dashboard
 
