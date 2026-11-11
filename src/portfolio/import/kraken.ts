@@ -100,7 +100,8 @@ export function krakenPair(pair: string): { base: string; quote: string } | unde
   const slash = /^([A-Z0-9.]+)\/([A-Z0-9.]+)$/.exec(s);
   if (slash) return { base: krakenAsset(slash[1]!), quote: krakenAsset(slash[2]!) };
   if (s.length === 8 && LEGACY[s.slice(0, 4)] && LEGACY[s.slice(4)]) return { base: LEGACY[s.slice(0, 4)]!, quote: LEGACY[s.slice(4)]! };
-  const q = PAIR_QUOTES.find((x) => s.endsWith(x) && s.length > x.length);
+  // A legacy quote (ZEUR, XXBT…) follows a whole ticker: XTZEUR is Tezos in EUR, not "XT" in ZEUR.
+  const q = PAIR_QUOTES.find((x) => s.endsWith(x) && s.length - x.length >= (x.length === 4 && /^[XZ]/.test(x) ? 3 : 1));
   return q ? { base: krakenAsset(s.slice(0, -q.length)), quote: krakenAsset(q) } : undefined;
 }
 

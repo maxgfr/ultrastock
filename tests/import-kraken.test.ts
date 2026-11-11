@@ -25,6 +25,10 @@ describe("Kraken asset codes and pairs", () => {
     expect(krakenPair("XBTUSDT")).toEqual({ base: "BTC", quote: "USDT" });
     expect(krakenPair("SOL/EUR")).toEqual({ base: "SOL", quote: "EUR" });
     expect(krakenPair("???")).toBeUndefined();
+    // A ticker ending in Z or X before a plain quote: Tezos in euros, not "XT" in ZEUR.
+    expect(krakenPair("XTZEUR")).toEqual({ base: "XTZ", quote: "EUR" });
+    expect(krakenPair("XTZUSD")).toEqual({ base: "XTZ", quote: "USD" });
+    expect(krakenPair("USDTZUSD")).toEqual({ base: "USDT", quote: "USD" });
   });
 });
 
