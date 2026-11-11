@@ -48156,7 +48156,7 @@ async function runAlerts(now = clockNow()) {
             if (!t) continue;
             const bars = await barsOf(p.symbol);
             const last2 = bars[bars.length - 1];
-            const key = `${bookName}|${p.account}|${p.symbol}|${t.order.stop}`;
+            const key = `${bookName}|${p.account}|${p.symbol}|${t.id}|${since}`;
             if (last2.low <= t.order.stop && !seen.has(key)) {
               seen.add(key);
               events.push({

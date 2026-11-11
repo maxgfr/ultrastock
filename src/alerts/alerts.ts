@@ -276,7 +276,9 @@ export async function runAlerts(now = clockNow()): Promise<{ events: AlertEvent[
             if (!t) continue;
             const bars = await barsOf(p.symbol);
             const last = bars[bars.length - 1]!;
-            const key = `${bookName}|${p.account}|${p.symbol}|${t.order.stop}`;
+            // Once per protecting ticket and line opening: a line sold out and reopened through a new ticket at the same
+            // level is a new position under a new stop, and is alerted on again.
+            const key = `${bookName}|${p.account}|${p.symbol}|${t.id}|${since}`;
             if (last.low <= t.order.stop! && !seen.has(key)) {
               seen.add(key);
               events.push({
