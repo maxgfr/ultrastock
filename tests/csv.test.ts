@@ -28,6 +28,7 @@ describe("csv", () => {
     // No thousands group follows a lone 0: "0,123" is 0.123, never 123.
     expect(parseLooseNumber("0,123")).toBe(0.123);
     expect(parseLooseNumber("-0,123")).toBe(-0.123);
+    expect(parseLooseNumber("+0,123")).toBe(0.123);
     // The neighbours keep their reading.
     expect(parseLooseNumber("0,5")).toBe(0.5);
     expect(parseLooseNumber("1,234")).toBe(1234);

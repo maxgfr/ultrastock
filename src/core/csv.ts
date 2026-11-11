@@ -78,7 +78,7 @@ export function parseLooseNumber(raw: string | undefined): number | undefined {
   if (comma > -1 && dot > -1) s = comma > dot ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
   // Commas without a dot group thousands before three digits ("1,234", "39,539,690"), else one is the decimal
   // mark ("1,23") — as it is after a lone 0, which no thousands group follows ("0,123").
-  else if (comma > -1) s = /,\d{3}(?!\d)/.test(s) && !/,\d{1,2}$/.test(s) && !/^-?0,\d{3}$/.test(s) ? s.replace(/,/g, "") : s.replace(",", ".");
+  else if (comma > -1) s = /,\d{3}(?!\d)/.test(s) && !/,\d{1,2}$/.test(s) && !/^[-+]?0,\d{3}$/.test(s) ? s.replace(/,/g, "") : s.replace(",", ".");
   const n = Number(s);
   return Number.isFinite(n) ? n : undefined;
 }

@@ -171,7 +171,7 @@ ultrastock predict order kalshi <TICKER> yes|no [buy|sell] --contracts <n> --pri
 ultrastock backtest run|walkforward|sweep|montecarlo|compare|review <strategy> <symbol> [--years] [--grid] … · backtest decisions
 ultrastock strategy list|show|validate|new [<name>] [--like <strategy>]
 ultrastock tax report|lots|harvest|rules|verify|export [--regime fr|us] [--year] [--tmi] [--income] [--filing] [--carryforward] [--envelope-value] [--format]
-ultrastock mcp [--transport stdio|http --token <t>]   # the same commands as MCP tools (read-only + ticket creation)
+ultrastock mcp [--transport stdio|http --token <t>]   # the same commands as MCP tools: no order, profile, ledger or key changes; writing tools (analyze, calc, plan…) are declared so
 ultrastock serve [--port 8766] [--book real|paper]    # a read-only dashboard for the user's browser (127.0.0.1, token in the printed URL)
 ultrastock doctor [--probe] [--json]                  # sources, keys, and each command's maturity (stable / beta / experimental)
 ```

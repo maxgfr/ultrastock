@@ -140,9 +140,11 @@ paper trading, Node ≥ 22 for live orders. Nothing to install.
 
 `ultrastock mcp` serves the commands as tools over stdio. With
 `--transport http --token <24+ chars>` it serves them over HTTP on 127.0.0.1,
-and the bearer token is mandatory. The tools are read-only, plus ticket
-creation through `plan`. No tool submits an order, edits the profile or the
-ledger, stores a key or moves a limit: those stay in front of the user.
+and the bearer token is mandatory. Tools that write — a run directory
+(`analyze`, `calc`, any `--out`), a ticket (`plan`), the equity snapshot of
+`portfolio show|perf` — are declared as such to the client; the others are
+read-only. No tool submits an order, edits the profile or the ledger, stores a
+key or moves a limit: those stay in front of the user.
 
 ## Local dashboard
 
