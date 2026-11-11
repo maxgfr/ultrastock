@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.50](https://github.com/maxgfr/ultrastock/compare/v1.13.49...v1.13.50) (2026-11-11)
+
+
+### Bug Fixes
+
+* **breaker:** count transfers from and to another broker as money moved ([4ea9fb9](https://github.com/maxgfr/ultrastock/commit/4ea9fb9fd83789cb3867d33e4c48dc5364bfb92b))
+* **breaker:** record no equity point when a position could not be priced ([ad310ae](https://github.com/maxgfr/ultrastock/commit/ad310ae24c637b96a26fae07c4845b2a86e80366))
+* **broker:** name what a limits code approves, an attestation included ([9b7bf38](https://github.com/maxgfr/ultrastock/commit/9b7bf3833c9d7ad0695f9e5e6cd94863ba53a660))
+* **broker:** say what the kill switch lets through when panic sets it ([69f26b4](https://github.com/maxgfr/ultrastock/commit/69f26b41f3db202c041281b7823f212519d4cb49))
+* **gate:** count the day's orders per attempt, by the environment it went to ([696b5c1](https://github.com/maxgfr/ultrastock/commit/696b5c19225996a52f8ce2574da278799ec667ff))
+* **gate:** do not pass the sector limit when another share's sector is unknown ([ac6baa3](https://github.com/maxgfr/ultrastock/commit/ac6baa3844ef91cc4b611b524e65501f30891b54))
+* **gate:** let a sell of what is held pass the profile's exclusions ([669db39](https://github.com/maxgfr/ultrastock/commit/669db3932dfdfb57eff71a790d36bea071d70fcc))
+* **ledger:** keep the fills of two tickets apart in the same second ([4675bee](https://github.com/maxgfr/ultrastock/commit/4675bee46ebf083e407ea8148a3ef6da1500c8ab))
+* **limits:** keep a waiting venue approval through a code-free tightening ([c7d99b6](https://github.com/maxgfr/ultrastock/commit/c7d99b698237bb14011f65cb7d46f43f15bc5325))
+* **live:** an attempt that placed nothing uses up no daily limit ([474a8c1](https://github.com/maxgfr/ultrastock/commit/474a8c17e71a0d4e9d5eac66fe27e9eaa1b50112))
+* **morning:** read the stop of a buy filled in part, as the stops alert does ([bbc76c6](https://github.com/maxgfr/ultrastock/commit/bbc76c6d382e0b08aa28b6adfc12eb3f2c8f281f))
+* **otp:** read the approval codes' ntfy topic from the keychain, never the environment ([0a051df](https://github.com/maxgfr/ultrastock/commit/0a051dfb8dae6c3083e7e98e3dc025e0d61311fb))
+* **paper:** measure the paper record on paper tickets' fills only ([d1fb71c](https://github.com/maxgfr/ultrastock/commit/d1fb71c1341ba254a24dbe26aee41a3dc60c6149))
+* **trading:** never drop a fill the ledger refuses as a duplicate in silence ([bc8c633](https://github.com/maxgfr/ultrastock/commit/bc8c63300a04b55c3080e3ece449944b4af872eb))
+
 ## [1.13.49](https://github.com/maxgfr/ultrastock/compare/v1.13.48...v1.13.49) (2026-11-11)
 
 
