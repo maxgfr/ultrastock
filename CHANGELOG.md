@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.41](https://github.com/maxgfr/ultrastock/compare/v1.13.40...v1.13.41) (2026-11-11)
+
+
+### Bug Fixes
+
+* **tax/us:** a transfer-in takes only lots that left another account in the 30 days before, and says when none did ([022e607](https://github.com/maxgfr/ultrastock/commit/022e60779c4812029df65fc31569e2de69be8fc5))
+
 ## [1.13.40](https://github.com/maxgfr/ultrastock/compare/v1.13.39...v1.13.40) (2026-11-11)
 
 
