@@ -492,8 +492,9 @@ COMMANDS
             experience tier, on a venue switched on and authorised for the
             jurisdiction (MiCA register for crypto platforms), with a key that
             cannot withdraw, no kill switch, no tripped breaker — and a 6-digit
-            code sent out of band (desktop notification, private ntfy, the
-            user's terminal), never printed. One request per approval; a lost
+            code sent out of band (desktop notification, the private ntfy
+            topic stored in the keychain — setup ntfy —, the user's
+            terminal), never printed. One request per approval; a lost
             answer is "unknown" until reconcile asks the venue. setup shows how
             to store a key in the keychain; limits tighten at once and loosen
             only with a code, 24 hours later; panic sets the kill switch and

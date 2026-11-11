@@ -10,7 +10,8 @@ import type { Credentials, Environment, Venue } from "./brokers/types.js";
 const FIELDS = ["key", "secret", "keyname", "passphrase"] as const;
 type Field = (typeof FIELDS)[number];
 
-function keychain(account: string): string | undefined {
+/** One entry of the OS keychain (service "ultrastock"), or undefined when it is absent or there is no keychain. */
+export function keychain(account: string): string | undefined {
   try {
     if (process.platform === "darwin")
       return execFileSync("security", ["find-generic-password", "-s", "ultrastock", "-a", account, "-w"], {
@@ -73,6 +74,22 @@ export function setupCommands(venue: Venue, env: Environment): string[] {
   if (process.platform === "linux")
     return fields.map((f) => `secret-tool store --label="ultrastock ${venue} ${env} ${f}" service ultrastock account ${venue}-${env}-${f}`);
   return fields.map((f) => `set ${credentialEnvName(venue, env, f)} in your environment (no keychain on ${process.platform})`);
+}
+
+/**
+ * The commands the USER runs to store the private ntfy topic approval codes go
+ * to. They live in the keychain, not in the environment: an environment
+ * variable is something a command prefix sets, so it could send the code to
+ * whoever writes the command.
+ */
+export function ntfySetupCommands(): string[] {
+  const fields = [
+    ["ntfy-url", "the topic's https URL (https://ntfy.sh/<your-private-topic> or your own server)"],
+    ["ntfy-token", "the topic's access token"],
+  ] as const;
+  if (process.platform === "darwin") return fields.map(([a, what]) => `security add-generic-password -U -s ultrastock -a ${a} -w   # prompts for ${what}`);
+  if (process.platform === "linux") return fields.map(([a]) => `secret-tool store --label="ultrastock ${a}" service ultrastock account ${a}`);
+  return [`no keychain on ${process.platform}: approval codes go to a desktop notification or your terminal only`];
 }
 
 /** Remove every credential value from a text before it is shown or logged. */

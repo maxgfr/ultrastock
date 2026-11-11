@@ -45766,10 +45766,79 @@ function chronological(txs) {
 }
 
 // src/trading/otp.ts
-import { execFileSync } from "child_process";
+import { execFileSync as execFileSync2 } from "child_process";
 import { randomBytes as randomBytes3, randomInt, scryptSync, timingSafeEqual as timingSafeEqual3 } from "crypto";
 import { closeSync as closeSync7, existsSync as existsSync31, mkdirSync as mkdirSync25, openSync as openSync7, readFileSync as readFileSync36, rmSync as rmSync11, writeSync as writeSync4 } from "fs";
 import { join as join46 } from "path";
+
+// src/trading/secrets.ts
+import { execFileSync } from "child_process";
+var FIELDS = ["key", "secret", "keyname", "passphrase"];
+function keychain(account) {
+  try {
+    if (process.platform === "darwin")
+      return execFileSync("security", ["find-generic-password", "-s", "ultrastock", "-a", account, "-w"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 5e3
+      }).trimEnd();
+    if (process.platform === "linux")
+      return execFileSync("secret-tool", ["lookup", "service", "ultrastock", "account", account], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 5e3
+      }).trimEnd();
+  } catch {
+    return void 0;
+  }
+  return void 0;
+}
+var credentialEnvName = (venue, env2, field2) => `ULTRASTOCK_${venue.toUpperCase()}_${env2.toUpperCase()}_${field2.toUpperCase()}`;
+function readCredentials(venue, env2, read2 = keychain) {
+  const got = {};
+  let source2 = "";
+  for (const f3 of FIELDS) {
+    const k = read2(`${venue}-${env2}-${f3}`);
+    if (k) {
+      got[f3] = k;
+      source2 = process.platform === "darwin" ? "macOS keychain" : "secret-tool";
+      continue;
+    }
+    const e = process.env[credentialEnvName(venue, env2, f3)];
+    if (e) {
+      got[f3] = e;
+      source2 ||= "environment";
+    }
+  }
+  if (venue === "ibkr") return { creds: { key: got.key ?? "", secret: "" }, source: source2 || "gateway session" };
+  if (!got.key || !got.secret) return void 0;
+  return { creds: { key: got.key, secret: got.secret, keyName: got.keyname, passphrase: got.passphrase }, source: source2 };
+}
+function setupCommands(venue, env2) {
+  const fields = venue === "coinbase" ? ["keyname", "secret"] : venue === "ibkr" ? ["key"] : ["key", "secret"];
+  const label2 = {
+    key: venue === "kalshi" ? "API key id" : "API key",
+    secret: venue === "kalshi" ? "RSA private key (PEM)" : "API secret",
+    keyname: "CDP key name",
+    passphrase: "key password"
+  };
+  if (process.platform === "darwin")
+    return fields.map((f3) => `security add-generic-password -U -s ultrastock -a ${venue}-${env2}-${f3} -w   # prompts for the ${label2[f3]}`);
+  if (process.platform === "linux")
+    return fields.map((f3) => `secret-tool store --label="ultrastock ${venue} ${env2} ${f3}" service ultrastock account ${venue}-${env2}-${f3}`);
+  return fields.map((f3) => `set ${credentialEnvName(venue, env2, f3)} in your environment (no keychain on ${process.platform})`);
+}
+function ntfySetupCommands() {
+  const fields = [
+    ["ntfy-url", "the topic's https URL (https://ntfy.sh/<your-private-topic> or your own server)"],
+    ["ntfy-token", "the topic's access token"]
+  ];
+  if (process.platform === "darwin") return fields.map(([a, what]) => `security add-generic-password -U -s ultrastock -a ${a} -w   # prompts for ${what}`);
+  if (process.platform === "linux") return fields.map(([a]) => `secret-tool store --label="ultrastock ${a}" service ultrastock account ${a}`);
+  return [`no keychain on ${process.platform}: approval codes go to a desktop notification or your terminal only`];
+}
+
+// src/trading/otp.ts
 var CODE_TTL_MS = 12e4;
 var MAX_TRIES = 3;
 var dir = () => join46(homeDir(), "state", "codes");
@@ -45782,14 +45851,14 @@ var digest2 = (code, binding, salt) => scryptSync(`${binding}|${code}`, salt, 32
 var desktopChannel = (message) => {
   try {
     if (process.platform === "darwin") {
-      execFileSync("osascript", ["-e", `display notification ${JSON.stringify(message)} with title "ultrastock \u2014 approval code"`], {
+      execFileSync2("osascript", ["-e", `display notification ${JSON.stringify(message)} with title "ultrastock \u2014 approval code"`], {
         stdio: "ignore",
         timeout: 5e3
       });
       return true;
     }
     if (process.platform === "linux") {
-      execFileSync("notify-send", ["ultrastock \u2014 approval code", message], { stdio: "ignore", timeout: 5e3 });
+      execFileSync2("notify-send", ["ultrastock \u2014 approval code", message], { stdio: "ignore", timeout: 5e3 });
       return true;
     }
   } catch {
@@ -45812,22 +45881,42 @@ ${message}
     return false;
   }
 };
-var ntfyChannel = async (message) => {
-  const url = env("NTFY_URL");
-  const token = env("NTFY_TOKEN");
-  if (!url || !token) return false;
+var LOOPBACK2 = /^(localhost|.+\.localhost|127(\.\d{1,3}){3}|0\.0\.0\.0|\[::1?\]|\[::ffff:.+\])$/i;
+function ntfyDestination(read2 = keychain) {
+  const url = read2("ntfy-url");
+  const token = read2("ntfy-token");
+  if (!url || !token) return { refused: "no ntfy topic and token in the keychain (`ultrastock broker setup ntfy`)" };
+  let u;
   try {
-    const r3 = await fetch(url, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}`, title: "ultrastock approval code", priority: "high" },
-      body: message,
-      signal: AbortSignal.timeout(1e4)
-    });
-    return r3.ok;
+    u = new URL(url);
   } catch {
-    return false;
+    return { refused: "the keychain's ntfy-url is not a URL" };
   }
-};
+  if (u.protocol !== "https:") return { refused: "the keychain's ntfy-url is not https" };
+  if (LOOPBACK2.test(u.hostname)) return { refused: "the keychain's ntfy-url points at this machine" };
+  return { url: u.toString(), token };
+}
+function ntfyChannelFrom(read2 = keychain) {
+  return async (message) => {
+    if (process.env.ULTRASTOCK_CODE_CHANNELS === "none" && read2 === keychain) return false;
+    const d = ntfyDestination(read2);
+    if ("refused" in d) return false;
+    try {
+      const r3 = await fetch(d.url, {
+        method: "POST",
+        headers: { authorization: `Bearer ${d.token}`, title: "ultrastock approval code", priority: "high" },
+        body: message,
+        // A redirect could take the code somewhere the user never stored.
+        redirect: "error",
+        signal: AbortSignal.timeout(1e4)
+      });
+      return r3.ok;
+    } catch {
+      return false;
+    }
+  };
+}
+var ntfyChannel = ntfyChannelFrom();
 var DEFAULT_CHANNELS = [
   ["desktop notification", desktopChannel],
   ["private ntfy topic", ntfyChannel],
@@ -45845,7 +45934,7 @@ async function issueCode(subject, binding, what, channels2 = DEFAULT_CHANNELS, n
   }
   if (!sentTo.length)
     throw new Error(
-      "no out-of-band channel reached you (desktop notification, private ntfy topic with ULTRASTOCK_NTFY_TOKEN, or your own terminal): no code issued"
+      "no out-of-band channel reached you (desktop notification, the private ntfy topic stored in your keychain \u2014 `ultrastock broker setup ntfy`, or your own terminal): no code issued"
     );
   mkdirSync25(dir(), { recursive: true, mode: 448 });
   const p = { subject, binding, salt, hash: digest2(code, binding, salt), expiresAt, tries: 0 };
@@ -46531,66 +46620,8 @@ async function cancelLocked(ticketId, adapter, now) {
   return done;
 }
 
-// src/trading/secrets.ts
-import { execFileSync as execFileSync2 } from "child_process";
-var FIELDS = ["key", "secret", "keyname", "passphrase"];
-function keychain(account) {
-  try {
-    if (process.platform === "darwin")
-      return execFileSync2("security", ["find-generic-password", "-s", "ultrastock", "-a", account, "-w"], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-        timeout: 5e3
-      }).trimEnd();
-    if (process.platform === "linux")
-      return execFileSync2("secret-tool", ["lookup", "service", "ultrastock", "account", account], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-        timeout: 5e3
-      }).trimEnd();
-  } catch {
-    return void 0;
-  }
-  return void 0;
-}
-var credentialEnvName = (venue, env2, field2) => `ULTRASTOCK_${venue.toUpperCase()}_${env2.toUpperCase()}_${field2.toUpperCase()}`;
-function readCredentials(venue, env2, read2 = keychain) {
-  const got = {};
-  let source2 = "";
-  for (const f3 of FIELDS) {
-    const k = read2(`${venue}-${env2}-${f3}`);
-    if (k) {
-      got[f3] = k;
-      source2 = process.platform === "darwin" ? "macOS keychain" : "secret-tool";
-      continue;
-    }
-    const e = process.env[credentialEnvName(venue, env2, f3)];
-    if (e) {
-      got[f3] = e;
-      source2 ||= "environment";
-    }
-  }
-  if (venue === "ibkr") return { creds: { key: got.key ?? "", secret: "" }, source: source2 || "gateway session" };
-  if (!got.key || !got.secret) return void 0;
-  return { creds: { key: got.key, secret: got.secret, keyName: got.keyname, passphrase: got.passphrase }, source: source2 };
-}
-function setupCommands(venue, env2) {
-  const fields = venue === "coinbase" ? ["keyname", "secret"] : venue === "ibkr" ? ["key"] : ["key", "secret"];
-  const label2 = {
-    key: venue === "kalshi" ? "API key id" : "API key",
-    secret: venue === "kalshi" ? "RSA private key (PEM)" : "API secret",
-    keyname: "CDP key name",
-    passphrase: "key password"
-  };
-  if (process.platform === "darwin")
-    return fields.map((f3) => `security add-generic-password -U -s ultrastock -a ${venue}-${env2}-${f3} -w   # prompts for the ${label2[f3]}`);
-  if (process.platform === "linux")
-    return fields.map((f3) => `secret-tool store --label="ultrastock ${venue} ${env2} ${f3}" service ultrastock account ${venue}-${env2}-${f3}`);
-  return fields.map((f3) => `set ${credentialEnvName(venue, env2, f3)} in your environment (no keychain on ${process.platform})`);
-}
-
 // src/commands/broker.ts
-var USAGE = "usage: ultrastock broker status|setup <venue>|balances|preview <ticket>|code <ticket>|code live|live on|live off|submit <ticket>|reconcile <ticket>|cancel <ticket>|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr|kalshi] [--env test|live] [--code <6 digits>] [--conid <id>] [--json]";
+var USAGE = "usage: ultrastock broker status|setup <venue>|setup ntfy|balances|preview <ticket>|code <ticket>|code live|live on|live off|submit <ticket>|reconcile <ticket>|cancel <ticket>|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr|kalshi] [--env test|live] [--code <6 digits>] [--conid <id>] [--json]";
 function venueOf(args, fallback) {
   const v = (argValue(args, "venue") ?? fallback ?? "").toLowerCase();
   if (!VENUES.includes(v)) throw new UsageError(`--venue is one of ${VENUES.join(", ")}`);
@@ -46644,6 +46675,17 @@ var nextLimits = (args, cur) => ({ ...cur, ...limitChange(args) });
 async function brokerCommand(args, asJson) {
   const [sub = "status", id] = args.positional;
   const now = clockNow();
+  if (sub === "setup" && id === "ntfy") {
+    const commands = ntfySetupCommands();
+    const lines = [
+      "Store the private ntfy topic your approval codes go to \u2014 in the keychain, never in an environment variable:",
+      ...commands.map((c) => `  ${c}`),
+      "",
+      "  The URL must be https and not this machine; the topic needs an access token (a public topic would publish the code).",
+      "  ULTRASTOCK_NTFY_URL / ULTRASTOCK_NTFY_TOKEN still send alerts; they never carry a code."
+    ];
+    return printResult(asJson, { channel: "ntfy", commands }, lines.join("\n"));
+  }
   if (sub === "setup") {
     const venue2 = venueOf(args, id);
     const env3 = envOf(args);
@@ -58876,8 +58918,9 @@ COMMANDS
             experience tier, on a venue switched on and authorised for the
             jurisdiction (MiCA register for crypto platforms), with a key that
             cannot withdraw, no kill switch, no tripped breaker \u2014 and a 6-digit
-            code sent out of band (desktop notification, private ntfy, the
-            user's terminal), never printed. One request per approval; a lost
+            code sent out of band (desktop notification, the private ntfy
+            topic stored in the keychain \u2014 setup ntfy \u2014, the user's
+            terminal), never printed. One request per approval; a lost
             answer is "unknown" until reconcile asks the venue. setup shows how
             to store a key in the keychain; limits tighten at once and loosen
             only with a code, 24 hours later; panic sets the kill switch and

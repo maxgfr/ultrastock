@@ -132,7 +132,7 @@ paper trading, Node ≥ 22 for live orders. Nothing to install.
 | `ULTRASTOCK_CACHE_DIR` | the dataset cache (default `ULTRASTOCK_HOME/cache`) |
 | `ULTRASTOCK_SEC_CONTACT` | your e-mail for SEC EDGAR's fair-access policy |
 | `ULTRASTOCK_FRED_API_KEY`, `ULTRASTOCK_COINGECKO_API_KEY`, `ULTRASTOCK_SOLANA_RPC` | optional keys |
-| `ULTRASTOCK_NTFY_URL` + `ULTRASTOCK_NTFY_TOKEN`, `ULTRASTOCK_WEBHOOK_URLS` + `ULTRASTOCK_WEBHOOK_ALLOWLIST` | alert and approval-code channels |
+| `ULTRASTOCK_NTFY_URL` + `ULTRASTOCK_NTFY_TOKEN`, `ULTRASTOCK_WEBHOOK_URLS` + `ULTRASTOCK_WEBHOOK_ALLOWLIST` | alert channels (never approval codes: their ntfy topic is read from the keychain, `broker setup ntfy`) |
 | `ULTRASTOCK_LIVE`, `ULTRASTOCK_IBKR_CA_FILE`, `ULTRASTOCK_IBKR_CERT_SHA256`, `ULTRASTOCK_IBKR_URL` | live trading, and the pinned IBKR gateway |
 | `ULTRASTOCK_MCP_TOKEN` | the bearer token of `mcp --transport http` |
 | `ULTRASTOCK_SERVE_TOKEN` | the token of the `serve` dashboard (else a random one per start) |

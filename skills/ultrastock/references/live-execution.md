@@ -25,6 +25,11 @@ either switch for the user.
    - The key gets **trading permission only**: no withdrawal, no transfer, no
      margin, restricted to the user's IP when the venue allows it.
    - **Never ask for a key in the conversation.**
+   - **Optional: a private ntfy topic for the codes.** `broker setup ntfy`
+     prints the keychain commands for its https URL and its token. Codes are
+     never sent to `ULTRASTOCK_NTFY_URL`: an environment variable can be set
+     by whoever writes the command, so it could redirect the code. Those
+     variables still carry alerts.
 2. **IBKR.** Run the Client Portal Gateway and log in in the browser, then set
    `ULTRASTOCK_IBKR_CA_FILE` (the gateway's certificate, which pins TLS) and
    optionally `ULTRASTOCK_IBKR_CERT_SHA256`.
@@ -51,7 +56,8 @@ either switch for the user.
    minutes, bound to this order's fingerprint **and to that venue, that
    environment and the venue's symbol**: a code read for `--env test` opens
    nothing live. The message names where the order goes. It reaches a desktop
-   notification, a private ntfy topic (with a token) or the user's terminal.
+   notification, the private ntfy topic stored in the keychain (with a
+   token) or the user's terminal.
    **It is never printed to the output you read.** (`--conid` names an IBKR
    contract and is refused on every other venue.)
 5. The **user** runs `broker submit <id> --venue <v> --env <e> --code <code>`

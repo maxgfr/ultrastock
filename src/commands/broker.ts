@@ -40,11 +40,11 @@ import {
 } from "../trading/live.js";
 import { issueCode, verifyCode } from "../trading/otp.js";
 import { killSwitchPath } from "../trading/riskgate.js";
-import { readCredentials, setupCommands } from "../trading/secrets.js";
+import { ntfySetupCommands, readCredentials, setupCommands } from "../trading/secrets.js";
 import { audit, listTickets, loadTicket } from "../trading/tickets.js";
 
 const USAGE =
-  "usage: ultrastock broker status|setup <venue>|balances|preview <ticket>|code <ticket>|code live|live on|live off|submit <ticket>|reconcile <ticket>|cancel <ticket>|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr|kalshi] [--env test|live] [--code <6 digits>] [--conid <id>] [--json]";
+  "usage: ultrastock broker status|setup <venue>|setup ntfy|balances|preview <ticket>|code <ticket>|code live|live on|live off|submit <ticket>|reconcile <ticket>|cancel <ticket>|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr|kalshi] [--env test|live] [--code <6 digits>] [--conid <id>] [--json]";
 
 function venueOf(args: CommandArgs, fallback?: string): Venue {
   const v = (argValue(args, "venue") ?? fallback ?? "").toLowerCase();
@@ -106,6 +106,19 @@ const nextLimits = (args: CommandArgs, cur: LiveLimits): LiveLimits => ({ ...cur
 export async function brokerCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const [sub = "status", id] = args.positional;
   const now = clockNow();
+
+  if (sub === "setup" && id === "ntfy") {
+    // Approval codes go to a topic stored where a command prefix cannot point them elsewhere.
+    const commands = ntfySetupCommands();
+    const lines = [
+      "Store the private ntfy topic your approval codes go to — in the keychain, never in an environment variable:",
+      ...commands.map((c) => `  ${c}`),
+      "",
+      "  The URL must be https and not this machine; the topic needs an access token (a public topic would publish the code).",
+      "  ULTRASTOCK_NTFY_URL / ULTRASTOCK_NTFY_TOKEN still send alerts; they never carry a code.",
+    ];
+    return out(asJson, { channel: "ntfy", commands }, lines.join("\n"));
+  }
 
   if (sub === "setup") {
     const venue = venueOf(args, id);

@@ -3,17 +3,25 @@
 // order fingerprint, or the requested limits — valid 120 seconds, three tries.
 //
 // The code is delivered where the agent cannot read it: a desktop notification
-// (macOS, Linux), a private ntfy topic (token required), or the user's own
-// terminal (/dev/tty, absent when an agent runs the command). It is NEVER
-// written to stdout or stderr. With no channel, no code is issued: the human
-// has to be able to see it, and only the human.
+// (macOS, Linux), a private ntfy topic, or the user's own terminal (/dev/tty,
+// absent when an agent runs the command). It is NEVER written to stdout or
+// stderr. With no channel, no code is issued: the human has to be able to see
+// it, and only the human.
+//
+// No destination comes from the environment: whoever writes a command can
+// prefix it with variables, so an environment-given URL would send the code to
+// them. The ntfy topic and its token are read from the OS keychain only (the
+// user stores them with the commands `broker setup ntfy` prints), over https,
+// never to an address of this machine. ULTRASTOCK_NTFY_URL / _TOKEN feed
+// alerts, never a code.
 import { execFileSync } from "node:child_process";
 import { randomBytes, randomInt, scryptSync, timingSafeEqual } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { withFileLockSync } from "../core/lock.js";
 import { homeDir } from "../core/paths.js";
-import { env, writeFileAtomic } from "../engine.js";
+import { writeFileAtomic } from "../engine.js";
+import { keychain } from "./secrets.js";
 
 export const CODE_TTL_MS = 120_000;
 const MAX_TRIES = 3;
@@ -79,23 +87,53 @@ export const ttyChannel: Channel = (message) => {
   }
 };
 
-/** A private ntfy topic: only with a token (a public topic would publish the code). */
-export const ntfyChannel: Channel = async (message) => {
-  const url = env("NTFY_URL");
-  const token = env("NTFY_TOKEN");
-  if (!url || !token) return false;
+/** Hosts that are this machine: a server anyone running a command here could listen on. */
+const LOOPBACK = /^(localhost|.+\.localhost|127(\.\d{1,3}){3}|0\.0\.0\.0|\[::1?\]|\[::ffff:.+\])$/i;
+
+/**
+ * Where the ntfy channel sends a code: the keychain's `ntfy-url` and
+ * `ntfy-token` (service "ultrastock"), an https URL that is not this machine —
+ * or why there is none. The environment is never read.
+ */
+export function ntfyDestination(read: (account: string) => string | undefined = keychain): { url: string; token: string } | { refused: string } {
+  const url = read("ntfy-url");
+  const token = read("ntfy-token");
+  if (!url || !token) return { refused: "no ntfy topic and token in the keychain (`ultrastock broker setup ntfy`)" };
+  let u: URL;
   try {
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}`, title: "ultrastock approval code", priority: "high" },
-      body: message,
-      signal: AbortSignal.timeout(10_000),
-    });
-    return r.ok;
+    u = new URL(url);
   } catch {
-    return false;
+    return { refused: "the keychain's ntfy-url is not a URL" };
   }
-};
+  if (u.protocol !== "https:") return { refused: "the keychain's ntfy-url is not https" };
+  if (LOOPBACK.test(u.hostname)) return { refused: "the keychain's ntfy-url points at this machine" };
+  return { url: u.toString(), token };
+}
+
+/** A private ntfy topic, read from the keychain, with its token (a public topic would publish the code). */
+export function ntfyChannelFrom(read: (account: string) => string | undefined = keychain): Channel {
+  return async (message) => {
+    // Tests and evals switch the channels off: the user's keychain is not even read.
+    if (process.env.ULTRASTOCK_CODE_CHANNELS === "none" && read === keychain) return false;
+    const d = ntfyDestination(read);
+    if ("refused" in d) return false;
+    try {
+      const r = await fetch(d.url, {
+        method: "POST",
+        headers: { authorization: `Bearer ${d.token}`, title: "ultrastock approval code", priority: "high" },
+        body: message,
+        // A redirect could take the code somewhere the user never stored.
+        redirect: "error",
+        signal: AbortSignal.timeout(10_000),
+      });
+      return r.ok;
+    } catch {
+      return false;
+    }
+  };
+}
+
+export const ntfyChannel: Channel = ntfyChannelFrom();
 
 export const DEFAULT_CHANNELS: Array<[string, Channel]> = [
   ["desktop notification", desktopChannel],
@@ -124,7 +162,7 @@ export async function issueCode(
   if (!off) for (const [name, ch] of channels) if (await ch(message)) sentTo.push(name);
   if (!sentTo.length)
     throw new Error(
-      "no out-of-band channel reached you (desktop notification, private ntfy topic with ULTRASTOCK_NTFY_TOKEN, or your own terminal): no code issued",
+      "no out-of-band channel reached you (desktop notification, the private ntfy topic stored in your keychain — `ultrastock broker setup ntfy`, or your own terminal): no code issued",
     );
   mkdirSync(dir(), { recursive: true, mode: 0o700 });
   const p: Pending = { subject, binding, salt, hash: digest(code, binding, salt), expiresAt, tries: 0 };
