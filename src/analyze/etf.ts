@@ -23,7 +23,7 @@ import { ruleStatus } from "../core/jurisdiction.js";
 import { clockNow } from "../core/net.js";
 import { loadProfile } from "../core/profile.js";
 import { mapLimit, writeArtifact } from "../engine.js";
-import { cribleAvailable, cribleBootstrapped, cribleScreen, cribleStaleWarning } from "../providers/external/crible.js";
+import { cribleAvailable, cribleBootstrapped, cribleScreen, cribleStaleWarning, cribleString } from "../providers/external/crible.js";
 import { type AmundiFacts, amundiFacts, amundiHoldings } from "../providers/funds/amundi.js";
 import { compositionDataset, type FundComposition, type FundLine } from "../providers/funds/common.js";
 import { ISHARES_PRODUCTS, isharesHoldings } from "../providers/funds/ishares.js";
@@ -262,6 +262,22 @@ export function dedupeListings(rows: readonly TvMatch[], currency?: string): TvM
     } else if (rank(m) < rank(cur)) best.set(isin, m);
   }
   return [...order.map((i) => best.get(i)!), ...loose];
+}
+
+/**
+ * The other funds among same-index rows, one listing each: never the fund
+ * itself, known by its ISIN (whatever its case) or by its own listing's
+ * ticker — and by the ISIN that listing's row carries, for its other venues.
+ */
+export function otherFunds(rows: readonly TvMatch[], self: { isin?: string; ticker?: string }, currency?: string): TvMatch[] {
+  const isin = (
+    self.isin ??
+    tvStr(
+      rows.find((m) => self.ticker && m.ticker === self.ticker),
+      "isin",
+    )
+  )?.toUpperCase();
+  return dedupeListings(rows, currency).filter((m) => !((isin && tvStr(m, "isin")?.toUpperCase() === isin) || (self.ticker && m.ticker === self.ticker)));
 }
 
 export const tvNum = (m: TvMatch | undefined, col: string): number | undefined => {
@@ -525,7 +541,7 @@ export async function topHoldingMultiples(
   const isins = [...new Set(top.map((l) => l.isin?.toUpperCase()).filter((x): x is string => !!x && ISIN_RE.test(x)))];
   const tickers = [...new Set(top.map((l) => l.ticker?.toUpperCase()).filter((x): x is string => !!x && SAFE_TICKER.test(x)))];
   if (!isins.length && !tickers.length) return { datasets: [], notes: ["multiples of the top holdings: the holdings carry no ISIN or ticker to look up"] };
-  const list = (xs: string[]) => xs.map((x) => `'${x}'`).join(",");
+  const list = (xs: string[]) => xs.map(cribleString).join(",");
   const cond = [isins.length ? `isin IN (${list(isins)})` : "", tickers.length ? `symbol IN (${list(tickers)})` : ""].filter(Boolean).join(" OR ");
   let rows: Array<Record<string, unknown>>;
   try {
@@ -769,12 +785,13 @@ export async function etfRun(raw: string, dir: string, opts: { now?: Date; instr
     try {
       const { scan, rows } = await sameIndexFunds(index);
       const quote = tvStr(tv, "currency");
-      const others = dedupeListings(rows, quote).filter((m) => tvStr(m, "isin") !== p.isin);
+      const self = { isin: p.isin ?? tvStr(tv, "isin"), ticker: tv?.ticker };
+      const others = otherFunds(rows, self, quote);
       // Comparable: same index, same fund currency, and a listing in the same quote currency (the NAV return's currency).
       const comparable = others.filter((m) => ccy && tvStr(m, "etf_fund_currency") === ccy && tvStr(m, "currency") === quote);
       const shown = comparable.slice(0, 5);
       const base = profile?.baseCurrency;
-      const twins = wantTwins ? rankTwins(dedupeListings(rows, base).filter((m) => tvStr(m, "isin") !== p.isin)).slice(0, 3) : [];
+      const twins = wantTwins ? rankTwins(otherFunds(rows, self, base)).slice(0, 3) : [];
       const day = scan.provenance.asOf;
       const points: Point[] = [
         {

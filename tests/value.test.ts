@@ -228,6 +228,8 @@ describe("PEA and regions", () => {
     expect(valueCandidateDsl(VALUE_STYLES.dividend, valueRegion("fr,it"), 1e9)).toBe(
       "primary_listing = 1 AND cap_eur >= 1000000000 AND country IN ('FR','IT') AND weighted_dividend_yield > 0.03",
     );
+    // A value is quoted by crible's own rule, never altered: a stray quote is escaped, not dropped into another code.
+    expect(valueCandidateDsl(VALUE_STYLES.dividend, { id: "x", label: "x", countries: ["F'R"] }, 1)).toContain("country IN ('F\\'R')");
     const mf = valueCandidateDsl(VALUE_STYLES["magic-formula"], valueRegion("us"), 1e9);
     expect(mf).toContain("country IN ('US')");
     expect(mf).toContain("sector != 'Financials' AND sector != 'Utilities'");

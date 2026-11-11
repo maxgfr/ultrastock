@@ -25899,6 +25899,13 @@ function dedupeListings(rows, currency) {
   }
   return [...order.map((i) => best.get(i)), ...loose];
 }
+function otherFunds(rows, self, currency) {
+  const isin = (self.isin ?? tvStr(
+    rows.find((m) => self.ticker && m.ticker === self.ticker),
+    "isin"
+  ))?.toUpperCase();
+  return dedupeListings(rows, currency).filter((m) => !(isin && tvStr(m, "isin")?.toUpperCase() === isin || self.ticker && m.ticker === self.ticker));
+}
 var tvNum = (m, col) => {
   const v = m?.points.get(col)?.value;
   return typeof v === "number" && Number.isFinite(v) ? v : void 0;
@@ -26089,7 +26096,7 @@ async function topHoldingMultiples(S, lines, now) {
   const isins = [...new Set(top.map((l) => l.isin?.toUpperCase()).filter((x) => !!x && ISIN_RE.test(x)))];
   const tickers = [...new Set(top.map((l) => l.ticker?.toUpperCase()).filter((x) => !!x && SAFE_TICKER.test(x)))];
   if (!isins.length && !tickers.length) return { datasets: [], notes: ["multiples of the top holdings: the holdings carry no ISIN or ticker to look up"] };
-  const list = (xs) => xs.map((x) => `'${x}'`).join(",");
+  const list = (xs) => xs.map(cribleString).join(",");
   const cond = [isins.length ? `isin IN (${list(isins)})` : "", tickers.length ? `symbol IN (${list(tickers)})` : ""].filter(Boolean).join(" OR ");
   let rows;
   try {
@@ -26299,11 +26306,12 @@ async function etfRun(raw, dir2, opts = {}) {
     try {
       const { scan: scan3, rows } = await sameIndexFunds(index);
       const quote2 = tvStr(tv, "currency");
-      const others = dedupeListings(rows, quote2).filter((m) => tvStr(m, "isin") !== p.isin);
+      const self = { isin: p.isin ?? tvStr(tv, "isin"), ticker: tv?.ticker };
+      const others = otherFunds(rows, self, quote2);
       const comparable2 = others.filter((m) => ccy && tvStr(m, "etf_fund_currency") === ccy && tvStr(m, "currency") === quote2);
       const shown = comparable2.slice(0, 5);
       const base2 = profile?.baseCurrency;
-      const twins = wantTwins ? rankTwins(dedupeListings(rows, base2).filter((m) => tvStr(m, "isin") !== p.isin)).slice(0, 3) : [];
+      const twins = wantTwins ? rankTwins(otherFunds(rows, self, base2)).slice(0, 3) : [];
       const day4 = scan3.provenance.asOf;
       const points = [
         {
@@ -56297,7 +56305,7 @@ function peaEligible(row) {
   const isin = typeof row.isin === "string" ? row.isin.trim().toUpperCase() : "";
   return typeof row.country === "string" && iso4.includes(row.country) && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) && iso4.includes(isin.slice(0, 2));
 }
-var quoteList = (xs) => xs.map((x) => `'${x.replace(/'/g, "")}'`).join(",");
+var quoteList = (xs) => xs.map(cribleString).join(",");
 function valueCandidateDsl(style, region, minCapEur) {
   const parts = ["primary_listing = 1", `cap_eur >= ${Math.round(minCapEur)}`];
   if (region.countries?.length) parts.push(`country IN (${quoteList(region.countries)})`);

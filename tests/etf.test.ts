@@ -14,6 +14,7 @@ import {
   holdingNameKey,
   normalizeIndexName,
   PEA_UNKNOWN,
+  otherFunds,
   rankTwins,
   withholdingNote,
 } from "../src/analyze/etf.js";
@@ -156,6 +157,20 @@ describe("listings and twins", () => {
     ];
     expect(dedupeListings(rows).map((m) => m.ticker)).toEqual(["EURONEXT:IWDA", "AMEX:URTH"]);
     expect(dedupeListings(rows, "USD").map((m) => m.ticker)).toEqual(["LSE:IWDA", "AMEX:URTH"]);
+  });
+  it("never lists the fund among the other funds on its index", () => {
+    const rows = [
+      row("LSE:IWDA", { isin: "ie00b4l5y983", currency: "USD" }),
+      row("EURONEXT:IWDA", { isin: "ie00b4l5y983", currency: "EUR" }),
+      row("AMEX:URTH", { isin: "US4642863926", currency: "USD" }),
+      row("XETR:XDWD", { currency: "EUR" }),
+    ];
+    // TradingView wrote the ISIN in lower case; the fund itself is known by its upper-case ISIN.
+    expect(otherFunds(rows, { isin: "IE00B4L5Y983" }, "EUR").map((m) => m.ticker)).toEqual(["AMEX:URTH", "XETR:XDWD"]);
+    // No ISIN known (TradingView found the listing by its ticker, which carries none): its own listing is still itself.
+    expect(otherFunds(rows, { ticker: "XETR:XDWD" }, "EUR").map((m) => m.ticker)).toEqual(["EURONEXT:IWDA", "AMEX:URTH"]);
+    // Known by one listing only: its row's ISIN rules out its other venues too.
+    expect(otherFunds(rows, { ticker: "LSE:IWDA" }, "EUR").map((m) => m.ticker)).toEqual(["AMEX:URTH", "XETR:XDWD"]);
   });
   it("ranks UCITS twins by TER, then AUM", () => {
     const twins = rankTwins([

@@ -4,6 +4,7 @@
 // the filtered universe. Everything else — the anti-trap gates, the hygiene,
 // the style's own client-side rules — runs in TypeScript, because a DSL
 // comparison silently drops the rows where a field is null.
+import { cribleString } from "../../providers/external/crible.js";
 import { EU_EEA_ISO } from "../screen/presets.js";
 
 export const VALUE_STYLE_IDS = ["quality-value", "deep-value", "dividend", "garp", "magic-formula"] as const;
@@ -247,7 +248,7 @@ export function peaEligible(row: Record<string, unknown>): boolean {
   return typeof row.country === "string" && iso.includes(row.country) && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) && iso.includes(isin.slice(0, 2));
 }
 
-const quoteList = (xs: readonly string[]) => xs.map((x) => `'${x.replace(/'/g, "")}'`).join(",");
+const quoteList = (xs: readonly string[]) => xs.map(cribleString).join(",");
 
 /** The minimal crible query for a style: primary listings, the region's countries, the size floor in EUR, the cheapness filter. */
 export function valueCandidateDsl(style: ValueStyle, region: ValueRegion, minCapEur: number): string {
