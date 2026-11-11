@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.47](https://github.com/maxgfr/ultrastock/compare/v1.13.46...v1.13.47) (2026-11-11)
+
+
+### Bug Fixes
+
+* **backtest:** label a crypto backtest with the book that answered ([8cda5c9](https://github.com/maxgfr/ultrastock/commit/8cda5c9038b828884c118e583d1c53b812697c4c))
+* **backtest:** let declared trials deflate a sweep whatever the grid's spread ([20b7cfa](https://github.com/maxgfr/ultrastock/commit/20b7cfa59c2e03130391dd72e78b7554954023c5))
+* **cache:** never sweep a pre-freshness entry before the longest kind's cap ([3c8b3bd](https://github.com/maxgfr/ultrastock/commit/3c8b3bd0a72b776aaaa51a7c6aea2a071e5e483c))
+* **insiders:** order same-day amendments by each filing agent's own sequence ([b534562](https://github.com/maxgfr/ultrastock/commit/b5345621e002fe67b00c8ba79a0eaa3d7591faf0))
+* **morning:** stop looking up a held prediction-market contract as a listing ([12ca50a](https://github.com/maxgfr/ultrastock/commit/12ca50a23d30eb5a554cb3146bace91f590b3f81))
+* **net:** sweep the pacing files of hosts no one reserved lately ([da5dae4](https://github.com/maxgfr/ultrastock/commit/da5dae40bbc992302fe9f29f6c38b1cb091bc486))
+* **options:** price an American option at zero volatility instead of NaN ([832eafe](https://github.com/maxgfr/ultrastock/commit/832eafe8e54b41b983f79ea693c70c959ddce48e))
+* **portfolio:** keep prediction-market contracts out of the stress proxies and the fund rows ([ce5ed6c](https://github.com/maxgfr/ultrastock/commit/ce5ed6cca9afa5a0d5ccdbb56259c50622f3a730))
+
 ## [1.13.46](https://github.com/maxgfr/ultrastock/compare/v1.13.45...v1.13.46) (2026-11-11)
 
 
