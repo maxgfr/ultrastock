@@ -122,10 +122,11 @@ export async function journalCommand(args: CommandArgs, asJson: boolean): Promis
           (s) =>
             `  ${s.symbol} ${s.rating} +${s.horizon} → ${s.endDate}: ${s.returnPct} %${s.alphaPct !== undefined ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} — ${s.hit ? "right" : "wrong"}`,
         ),
-        // A name no longer quoted never gets that bar: it is said, not settled on its last close.
+        // A history that stops short is waited for; ten sessions past the horizon's end, the horizon settles on the last
+        // close there is, marked partial — a delisted or renamed name included.
         ...r.waiting.map(
           (w) =>
-            `  waiting: ${w.symbol} +${w.horizon} (${w.decisionId}) ends ${w.endDate}, but ${w.series === w.symbol ? "its" : `the benchmark ${w.series}'s`} history ${w.lastBar ? `stops at ${w.lastBar}` : "is empty"} — pending until it holds a bar on or after ${w.endDate}; a delisted or renamed name stays pending`,
+            `  waiting: ${w.symbol} +${w.horizon} (${w.decisionId}) ends ${w.endDate}, but ${w.series === w.symbol ? "its" : `the benchmark ${w.series}'s`} history ${w.lastBar ? `stops at ${w.lastBar}` : "is empty"} — pending until it holds a bar on or after ${w.endDate}; 10 sessions past that day (calendar days for crypto), it settles on the last close there is, marked partial`,
         ),
         ...r.errors.map((e) => `  error: ${e}`),
       ].join("\n"),

@@ -51926,9 +51926,10 @@ async function journalCommand(args, asJson) {
         ...r3.settled.map(
           (s) => `  ${s.symbol} ${s.rating} +${s.horizon} \u2192 ${s.endDate}: ${s.returnPct} %${s.alphaPct !== void 0 ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} \u2014 ${s.hit ? "right" : "wrong"}`
         ),
-        // A name no longer quoted never gets that bar: it is said, not settled on its last close.
+        // A history that stops short is waited for; ten sessions past the horizon's end, the horizon settles on the last
+        // close there is, marked partial — a delisted or renamed name included.
         ...r3.waiting.map(
-          (w) => `  waiting: ${w.symbol} +${w.horizon} (${w.decisionId}) ends ${w.endDate}, but ${w.series === w.symbol ? "its" : `the benchmark ${w.series}'s`} history ${w.lastBar ? `stops at ${w.lastBar}` : "is empty"} \u2014 pending until it holds a bar on or after ${w.endDate}; a delisted or renamed name stays pending`
+          (w) => `  waiting: ${w.symbol} +${w.horizon} (${w.decisionId}) ends ${w.endDate}, but ${w.series === w.symbol ? "its" : `the benchmark ${w.series}'s`} history ${w.lastBar ? `stops at ${w.lastBar}` : "is empty"} \u2014 pending until it holds a bar on or after ${w.endDate}; 10 sessions past that day (calendar days for crypto), it settles on the last close there is, marked partial`
         ),
         ...r3.errors.map((e) => `  error: ${e}`)
       ].join("\n")
