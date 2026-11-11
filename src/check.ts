@@ -23,7 +23,7 @@
 // as-of day) or that a cited document writes — in any usual form, so "le 17
 // novembre" stands for 2026-11-17. A results date copied wrong is refused.
 import { bm25Tokenize, citationTokensIn, collectCitations, EVIDENCE_TOKEN, extractClaimUnits, unitTexts } from "./engine.js";
-import { datesIn, extractDates, holdsDate, type WrittenDate } from "./core/dates.js";
+import { datesIn, extractDates, holdsDate, MONTH_WORD, type WrittenDate } from "./core/dates.js";
 import { type EvidenceItem, EvidenceStore, readDocText } from "./core/evidence.js";
 
 export interface CheckProblem {
@@ -74,7 +74,6 @@ const SCALES: Array<[RegExp, number]> = [
   [/^(?:Md|Mds|md|mds|bn|Bn|B|billion|billions|milliard|milliards)$/, 1e9],
   [/^(?:T|tn|trillion|trillions)$/, 1e12],
 ];
-const MONTHS = "jan|janv|feb|févr|fev|mar|mars|apr|avr|may|mai|jun|juin|jul|juil|aug|août|aout|sep|sept|oct|nov|dec|déc";
 
 /** What is not a figure: dates, times, citation tokens, inline code, link targets. */
 function stripNonFigures(text: string): string {
@@ -85,8 +84,9 @@ function stripNonFigures(text: string): string {
       .replace(/\[[^\]]*\]/g, " ")
       .replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ")
       .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ")
-      .replace(new RegExp(`\\b\\d{1,2}(?:er)?\\s+(?:${MONTHS})[a-zéû]*\\.?(?:\\s+\\d{4})?`, "gi"), " ")
-      .replace(new RegExp(`\\b(?:${MONTHS})[a-zéû]*\\.?\\s+\\d{1,2}(?:,\\s*\\d{4})?`, "gi"), " ")
+      // A month is a whole word: "margin 45 %", "declined 12 %" and "marge 45 %" are figures, not "Mar 4", "Dec 12".
+      .replace(new RegExp(`\\b\\d{1,2}(?:er)?\\s+(?:${MONTH_WORD})(?!\\p{L})\\.?(?:\\s+\\d{4})?`, "giu"), " ")
+      .replace(new RegExp(`(?<!\\p{L})(?:${MONTH_WORD})(?!\\p{L})\\.?\\s+\\d{1,2}(?:,\\s*\\d{4}(?!\\p{N}))?(?!\\p{N}|[.,]\\d)`, "giu"), " ")
       .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ")
       // Indicator parameters and index names are labels, not claims: RSI(14), MACD(12,26,9), SMA 200, MM50, CAC 40, S&P 500.
       .replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ")

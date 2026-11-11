@@ -28,7 +28,7 @@ const MONTH_NAMES: Array<[RegExp, number]> = [
   [/^(?:nov|novembre|november)$/, 11],
   [/^(?:d[ée]c|d[ée]cembre|dec|december)$/, 12],
 ];
-const MONTH_WORD =
+export const MONTH_WORD =
   "janvier|janv|january|jan|février|fevrier|févr|fevr|february|feb|mars|march|mar|avril|avr|april|apr|mai|may|juin|june|jun|juillet|juil|july|jul|août|aout|august|aug|septembre|september|sept|sep|octobre|october|oct|novembre|november|nov|décembre|decembre|december|déc|dec";
 
 const monthOf = (w: string): number | undefined => {

@@ -21439,9 +21439,8 @@ var SCALES = [
   [/^(?:Md|Mds|md|mds|bn|Bn|B|billion|billions|milliard|milliards)$/, 1e9],
   [/^(?:T|tn|trillion|trillions)$/, 1e12]
 ];
-var MONTHS5 = "jan|janv|feb|f\xE9vr|fev|mar|mars|apr|avr|may|mai|jun|juin|jul|juil|aug|ao\xFBt|aout|sep|sept|oct|nov|dec|d\xE9c";
 function stripNonFigures(text) {
-  return text.replace(/`[^`]*`/g, " ").replace(/\]\([^)]*\)/g, "] ").replace(/\[[^\]]*\]/g, " ").replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ").replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ").replace(new RegExp(`\\b\\d{1,2}(?:er)?\\s+(?:${MONTHS5})[a-z\xE9\xFB]*\\.?(?:\\s+\\d{4})?`, "gi"), " ").replace(new RegExp(`\\b(?:${MONTHS5})[a-z\xE9\xFB]*\\.?\\s+\\d{1,2}(?:,\\s*\\d{4})?`, "gi"), " ").replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ").replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ").replace(/\b(?:SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA)\s?\d+\b/gi, " ").replace(/(?:S&P|\b(?:CAC|SBF|STOXX|Stoxx|Nasdaq|NASDAQ|Russell|DAX|MDAX|FTSE|AEX|BEL|IBEX|MIB|PSI|OBX|ISEQ|Nikkei|Top|top|Dow Jones))\s?\d+\b/g, " ");
+  return text.replace(/`[^`]*`/g, " ").replace(/\]\([^)]*\)/g, "] ").replace(/\[[^\]]*\]/g, " ").replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ").replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ").replace(new RegExp(`\\b\\d{1,2}(?:er)?\\s+(?:${MONTH_WORD})(?!\\p{L})\\.?(?:\\s+\\d{4})?`, "giu"), " ").replace(new RegExp(`(?<!\\p{L})(?:${MONTH_WORD})(?!\\p{L})\\.?\\s+\\d{1,2}(?:,\\s*\\d{4}(?!\\p{N}))?(?!\\p{N}|[.,]\\d)`, "giu"), " ").replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ").replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ").replace(/\b(?:SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA)\s?\d+\b/gi, " ").replace(/(?:S&P|\b(?:CAC|SBF|STOXX|Stoxx|Nasdaq|NASDAQ|Russell|DAX|MDAX|FTSE|AEX|BEL|IBEX|MIB|PSI|OBX|ISEQ|Nikkei|Top|top|Dow Jones))\s?\d+\b/g, " ");
 }
 var FIGURE_RE = /(?<![\p{L}\p{N}_.,])([+\-−–]?)\s?([$€£]\s?)?(\d{1,3}(?:[ ,.  ']\d{3})+(?!\d)(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(\s?(?:%|pts?|bps|x|×)|\s?(?:k|K|M|m|mn|Mn|mio|Md|Mds|md|mds|bn|Bn|B|T|tn|million|millions|milliard|milliards|billion|billions|trillion|trillions|mille)\b)?(\s?(?:[$€£]|EUR|USD|USDT|USDC|GBP|CHF|NOK|BTC|ETH)\b|\s?[$€£])?/gu;
 var PARAMETER_AFTER = /^[-\s]?(?:days?|d|jours?|j|weeks?|wks?|w|semaines?|months?|mo|mois|years?|yrs?|y|ans?|années?|bars?|séances?|sessions?|hours?|h|heures?|min|minutes?|périodes?|periods?|ème|e|er|re|st|nd|rd|th)\b/iu;
@@ -23973,7 +23972,7 @@ var ISHARES_PRODUCTS = {
   IE00B53SZB19: { id: "253741", name: "iShares NASDAQ 100 UCITS ETF (CNDX)" },
   IE00B4K48X80: { id: "251861", name: "iShares Core MSCI Europe UCITS ETF (SMEA)" }
 };
-var MONTHS6 = {
+var MONTHS5 = {
   jan: "01",
   feb: "02",
   mar: "03",
@@ -23990,7 +23989,7 @@ var MONTHS6 = {
 };
 function isharesDate(s) {
   const m = /^(\d{1,2})\/([A-Za-z]{3,4})\/(\d{4})$/.exec((s ?? "").trim());
-  const mm = m ? MONTHS6[m[2].toLowerCase()] : void 0;
+  const mm = m ? MONTHS5[m[2].toLowerCase()] : void 0;
   return m && mm ? `${m[3]}-${mm}-${m[1].padStart(2, "0")}` : void 0;
 }
 function parseIsharesHoldings(csv) {
@@ -34565,7 +34564,7 @@ import { join as join35 } from "path";
 
 // src/providers/macro/elections.ts
 var SOURCE24 = "wikipedia-elections";
-var MONTHS7 = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+var MONTHS6 = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 var ALIASES = {
   "czech republic": "CZ",
   "bosnia and herzegovina": "BA",
@@ -34639,10 +34638,10 @@ function parseDay(text, month, year) {
   const m = /^(\d{1,2})(?:\s*[–-]\s*(\d{1,2}))?\s+([A-Za-z]+)(?:\s*[–-]\s*(\d{1,2})\s+([A-Za-z]+))?/.exec(text.trim());
   if (!m) return void 0;
   const iso5 = (d, mo2, y = year) => `${y}-${String(mo2 + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  const mo = MONTHS7.indexOf(m[3].toLowerCase());
+  const mo = MONTHS6.indexOf(m[3].toLowerCase());
   const start = mo >= 0 ? mo : month;
   if (m[4] && m[5]) {
-    const mo2 = MONTHS7.indexOf(m[5].toLowerCase());
+    const mo2 = MONTHS6.indexOf(m[5].toLowerCase());
     const end = mo2 >= 0 ? mo2 : start;
     return { date: iso5(Number(m[1]), start), endDate: iso5(Number(m[4]), end, end < start ? year + 1 : year) };
   }
@@ -34671,7 +34670,7 @@ function parseElectionCalendar(wikitext, year) {
   for (const line of text.split("\n")) {
     const h = /^==\s*([A-Za-z]+)\s*==\s*$/.exec(line.trim());
     if (h) {
-      month = MONTHS7.indexOf(h[1].toLowerCase());
+      month = MONTHS6.indexOf(h[1].toLowerCase());
       current2 = void 0;
       continue;
     }
@@ -34712,7 +34711,7 @@ async function readElectionCalendar(year) {
 }
 
 // src/providers/macro/central-banks.ts
-var MONTHS8 = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+var MONTHS7 = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 var iso2 = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 var FOMC_URL = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm";
 var ECB_URL = "https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html";
@@ -34724,7 +34723,7 @@ function parseFomc(html) {
     const chunk = html.slice(y.index, years[i + 1]?.index ?? html.length);
     const re = /fomc-meeting__month[^>]*>(?:<strong>)?\s*([A-Za-z/]+)[\s\S]*?fomc-meeting__date[^>]*>\s*([0-9]{1,2})(?:-([0-9]{1,2}))?(\*)?/g;
     for (const m of chunk.matchAll(re)) {
-      const monthOf2 = (t) => MONTHS8.findIndex((x) => x.startsWith(t.slice(0, 3)));
+      const monthOf2 = (t) => MONTHS7.findIndex((x) => x.startsWith(t.slice(0, 3)));
       const months = m[1].toLowerCase().split("/");
       const first = monthOf2(months[0]);
       if (first < 0) continue;

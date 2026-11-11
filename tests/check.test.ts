@@ -101,6 +101,18 @@ describe("checkAnswer", () => {
     expect(kinds("Cours de clôture - 383,00 € [E1].\n")).toEqual([]);
     expect(kinds("Cours de clôture – 383,00 € [E1].\n")).toEqual([]);
   });
+  it("checks a figure after a word that merely starts like a month (margin, decline, marge)", () => {
+    // E1 is 383 EUR: none of these figures is in it.
+    const kinds = (answer: string) => failing(checkAnswer(run(), answer));
+    expect(kinds("Operating margin 45 % [E1].\n")).toEqual(["unsupported"]);
+    expect(kinds("Revenue declined 12 % [E1].\n")).toEqual(["unsupported"]);
+    expect(kinds("Une marge 45 % [E1].\n")).toEqual(["unsupported"]);
+    expect(kinds("Revenue decreased 4.5 % [E1].\n")).toEqual(["unsupported"]);
+    // Real dates are still not figures.
+    expect(kinds("Close 383 € [E1] on Oct 23, 2026.\n")).toEqual([]);
+    expect(kinds("Clôture à 383 € [E1] le 23 octobre 2026.\n")).toEqual([]);
+    expect(kinds("Close 383 € [E1] on 23 Oct.\n")).toEqual([]);
+  });
   it("fails uncited, dangling and unsupported figures, each on its line", () => {
     const r = checkAnswer(run(), "A 383 € close [E1].\n\nTarget 450 € soon.\n\nPE of 22.5 [E9].\n\nUp 12% [E2].\n");
     expect(failing(r)).toEqual(["uncited", "dangling", "unsupported", "unsupported"]);
