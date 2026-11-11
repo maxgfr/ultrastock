@@ -82,8 +82,10 @@ export function formatDatasets(results: readonly Registered[]): string {
   const lines: string[] = [];
   for (const { dataset: ds, items } of results) {
     const p = ds.provenance;
+    // The title and an as-of day are printed as one line each: a line break or our closing marker in either, from a
+    // provider or a page, would start a line of its own — outside the heading, or after the fence closed early.
     lines.push(
-      `## ${ds.title}`,
+      `## ${sanitizeExternalText(ds.title, 200)}`,
       `source: ${p.source}${p.delay ? `, ${p.delay}` : ""}${p.official ? "" : ", unofficial"}${p.fallbackFrom ? `, fallback for ${p.fallbackFrom}` : ""}${p.url ? ` — ${p.url}` : ""}`,
       "",
     );
@@ -96,7 +98,7 @@ export function formatDatasets(results: readonly Registered[]): string {
       // the fence early and put what follows it outside. Label and link are cleaned like the value.
       for (const i of external)
         lines.push(
-          `- ${i.id ? `[${i.id}] ` : ""}${sanitizeExternalText(i.label)}: ${String(i.value)}${i.asOf ? ` (${i.asOf})` : ""}${i.url ? ` <${sanitizeExternalText(i.url, 2000).replace(/[\s<>]/g, "")}>` : ""}`,
+          `- ${i.id ? `[${i.id}] ` : ""}${sanitizeExternalText(i.label)}: ${String(i.value)}${i.asOf ? ` (${sanitizeExternalText(i.asOf, 40)})` : ""}${i.url ? ` <${sanitizeExternalText(i.url, 2000).replace(/[\s<>]/g, "")}>` : ""}`,
         );
       lines.push(UNTRUSTED_CLOSE);
     }
