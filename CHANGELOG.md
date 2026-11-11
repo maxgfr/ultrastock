@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.21](https://github.com/maxgfr/ultrastock/compare/v1.13.20...v1.13.21) (2026-11-11)
+
+
+### Bug Fixes
+
+* **ledger:** a transfer-in without a price keeps the cost it left with ([fd0a8d7](https://github.com/maxgfr/ultrastock/commit/fd0a8d7bb892d6af99b117ceb384975f56107a48))
+
 ## [1.13.20](https://github.com/maxgfr/ultrastock/compare/v1.13.19...v1.13.20) (2026-11-11)
 
 
