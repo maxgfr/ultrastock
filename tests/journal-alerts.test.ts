@@ -124,6 +124,28 @@ describe("post-trade review", () => {
     expect(d.trades).toBe(2);
     expect(d.withStop).toBe(1);
   });
+
+  it("pairs a short round trip — sold first, bought back — and reviews it in R from above", () => {
+    const trips = roundTrips([
+      tx({ date: "2026-01-02", type: "sell", account: "a", symbol: "X", quantity: 10, price: 100, fee: 1 }),
+      tx({ date: "2026-01-20", type: "buy", account: "a", symbol: "X", quantity: 10, price: 90, fee: 1 }),
+      // Then a long one on the same line, which the short must not swallow.
+      tx({ date: "2026-02-02", type: "buy", account: "a", symbol: "X", quantity: 5, price: 95 }),
+      tx({ date: "2026-02-20", type: "sell", account: "a", symbol: "X", quantity: 5, price: 97 }),
+    ]);
+    expect(trips.map((t) => [t.side, t.entryPrice, t.exitPrice, t.quantity])).toEqual([
+      ["short", 100, 90, 10],
+      ["long", 95, 97, 5],
+    ]);
+    // Sold at 100, bought back at 90: +100, less the two fees.
+    expect(trips[0]!.pnl).toBeCloseTo(98, 10);
+    const bars = fromCloses([100, 104, 96, 92, 89, 90]).map((b, i) => ({ ...b, date: `2026-01-${String(2 + i * 3).padStart(2, "0")}` }));
+    // A stop 5 above the entry: risk 5 a unit, the 10 gained is +2R.
+    const rv = reviewTrip({ ...trips[0]!, stop: 105 }, bars);
+    expect(rv.rMultiple).toBeCloseTo(2, 6);
+    expect(rv.maeR!).toBeLessThan(0);
+    expect(rv.mfeR!).toBeGreaterThan(2);
+  });
 });
 
 describe("alerts", () => {

@@ -112,6 +112,8 @@ export function overdueTheses(now = new Date()): Thesis[] {
 export interface RoundTrip {
   account: string;
   symbol: string;
+  /** long: bought then sold; short: sold first, then bought back. Entry and exit are in that order. */
+  side: "long" | "short";
   entryDate: string;
   entryPrice: number;
   exitDate: string;
@@ -124,40 +126,54 @@ export interface RoundTrip {
   ticket?: string;
 }
 
-/** Pair buys and sells into closed round trips (FIFO), carrying the entry ticket's stop and plan. */
+/**
+ * Pair buys and sells into closed round trips (FIFO), carrying the entry
+ * ticket's stop and plan. A trade first closes what is open the other way; what
+ * is left opens a position its way: a sell with nothing bought opens a short,
+ * which the next buys cover.
+ */
 export function roundTrips(txs: readonly Transaction[]): RoundTrip[] {
   const tickets = new Map(listTickets().map((t) => [t.id, t]));
-  const open = new Map<string, Array<{ t: Transaction; left: number }>>();
+  // Open lots per line; all of one side at a time (a trade closes the other side before it opens its own).
+  const open = new Map<string, { side: "long" | "short"; lots: Array<{ t: Transaction; left: number }> }>();
   const out: RoundTrip[] = [];
   for (const t of [...txs].sort((a, b) => a.date.localeCompare(b.date))) {
-    if (!t.symbol) continue;
+    if (!t.symbol || (t.type !== "buy" && t.type !== "sell")) continue;
     const k = `${t.account}|${t.symbol}`;
-    if (t.type === "buy") open.set(k, [...(open.get(k) ?? []), { t, left: t.quantity! }]);
-    else if (t.type === "sell") {
-      let q = t.quantity!;
-      const lots = open.get(k) ?? [];
-      while (q > 1e-12 && lots.length) {
-        const lot = lots[0]!;
-        const take = Math.min(q, lot.left);
-        const tk = lot.t.origin.startsWith("ticket:") ? tickets.get(lot.t.origin.slice(7)) : undefined;
-        out.push({
-          account: t.account,
-          symbol: t.symbol,
-          entryDate: lot.t.date,
-          entryPrice: lot.t.price!,
-          exitDate: t.date,
-          exitPrice: t.price!,
-          quantity: take,
-          pnl: (t.price! - lot.t.price!) * take - ((lot.t.fee ?? 0) * take) / lot.t.quantity! - ((t.fee ?? 0) * take) / t.quantity!,
-          stop: tk?.order.stop,
-          plan: tk?.note,
-          ticket: tk?.id,
-        });
-        lot.left -= take;
-        q -= take;
-        if (lot.left <= 1e-12) lots.shift();
-      }
+    const side = t.type === "buy" ? "long" : "short";
+    const book = open.get(k) ?? { side, lots: [] };
+    let q = t.quantity!;
+    // Close the other side first.
+    while (book.side !== side && q > 1e-12 && book.lots.length) {
+      const lot = book.lots[0]!;
+      const take = Math.min(q, lot.left);
+      const tk = lot.t.origin.startsWith("ticket:") ? tickets.get(lot.t.origin.slice(7)) : undefined;
+      const move = book.side === "long" ? t.price! - lot.t.price! : lot.t.price! - t.price!;
+      out.push({
+        account: t.account,
+        symbol: t.symbol,
+        side: book.side,
+        entryDate: lot.t.date,
+        entryPrice: lot.t.price!,
+        exitDate: t.date,
+        exitPrice: t.price!,
+        quantity: take,
+        pnl: move * take - ((lot.t.fee ?? 0) * take) / lot.t.quantity! - ((t.fee ?? 0) * take) / t.quantity!,
+        stop: tk?.order.stop,
+        plan: tk?.note,
+        ticket: tk?.id,
+      });
+      lot.left -= take;
+      q -= take;
+      if (lot.left <= 1e-12) book.lots.shift();
     }
+    // What is left opens (or adds to) a position this way.
+    if (q > 1e-12) {
+      if (book.side !== side) book.lots = [];
+      book.side = side;
+      book.lots.push({ t, left: q });
+    }
+    open.set(k, book);
   }
   return out;
 }
@@ -176,13 +192,22 @@ export interface Review {
 export function reviewTrip(trip: RoundTrip, bars: readonly Bar[]): Review {
   const findings: string[] = [];
   const inside = bars.filter((b) => b.date.slice(0, 10) >= trip.entryDate.slice(0, 10) && b.date.slice(0, 10) <= trip.exitDate.slice(0, 10));
-  const risk = trip.stop !== undefined ? trip.entryPrice - trip.stop : undefined;
-  const r = (p: number) => (risk && risk > 0 ? (p - trip.entryPrice) / risk : undefined);
+  // A short gains as the price falls: its stop is above the entry, and its best price the lowest.
+  const dir = trip.side === "short" ? -1 : 1;
+  const risk = trip.stop !== undefined ? (trip.entryPrice - trip.stop) * dir : undefined;
+  const r = (p: number) => (risk && risk > 0 ? ((p - trip.entryPrice) * dir) / risk : undefined);
   const hi = inside.length ? Math.max(...inside.map((b) => b.high)) : undefined;
   const lo = inside.length ? Math.min(...inside.map((b) => b.low)) : undefined;
-  const rv: Review = { trip, rMultiple: r(trip.exitPrice), mfeR: hi !== undefined ? r(hi) : undefined, maeR: lo !== undefined ? r(lo) : undefined, findings };
+  const [best, worst] = dir === 1 ? [hi, lo] : [lo, hi];
+  const rv: Review = {
+    trip,
+    rMultiple: r(trip.exitPrice),
+    mfeR: best !== undefined ? r(best) : undefined,
+    maeR: worst !== undefined ? r(worst) : undefined,
+    findings,
+  };
   if (trip.stop === undefined) findings.push("no stop was recorded at entry: the risk was undefined — the first thing to fix");
-  if (trip.stop !== undefined && lo !== undefined && lo <= trip.stop && trip.exitPrice > trip.stop)
+  if (trip.stop !== undefined && worst !== undefined && (worst - trip.stop) * dir <= 0 && (trip.exitPrice - trip.stop) * dir > 0)
     findings.push("the price traded through the stop but the position was not closed there: the stop was not respected");
   if (rv.mfeR !== undefined && rv.rMultiple !== undefined && rv.mfeR >= 2 && rv.rMultiple < 0.5)
     findings.push(`the trade reached +${rv.mfeR.toFixed(1)}R and gave it back: an exit rule (trailing stop, partial take-profit) was missing`);
@@ -198,7 +223,7 @@ export function reviewMarkdown(rv: Review): string {
   const t = rv.trip;
   const f = (x?: number) => (x === undefined ? "n/a" : `${x >= 0 ? "+" : ""}${x.toFixed(2)}R`);
   return [
-    `## ${t.symbol} (${t.account}) — ${t.entryDate.slice(0, 10)} → ${t.exitDate.slice(0, 10)}`,
+    `## ${t.symbol} (${t.account}${t.side === "short" ? ", short" : ""}) — ${t.entryDate.slice(0, 10)} → ${t.exitDate.slice(0, 10)}`,
     "",
     "**The plan, as written before the outcome:**",
     "",

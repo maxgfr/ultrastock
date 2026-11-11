@@ -23343,47 +23343,61 @@ function roundTrips(txs) {
   const open2 = /* @__PURE__ */ new Map();
   const out = [];
   for (const t of [...txs].sort((a, b) => a.date.localeCompare(b.date))) {
-    if (!t.symbol) continue;
+    if (!t.symbol || t.type !== "buy" && t.type !== "sell") continue;
     const k = `${t.account}|${t.symbol}`;
-    if (t.type === "buy") open2.set(k, [...open2.get(k) ?? [], { t, left: t.quantity }]);
-    else if (t.type === "sell") {
-      let q = t.quantity;
-      const lots = open2.get(k) ?? [];
-      while (q > 1e-12 && lots.length) {
-        const lot = lots[0];
-        const take = Math.min(q, lot.left);
-        const tk = lot.t.origin.startsWith("ticket:") ? tickets.get(lot.t.origin.slice(7)) : void 0;
-        out.push({
-          account: t.account,
-          symbol: t.symbol,
-          entryDate: lot.t.date,
-          entryPrice: lot.t.price,
-          exitDate: t.date,
-          exitPrice: t.price,
-          quantity: take,
-          pnl: (t.price - lot.t.price) * take - (lot.t.fee ?? 0) * take / lot.t.quantity - (t.fee ?? 0) * take / t.quantity,
-          stop: tk?.order.stop,
-          plan: tk?.note,
-          ticket: tk?.id
-        });
-        lot.left -= take;
-        q -= take;
-        if (lot.left <= 1e-12) lots.shift();
-      }
+    const side2 = t.type === "buy" ? "long" : "short";
+    const book2 = open2.get(k) ?? { side: side2, lots: [] };
+    let q = t.quantity;
+    while (book2.side !== side2 && q > 1e-12 && book2.lots.length) {
+      const lot = book2.lots[0];
+      const take = Math.min(q, lot.left);
+      const tk = lot.t.origin.startsWith("ticket:") ? tickets.get(lot.t.origin.slice(7)) : void 0;
+      const move = book2.side === "long" ? t.price - lot.t.price : lot.t.price - t.price;
+      out.push({
+        account: t.account,
+        symbol: t.symbol,
+        side: book2.side,
+        entryDate: lot.t.date,
+        entryPrice: lot.t.price,
+        exitDate: t.date,
+        exitPrice: t.price,
+        quantity: take,
+        pnl: move * take - (lot.t.fee ?? 0) * take / lot.t.quantity - (t.fee ?? 0) * take / t.quantity,
+        stop: tk?.order.stop,
+        plan: tk?.note,
+        ticket: tk?.id
+      });
+      lot.left -= take;
+      q -= take;
+      if (lot.left <= 1e-12) book2.lots.shift();
     }
+    if (q > 1e-12) {
+      if (book2.side !== side2) book2.lots = [];
+      book2.side = side2;
+      book2.lots.push({ t, left: q });
+    }
+    open2.set(k, book2);
   }
   return out;
 }
 function reviewTrip(trip, bars) {
   const findings = [];
   const inside = bars.filter((b) => b.date.slice(0, 10) >= trip.entryDate.slice(0, 10) && b.date.slice(0, 10) <= trip.exitDate.slice(0, 10));
-  const risk = trip.stop !== void 0 ? trip.entryPrice - trip.stop : void 0;
-  const r3 = (p) => risk && risk > 0 ? (p - trip.entryPrice) / risk : void 0;
+  const dir2 = trip.side === "short" ? -1 : 1;
+  const risk = trip.stop !== void 0 ? (trip.entryPrice - trip.stop) * dir2 : void 0;
+  const r3 = (p) => risk && risk > 0 ? (p - trip.entryPrice) * dir2 / risk : void 0;
   const hi = inside.length ? Math.max(...inside.map((b) => b.high)) : void 0;
   const lo = inside.length ? Math.min(...inside.map((b) => b.low)) : void 0;
-  const rv = { trip, rMultiple: r3(trip.exitPrice), mfeR: hi !== void 0 ? r3(hi) : void 0, maeR: lo !== void 0 ? r3(lo) : void 0, findings };
+  const [best, worst] = dir2 === 1 ? [hi, lo] : [lo, hi];
+  const rv = {
+    trip,
+    rMultiple: r3(trip.exitPrice),
+    mfeR: best !== void 0 ? r3(best) : void 0,
+    maeR: worst !== void 0 ? r3(worst) : void 0,
+    findings
+  };
   if (trip.stop === void 0) findings.push("no stop was recorded at entry: the risk was undefined \u2014 the first thing to fix");
-  if (trip.stop !== void 0 && lo !== void 0 && lo <= trip.stop && trip.exitPrice > trip.stop)
+  if (trip.stop !== void 0 && worst !== void 0 && (worst - trip.stop) * dir2 <= 0 && (trip.exitPrice - trip.stop) * dir2 > 0)
     findings.push("the price traded through the stop but the position was not closed there: the stop was not respected");
   if (rv.mfeR !== void 0 && rv.rMultiple !== void 0 && rv.mfeR >= 2 && rv.rMultiple < 0.5)
     findings.push(`the trade reached +${rv.mfeR.toFixed(1)}R and gave it back: an exit rule (trailing stop, partial take-profit) was missing`);
@@ -23398,7 +23412,7 @@ function reviewMarkdown(rv) {
   const t = rv.trip;
   const f3 = (x) => x === void 0 ? "n/a" : `${x >= 0 ? "+" : ""}${x.toFixed(2)}R`;
   return [
-    `## ${t.symbol} (${t.account}) \u2014 ${t.entryDate.slice(0, 10)} \u2192 ${t.exitDate.slice(0, 10)}`,
+    `## ${t.symbol} (${t.account}${t.side === "short" ? ", short" : ""}) \u2014 ${t.entryDate.slice(0, 10)} \u2192 ${t.exitDate.slice(0, 10)}`,
     "",
     "**The plan, as written before the outcome:**",
     "",
