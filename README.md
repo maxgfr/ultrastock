@@ -73,6 +73,7 @@ answer prove it:
 | Portfolio | `portfolio show/perf/import/risk/stress/optimize/rebalance/location/lookthrough/income/goals` | The user's ledger, with statements imported from IBKR, Binance, Kraken, Coinbase or any CSV |
 | Trading | `plan`, `ticket`, `paper`, `broker` | The risk gate; paper fills on live books; Binance, Kraken, Coinbase, IBKR and Kalshi behind every guard |
 | Learning | `decide`, `journal`, `watch`, `knowledge`, `report` | The user's own journal |
+| Dashboard | `serve` — a local, read-only web page of the book (positions, cash, P&L, XIRR, breaker, value over time), its risk, stress, income, location and look-through figures, the ledger, the journal, the watchlist, the tickets; `/api/…` as JSON | The user's own state; the same quote and rate sources as `portfolio` |
 | Research | `backtest` (walk-forward, CPCV, deflated Sharpe, PBO, Monte Carlo, review), `strategy`, `stats` | The same price sources |
 | Tax | `tax report/lots/harvest/rules/verify/export` (FR and US) | Sourced, yearly parameters, with a verification checklist |
 
@@ -133,6 +134,7 @@ paper trading, Node ≥ 22 for live orders. Nothing to install.
 | `ULTRASTOCK_NTFY_URL` + `ULTRASTOCK_NTFY_TOKEN`, `ULTRASTOCK_WEBHOOK_URLS` + `ULTRASTOCK_WEBHOOK_ALLOWLIST` | alert and approval-code channels |
 | `ULTRASTOCK_LIVE`, `ULTRASTOCK_IBKR_CA_FILE`, `ULTRASTOCK_IBKR_CERT_SHA256`, `ULTRASTOCK_IBKR_URL` | live trading, and the pinned IBKR gateway |
 | `ULTRASTOCK_MCP_TOKEN` | the bearer token of `mcp --transport http` |
+| `ULTRASTOCK_SERVE_TOKEN` | the token of the `serve` dashboard (else a random one per start) |
 
 ## MCP
 
@@ -141,6 +143,18 @@ paper trading, Node ≥ 22 for live orders. Nothing to install.
 and the bearer token is mandatory. The tools are read-only, plus ticket
 creation through `plan`. No tool submits an order, edits the profile or the
 ledger, stores a key or moves a limit: those stay in front of the user.
+
+## Local dashboard
+
+`ultrastock serve` starts a read-only dashboard on `http://127.0.0.1:8766` and
+prints the URL to open, token included (`--port 0` picks a free port,
+`--book paper` the default book). It shows the book marked to market, the
+portfolio analyses, the ledger, the journal, the watchlist and alert rules,
+the tickets and the audit trail, in light or dark mode — plain HTML, no
+script. Nothing it serves writes to your state: no equity snapshot, no run
+directory, no alert evaluated, no decision settled. It binds 127.0.0.1 only
+and every page needs the token. Ctrl-C stops it. See
+[DOCUMENTATION.md](DOCUMENTATION.md#local-dashboard).
 
 ## Maintenance
 

@@ -147,3 +147,55 @@ warning, and `tax verify` prints the checklist to re-check by web search.
 process with `--json`, so a command's output can never corrupt the protocol
 stream. The tools are read-only, plus ticket creation. HTTP binds to
 127.0.0.1 and requires a bearer token.
+
+## Local dashboard
+
+`serve` renders the user's state as server-side HTML pages in the style of
+`report`, each with an `/api/…` twin returning the same view model as JSON:
+
+| Route | Shows | Read from |
+|---|---|---|
+| `/` | total, cash, positions (quantity, average cost, price, day change, value, weight, P&L vs average cost), cash by account, unpriced lines, XIRR, realised P&L and dividends per currency, the breaker, the value over time | `loadMarkedBook`, the equity curve, the store's snapshots (read-only) |
+| `/analysis/risk\|stress\|income\|location\|lookthrough` | the figures of `portfolio <analysis>` by section, with their formula, notes and sources | the same analyses, on an in-memory register |
+| `/ledger` | the transactions, newest first, filtered by account or symbol | the ledger |
+| `/journal` | decisions, settlements, hit rates, theses (overdue flagged), lessons | the journal |
+| `/watch` | the watchlist and the alert rules (listed, not evaluated) | `state/` |
+| `/tickets` | the tickets and the latest lines of the order audit trail | `tickets/`, `audit/` |
+
+Every page takes `?book=real|paper` and states when it was computed and,
+next to each input, its source and delay.
+
+It writes nothing to `ULTRASTOCK_HOME`. The book is marked without recording
+an equity snapshot (the breaker reads the recorded curve plus today's value,
+in memory), the analyses register nothing, the SQLite store is opened
+read-only without migrating, alerts are not evaluated and decisions are not
+settled. The one file a page can cause to be written is the dataset cache of
+the quotes and rates it reads (`ULTRASTOCK_CACHE_DIR`, by default
+`ULTRASTOCK_HOME/cache`), exactly as `portfolio show` does. A test hits every
+route and checks the home directory is unchanged byte for byte. The value over
+time needs the local store (Node ≥ 22.5, `portfolio db init`, then
+`portfolio track` daily); without it the page says so in one line. A missing
+profile or an empty book is a hint naming the command to run, not an error.
+
+Security, since the page is a person's finances:
+
+- it binds 127.0.0.1 only (there is no flag to bind elsewhere) and answers only
+  `Host: 127.0.0.1:<port>` or `localhost:<port>`, so a DNS-rebinding page
+  cannot reach it under its own name; a cross-origin `Origin` is refused;
+- every route needs the token (`--token` or `ULTRASTOCK_SERVE_TOKEN`, 24+
+  URL-safe characters, else 48 random hex digits per start). The printed URL
+  carries it once: the first visit trades it for an `HttpOnly; SameSite=Strict`
+  cookie and a redirect to the clean URL. `Authorization: Bearer` works too.
+  Tokens are compared in constant time (SHA-256 digests, `timingSafeEqual`);
+- `GET` and `HEAD` only (405 otherwise), no CORS header, and on every answer
+  `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline';
+  img-src data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`,
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
+  `Cache-Control: no-store`;
+- every value is HTML-escaped; `book` and the ledger filters must be values
+  the dashboard knows (400 otherwise), and no part of a request becomes a
+  path; an error shows its message, never a stack.
+
+Concurrent requests for the same page and book share one computation, and the
+net layer answers an identical GET from memory for five minutes, so a refresh
+does not hammer the sources.
