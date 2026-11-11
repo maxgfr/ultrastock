@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.25](https://github.com/maxgfr/ultrastock/compare/v1.13.24...v1.13.25) (2026-11-11)
+
+
+### Bug Fixes
+
+* **check:** read timeframes, week numbers and splits as labels, and no date from fetchedAt ([548ecc9](https://github.com/maxgfr/ultrastock/commit/548ecc9ad5733709bf3648c50c6d2356d67e254a))
+
 ## [1.13.24](https://github.com/maxgfr/ultrastock/compare/v1.13.23...v1.13.24) (2026-11-11)
 
 
