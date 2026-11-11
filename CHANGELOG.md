@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.3](https://github.com/maxgfr/ultrastock/compare/v1.13.2...v1.13.3) (2026-11-11)
+
+
+### Bug Fixes
+
+* **gate:** a replayed fixture writes no equity point and checks no live order ([c8d3b3c](https://github.com/maxgfr/ultrastock/commit/c8d3b3c053dbcb8602b89f903e3ba262e278b722))
+
 ## [1.13.2](https://github.com/maxgfr/ultrastock/compare/v1.13.1...v1.13.2) (2026-11-11)
 
 
