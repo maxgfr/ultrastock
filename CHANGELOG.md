@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.23](https://github.com/maxgfr/ultrastock/compare/v1.13.22...v1.13.23) (2026-11-11)
+
+
+### Bug Fixes
+
+* **profile:** the ratchet holds from the first venue approval, and guards the base currency ([ce27cbd](https://github.com/maxgfr/ultrastock/commit/ce27cbd8463a0c54285600dc3ebe7f4cff9df3ee))
+
 ## [1.13.22](https://github.com/maxgfr/ultrastock/compare/v1.13.21...v1.13.22) (2026-11-11)
 
 
