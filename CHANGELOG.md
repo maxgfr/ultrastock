@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.49](https://github.com/maxgfr/ultrastock/compare/v1.13.48...v1.13.49) (2026-11-11)
+
+
+### Bug Fixes
+
+* **alerts:** hit a stop only on bars after the fill, and check every line ([e8568d0](https://github.com/maxgfr/ultrastock/commit/e8568d0649077bbaa88730da32cf0e9c1fdb65a7))
+* **check:** refuse figures the reader dropped and accept the dates it misread ([947e968](https://github.com/maxgfr/ultrastock/commit/947e96826de13677c71c21c9a8ef9655ce8bbd11))
+* **evidence:** refresh a figure read again instead of keeping its first read ([2e74150](https://github.com/maxgfr/ultrastock/commit/2e741501028108733c8779877e7c5ad20b497cab))
+* **journal:** pair round trips by the ledger's rules and settle each horizon once ([f44a6ed](https://github.com/maxgfr/ultrastock/commit/f44a6edbf8ac3113fca09d427c59f0f9972e26d5))
+* **mcp:** keep read-only tools from migrating the local store ([2c9c5ce](https://github.com/maxgfr/ultrastock/commit/2c9c5cee8bdc3991b9648e0c10940449c9cf461b))
+* **mcp:** read a check answer only when it is an answer of a run ([a3ed099](https://github.com/maxgfr/ultrastock/commit/a3ed099681be7ba5453fc4f251aa6be9f8c1ac85))
+
 ## [1.13.48](https://github.com/maxgfr/ultrastock/compare/v1.13.47...v1.13.48) (2026-11-11)
 
 
