@@ -25380,20 +25380,22 @@ function etfOverlap(a, b) {
   const byIsin = /* @__PURE__ */ new Map();
   const byTicker = /* @__PURE__ */ new Map();
   const byName = /* @__PURE__ */ new Map();
+  const put = (m, k, i) => m.set(k, [...m.get(k) ?? [], i]);
   B.forEach((l, i) => {
-    if (l.isin && !byIsin.has(l.isin.toUpperCase())) byIsin.set(l.isin.toUpperCase(), i);
-    if (l.ticker && !byTicker.has(l.ticker.toUpperCase())) byTicker.set(l.ticker.toUpperCase(), i);
+    if (l.isin) put(byIsin, l.isin.toUpperCase(), i);
+    if (l.ticker) put(byTicker, l.ticker.toUpperCase(), i);
     const n2 = holdingNameKey(l.name);
-    if (n2 && !byName.has(n2)) byName.set(n2, i);
+    if (n2) put(byName, n2, i);
   });
+  const free = (xs) => xs?.find((x) => !used.has(x));
   const common = [];
   for (const l of A) {
     const cands = [
-      l.isin ? byIsin.get(l.isin.toUpperCase()) : void 0,
-      l.ticker ? byTicker.get(l.ticker.toUpperCase()) : void 0,
-      byName.get(holdingNameKey(l.name))
+      l.isin ? free(byIsin.get(l.isin.toUpperCase())) : void 0,
+      l.ticker ? free(byTicker.get(l.ticker.toUpperCase())) : void 0,
+      free(byName.get(holdingNameKey(l.name)))
     ];
-    const j = cands.find((x) => x !== void 0 && !used.has(x));
+    const j = cands.find((x) => x !== void 0);
     if (j === void 0) continue;
     used.add(j);
     const m = B[j];

@@ -183,23 +183,26 @@ export function etfOverlap(a: readonly FundLine[], b: readonly FundLine[]): Over
   const A = securityLines(a);
   const B = securityLines(b);
   const used = new Set<number>();
-  const byIsin = new Map<string, number>();
-  const byTicker = new Map<string, number>();
-  const byName = new Map<string, number>();
+  // Every B line under each key: two share classes reduce to one name ("Alphabet"), and each must stay matchable.
+  const byIsin = new Map<string, number[]>();
+  const byTicker = new Map<string, number[]>();
+  const byName = new Map<string, number[]>();
+  const put = (m: Map<string, number[]>, k: string, i: number) => m.set(k, [...(m.get(k) ?? []), i]);
   B.forEach((l, i) => {
-    if (l.isin && !byIsin.has(l.isin.toUpperCase())) byIsin.set(l.isin.toUpperCase(), i);
-    if (l.ticker && !byTicker.has(l.ticker.toUpperCase())) byTicker.set(l.ticker.toUpperCase(), i);
+    if (l.isin) put(byIsin, l.isin.toUpperCase(), i);
+    if (l.ticker) put(byTicker, l.ticker.toUpperCase(), i);
     const n = holdingNameKey(l.name);
-    if (n && !byName.has(n)) byName.set(n, i);
+    if (n) put(byName, n, i);
   });
+  const free = (xs: number[] | undefined) => xs?.find((x) => !used.has(x));
   const common: OverlapResult["common"] = [];
   for (const l of A) {
     const cands = [
-      l.isin ? byIsin.get(l.isin.toUpperCase()) : undefined,
-      l.ticker ? byTicker.get(l.ticker.toUpperCase()) : undefined,
-      byName.get(holdingNameKey(l.name)),
+      l.isin ? free(byIsin.get(l.isin.toUpperCase())) : undefined,
+      l.ticker ? free(byTicker.get(l.ticker.toUpperCase())) : undefined,
+      free(byName.get(holdingNameKey(l.name))),
     ];
-    const j = cands.find((x): x is number => x !== undefined && !used.has(x));
+    const j = cands.find((x): x is number => x !== undefined);
     if (j === undefined) continue;
     used.add(j);
     const m = B[j]!;

@@ -112,6 +112,20 @@ describe("overlap", () => {
     expect(etfOverlap([{ name: "X", weightPct: 1 }], [])).toMatchObject({ overlapPct: 0, common: [] });
     expect(holdingNameKey("NVIDIA CORP")).toBe(holdingNameKey("Nvidia Corporation"));
   });
+  it("matches every line of a company listed twice (two share classes under one name), not only the first", () => {
+    // iShares writes the classes apart and carries no ISIN; N-PORT names both lines after the issuer.
+    const ishares: FundLine[] = [
+      { name: "ALPHABET INC CLASS A", ticker: "GOOGL", weightPct: 4 },
+      { name: "ALPHABET INC CLASS C", ticker: "GOOG", weightPct: 3.5 },
+    ];
+    const nport: FundLine[] = [
+      { name: "Alphabet Inc.", isin: "US02079K3059", weightPct: 3.9 },
+      { name: "Alphabet Inc.", isin: "US02079K1079", weightPct: 3.4 },
+    ];
+    expect(etfOverlap(ishares, nport).overlapPct).toBeCloseTo(3.9 + 3.4, 10);
+    expect(etfOverlap(nport, ishares).overlapPct).toBeCloseTo(3.9 + 3.4, 10);
+    expect(etfOverlap(nport, nport).overlapPct).toBeCloseTo(7.3, 10);
+  });
 });
 
 describe("TradingView fund columns", () => {
