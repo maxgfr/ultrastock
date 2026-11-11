@@ -30,7 +30,7 @@ same result, and each check has a code. Blocks:
 
 | Code | Blocks when |
 |---|---|
-| `KILL_SWITCH` | `<home>/KILL` exists; only risk-reducing orders pass |
+| `KILL_SWITCH` | `<home>/KILL` exists; on paper only risk-reducing orders pass (live, `broker submit` refuses every order, a sell included) |
 | `BREAKER` | the daily, weekly or monthly loss limit tripped, or two losses in a row started the cooldown. Losses are net of deposits, withdrawals and transfers from or to another broker at their recorded price (a transfer without a price is left out, with a note) |
 | `STALE_QUOTE` | the last price is older than the freshness limit — refresh first |
 | `PRICE_BAND` | the order price is more than 10 % from the last price (a warning above 2 %) |

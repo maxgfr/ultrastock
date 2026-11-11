@@ -260,7 +260,10 @@ export async function brokerCommand(args: CommandArgs, asJson: boolean): Promise
     return out(
       asJson,
       { kill: killSwitchPath(), results },
-      [`kill switch ON (${killSwitchPath()}) — only risk-reducing orders pass; remove the file yourself to resume`, ...results.map((r) => `  ${r}`)].join("\n"),
+      [
+        `kill switch ON (${killSwitchPath()}) — no live order goes to a venue, not even a sell (cancelling still works); on paper, only risk-reducing orders pass. Remove the file yourself to resume`,
+        ...results.map((r) => `  ${r}`),
+      ].join("\n"),
     );
   }
 

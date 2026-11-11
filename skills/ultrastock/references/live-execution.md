@@ -96,7 +96,8 @@ either switch for the user.
 
 - Cancelling: `broker cancel <id>`.
 - `broker panic`: sets the kill switch and cancels ultrastock's working orders.
-  It sells nothing; closing positions is a decision.
+  It sells nothing; closing positions is a decision. While the switch is on,
+  no live order goes, a sell included: remove `<home>/KILL` first.
 
 ## Never
 

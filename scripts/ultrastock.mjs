@@ -46978,7 +46978,10 @@ async function brokerCommand(args, asJson) {
     return printResult(
       asJson,
       { kill: killSwitchPath(), results },
-      [`kill switch ON (${killSwitchPath()}) \u2014 only risk-reducing orders pass; remove the file yourself to resume`, ...results.map((r3) => `  ${r3}`)].join("\n")
+      [
+        `kill switch ON (${killSwitchPath()}) \u2014 no live order goes to a venue, not even a sell (cancelling still works); on paper, only risk-reducing orders pass. Remove the file yourself to resume`,
+        ...results.map((r3) => `  ${r3}`)
+      ].join("\n")
     );
   }
   if (sub === "status") {
