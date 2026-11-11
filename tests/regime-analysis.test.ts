@@ -187,6 +187,12 @@ describe("catalysts", () => {
     // 2026-11-26 is Thanksgiving: Wed 25 → Fri 27 is one session on the NYSE.
     expect(sessionOrdinal("2026-11-27", "2026-11-25", "XNYS")).toBe(1);
     expect(sessionOrdinal("2026-11-27", "2026-11-25", undefined)).toBe(2);
+    // Counted from a closed day (a brief read on Saturday, or on Thanksgiving), the next session is 1 — not 0, "today".
+    expect(sessionOrdinal("2026-11-16", "2026-11-14", "XNYS")).toBe(1);
+    expect(sessionOrdinal("2026-11-17", "2026-11-14", "XNYS")).toBe(2);
+    expect(sessionOrdinal("2026-11-27", "2026-11-26", "XNYS")).toBe(1);
+    expect(sessionOrdinal("2026-11-14", "2026-11-14", "XNYS")).toBe(0);
+    expect(sessionOrdinal("2026-11-16", "2026-11-13", "XNYS")).toBe(1);
     const c = (date: string, kind: "earnings" | "ex-dividend" | "macro") => ({ date, kind, key: `${date}.${kind}` });
     const clusters = eventClusters(
       [c("2026-11-02", "earnings"), c("2026-10-29", "macro"), c("2026-10-29", "macro"), c("2026-11-20", "ex-dividend")],

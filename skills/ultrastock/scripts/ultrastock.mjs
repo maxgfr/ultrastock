@@ -27236,7 +27236,7 @@ function sessionOrdinal(date, from, market) {
   let d = from;
   const open2 = (x) => isTradingDay(market, x);
   for (let guard = 0; d < date && guard < 800; guard++, d = shiftDay(d, 1)) if (open2(d)) n2++;
-  return n2;
+  return date > from && !open2(from) ? n2 + 1 : n2;
 }
 function eventClusters(items, from, market) {
   const perDay = /* @__PURE__ */ new Map();

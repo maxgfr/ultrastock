@@ -149,13 +149,17 @@ export function toChainOptions(contracts: readonly OptionContract[], now: Date):
   }));
 }
 
-/** Session ordinal of a date on a venue (weekdays when the venue has no calendar here); a closed day maps to the next session. */
+/**
+ * Session ordinal of a date on a venue (weekdays when the venue has no calendar here): 0 is `from` itself, 1 the next
+ * session; a closed day maps to the next session. Counted from a closed day (a weekend), the next session is 1 — it
+ * is not today.
+ */
 export function sessionOrdinal(date: string, from: string, market: CalendarMarket | undefined): number {
   let n = 0;
   let d = from;
   const open = (x: string) => isTradingDay(market, x);
   for (let guard = 0; d < date && guard < 800; guard++, d = shiftDay(d, 1)) if (open(d)) n++;
-  return n;
+  return date > from && !open(from) ? n + 1 : n;
 }
 
 export interface Catalyst {
