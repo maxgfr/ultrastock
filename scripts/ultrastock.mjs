@@ -45715,8 +45715,26 @@ function assertSameVenue(ticketId, rec, adapter) {
     throw new Error(`ticket ${ticketId} went to ${rec.venue} ${rec.env}: it cannot be followed on ${adapter.venue} ${adapter.env}`);
 }
 var settledFill = (r3) => (r3.state === "filled" || r3.state === "cancelled") && !!r3.filledQuantity && !!r3.averagePrice;
+function fillDelta(prior, r3) {
+  if (!settledFill(r3)) return void 0;
+  const q0 = prior.reduce((s, f3) => s + f3.quantity, 0);
+  const quantity = r3.filledQuantity - q0;
+  if (quantity <= 1e-12) return void 0;
+  if (!prior.length) return { quantity, price: r3.averagePrice, fee: r3.fee ?? 0 };
+  const rest = (r3.filledQuantity * r3.averagePrice - prior.reduce((s, f3) => s + f3.quantity * f3.price, 0)) / quantity;
+  return {
+    quantity,
+    price: Number.isFinite(rest) && rest > 0 ? rest : r3.averagePrice,
+    fee: Math.max(0, (r3.fee ?? 0) - prior.reduce((s, f3) => s + f3.fee, 0))
+  };
+}
+var fillBook = (rec) => rec.env === "live" ? "real" : "live-test";
 async function bookFill(t, r3, rec, now) {
-  if (!settledFill(r3)) return;
+  const book2 = fillBook(rec);
+  const foreignFee = !!r3.feeCurrency && r3.feeCurrency !== t.order.currency;
+  const booked = readLedger(book2).filter((x) => x.origin === `ticket:${t.id}`).map((x) => ({ quantity: x.quantity ?? 0, price: x.price ?? 0, fee: x.fee ?? 0 }));
+  const d = fillDelta(booked, foreignFee ? { ...r3, fee: 0 } : r3);
+  if (!d) return;
   await appendTransactions(
     [
       {
@@ -45724,15 +45742,15 @@ async function bookFill(t, r3, rec, now) {
         type: t.order.side,
         account: t.order.account,
         symbol: t.order.symbol,
-        quantity: r3.filledQuantity,
-        price: r3.averagePrice,
-        fee: r3.feeCurrency && r3.feeCurrency !== t.order.currency ? void 0 : r3.fee,
+        quantity: d.quantity,
+        price: d.price,
+        fee: foreignFee || r3.fee === void 0 ? void 0 : d.fee,
         currency: t.order.currency,
-        note: `${rec.venue} ${rec.env} order ${r3.venueOrderId ?? rec.clientOrderId}${r3.fee && r3.feeCurrency && r3.feeCurrency !== t.order.currency ? ` (fee ${r3.fee} ${r3.feeCurrency})` : ""}`,
+        note: `${rec.venue} ${rec.env} order ${r3.venueOrderId ?? rec.clientOrderId}${r3.fee && foreignFee ? ` (fee ${r3.fee} ${r3.feeCurrency} for the whole order)` : ""}`,
         origin: `ticket:${t.id}`
       }
     ],
-    rec.env === "live" ? "real" : "live-test"
+    book2
   );
 }
 var FOLLOWED = ["submitted", "cancelled", "blocked", "checked"];
@@ -45752,27 +45770,19 @@ async function applyResult(t, r3, rec, now) {
     );
   }
   const status = r3.state === "filled" ? "filled" : r3.state === "cancelled" ? "cancelled" : r3.state === "rejected" ? "blocked" : "submitted";
-  const updated = await transition(
+  return transition(
     t.id,
     status,
     `${rec.venue} ${rec.env}: ${r3.state}${r3.message ? ` \u2014 ${r3.message}` : ""}`,
-    (x) => {
+    async (x) => {
       x.live = next2;
-      if (settledFill(r3))
-        x.fills.push({
-          at: now.toISOString(),
-          quantity: r3.filledQuantity,
-          price: r3.averagePrice,
-          fee: r3.fee ?? 0,
-          venue: `${rec.venue}-${rec.env}`,
-          method: "venue fill"
-        });
+      const d = fillDelta(x.fills, r3);
+      if (d) x.fills.push({ at: now.toISOString(), ...d, venue: `${rec.venue}-${rec.env}`, method: "venue fill" });
+      await bookFill(x, r3, next2, now);
     },
     now,
     FOLLOWED
   );
-  await bookFill(t, r3, next2, now);
-  return updated;
 }
 var liveLock = (fn) => withFileLock(join48(homeDir(), "state", "live.lock"), fn);
 async function liveSubmit(p) {

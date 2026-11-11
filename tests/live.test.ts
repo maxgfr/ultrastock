@@ -409,6 +409,44 @@ describe("live preconditions and the single submission", () => {
     expect(readLedger("live-test").filter((x) => x.type === "buy")).toHaveLength(1);
   });
 
+  it("books only the rest when a cancelled order is later reported filled", async () => {
+    const t = await acceptedTicket();
+    const id = clientOrderIdFor(t.id, 1);
+    // The cancel answer says 0.4 filled before it; the venue later says the whole order filled.
+    await liveCancel(
+      t.id,
+      fakeVenue({ cancel: { state: "cancelled", clientOrderId: id, venueOrderId: "V1", filledQuantity: 0.4, averagePrice: 99, fee: 0.1 } }).a,
+    );
+    expect(loadTicket(t.id).status).toBe("cancelled");
+    const v = fakeVenue({
+      query: { state: "filled", clientOrderId: id, venueOrderId: "V1", filledQuantity: 1, averagePrice: 99.6, fee: 0.25, feeCurrency: "EUR" },
+    });
+    await reconcile(t.id, v.a);
+    await reconcile(t.id, v.a);
+    const after = loadTicket(t.id);
+    expect(after.status).toBe("filled");
+    expect(after.fills.reduce((s, f) => s + f.quantity, 0)).toBeCloseTo(1, 10);
+    const buys = readLedger("live-test").filter((x) => x.type === "buy");
+    expect(buys.reduce((s, x) => s + (x.quantity ?? 0), 0)).toBeCloseTo(1, 10);
+    // The rest is booked at the price that makes the whole order's average the venue's: (99.6 − 0.4 × 99) / 0.6.
+    expect(buys[1]).toMatchObject({ quantity: expect.closeTo(0.6, 10), price: expect.closeTo(100, 10), fee: expect.closeTo(0.15, 10) });
+  });
+
+  it("books a fill reported after a cancel with nothing filled, once", async () => {
+    const t = await acceptedTicket();
+    const id = clientOrderIdFor(t.id, 1);
+    await liveCancel(t.id, fakeVenue().a);
+    expect(loadTicket(t.id).status).toBe("cancelled");
+    expect(readLedger("live-test").filter((x) => x.type === "buy")).toHaveLength(0);
+    const v = fakeVenue({
+      query: { state: "filled", clientOrderId: id, venueOrderId: "V1", filledQuantity: 1, averagePrice: 100, fee: 0.26, feeCurrency: "EUR" },
+    });
+    await reconcile(t.id, v.a);
+    await reconcile(t.id, v.a);
+    expect(loadTicket(t.id).status).toBe("filled");
+    expect(readLedger("live-test").filter((x) => x.type === "buy")).toMatchObject([{ quantity: 1, price: 100 }]);
+  });
+
   it("settles a filled order once when two follow-ups race for it", async () => {
     const t = await acceptedTicket();
     const id = clientOrderIdFor(t.id, 1);

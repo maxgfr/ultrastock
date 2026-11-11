@@ -254,9 +254,49 @@ function assertSameVenue(ticketId: string, rec: LiveRecord, adapter: BrokerAdapt
 /** An answer that ends the order with something filled: a fill, or a cancel that came after a partial one. */
 const settledFill = (r: OrderResult): boolean => (r.state === "filled" || r.state === "cancelled") && !!r.filledQuantity && !!r.averagePrice;
 
-/** Record a fill in the ledger (real book live, "live-test" book otherwise), once per ticket. */
+interface Filled {
+  quantity: number;
+  price: number;
+  fee: number;
+}
+
+/**
+ * What a venue answer adds to what is already recorded for the order. A venue
+ * reports the order's whole fill so far (quantity, average price, fee): a cancel
+ * that came after a partial fill, then a "filled" once the venue caught up, is
+ * one order — only the rest is new, at the price that makes the average the
+ * venue's. Nothing when the answer adds nothing.
+ */
+function fillDelta(prior: readonly Filled[], r: OrderResult): Filled | undefined {
+  if (!settledFill(r)) return undefined;
+  const q0 = prior.reduce((s, f) => s + f.quantity, 0);
+  const quantity = r.filledQuantity! - q0;
+  if (quantity <= 1e-12) return undefined;
+  if (!prior.length) return { quantity, price: r.averagePrice!, fee: r.fee ?? 0 };
+  const rest = (r.filledQuantity! * r.averagePrice! - prior.reduce((s, f) => s + f.quantity * f.price, 0)) / quantity;
+  return {
+    quantity,
+    price: Number.isFinite(rest) && rest > 0 ? rest : r.averagePrice!,
+    fee: Math.max(0, (r.fee ?? 0) - prior.reduce((s, f) => s + f.fee, 0)),
+  };
+}
+
+/** The ledger a ticket's venue fills are booked in: the real book live, "live-test" otherwise. */
+const fillBook = (rec: LiveRecord) => (rec.env === "live" ? "real" : "live-test");
+
+/**
+ * Book in the ledger what a venue answer adds to what the ledger already holds
+ * for this ticket (origin `ticket:<id>`): a fill is never booked twice, and a
+ * fill reported late — after a cancel — is booked once.
+ */
 async function bookFill(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date): Promise<void> {
-  if (!settledFill(r)) return;
+  const book = fillBook(rec);
+  const foreignFee = !!r.feeCurrency && r.feeCurrency !== t.order.currency;
+  const booked = readLedger(book)
+    .filter((x) => x.origin === `ticket:${t.id}`)
+    .map((x) => ({ quantity: x.quantity ?? 0, price: x.price ?? 0, fee: x.fee ?? 0 }));
+  const d = fillDelta(booked, foreignFee ? { ...r, fee: 0 } : r);
+  if (!d) return;
   await appendTransactions(
     [
       {
@@ -264,15 +304,15 @@ async function bookFill(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date): 
         type: t.order.side,
         account: t.order.account,
         symbol: t.order.symbol,
-        quantity: r.filledQuantity!,
-        price: r.averagePrice!,
-        fee: r.feeCurrency && r.feeCurrency !== t.order.currency ? undefined : r.fee,
+        quantity: d.quantity,
+        price: d.price,
+        fee: foreignFee || r.fee === undefined ? undefined : d.fee,
         currency: t.order.currency,
-        note: `${rec.venue} ${rec.env} order ${r.venueOrderId ?? rec.clientOrderId}${r.fee && r.feeCurrency && r.feeCurrency !== t.order.currency ? ` (fee ${r.fee} ${r.feeCurrency})` : ""}`,
+        note: `${rec.venue} ${rec.env} order ${r.venueOrderId ?? rec.clientOrderId}${r.fee && foreignFee ? ` (fee ${r.fee} ${r.feeCurrency} for the whole order)` : ""}`,
         origin: `ticket:${t.id}`,
       },
     ],
-    rec.env === "live" ? "real" : "live-test",
+    book,
   );
 }
 
@@ -301,27 +341,21 @@ async function applyResult(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date
     );
   }
   const status = r.state === "filled" ? "filled" : r.state === "cancelled" ? "cancelled" : r.state === "rejected" ? "blocked" : "submitted";
-  const updated = await transition(
+  // The ledger is booked under the ticket's lock, before the ticket is saved: a crash in between books nothing twice (the
+  // ledger's own entries for the ticket are what the next answer is measured against).
+  return transition(
     t.id,
     status,
     `${rec.venue} ${rec.env}: ${r.state}${r.message ? ` — ${r.message}` : ""}`,
-    (x) => {
+    async (x) => {
       (x as Ticket & { live?: LiveRecord }).live = next;
-      if (settledFill(r))
-        x.fills.push({
-          at: now.toISOString(),
-          quantity: r.filledQuantity!,
-          price: r.averagePrice!,
-          fee: r.fee ?? 0,
-          venue: `${rec.venue}-${rec.env}`,
-          method: "venue fill",
-        });
+      const d = fillDelta(x.fills, r);
+      if (d) x.fills.push({ at: now.toISOString(), ...d, venue: `${rec.venue}-${rec.env}`, method: "venue fill" });
+      await bookFill(x, r, next, now);
     },
     now,
     FOLLOWED,
   );
-  await bookFill(t, r, next, now);
-  return updated;
 }
 
 /**
