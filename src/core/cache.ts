@@ -48,7 +48,13 @@ function pathFor(key: string): string {
   return join(datasetsDir(), `${contentHash(key).slice(0, 24)}.json`);
 }
 
-/** The freshness an entry was stored with, read from its first bytes; an older entry without one counts as reference data. */
+/** The longest freshness any kind is stored with. */
+const LONGEST_TTL_MS = Math.max(...Object.values(TTL));
+
+/**
+ * The freshness an entry was stored with, read from its first bytes. An entry written before it was stored has an
+ * unknown kind — it may be an immutable filing `--offline` needs — so it counts as the longest-lived kind.
+ */
 function storedTtl(path: string): number {
   let fd: number | undefined;
   try {
@@ -56,9 +62,9 @@ function storedTtl(path: string): number {
     const head = Buffer.alloc(96);
     const n = readSync(fd, head, 0, head.length, 0);
     const m = /"ttlMs":(\d+)/.exec(head.subarray(0, n).toString("utf8"));
-    return m ? Number(m[1]) : TTL.reference;
+    return m ? Number(m[1]) : LONGEST_TTL_MS;
   } catch {
-    return TTL.reference;
+    return LONGEST_TTL_MS;
   } finally {
     if (fd !== undefined) closeSync(fd);
   }

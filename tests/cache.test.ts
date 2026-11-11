@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, utimesSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { cachedJson, peekCache, sweepDatasetCache, TTL } from "../src/core/cache.js";
@@ -29,6 +29,20 @@ describe("dataset cache eviction", () => {
     expect(peekCache("quote:RECENT")?.value).toEqual({ p: 2 });
     expect(peekCache("filing:OLD")?.value).toEqual({ f: 1 });
     expect(peekCache("reference:OLD")).toBeUndefined();
+  });
+
+  it("keeps an entry written before freshness was stored until the longest kind's cap", () => {
+    // An ESEF report cached by an earlier version: no ttlMs in the file, so its kind is unknown — it may be immutable.
+    const key = "esef:report:LEGACY";
+    mkdirSync(join(dataCacheDir(), "datasets"), { recursive: true });
+    writeFileSync(datasetPath(key), JSON.stringify({ storedAt: Date.now() - 30 * DAY, key, value: { r: 1 } }));
+    age(key, 30 * DAY);
+    sweepDatasetCache();
+    expect(peekCache(key)?.value).toEqual({ r: 1 });
+    // Past twice the longest freshness, nothing it could be is still worth keeping.
+    age(key, 2 * TTL.immutable + DAY);
+    sweepDatasetCache();
+    expect(existsSync(datasetPath(key))).toBe(false);
   });
 
   it("keeps the whole under a size cap, the oldest written going first", async () => {

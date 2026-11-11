@@ -13303,6 +13303,7 @@ function datasetsDir() {
 function pathFor(key) {
   return join12(datasetsDir(), `${contentHash(key).slice(0, 24)}.json`);
 }
+var LONGEST_TTL_MS = Math.max(...Object.values(TTL));
 function storedTtl(path2) {
   let fd;
   try {
@@ -13310,9 +13311,9 @@ function storedTtl(path2) {
     const head = Buffer.alloc(96);
     const n2 = readSync(fd, head, 0, head.length, 0);
     const m = /"ttlMs":(\d+)/.exec(head.subarray(0, n2).toString("utf8"));
-    return m ? Number(m[1]) : TTL.reference;
+    return m ? Number(m[1]) : LONGEST_TTL_MS;
   } catch {
-    return TTL.reference;
+    return LONGEST_TTL_MS;
   } finally {
     if (fd !== void 0) closeSync3(fd);
   }
