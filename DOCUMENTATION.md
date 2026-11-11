@@ -161,7 +161,10 @@ warning, and `tax verify` prints the checklist to re-check by web search.
 
 `mcp` exposes the commands as tools, each one running the bundle in a child
 process with `--json`, so a command's output can never corrupt the protocol
-stream. The tools are read-only, plus ticket creation. HTTP binds to
+stream. The tools are read-only, plus ticket creation; a read-only tool's
+process runs with `ULTRASTOCK_READ_ONLY=1`, so its ledger reads never migrate
+the local store (`journal review` on a store of an older schema asks for
+`portfolio show` instead). HTTP binds to
 127.0.0.1 and requires a bearer token. A file a tool reads must sit in the
 run directory of the same call; `check` asks more, since any tool given `out`
 writes an `evidence.json` where it is told: the run holds one and is not the

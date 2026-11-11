@@ -47410,10 +47410,12 @@ function checkGuard(run3, answer) {
   }
   if (Number.isFinite(created) && written + 2e3 < created) throw refusal2(`${answer} was last written before the run was created: it is no answer to it`);
 }
-function runBundle(argv, signal) {
+var READ_ONLY_ENV = "READ_ONLY";
+function runBundle(argv, signal, opts = {}) {
   const bundle = fileURLToPath2(import.meta.url);
+  const env2 = opts.readOnly ? { ...process.env, [`ULTRASTOCK_${READ_ONLY_ENV}`]: "1" } : process.env;
   return new Promise((resolve21, reject) => {
-    execFile(process.execPath, [bundle, ...argv], { maxBuffer: 64 * 1024 * 1024, timeout: 15 * 6e4, signal, env: process.env }, (err, stdout, stderr) => {
+    execFile(process.execPath, [bundle, ...argv], { maxBuffer: 64 * 1024 * 1024, timeout: 15 * 6e4, signal, env: env2 }, (err, stdout, stderr) => {
       if (err && !stdout.trim()) reject(new ToolError((stderr || err.message).trim().split("\n").slice(-5).join("\n")));
       else resolve21(stdout.trim() || stderr.trim());
     });
@@ -47440,14 +47442,15 @@ function mcpAdapter(run3 = runBundle) {
       const given = { ...args ?? {} };
       const hits = hitsKey ? given[hitsKey] : void 0;
       if (hitsKey) delete given[hitsKey];
-      if (hits === void 0) return { text: await run3(argvFor(t, given), ctx?.signal) };
+      const opts = { readOnly: readOnly(t) };
+      if (hits === void 0) return { text: await run3(argvFor(t, given), ctx?.signal, opts) };
       if (!Array.isArray(hits)) throw new ToolError(`${t.name}: ${hitsKey} is an array of search hits`);
       if (given["web-results"] !== void 0) throw new ToolError(`${t.name}: give ${hitsKey} or web-results, not both`);
       const dir2 = mkdtempSync5(join49(tmpdir6(), "ultrastock-hits-"));
       try {
         const file = join49(dir2, "websearch.json");
         writeFileSync13(file, JSON.stringify(hits));
-        return { text: await run3([...argvFor(t, given).filter((a) => a !== "--json"), `--web-results=${file}`, "--json"], ctx?.signal) };
+        return { text: await run3([...argvFor(t, given).filter((a) => a !== "--json"), `--web-results=${file}`, "--json"], ctx?.signal, opts) };
       } finally {
         rmSync13(dir2, { recursive: true, force: true });
       }
@@ -59461,6 +59464,7 @@ async function run2(args) {
   const cmd = args.command;
   const asJson = argBool(args, "json");
   configureNetwork(args);
+  if (env(READ_ONLY_ENV) === "1") readLedgerWithoutWriting();
   if (cmd === "analyze") {
     const symbol = args.positional[0];
     if (!symbol) usage("usage: ultrastock analyze <symbol> [--depth quick|standard|deep|full] [--since <run>] [--out <dir>] [--json]");

@@ -22,7 +22,10 @@
 //
 // Each tool runs the bundle itself as a child process with --json (one
 // process per call: a command's stdout can never corrupt the protocol stream,
-// and a crash is a tool error, not a dead server). Over HTTP the server binds
+// and a crash is a tool error, not a dead server). A read-only tool's process
+// is told so (ULTRASTOCK_READ_ONLY=1): its ledger reads never migrate the local
+// store — `journal review` on a store of an older schema says to run
+// `portfolio show` instead of writing it. Over HTTP the server binds
 // to 127.0.0.1 and requires a bearer token.
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -597,10 +600,19 @@ function checkGuard(run: string, answer: string): void {
   if (Number.isFinite(created) && written + 2000 < created) throw refusal(`${answer} was last written before the run was created: it is no answer to it`);
 }
 
-function runBundle(argv: string[], signal?: AbortSignal): Promise<string> {
+/** The variable (read through `env`, so ULTRASTOCK_READ_ONLY) that tells a command it runs for a read-only tool. */
+export const READ_ONLY_ENV = "READ_ONLY";
+
+/** How a call runs: `readOnly` for a tool annotated read-only, whose command must then write nothing. */
+export interface RunOptions {
+  readOnly?: boolean;
+}
+
+function runBundle(argv: string[], signal?: AbortSignal, opts: RunOptions = {}): Promise<string> {
   const bundle = fileURLToPath(import.meta.url);
+  const env = opts.readOnly ? { ...process.env, [`ULTRASTOCK_${READ_ONLY_ENV}`]: "1" } : process.env;
   return new Promise((resolve, reject) => {
-    execFile(process.execPath, [bundle, ...argv], { maxBuffer: 64 * 1024 * 1024, timeout: 15 * 60_000, signal, env: process.env }, (err, stdout, stderr) => {
+    execFile(process.execPath, [bundle, ...argv], { maxBuffer: 64 * 1024 * 1024, timeout: 15 * 60_000, signal, env }, (err, stdout, stderr) => {
       if (err && !stdout.trim()) reject(new ToolError((stderr || err.message).trim().split("\n").slice(-5).join("\n")));
       else resolve(stdout.trim() || stderr.trim());
     });
@@ -610,7 +622,7 @@ function runBundle(argv: string[], signal?: AbortSignal): Promise<string> {
 /** A tool that writes nothing: no declared write, and no run directory to write evidence into. */
 const readOnly = (t: Tool) => !t.writes && !("out" in t.params);
 
-export function mcpAdapter(run: (argv: string[], signal?: AbortSignal) => Promise<string> = runBundle): McpAdapter {
+export function mcpAdapter(run: (argv: string[], signal?: AbortSignal, opts?: RunOptions) => Promise<string> = runBundle): McpAdapter {
   return {
     version: VERSION,
     listTools: (): ToolDecl[] =>
@@ -635,14 +647,15 @@ export function mcpAdapter(run: (argv: string[], signal?: AbortSignal) => Promis
       const given = { ...(args ?? {}) } as Record<string, unknown>;
       const hits = hitsKey ? given[hitsKey] : undefined;
       if (hitsKey) delete given[hitsKey];
-      if (hits === undefined) return { text: await run(argvFor(t, given), ctx?.signal) };
+      const opts: RunOptions = { readOnly: readOnly(t) };
+      if (hits === undefined) return { text: await run(argvFor(t, given), ctx?.signal, opts) };
       if (!Array.isArray(hits)) throw new ToolError(`${t.name}: ${hitsKey} is an array of search hits`);
       if (given["web-results"] !== undefined) throw new ToolError(`${t.name}: give ${hitsKey} or web-results, not both`);
       const dir = mkdtempSync(join(tmpdir(), "ultrastock-hits-"));
       try {
         const file = join(dir, "websearch.json");
         writeFileSync(file, JSON.stringify(hits));
-        return { text: await run([...argvFor(t, given).filter((a) => a !== "--json"), `--web-results=${file}`, "--json"], ctx?.signal) };
+        return { text: await run([...argvFor(t, given).filter((a) => a !== "--json"), `--web-results=${file}`, "--json"], ctx?.signal, opts) };
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }

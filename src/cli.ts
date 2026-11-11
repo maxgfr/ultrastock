@@ -30,7 +30,8 @@ import { cotCommand, fxCommand, macroCommand, newsCommand, ratesCommand, sentime
 import { cryptoCommand, fundCommand, optionsCommand, predictCommand, snapshotCommand } from "./commands/markets.js";
 import { backtestCommand, strategyCommand } from "./commands/backtest.js";
 import { brokerCommand } from "./commands/broker.js";
-import { serveMcp } from "./mcp.js";
+import { READ_ONLY_ENV, serveMcp } from "./mcp.js";
+import { readLedgerWithoutWriting } from "./portfolio/ledger.js";
 import { serveCommand } from "./serve/server.js";
 import { decideCommand, journalCommand, knowledgeCommand, watchCommand, watchlistCommand } from "./commands/journal.js";
 import { morningCommand } from "./commands/morning.js";
@@ -50,6 +51,7 @@ import {
   type CliSpec,
   type CommandArgs,
   ENGINE_VERSION,
+  env,
   EXIT_FAILURE,
   EXIT_OK,
   EXIT_USAGE,
@@ -1110,6 +1112,8 @@ async function run(args: CommandArgs): Promise<void> {
   const cmd = args.command;
   const asJson = argBool(args, "json");
   configureNetwork(args);
+  // Run for a tool the MCP server declares read-only: a ledger read never migrates the local store.
+  if (env(READ_ONLY_ENV) === "1") readLedgerWithoutWriting();
 
   if (cmd === "analyze") {
     const symbol = args.positional[0];
