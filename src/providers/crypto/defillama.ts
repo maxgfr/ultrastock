@@ -112,45 +112,6 @@ export async function llamaTvl(slug: string): Promise<Dataset> {
   };
 }
 
-export interface LlamaProtocolRow {
-  slug: string;
-  name?: string;
-  category?: string | null;
-  chains?: string[];
-  tvl?: number | null;
-  change_1d?: number | null;
-  change_7d?: number | null;
-  mcap?: number | null;
-}
-
-/** Filter the protocol list by category and chain, then keep the top `limit` by TVL. */
-export function filterProtocols(rows: readonly LlamaProtocolRow[], f: { category?: string; chain?: string; limit?: number } = {}): LlamaProtocolRow[] {
-  const cat = f.category?.toLowerCase();
-  const chain = f.chain?.toLowerCase();
-  return rows
-    .filter((p) => p.slug && finite(p.tvl) && p.tvl > 0)
-    .filter((p) => !cat || (p.category ?? "").toLowerCase() === cat)
-    .filter((p) => !chain || (p.chains ?? []).some((c) => c.toLowerCase() === chain))
-    .sort((a, b) => b.tvl! - a.tvl!)
-    .slice(0, f.limit ?? 20);
-}
-
-/** Points for a filtered protocol list: TVL, 1d/7d change, market cap / TVL. */
-export function protocolListPoints(rows: readonly LlamaProtocolRow[]): Point[] {
-  const out: Point[] = [];
-  for (const p of rows) {
-    const s = llamaId(p.slug);
-    if (p.name) out.push({ key: `${s}.defi.name`, label: `${s} protocol name`, value: p.name, untrusted: true });
-    out.push({ key: `${s}.defi.tvl`, label: `${s} TVL`, value: p.tvl!, unit: "USD" });
-    if (p.category) out.push({ key: `${s}.defi.category`, label: `${s} category`, value: llamaText(p.category) });
-    if (finite(p.change_1d)) out.push({ key: `${s}.defi.tvl.change1d`, label: `${s} TVL 1-day change`, value: p.change_1d, unit: "%" });
-    if (finite(p.change_7d)) out.push({ key: `${s}.defi.tvl.change7d`, label: `${s} TVL 7-day change`, value: p.change_7d, unit: "%" });
-    if (finite(p.mcap) && p.mcap > 0)
-      out.push({ key: `${s}.defi.mcapToTvl`, label: `${s} market cap / TVL`, value: p.mcap / p.tvl!, unit: "x", formula: "mcap / tvl" });
-  }
-  return out;
-}
-
 export interface LlamaProtocolDetail {
   name?: string;
   description?: string | null;

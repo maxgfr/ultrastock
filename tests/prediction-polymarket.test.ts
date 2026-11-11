@@ -1,7 +1,7 @@
 // Polymarket cannot be reached from where this suite was written (its domains
 // are DNS-blocked in France by ANJ order, and the jurisdiction gate refuses it
 // for French residents), so nothing here was recorded. Every input below is
-// SYNTHETIC — hand-written to the documented Gamma, CLOB and Data API response
+// SYNTHETIC — hand-written to the documented Gamma and CLOB response
 // shapes — and exercises the parsers only; no test touches the network.
 import { describe, expect, it } from "vitest";
 import {
@@ -11,8 +11,6 @@ import {
   polymarketBook,
   polymarketFailure,
   polymarketMarketPoints,
-  polymarketTrades,
-  summarizeTrades,
 } from "../src/providers/prediction/polymarket.js";
 import { ProviderError } from "../src/providers/types.js";
 
@@ -77,17 +75,6 @@ describe("Polymarket parsers (synthetic inputs)", () => {
     expect(book.bids[0]).toEqual({ price: 0.61, size: 40 });
     expect(book.asks[0]).toEqual({ price: 0.63, size: 75 });
   });
-  it("summarises Data-API trades", () => {
-    // SYNTHETIC: Data API /trades rows (timestamps in seconds).
-    const s = summarizeTrades([
-      { side: "BUY", size: 10, price: 0.6, timestamp: 1792800000, outcomeIndex: 0 },
-      { side: "SELL", size: "30", price: "0.64", timestamp: 1792800600, outcomeIndex: 0 },
-      { side: "BUY", size: 5, price: 0.37, timestamp: 1792800300, outcomeIndex: 1 },
-    ]);
-    expect(s).toMatchObject({ count: 3, buyVolume: 15, sellVolume: 30, lastPrice: 0.64, lastOutcomeIndex: 0 });
-    expect(s.vwap[0]).toBeCloseTo((10 * 0.6 + 30 * 0.64) / 40);
-    expect(s.lastAt).toBe("2026-10-24T00:10:00.000Z");
-  });
 });
 
 describe("Polymarket failures", () => {
@@ -103,6 +90,5 @@ describe("Polymarket failures", () => {
   });
   it("refuses malformed identifiers before any request", async () => {
     await expect(polymarketBook("abc")).rejects.toMatchObject({ status: 400 });
-    await expect(polymarketTrades("0x1234")).rejects.toMatchObject({ status: 400 });
   });
 });

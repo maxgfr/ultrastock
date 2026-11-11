@@ -1,9 +1,8 @@
-// Polymarket — a crypto-settled prediction market (USDC) — read from its three
+// Polymarket — a crypto-settled prediction market (USDC) — read from two of its
 // public, keyless APIs (official for their own venue):
 //
 //   Gamma  https://gamma-api.polymarket.com/markets?limit=…&active=…&closed=…&slug=…&order=…
 //   CLOB   https://clob.polymarket.com/book?token_id=<outcome token>
-//   Data   https://data-api.polymarket.com/trades?market=<conditionId>&limit=…
 //
 // Gamma sends `outcomes`, `outcomePrices` and `clobTokenIds` as JSON-ENCODED
 // STRINGS ('["Yes","No"]'), and money fields as strings or numbers depending
@@ -24,7 +23,6 @@ import { type BookLevel, bookPoints, num, type OrderBook, sortBook } from "./com
 
 const GAMMA = "https://gamma-api.polymarket.com";
 const CLOB = "https://clob.polymarket.com";
-const DATA = "https://data-api.polymarket.com";
 export const SOURCE = "polymarket";
 const PACE = { hostIntervalMs: 200 };
 const NOTE_UNITS = "prices in USDC per outcome token paying 1 USDC (price × 100 = implied probability %); volume and liquidity in USDC";
@@ -156,65 +154,6 @@ export function parseClobBook(raw: { bids?: Array<{ price: string; size: string 
   return sortBook(levels(raw.bids), levels(raw.asks));
 }
 
-export interface PolymarketTradeRaw {
-  side?: string;
-  size?: number | string;
-  price?: number | string;
-  timestamp?: number | string;
-  outcome?: string;
-  outcomeIndex?: number;
-}
-
-export interface TradeSummary {
-  count: number;
-  buyVolume: number;
-  sellVolume: number;
-  /** Size-weighted average price, per outcome index. */
-  vwap: Record<number, number>;
-  lastPrice?: number;
-  lastOutcomeIndex?: number;
-  lastAt?: string;
-  firstAt?: string;
-}
-
-/** Count, buy/sell size, VWAP per outcome and the latest trade of a Data-API trade list. */
-export function summarizeTrades(trades: readonly PolymarketTradeRaw[]): TradeSummary {
-  const s: TradeSummary = { count: 0, buyVolume: 0, sellVolume: 0, vwap: {} };
-  const notional: Record<number, number> = {};
-  const size: Record<number, number> = {};
-  let lastTs = -Infinity;
-  let firstTs = Infinity;
-  for (const t of trades) {
-    const qty = num(t.size);
-    const px = num(t.price);
-    const ts = num(t.timestamp);
-    if (qty === undefined || px === undefined) continue;
-    s.count++;
-    if ((t.side ?? "").toUpperCase() === "SELL") s.sellVolume += qty;
-    else s.buyVolume += qty;
-    const oi = t.outcomeIndex ?? 0;
-    notional[oi] = (notional[oi] ?? 0) + qty * px;
-    size[oi] = (size[oi] ?? 0) + qty;
-    if (ts !== undefined) {
-      // The Data API stamps trades in seconds; tolerate milliseconds.
-      const ms = ts < 1e12 ? ts * 1000 : ts;
-      if (ms > lastTs) {
-        lastTs = ms;
-        s.lastPrice = px;
-        s.lastOutcomeIndex = oi;
-      }
-      firstTs = Math.min(firstTs, ms);
-    }
-  }
-  for (const k of Object.keys(size)) {
-    const i = Number(k);
-    if (size[i]! > 0) s.vwap[i] = notional[i]! / size[i]!;
-  }
-  if (Number.isFinite(lastTs)) s.lastAt = new Date(lastTs).toISOString();
-  if (Number.isFinite(firstTs)) s.firstAt = new Date(firstTs).toISOString();
-  return s;
-}
-
 /**
  * The error for a failed Polymarket call. No answer at all (status 0: DNS
  * failure, refused connection, timeout) is transient and named for what it
@@ -302,34 +241,4 @@ export async function polymarketBook(tokenId: string, levels = 10): Promise<{ bo
       notes: [NOTE_UNITS, "the book of ONE outcome token: its YES-side here is that outcome"],
     },
   };
-}
-
-/** Recent trades of a market (by conditionId) from the Data API, summarised: count, buy/sell size, VWAP, last trade. */
-export async function polymarketTrades(conditionId: string, limit = 100): Promise<Dataset> {
-  if (!/^0x[0-9a-fA-F]{64}$/.test(conditionId)) throw new ProviderError(SOURCE, "a conditionId is a 0x-prefixed 32-byte hex string", 400);
-  const n = Math.min(Math.max(limit, 1), 500);
-  const res = await fetchJson<PolymarketTradeRaw[]>(`${DATA}/trades?market=${conditionId}&limit=${n}`, PACE);
-  if (!res.ok || !Array.isArray(res.data)) throw polymarketFailure(res, "trades");
-  const t = summarizeTrades(res.data);
-  if (!t.count) throw new ProviderError(SOURCE, "no trades for this market", 404);
-  const p = `POLYMARKET.${conditionId.slice(0, 10)}.trades`;
-  const s = `Polymarket ${conditionId.slice(0, 10)}…`;
-  const points: Point[] = [
-    { key: `${p}.count`, label: `${s} trades read`, value: t.count, unit: "count" },
-    { key: `${p}.buyVolume`, label: `${s} buy size`, value: t.buyVolume, unit: "shares" },
-    { key: `${p}.sellVolume`, label: `${s} sell size`, value: t.sellVolume, unit: "shares" },
-  ];
-  for (const [i, v] of Object.entries(t.vwap))
-    points.push({ key: `${p}.vwap.${i}`, label: `${s} VWAP of outcome ${i}`, value: v, unit: "USDC", formula: "Σ size × price / Σ size" });
-  if (t.lastPrice !== undefined)
-    points.push({
-      key: `${p}.last.price`,
-      label: `${s} last trade price (outcome ${t.lastOutcomeIndex ?? 0})`,
-      value: t.lastPrice,
-      unit: "USDC",
-      asOf: t.lastAt?.slice(0, 10),
-    });
-  if (t.lastAt) points.push({ key: `${p}.last.at`, label: `${s} last trade time`, value: t.lastAt });
-  const notes = [NOTE_UNITS, `the ${t.count} most recent trades only${t.firstAt ? `, since ${t.firstAt}` : ""}`];
-  return { kind: "prediction-trades", title: `Polymarket recent trades ${s}`, subject: conditionId, points, provenance: prov(res), notes };
 }

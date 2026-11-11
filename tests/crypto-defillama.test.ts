@@ -3,13 +3,11 @@ import {
   chainPoints,
   feesPoints,
   filterPools,
-  filterProtocols,
   llamaChains,
   llamaId,
   llamaProtocol,
   llamaTvl,
   poolPoints,
-  protocolListPoints,
   protocolSummaryPoints,
   rewardShare,
   stablecoinPoints,
@@ -31,18 +29,6 @@ describe("DefiLlama parsers", () => {
     expect(p.map((x) => x.key)).toEqual(["DEFI.Ethereum.tvl", "DEFI.Solana.tvl", "DEFI.chains.tvl.sum"]);
     expect(p[2]!.value).toBe(75);
     expect(llamaId("OP Mainnet")).toBe("OP_Mainnet");
-  });
-  it("filters protocols by category and chain", () => {
-    const rows = [
-      { slug: "aave-v3", name: "Aave V3", category: "Lending", chains: ["Ethereum", "Base"], tvl: 30, change_7d: 1, mcap: 60 },
-      { slug: "binance-cex", category: "CEX", chains: ["Ethereum"], tvl: 170 },
-      { slug: "kamino", category: "Lending", chains: ["Solana"], tvl: 3 },
-    ];
-    const lend = filterProtocols(rows, { category: "lending", chain: "ethereum" });
-    expect(lend.map((r) => r.slug)).toEqual(["aave-v3"]);
-    const pts = protocolListPoints(lend);
-    expect(pts.find((x) => x.key === "aave-v3.defi.mcapToTvl")).toMatchObject({ value: 2, formula: "mcap / tvl" });
-    expect(pts.find((x) => x.key === "aave-v3.defi.name")!.untrusted).toBe(true);
   });
   it("summarises a TVL history: changes, peak, chain split", () => {
     const p = protocolSummaryPoints("demo", {
