@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.6](https://github.com/maxgfr/ultrastock/compare/v1.13.5...v1.13.6) (2026-11-11)
+
+
+### Bug Fixes
+
+* **crible:** one string-literal helper for every value a query compares against ([6adb37f](https://github.com/maxgfr/ultrastock/commit/6adb37fe6283979ad3ea19d70ae00640628e810a))
+
 ## [1.13.5](https://github.com/maxgfr/ultrastock/compare/v1.13.4...v1.13.5) (2026-11-11)
 
 
