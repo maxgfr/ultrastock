@@ -83,6 +83,22 @@ describe("US: a transfer between own accounts and the wash-sale rule", () => {
     ]);
     expect(total(ev)).toBe(-150);
   });
+
+  it("a crypto-asset moved between two platforms keeps its basis whatever each platform quotes it in", () => {
+    // The Coinbase importer books a send as a transfer-out of BTCUSD, the Binance importer a deposit as a transfer-in
+    // of BTCUSDT (no price): the same bitcoin. Bought 20 000 $ in 2022, sold 100 000 $ in December 2025:
+    // gain 80 000 $, long-term.
+    const CB: Envelope = { id: "coinbase", type: "CRYPTO", broker: "Coinbase", currency: "USD" };
+    const BIN: Envelope = { id: "binance", type: "CRYPTO", broker: "Binance.US", currency: "USD" };
+    const txs = [
+      tx({ date: "2022-03-02", type: "buy", account: "coinbase", symbol: "BTCUSD", quantity: 1, price: 20_000 }),
+      tx({ date: "2025-06-01", type: "transfer-out", account: "coinbase", symbol: "BTCUSD", quantity: 1 }),
+      tx({ date: "2025-06-01", type: "transfer-in", account: "binance", symbol: "BTCUSDT", currency: "USDT", quantity: 1 }),
+      tx({ date: "2025-12-01", type: "sell", account: "binance", symbol: "BTCUSDT", currency: "USDT", quantity: 1, price: 100_000 }),
+    ];
+    const ev = disposals(txs, { envelopes: [CB, BIN] });
+    expect(ev.map((e) => [e.cost, e.gain, e.term, e.acquired])).toEqual([[20_000, 80_000, "long", "2022-03-02"]]);
+  });
 });
 
 describe("US: wash sale against a replacement lot partly sold before the loss sale", () => {

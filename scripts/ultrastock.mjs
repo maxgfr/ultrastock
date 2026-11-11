@@ -53514,6 +53514,7 @@ var FranceRegime = class extends TaxRegime {
 // src/tax/us.ts
 var SHELTERED = /* @__PURE__ */ new Set(["IRA", "ROTH-IRA", "401K"]);
 var NON_US_BROKERS = /degiro|trade ?republic|bourso|fortuneo|bourse ?direct|saxo|scalable|xtb|lightyear|trading ?212|revolut|bitpanda|bitstamp|binance(?!\.?us)|bnp|cr[eé]dit|soci[eé]t[eé]|lcl|linxea|bforbank|hello ?bank|freedom ?24/i;
+var assetOf = (t, crypto) => crypto ? splitPair(t.symbol ?? "", t.currency).base : (t.symbol ?? "").toUpperCase();
 function isLongTerm(acquired, sold) {
   const [y, m, d] = acquired.slice(0, 10).split("-");
   const anniversary = `${Number(y) + 1}-${m}-${m === "02" && d === "29" ? "28" : d}`;
@@ -53544,6 +53545,7 @@ var UsRegime = class extends TaxRegime {
         id: lots.length,
         account: t.account,
         symbol: (t.symbol ?? "").toUpperCase(),
+        asset: assetOf(t, crypto),
         acquired: day3(t.date),
         bought: day3(t.date),
         quantity: q,
@@ -53581,7 +53583,7 @@ var UsRegime = class extends TaxRegime {
       const pieces2 = [];
       for (const s of inTransit) {
         if (need <= 1e-12) break;
-        if (s.symbol !== into.symbol || s.account === into.account || s.qty <= 1e-12) continue;
+        if (s.asset !== into.asset || s.account === into.account || s.qty <= 1e-12) continue;
         const q = Math.min(need, s.qty);
         s.qty -= q;
         need -= q;
@@ -53661,7 +53663,7 @@ var UsRegime = class extends TaxRegime {
             `${sym3} (${t.account}) disposed ${t.quantity} on ${day3(t.date)} with ${round22((t.quantity ?? 0) - left)} in recorded lots: the rest has no basis`
           );
         if (t.type === "transfer-out") {
-          for (const c of consumed) inTransit.push({ account: t.account, symbol: sym3, lot: c.lot, qty: c.qty });
+          for (const c of consumed) inTransit.push({ account: t.account, asset: assetOf(t, crypto), lot: c.lot, qty: c.qty });
           unmatched = unmatched.filter((l) => !(l.bought === day3(t.date) && l.remaining === l.quantity && carry(l)));
           continue;
         }
@@ -53672,6 +53674,7 @@ var UsRegime = class extends TaxRegime {
               id: -1,
               account: t.account,
               symbol: sym3,
+              asset: assetOf(t, crypto),
               acquired: day3(t.date),
               bought: day3(t.date),
               quantity: left,

@@ -45,6 +45,8 @@ interface UsLot {
   id: number;
   account: string;
   symbol: string;
+  /** What is held: the symbol of a security, the base asset of a crypto pair (BTCUSD and BTCUSDT both hold BTC). */
+  asset: string;
   /** Acquisition date for the holding period (moved back by a wash sale). */
   acquired: string;
   /** The real purchase date (wash-sale window). */
@@ -71,6 +73,9 @@ const SHELTERED = new Set(["IRA", "ROTH-IRA", "401K"]);
 /** Brokers outside the US (their accounts are foreign financial accounts for a US person). */
 const NON_US_BROKERS =
   /degiro|trade ?republic|bourso|fortuneo|bourse ?direct|saxo|scalable|xtb|lightyear|trading ?212|revolut|bitpanda|bitstamp|binance(?!\.?us)|bnp|cr[eé]dit|soci[eé]t[eé]|lcl|linxea|bforbank|hello ?bank|freedom ?24/i;
+
+/** What a row moves: the security, or the crypto-asset whatever the pair a platform quotes it in. */
+const assetOf = (t: Transaction, crypto: boolean) => (crypto ? splitPair(t.symbol ?? "", t.currency).base : (t.symbol ?? "").toUpperCase());
 
 /** Long-term when sold after the first anniversary of the acquisition (IRS Pub. 550). */
 export function isLongTerm(acquired: string, sold: string): boolean {
@@ -107,6 +112,7 @@ export class UsRegime extends TaxRegime {
         id: lots.length,
         account: t.account,
         symbol: (t.symbol ?? "").toUpperCase(),
+        asset: assetOf(t, crypto),
         acquired: day(t.date),
         bought: day(t.date),
         quantity: q,
@@ -138,8 +144,9 @@ export class UsRegime extends TaxRegime {
     const inYear = (t: Transaction) => yearOf(t.date) === input.year;
     let stableNoted = false;
     // Shares moved between the user's own accounts keep their basis and holding period: what a transfer-out takes from
-    // its lots waits here for a transfer-in (without a price) of the same symbol into another account.
-    const inTransit: Array<{ account: string; symbol: string; lot: UsLot; qty: number }> = [];
+    // its lots waits here for a transfer-in (without a price) of the same security — or crypto-asset, whichever pair each
+    // platform books it under — into another account.
+    const inTransit: Array<{ account: string; asset: string; lot: UsLot; qty: number }> = [];
     let unmatched: UsLot[] = [];
     /** The lots in other accounts that hold shares of a purchase, by purchase: a wash adjustment follows them there. */
     const carriedOf = new Map<UsLot, UsLot[]>();
@@ -149,7 +156,7 @@ export class UsRegime extends TaxRegime {
       const pieces: Array<{ from: UsLot; qty: number }> = [];
       for (const s of inTransit) {
         if (need <= 1e-12) break;
-        if (s.symbol !== into.symbol || s.account === into.account || s.qty <= 1e-12) continue;
+        if (s.asset !== into.asset || s.account === into.account || s.qty <= 1e-12) continue;
         const q = Math.min(need, s.qty);
         s.qty -= q;
         need -= q;
@@ -232,7 +239,7 @@ export class UsRegime extends TaxRegime {
             `${sym} (${t.account}) disposed ${t.quantity} on ${day(t.date)} with ${round2((t.quantity ?? 0) - left)} in recorded lots: the rest has no basis`,
           );
         if (t.type === "transfer-out") {
-          for (const c of consumed) inTransit.push({ account: t.account, symbol: sym, lot: c.lot, qty: c.qty });
+          for (const c of consumed) inTransit.push({ account: t.account, asset: assetOf(t, crypto), lot: c.lot, qty: c.qty });
           // A statement may list the day's transfer-in before its transfer-out: an untouched one of that day still takes it.
           unmatched = unmatched.filter((l) => !(l.bought === day(t.date) && l.remaining === l.quantity && carry(l)));
           continue;
@@ -244,6 +251,7 @@ export class UsRegime extends TaxRegime {
               id: -1,
               account: t.account,
               symbol: sym,
+              asset: assetOf(t, crypto),
               acquired: day(t.date),
               bought: day(t.date),
               quantity: left,
