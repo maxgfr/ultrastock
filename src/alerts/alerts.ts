@@ -17,11 +17,11 @@ import { withFileLockSync } from "../core/lock.js";
 import { clockNow, fetchText } from "../core/net.js";
 import { homeDir } from "../core/paths.js";
 import { contentHash, env, writeFileAtomic } from "../engine.js";
-import { buildBook, lineOpenedAt, readLedger } from "../portfolio/ledger.js";
+import { buildBook, lineOpenedAt, readLedger, type Transaction } from "../portfolio/ledger.js";
 import { secFilings } from "../providers/fundamentals/sec.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
 import type { Bar, PriceSeries } from "../providers/types.js";
-import { filledAt, listTickets } from "../trading/tickets.js";
+import { filledAt, listTickets, type Ticket } from "../trading/tickets.js";
 
 export type RuleKind = "expr" | "8k" | "stops" | "events";
 
@@ -224,6 +224,25 @@ export async function peekAlerts(now = clockNow(), symbols?: readonly string[]):
   return { hits, errors };
 }
 
+/**
+ * Was the ticket filled since the line was last opened on `since`? A time
+ * compares as written. A date-only opening on a day the line was also sold
+ * out holds no hour: a fill that day may be the line sold, so only a later
+ * day counts — or the ticket's own row, booked after that day's last exit.
+ * (The morning brief reads a line's stop by the same rule.)
+ */
+function filledSinceOpened(t: Ticket, since: string, lineRows: readonly Transaction[]): boolean {
+  const at = filledAt(t);
+  if (since.length > 10) return at >= since;
+  const day = lineRows.filter((r) => r.date.slice(0, 10) === since);
+  let lastExit = -1;
+  day.forEach((r, i) => {
+    if (r.type === "sell" || r.type === "transfer-out") lastExit = i;
+  });
+  if (lastExit < 0) return at >= since;
+  return at.slice(0, 10) > since || day.slice(lastExit + 1).some((r) => r.origin === `ticket:${t.id}`);
+}
+
 /** Run every rule once; fires only on edges and unseen events. */
 export async function runAlerts(now = clockNow()): Promise<{ events: AlertEvent[]; errors: string[] }> {
   const read = loadRules();
@@ -263,8 +282,9 @@ export async function runAlerts(now = clockNow()): Promise<{ events: AlertEvent[
         }
         rules[k] = { ...rule, seen: [...seen].slice(-200) };
       } else if (rule.kind === "stops") {
-        // Every open position with a stop from its entry ticket, real and paper books. Only a ticket filled since the line
-        // was last opened protects the position held now; tickets come newest first, so the first match is its latest stop.
+        // Every open position with a stop from its entry ticket, real and paper books. A ticket protects only the line its
+        // fill was booked to (a row of this book's line says `ticket:<id>`), and only the position held now — filled since
+        // the line was last opened; of those, the one filled last gives the stop, whatever order they were created in.
         const seen = new Set(rule.seen ?? []);
         const stops = listTickets((t) => t.status === "filled" && t.order.side === "buy" && t.order.stop !== undefined);
         for (const bookName of ["real", "paper"]) {
@@ -272,7 +292,11 @@ export async function runAlerts(now = clockNow()): Promise<{ events: AlertEvent[
           const opened = lineOpenedAt(book.transactions);
           for (const p of book.positions.filter((x) => x.quantity > 0)) {
             const since = opened.get(`${p.account}|${p.symbol}`) ?? "";
-            const t = stops.find((x) => x.order.account === p.account && x.order.symbol === p.symbol && filledAt(x) >= since);
+            const rows = book.transactions.filter((r) => r.account === p.account && r.symbol === p.symbol);
+            const booked = new Set(rows.map((r) => r.origin));
+            const t = stops
+              .filter((x) => booked.has(`ticket:${x.id}`) && filledSinceOpened(x, since, rows))
+              .reduce<Ticket | undefined>((best, x) => (!best || filledAt(x) > filledAt(best) ? x : best), undefined);
             if (!t) continue;
             const bars = await barsOf(p.symbol);
             const last = bars[bars.length - 1]!;

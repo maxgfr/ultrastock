@@ -14,8 +14,8 @@ vi.mock("../src/providers/router.js", () => ({
   getHistory: async () => ({ bars: constantBars(30, 18) }) as unknown as PriceSeries,
 }));
 
-const buy = (account: string, date: string, quantity: number) =>
-  ({ date, type: "buy", account, symbol: "ALO.PA", quantity, price: 20, fee: 0, currency: "EUR", origin: "manual" }) as const;
+const buy = (account: string, date: string, quantity: number, origin = "manual") =>
+  ({ date, type: "buy", account, symbol: "ALO.PA", quantity, price: 20, fee: 0, currency: "EUR", origin }) as const;
 const sell = (account: string, date: string, quantity: number) =>
   ({ date, type: "sell", account, symbol: "ALO.PA", quantity, price: 21, fee: 0, currency: "EUR", origin: "manual" }) as const;
 
@@ -40,7 +40,7 @@ describe("the stops rule", () => {
     await appendTransactions(
       [
         { date: "2026-06-01", type: "deposit", account: "pea", amount: 10_000, currency: "EUR", origin: "manual" },
-        buy("pea", "2026-06-01T09:00:00", 100),
+        buy("pea", "2026-06-01T09:00:00", 100, "ticket:t-pea-first"),
         sell("pea", "2026-07-01", 100),
         // Bought again without a ticket: no stop on record for the line held now.
         buy("pea", "2026-08-03T09:00:00", 100),
@@ -60,8 +60,9 @@ describe("the stops rule", () => {
     await appendTransactions(
       [
         { date: "2026-06-01", type: "deposit", account: "cto", amount: 10_000, currency: "EUR", origin: "manual" },
-        buy("cto", "2026-06-01T09:00:00", 100),
-        buy("cto", "2026-08-03T09:00:00", 100),
+        // Each buy booked by its ticket: a ticket protects the line its fill was booked to.
+        buy("cto", "2026-06-01T09:00:00", 100, "ticket:t-cto-first"),
+        buy("cto", "2026-08-03T09:00:00", 100, "ticket:t-cto-again"),
       ],
       "real",
     );
