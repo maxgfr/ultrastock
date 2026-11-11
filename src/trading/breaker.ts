@@ -15,6 +15,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { withFileLockSync } from "../core/lock.js";
+import { netMode } from "../core/net.js";
 import { homeDir } from "../core/paths.js";
 import type { Limits } from "../core/profile.js";
 import { readJsonl, sealJsonlTail, type Warn } from "../portfolio/jsonl.js";
@@ -56,8 +57,15 @@ export function readEquity(book: string, warn?: Warn): EquityPoint[] {
   return readJsonl<EquityPoint>(equityPath(book), warn).sort((a, b) => a.at.localeCompare(b.at));
 }
 
-/** Append a point, under the curve's lock: a point a crashed append cut short is moved aside first. */
-export function recordEquity(book: string, equity: number, at: Date, contributed?: number): void {
+/**
+ * Append a point, under the curve's lock: a point a crashed append cut short is
+ * moved aside first. Only on the wall clock: a fixture replayed or recorded
+ * into stamps `at` with its own recording time (`clockNow`), and a point dated
+ * in the future would stay the curve's last for ever — the breaker measuring
+ * every loss from it. Returns whether it was written.
+ */
+export function recordEquity(book: string, equity: number, at: Date, contributed?: number): boolean {
+  if (netMode().kind !== "live") return false;
   const path = equityPath(book);
   mkdirSync(join(homeDir(), "state"), { recursive: true });
   const point: EquityPoint = { at: at.toISOString(), equity, ...(contributed !== undefined ? { contributed } : {}) };
@@ -65,6 +73,7 @@ export function recordEquity(book: string, equity: number, at: Date, contributed
     sealJsonlTail(path);
     appendFileSync(path, `${JSON.stringify(point)}\n`, { mode: 0o600 });
   });
+  return true;
 }
 
 export interface BreakerState {

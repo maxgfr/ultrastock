@@ -58,7 +58,9 @@ export async function markBook(book: string) {
   });
   const fx = await fxToBase([...held.map((p) => p.currency), ...b.cash.map((c) => c.currency)], profile.baseCurrency);
   const v = valueBook(b, prices, fx.rates, profile.baseCurrency);
-  if (v.totalBase > 0) recordEquity(book, v.totalBase, now, netContributed(txs, fx.rates, profile.baseCurrency));
+  // Never on a fixture's clock: recordEquity writes on the wall clock only, and the notes say so.
+  if (v.totalBase > 0 && !recordEquity(book, v.totalBase, now, netContributed(txs, fx.rates, profile.baseCurrency)))
+    notes.push("replaying or recording a fixture: the equity curve is not written");
   return { profile, txs, book: b, valued: v, fxRates: fx.rates, sources, notes: [...notes, ...fx.notes, ...v.missing.map((m) => `missing ${m}`)], now };
 }
 

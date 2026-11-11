@@ -38615,6 +38615,7 @@ function readEquity(book2, warn) {
   return readJsonl(equityPath(book2), warn).sort((a, b) => a.at.localeCompare(b.at));
 }
 function recordEquity(book2, equity, at, contributed) {
+  if (netMode().kind !== "live") return false;
   const path2 = equityPath(book2);
   mkdirSync20(join39(homeDir(), "state"), { recursive: true });
   const point = { at: at.toISOString(), equity, ...contributed !== void 0 ? { contributed } : {} };
@@ -38623,6 +38624,7 @@ function recordEquity(book2, equity, at, contributed) {
     appendFileSync6(path2, `${JSON.stringify(point)}
 `, { mode: 384 });
   });
+  return true;
 }
 var startOf = (d, unit) => {
   const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), unit === "month" ? 1 : d.getUTCDate()));
@@ -50611,7 +50613,8 @@ async function markBook(book2) {
   });
   const fx = await fxToBase([...held.map((p) => p.currency), ...b.cash.map((c) => c.currency)], profile.baseCurrency);
   const v = valueBook(b, prices, fx.rates, profile.baseCurrency);
-  if (v.totalBase > 0) recordEquity(book2, v.totalBase, now, netContributed(txs, fx.rates, profile.baseCurrency));
+  if (v.totalBase > 0 && !recordEquity(book2, v.totalBase, now, netContributed(txs, fx.rates, profile.baseCurrency)))
+    notes.push("replaying or recording a fixture: the equity curve is not written");
   return { profile, txs, book: b, valued: v, fxRates: fx.rates, sources, notes: [...notes, ...fx.notes, ...v.missing.map((m) => `missing ${m}`)], now };
 }
 var isFlow = (t) => t.type === "deposit" || t.type === "withdrawal";
