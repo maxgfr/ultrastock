@@ -33334,6 +33334,76 @@ async function frankfurterLatest(base2 = "EUR", symbols) {
   };
 }
 
+// src/trading/prediction.ts
+function parsePredictionSymbol(symbol) {
+  const m = /^(KALSHI|POLYMARKET|MANIFOLD):([A-Za-z0-9._-]+):(YES|NO)$/i.exec(symbol.trim());
+  if (!m) return void 0;
+  return { venue: m[1].toLowerCase(), ticker: m[2].toUpperCase(), outcome: m[3].toUpperCase() };
+}
+function kalshiTakerFee(contracts, price, coefficient = 0.07) {
+  return Math.ceil(coefficient * contracts * price * (1 - price) * 100 - 1e-9) / 100;
+}
+function outcomeBook(yes, outcome) {
+  if (outcome === "YES") return yes;
+  const flip = (ls) => ls.map((l) => ({ price: Number((1 - l.price).toFixed(6)), size: l.size }));
+  return { bids: flip(yes.asks), asks: flip(yes.bids) };
+}
+function walkOutcome(book2, side2, contracts, limit) {
+  const ladder = side2 === "buy" ? book2.asks.filter((l) => l.price <= limit + 1e-9) : book2.bids.filter((l) => l.price >= limit - 1e-9);
+  let left = contracts;
+  let cost = 0;
+  let levels = 0;
+  for (const l of ladder) {
+    if (left <= 0) break;
+    const take = Math.min(left, l.size);
+    cost += take * l.price;
+    left -= take;
+    levels++;
+  }
+  if (left > 1e-9) return void 0;
+  return { price: cost / contracts, levels };
+}
+async function predictionQuote(symbol) {
+  const p = parsePredictionSymbol(symbol);
+  if (!p) throw new Error(`"${symbol}" is not a contract symbol (KALSHI:<TICKER>:YES|NO)`);
+  if (p.venue !== "kalshi") throw new Error(`${p.venue} contracts are not priced here: Kalshi only`);
+  const { book: book2, dataset: dataset3 } = await kalshiOrderbook(p.ticker);
+  const b = outcomeBook(book2, p.outcome);
+  const bid = b.bids[0]?.price;
+  const ask = b.asks[0]?.price;
+  const price = bid !== void 0 && ask !== void 0 ? (bid + ask) / 2 : ask ?? bid;
+  if (price === void 0) throw new Error(`${symbol}: the book is empty`);
+  return {
+    instrument: { symbol: symbol.toUpperCase(), market: "us", kind: "fund", name: `${p.ticker} ${p.outcome}`, currency: "USD", venueId: p.ticker },
+    price,
+    bid,
+    ask,
+    at: dataset3.provenance.fetchedAt,
+    provenance: { source: "kalshi", url: dataset3.provenance.url, fetchedAt: dataset3.provenance.fetchedAt, delay: "realtime", official: true },
+    notes: []
+  };
+}
+async function simulatePredictionFill(o, now) {
+  const p = parsePredictionSymbol(o.symbol);
+  if (p?.venue !== "kalshi") return { kind: "working", reason: `${o.symbol}: paper fills exist for Kalshi contracts only` };
+  const { book: book2 } = await kalshiOrderbook(p.ticker);
+  const b = outcomeBook(book2, p.outcome);
+  const limit = o.orderType === "limit" ? o.price : o.side === "buy" ? 1 : 0;
+  const w = walkOutcome(b, o.side, o.quantity, limit);
+  if (!w) return { kind: "working", reason: `not enough ${p.outcome} ${o.side === "buy" ? "offers" : "bids"} within ${limit} for ${o.quantity} contract(s)` };
+  return {
+    kind: "fill",
+    fill: {
+      at: now.toISOString(),
+      quantity: o.quantity,
+      price: Number(w.price.toFixed(4)),
+      fee: kalshiTakerFee(o.quantity, w.price),
+      venue: "paper",
+      method: `Kalshi ${p.outcome} book walk (${w.levels} level(s)), taker fee`
+    }
+  };
+}
+
 // src/analyze/portfolio/book.ts
 var AS_USD = /* @__PURE__ */ new Set(["USDT", "USDC", "FDUSD"]);
 var MAX_SYMBOLS = 30;
@@ -33453,6 +33523,7 @@ async function loadMarkedBook(bookName, f3, now, opts = {}) {
     );
   const quotes = await mapLimit(priced, 4, async (h) => {
     try {
+      if (parsePredictionSymbol(h.symbol)) return { contract: await predictionQuote(h.symbol) };
       const resolved = await resolveSymbol(h.symbol);
       return { resolved, quote: await getQuote(resolved, now) };
     } catch (e) {
@@ -33463,6 +33534,31 @@ async function loadMarkedBook(bookName, f3, now, opts = {}) {
     const r3 = quotes[i];
     if ("error" in r3) {
       f3.note(`could not price ${h.symbol}: ${r3.error}`);
+      return;
+    }
+    if (r3.contract) {
+      const q2 = r3.contract;
+      h.price = q2.price;
+      h.keys.price = `${h.symbol}.quote.price`;
+      f3.input({
+        kind: "quote",
+        title: `${h.symbol} quote`,
+        subject: h.symbol,
+        points: [
+          {
+            key: h.keys.price,
+            label: `${h.symbol} mid price (pays 1 ${q2.instrument.currency} if the outcome happens)`,
+            value: q2.price,
+            unit: q2.instrument.currency
+          },
+          { key: `${h.symbol}.instrument.kind`, label: `${h.symbol} instrument kind`, value: "prediction-market contract" }
+        ],
+        provenance: { ...q2.provenance, asOf: q2.at.slice(0, 10) },
+        notes: q2.notes
+      });
+      if (q2.instrument.currency !== h.currency)
+        f3.note(`${h.symbol}: quoted in ${q2.instrument.currency} but booked in ${h.currency} \u2014 the quote currency is used`);
+      h.currency = q2.instrument.currency;
       return;
     }
     h.resolved = r3.resolved;
@@ -38497,76 +38593,6 @@ async function stressAnalysis(m, f3) {
     f3.note("bond funds are read from their names; durations are assumed (2 for 1\u20133-year funds, 6 otherwise), not read from the fund");
   f3.note("historical windows use each holding's own prices when it was listed then (Yahoo when the primary source keeps less history), else the stated proxy");
   return result;
-}
-
-// src/trading/prediction.ts
-function parsePredictionSymbol(symbol) {
-  const m = /^(KALSHI|POLYMARKET|MANIFOLD):([A-Za-z0-9._-]+):(YES|NO)$/i.exec(symbol.trim());
-  if (!m) return void 0;
-  return { venue: m[1].toLowerCase(), ticker: m[2].toUpperCase(), outcome: m[3].toUpperCase() };
-}
-function kalshiTakerFee(contracts, price, coefficient = 0.07) {
-  return Math.ceil(coefficient * contracts * price * (1 - price) * 100 - 1e-9) / 100;
-}
-function outcomeBook(yes, outcome) {
-  if (outcome === "YES") return yes;
-  const flip = (ls) => ls.map((l) => ({ price: Number((1 - l.price).toFixed(6)), size: l.size }));
-  return { bids: flip(yes.asks), asks: flip(yes.bids) };
-}
-function walkOutcome(book2, side2, contracts, limit) {
-  const ladder = side2 === "buy" ? book2.asks.filter((l) => l.price <= limit + 1e-9) : book2.bids.filter((l) => l.price >= limit - 1e-9);
-  let left = contracts;
-  let cost = 0;
-  let levels = 0;
-  for (const l of ladder) {
-    if (left <= 0) break;
-    const take = Math.min(left, l.size);
-    cost += take * l.price;
-    left -= take;
-    levels++;
-  }
-  if (left > 1e-9) return void 0;
-  return { price: cost / contracts, levels };
-}
-async function predictionQuote(symbol) {
-  const p = parsePredictionSymbol(symbol);
-  if (!p) throw new Error(`"${symbol}" is not a contract symbol (KALSHI:<TICKER>:YES|NO)`);
-  if (p.venue !== "kalshi") throw new Error(`${p.venue} contracts are not priced here: Kalshi only`);
-  const { book: book2, dataset: dataset3 } = await kalshiOrderbook(p.ticker);
-  const b = outcomeBook(book2, p.outcome);
-  const bid = b.bids[0]?.price;
-  const ask = b.asks[0]?.price;
-  const price = bid !== void 0 && ask !== void 0 ? (bid + ask) / 2 : ask ?? bid;
-  if (price === void 0) throw new Error(`${symbol}: the book is empty`);
-  return {
-    instrument: { symbol: symbol.toUpperCase(), market: "us", kind: "fund", name: `${p.ticker} ${p.outcome}`, currency: "USD", venueId: p.ticker },
-    price,
-    bid,
-    ask,
-    at: dataset3.provenance.fetchedAt,
-    provenance: { source: "kalshi", url: dataset3.provenance.url, fetchedAt: dataset3.provenance.fetchedAt, delay: "realtime", official: true },
-    notes: []
-  };
-}
-async function simulatePredictionFill(o, now) {
-  const p = parsePredictionSymbol(o.symbol);
-  if (p?.venue !== "kalshi") return { kind: "working", reason: `${o.symbol}: paper fills exist for Kalshi contracts only` };
-  const { book: book2 } = await kalshiOrderbook(p.ticker);
-  const b = outcomeBook(book2, p.outcome);
-  const limit = o.orderType === "limit" ? o.price : o.side === "buy" ? 1 : 0;
-  const w = walkOutcome(b, o.side, o.quantity, limit);
-  if (!w) return { kind: "working", reason: `not enough ${p.outcome} ${o.side === "buy" ? "offers" : "bids"} within ${limit} for ${o.quantity} contract(s)` };
-  return {
-    kind: "fill",
-    fill: {
-      at: now.toISOString(),
-      quantity: o.quantity,
-      price: Number(w.price.toFixed(4)),
-      fee: kalshiTakerFee(o.quantity, w.price),
-      venue: "paper",
-      method: `Kalshi ${p.outcome} book walk (${w.levels} level(s)), taker fee`
-    }
-  };
 }
 
 // src/trading/breaker.ts

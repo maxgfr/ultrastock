@@ -14,6 +14,7 @@ import { frankfurterLatest } from "../../providers/macro/frankfurter.js";
 import { yahooFxRates } from "../../providers/markets/yahoo.js";
 import { getQuote, type Resolved, resolveSymbol } from "../../providers/router.js";
 import type { AssetKind, Instrument } from "../../providers/types.js";
+import { parsePredictionSymbol, predictionQuote } from "../../trading/prediction.js";
 import type { Findings } from "./findings.js";
 
 /** Stablecoins are converted at the US dollar rate (said in the notes). */
@@ -213,6 +214,8 @@ export async function loadMarkedBook(bookName: string, f: Findings, now: Date, o
   // Fetch concurrently, register in symbol order (stable evidence ids on a replay).
   const quotes = await mapLimit(priced, 4, async (h) => {
     try {
+      // A prediction-market contract is priced from its own book, as `portfolio show` prices it: no listing to resolve.
+      if (parsePredictionSymbol(h.symbol)) return { contract: await predictionQuote(h.symbol) };
       const resolved = await resolveSymbol(h.symbol);
       return { resolved, quote: await getQuote(resolved, now) };
     } catch (e) {
@@ -223,6 +226,32 @@ export async function loadMarkedBook(bookName: string, f: Findings, now: Date, o
     const r = quotes[i]!;
     if ("error" in r) {
       f.note(`could not price ${h.symbol}: ${r.error}`);
+      return;
+    }
+    if (r.contract) {
+      // No instrument and no history: the optimiser, the risk and the location analyses leave it out by its class.
+      const q = r.contract;
+      h.price = q.price;
+      h.keys.price = `${h.symbol}.quote.price`;
+      f.input({
+        kind: "quote",
+        title: `${h.symbol} quote`,
+        subject: h.symbol,
+        points: [
+          {
+            key: h.keys.price,
+            label: `${h.symbol} mid price (pays 1 ${q.instrument.currency} if the outcome happens)`,
+            value: q.price,
+            unit: q.instrument.currency,
+          },
+          { key: `${h.symbol}.instrument.kind`, label: `${h.symbol} instrument kind`, value: "prediction-market contract" },
+        ],
+        provenance: { ...q.provenance, asOf: q.at.slice(0, 10) },
+        notes: q.notes,
+      });
+      if (q.instrument.currency !== h.currency)
+        f.note(`${h.symbol}: quoted in ${q.instrument.currency} but booked in ${h.currency} — the quote currency is used`);
+      h.currency = q.instrument.currency;
       return;
     }
     h.resolved = r.resolved;
