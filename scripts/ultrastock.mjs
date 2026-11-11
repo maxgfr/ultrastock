@@ -52821,7 +52821,7 @@ async function morningRun(dir2, opts = {}) {
   }
   const stops = [];
   const ticketPoints = [];
-  const stopTickets = tickets.filter((t) => t.status === "filled" && t.order.side === "buy" && t.order.stop !== void 0);
+  const stopTickets = tickets.filter(carriesStop);
   const stopFor = /* @__PURE__ */ new Map();
   const txs = marked?.book.transactions ?? [];
   const opened = lineOpenedAt(txs);
@@ -52838,7 +52838,7 @@ async function morningRun(dir2, opts = {}) {
   for (const { ticket: t } of stopFor.values())
     ticketPoints.push({
       key: `TICKET.${t.id}.stop`,
-      label: `${t.order.symbol} protective stop of filled ticket ${t.id}`,
+      label: `${t.order.symbol} protective stop of ticket ${t.id}`,
       value: t.order.stop,
       unit: t.order.currency
     });

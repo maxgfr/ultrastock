@@ -20,7 +20,7 @@
 // support: what is dated and what moved, never what to do.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadRules, type PeekedAlert, peekAlerts } from "../../alerts/alerts.js";
+import { carriesStop, loadRules, type PeekedAlert, peekAlerts } from "../../alerts/alerts.js";
 import { type CalendarMarket, calendarFor, holidays, MARKETS, nextSessions } from "../../core/calendar.js";
 import type { Point } from "../../core/datasets.js";
 import { EvidenceStore } from "../../core/evidence.js";
@@ -529,7 +529,8 @@ export async function morningRun(dir: string, opts: MorningOptions = {}): Promis
   // 3. Stops, open tickets, theses, alert conditions.
   const stops: MorningFacts["stops"] = [];
   const ticketPoints: Point[] = [];
-  const stopTickets = tickets.filter((t) => t.status === "filled" && t.order.side === "buy" && t.order.stop !== undefined);
+  // A buy filled in part and then cancelled (or still working) holds its shares under its stop too, as the alert reads it.
+  const stopTickets = tickets.filter(carriesStop);
   const stopFor = new Map<string, { ticket: Ticket; symbol: string }>();
   // A stop protects the position its ticket built: once the line was sold out, that level was left behind with it, and
   // reading it as current would flag a level the user abandoned. Only a ticket booked to this book's line (its fill's
@@ -551,7 +552,7 @@ export async function morningRun(dir: string, opts: MorningOptions = {}): Promis
   for (const { ticket: t } of stopFor.values())
     ticketPoints.push({
       key: `TICKET.${t.id}.stop`,
-      label: `${t.order.symbol} protective stop of filled ticket ${t.id}`,
+      label: `${t.order.symbol} protective stop of ticket ${t.id}`,
       value: t.order.stop!,
       unit: t.order.currency,
     });

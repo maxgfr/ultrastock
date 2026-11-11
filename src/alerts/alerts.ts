@@ -247,7 +247,7 @@ function filledSinceOpened(t: Ticket, since: string, lineRows: readonly Transact
  * Does a ticket carry its stop onto the line? A buy with a stop that bought something: filled, or filled in part and
  * then cancelled, expired or still working — the shares it bought are held under that stop all the same.
  */
-const carriesStop = (t: Ticket): boolean =>
+export const carriesStop = (t: Ticket): boolean =>
   t.order.side === "buy" && t.order.stop !== undefined && (t.status === "filled" || t.fills.some((f) => f.quantity > 0));
 
 /**
