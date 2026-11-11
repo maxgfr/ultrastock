@@ -31,8 +31,11 @@ on their own, indicator settings (`RSI(14)`, `MACD(12,26,9)`, `SMA 200`,
 `MM50`), a chart timeframe before an indicator (`15m RSI`, `4h MACD`), index
 names (`CAC 40`, `S&P 500`), spans (`52 weeks`, `3 mois`, `5-day`), week
 numbers (`Week 46`, `semaine 46`), an allocation split summing to 100 (`60/40`,
-`70/20/10`), labels glued to letters (`Q3`, `FY2025`, `J+5`), and whole numbers
-under ten (`3 positions`).
+`70/20/10`), labels glued to letters (`Q3`, `FY2025`, `J+5`), whole numbers
+under ten (`3 positions`), and footnote markers (`[^3]`, or a number glued to
+its word: `revenue[12]`). A link's text and a bracketed phrase are read like
+any other text: `target [450]` and `results on [2026-12-01]` are a figure and a
+date.
 
 A **date** is checked on its own terms. In a claim that cites evidence, every
 calendar date must be one a cited `[E#]` holds — its value, label or as-of day

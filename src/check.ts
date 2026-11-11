@@ -76,14 +76,35 @@ const SCALES: Array<[RegExp, number]> = [
 ];
 
 /**
- * Citation tokens, footnote markers and link targets out; a link's text and a
- * bracketed phrase stay, because what they say is a claim like any other.
+ * A "[" still open when the next "[" opens is not a bracket: it is blanked, so
+ * "[see [E1]" cites E1 and a line of 50 000 "[" is one pass, not one scan to
+ * the end of the line per "[" (here and in the engine's citation reader).
+ */
+export function unnestBrackets(text: string): string {
+  const chars = text.split("");
+  let open = -1;
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
+    if (c === "[") {
+      if (open >= 0) chars[open] = " ";
+      open = i;
+    } else if (c === "]" || c === "\n") open = -1;
+  }
+  return chars.join("");
+}
+
+/**
+ * Citation tokens ([E3]), footnote markers ([^3], and a number glued to its
+ * word: "revenue[12]") and link targets out; a link's text and a bracketed
+ * phrase stay — "target [450]" and "on [2026-12-01]" are claims like any
+ * other. No pattern spans a "[" or a "(", so each runs in one pass.
  */
 const unbracket = (text: string): string =>
-  text
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, " $1 ")
-    .replace(/\[\^?[\w-]*\]/g, " ")
-    .replace(/\[([^\]]*)\]/g, " $1 ");
+  unnestBrackets(text)
+    .replace(/!?\[([^[\]]*)\]\([^()]*\)/g, " $1 ")
+    .replace(/(?<=[\p{L}\p{N}.,;:)\]])\[\d{1,3}\]/gu, " ")
+    .replace(/\[(?:E\d+|\^[^\s[\]]+)\]/g, " ")
+    .replace(/\[([^[\]]*)\]/g, " $1 ");
 
 const INDICATOR_NAMES = "SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA|VWAP|OBV|Stoch|Stochastic|Bollinger|Ichimoku|Supertrend";
 
@@ -214,7 +235,7 @@ const NEAR_LINES = 3;
  * nearness cannot be judged, so no note is raised.
  */
 function nearClaim(doc: CitedDoc, claim: string): string {
-  const words = claim.replace(/\[[^\]]*\]/g, " ").replace(/[+\-−–]?[$€£]?\d[\d\s.,'  ]*%?/g, " ");
+  const words = claim.replace(/\[[^[\]]*\]/g, " ").replace(/[+\-−–]?[$€£]?\d[\d\s.,'  ]*%?/g, " ");
   const terms = new Set(bm25Tokenize(words).filter((t) => t.length > 2 && !/^\d+$/.test(t)));
   const { text } = doc;
   const lines = text.split("\n");
@@ -312,7 +333,7 @@ export interface CheckOptions {
 export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions = {}): CheckReport | { error: string } {
   const store = EvidenceStore.load(dir);
   if (!store) return { error: `${dir} holds no evidence.json — run \`ultrastock analyze\`, \`quote\` or \`history\` with --out ${dir} first` };
-  const answer = withoutColumnLabels(normalizeEvidenceCitations(rawAnswer));
+  const answer = withoutColumnLabels(normalizeEvidenceCitations(unnestBrackets(rawAnswer)));
   const lines = answer.split(/\r?\n/);
   const lineOf = lineFinder(lines);
   // A table's header row states what it writes like any row ("| LVMH up 45 % |").

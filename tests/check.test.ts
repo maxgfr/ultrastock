@@ -139,8 +139,8 @@ describe("checkAnswer", () => {
     expect(kinds("LVMH ![up 45 %](chart.png) closing at 383 € [E1].\n")).toEqual(["unsupported"]);
     expect(kinds("LVMH [up 45 %] closing at 383 € [E1].\n")).toEqual(["unsupported"]);
     expect(kinds("Closing at 383 € [E1], results on [2026-12-01](https://example.com/cal).\n")).toEqual(["unsupported"]);
-    // Citations, cited links and footnote markers are still not figures.
-    expect(kinds("Closing at [383 €](https://example.com/q) [E1](https://example.com/e) [12] [^3].\n")).toEqual([]);
+    // Citations, cited links and footnote markers (caret, or a number glued to its word) are still not figures.
+    expect(kinds("Closing at [383 €](https://example.com/q) [E1](https://example.com/e) this year[12] [^3].\n")).toEqual([]);
   });
   it("checks a figure written in a heading or in a table's header row", () => {
     // E1 is 383 EUR: neither 450 € nor 45 % nor 2.3 bn is in it.

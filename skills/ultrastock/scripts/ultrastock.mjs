@@ -21822,7 +21822,19 @@ var SCALES = [
   [/^(?:Md|Mds|md|mds|bn|Bn|B|billion|billions|milliard|milliards)$/, 1e9],
   [/^(?:T|tn|trillion|trillions)$/, 1e12]
 ];
-var unbracket = (text2) => text2.replace(/!?\[([^\]]*)\]\([^)]*\)/g, " $1 ").replace(/\[\^?[\w-]*\]/g, " ").replace(/\[([^\]]*)\]/g, " $1 ");
+function unnestBrackets(text2) {
+  const chars = text2.split("");
+  let open2 = -1;
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
+    if (c === "[") {
+      if (open2 >= 0) chars[open2] = " ";
+      open2 = i;
+    } else if (c === "]" || c === "\n") open2 = -1;
+  }
+  return chars.join("");
+}
+var unbracket = (text2) => unnestBrackets(text2).replace(/!?\[([^[\]]*)\]\([^()]*\)/g, " $1 ").replace(/(?<=[\p{L}\p{N}.,;:)\]])\[\d{1,3}\]/gu, " ").replace(/\[(?:E\d+|\^[^\s[\]]+)\]/g, " ").replace(/\[([^[\]]*)\]/g, " $1 ");
 var INDICATOR_NAMES = "SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA|VWAP|OBV|Stoch|Stochastic|Bollinger|Ichimoku|Supertrend";
 function stripNonFigures(text2) {
   return unbracket(text2.replace(/`[^`]*`/g, " ")).replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ").replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ").replace(new RegExp(`\\b\\d{1,2}(?:er)?\\s+(?:${MONTH_WORD})(?!\\p{L})\\.?(?:\\s+\\d{4})?`, "giu"), " ").replace(new RegExp(`(?<!\\p{L})(?:${MONTH_WORD})(?!\\p{L})\\.?\\s+\\d{1,2}(?:,\\s*\\d{4}(?!\\p{N}))?(?!\\p{N}|[.,]\\d)`, "giu"), " ").replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ").replace(new RegExp(`\\b\\d{1,2}[mhdwM]\\s?(?=(?:${INDICATOR_NAMES})(?![A-Za-z]))`, "gi"), " ").replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ").replace(/\b(?:SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA)\s?\d+\b/gi, " ").replace(/\b(?:weeks?|wk|semaines?|sem\.)\s?\d{1,2}\b(?![.,]\d|\s?[%$€£])/gi, " ").replace(/(?<![\p{N}.,/])\d{1,3}(?:\/\d{1,3})+(?![\p{N}/]|[.,]\d)/gu, (m) => m.split("/").reduce((a, b) => a + Number(b), 0) === 100 ? " " : m).replace(/(?:S&P|\b(?:CAC|SBF|STOXX|Stoxx|Nasdaq|NASDAQ|Russell|DAX|MDAX|FTSE|AEX|BEL|IBEX|MIB|PSI|OBX|ISEQ|Nikkei|Top|top|Dow Jones))\s?\d+\b/g, " ");
@@ -21881,7 +21893,7 @@ function documentFigures(doc, text2) {
 }
 var NEAR_LINES = 3;
 function nearClaim(doc, claim) {
-  const words3 = claim.replace(/\[[^\]]*\]/g, " ").replace(/[+\-−–]?[$€£]?\d[\d\s.,'  ]*%?/g, " ");
+  const words3 = claim.replace(/\[[^[\]]*\]/g, " ").replace(/[+\-−–]?[$€£]?\d[\d\s.,'  ]*%?/g, " ");
   const terms = new Set(bm25Tokenize(words3).filter((t) => t.length > 2 && !/^\d+$/.test(t)));
   const { text: text2 } = doc;
   const lines = text2.split("\n");
@@ -21937,7 +21949,7 @@ var quote = (t) => t.length > 70 ? `${t.slice(0, 67)}\u2026` : t;
 function checkAnswer(dir2, rawAnswer, opts = {}) {
   const store = EvidenceStore.load(dir2);
   if (!store) return { error: `${dir2} holds no evidence.json \u2014 run \`ultrastock analyze\`, \`quote\` or \`history\` with --out ${dir2} first` };
-  const answer = withoutColumnLabels(normalizeEvidenceCitations(rawAnswer));
+  const answer = withoutColumnLabels(normalizeEvidenceCitations(unnestBrackets(rawAnswer)));
   const lines = answer.split(/\r?\n/);
   const lineOf = lineFinder(lines);
   const unitOpts = { exclude: closingSourcesMask, skipTableHeader: false };
