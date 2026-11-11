@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.10](https://github.com/maxgfr/ultrastock/compare/v1.13.9...v1.13.10) (2026-11-11)
+
+
+### Bug Fixes
+
+* **piotroski:** compare ROA and asset turnover on one asset convention ([32be326](https://github.com/maxgfr/ultrastock/commit/32be32635fac96dce24bc8bac8c6a05da78eeda4))
+
 ## [1.13.9](https://github.com/maxgfr/ultrastock/compare/v1.13.8...v1.13.9) (2026-11-11)
 
 
