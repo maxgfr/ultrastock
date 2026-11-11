@@ -39176,15 +39176,21 @@ function pendingBuys(tickets, book2, ticketId) {
 }
 function ordersToday(trail, book2, now) {
   const today = now.toISOString().slice(0, 10);
-  const test = new Set(trail.filter((e) => e.event === "live-intent" && e.env === "test").map((e) => String(e.ticket)));
+  const sentToVenue = new Set(trail.filter((e) => e.event === "live-intent").map((e) => String(e.ticket)));
+  const attempts = /* @__PURE__ */ new Set();
   const ids = /* @__PURE__ */ new Set();
   for (const e of trail) {
-    if (e.event !== "ticket" || !e.at.startsWith(today) || !(e.to === "filled" || e.to === "submitted" || e.to === "working")) continue;
+    if (!e.at.startsWith(today)) continue;
+    if (e.event === "live-intent") {
+      if (e.env !== "test" && bookOf(String(e.venue)) === book2) attempts.add(`${String(e.ticket)}|${String(e.clientOrderId)}`);
+      continue;
+    }
+    if (e.event !== "ticket" || !(e.to === "filled" || e.to === "submitted" || e.to === "working")) continue;
     const venue = e.order?.venue;
-    if (venue === void 0 || bookOf(venue) !== book2 || test.has(String(e.id))) continue;
+    if (venue === void 0 || bookOf(venue) !== book2 || sentToVenue.has(String(e.id))) continue;
     ids.add(String(e.id));
   }
-  return ids.size;
+  return attempts.size + ids.size;
 }
 var tradingviewSector = async (symbol, instrument) => {
   const ticker = tvTicker({ symbol, instrument });

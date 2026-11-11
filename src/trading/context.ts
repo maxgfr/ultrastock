@@ -60,23 +60,30 @@ export function pendingBuys(tickets: readonly Ticket[], book: string, ticketId?:
 }
 
 /**
- * The orders placed in `book` today, from the audit trail: the distinct tickets
- * that reached working, submitted or filled today (UTC). A ticket moves several
- * times (working then filled; submitted, accepted, then filled) and is still one
- * order; an order in another book does not count, nor one sent to a testnet or
- * a validate-only endpoint, which moves no money.
+ * The orders placed in `book` today (UTC), from the audit trail. An order sent
+ * to a venue counts once per attempt, by the environment of that attempt: a
+ * ticket tried on a testnet (or a validate-only endpoint, which moves no money)
+ * and then sent for real is one real order. A paper order counts once per
+ * ticket that reached working or filled today: it moves several times and is
+ * still one order. An order in another book does not count.
  */
 export function ordersToday(trail: ReadonlyArray<Record<string, unknown> & { at: string }>, book: string, now: Date): number {
   const today = now.toISOString().slice(0, 10);
-  const test = new Set(trail.filter((e) => e.event === "live-intent" && e.env === "test").map((e) => String(e.ticket)));
+  const sentToVenue = new Set(trail.filter((e) => e.event === "live-intent").map((e) => String(e.ticket)));
+  const attempts = new Set<string>();
   const ids = new Set<string>();
   for (const e of trail) {
-    if (e.event !== "ticket" || !e.at.startsWith(today) || !(e.to === "filled" || e.to === "submitted" || e.to === "working")) continue;
+    if (!e.at.startsWith(today)) continue;
+    if (e.event === "live-intent") {
+      if (e.env !== "test" && bookOf(String(e.venue)) === book) attempts.add(`${String(e.ticket)}|${String(e.clientOrderId)}`);
+      continue;
+    }
+    if (e.event !== "ticket" || !(e.to === "filled" || e.to === "submitted" || e.to === "working")) continue;
     const venue = (e.order as { venue?: string } | undefined)?.venue;
-    if (venue === undefined || bookOf(venue) !== book || test.has(String(e.id))) continue;
+    if (venue === undefined || bookOf(venue) !== book || sentToVenue.has(String(e.id))) continue;
     ids.add(String(e.id));
   }
-  return ids.size;
+  return attempts.size + ids.size;
 }
 
 /**
