@@ -8,10 +8,12 @@
 //   monthly loss ≥ maxMonthlyLossPct  → until the next month
 //   2 losing trades in a row          → a 24-hour cooling-off
 //   drawdown from the equity peak: 10 % → sizes × 0.5, 15 % → × 0.25, 20 % → no new risk
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { withFileLockSync } from "../core/lock.js";
 import { homeDir } from "../core/paths.js";
 import type { Limits } from "../core/profile.js";
+import { readJsonl, sealJsonlTail, type Warn } from "../portfolio/jsonl.js";
 import type { Transaction } from "../portfolio/ledger.js";
 
 export interface EquityPoint {
@@ -23,19 +25,19 @@ export function equityPath(book: string): string {
   return join(homeDir(), "state", `equity-${book}.jsonl`);
 }
 
-export function readEquity(book: string): EquityPoint[] {
-  const p = equityPath(book);
-  if (!existsSync(p)) return [];
-  return readFileSync(p, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l) as EquityPoint)
-    .sort((a, b) => a.at.localeCompare(b.at));
+/** The equity curve; a last point cut short by a crash is skipped with a warning, an unreadable line before it is an error. */
+export function readEquity(book: string, warn?: Warn): EquityPoint[] {
+  return readJsonl<EquityPoint>(equityPath(book), warn).sort((a, b) => a.at.localeCompare(b.at));
 }
 
+/** Append a point, under the curve's lock: a point a crashed append cut short is moved aside first. */
 export function recordEquity(book: string, equity: number, at: Date): void {
+  const path = equityPath(book);
   mkdirSync(join(homeDir(), "state"), { recursive: true });
-  appendFileSync(equityPath(book), `${JSON.stringify({ at: at.toISOString(), equity })}\n`, { mode: 0o600 });
+  withFileLockSync(`${path}.lock`, () => {
+    sealJsonlTail(path);
+    appendFileSync(path, `${JSON.stringify({ at: at.toISOString(), equity })}\n`, { mode: 0o600 });
+  });
 }
 
 export interface BreakerState {

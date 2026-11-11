@@ -8,12 +8,13 @@
 // Cost basis is kept two ways at once, because two tax regimes need them:
 // lots (FIFO, for US-style lot accounting and holding periods) and the
 // weighted average cost (PMP, the French rule for securities).
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { contentHash } from "../engine.js";
 import { inTransaction, ledgerBackend, type SqlDatabase, StoreUnavailableError, withStore } from "../core/db.js";
 import { withFileLock } from "../core/lock.js";
 import { homeDir } from "../core/paths.js";
+import { readJsonl, sealJsonlTail, type Warn } from "./jsonl.js";
 
 export type TxType = "deposit" | "withdrawal" | "buy" | "sell" | "dividend" | "interest" | "fee" | "tax" | "split" | "transfer-in" | "transfer-out";
 
@@ -107,10 +108,10 @@ export function transactionId(t: Omit<Transaction, "id">): string {
 }
 
 /** The transactions of a book, in the order they were recorded (JSONL or SQLite, per store.json). */
-export function readLedger(book = "real"): Transaction[] {
+export function readLedger(book = "real", warn?: Warn): Transaction[] {
   ledgerPath(book);
   if (ledgerBackend() === "sqlite") return withLedgerStore((db) => readSqliteLedger(db, book));
-  return readJsonlLedger(book);
+  return readJsonlLedger(book, warn);
 }
 
 /** withStore for the ledger: on a Node without node:sqlite, say that THIS ledger lives in the store. */
@@ -127,14 +128,13 @@ function withLedgerStore<T>(fn: (db: SqlDatabase) => T): T {
   }
 }
 
-/** The JSONL file of a book, whatever the active backend. */
-export function readJsonlLedger(book = "real"): Transaction[] {
-  const path = ledgerPath(book);
-  if (!existsSync(path)) return [];
-  return readFileSync(path, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l) as Transaction);
+/**
+ * The JSONL file of a book, whatever the active backend. A last line cut short
+ * by a crash mid-append is skipped with a warning (the append never returned:
+ * nothing was recorded); an unreadable line anywhere else is an error.
+ */
+export function readJsonlLedger(book = "real", warn?: Warn): Transaction[] {
+  return readJsonl<Transaction>(ledgerPath(book), warn);
 }
 
 function validate(t: Omit<Transaction, "id">): void {
@@ -187,7 +187,11 @@ export async function appendTransactions(txs: ReadonlyArray<Omit<Transaction, "i
       seen.add(t.id);
       added.push(t);
     }
-    if (added.length) appendFileSync(path, added.map((t) => `${JSON.stringify(t)}\n`).join(""), { mode: 0o600 });
+    if (added.length) {
+      // Under the lock: a line a crashed append cut short is moved aside, never left in the middle of the file.
+      sealJsonlTail(path);
+      appendFileSync(path, added.map((t) => `${JSON.stringify(t)}\n`).join(""), { mode: 0o600 });
+    }
     return { added, duplicates };
   });
 }

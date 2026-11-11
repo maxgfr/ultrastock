@@ -96,14 +96,16 @@ export async function gateContextFor(
   const bookName = opts.book ?? (order.venue === "paper" ? "paper" : "real");
   const profile = loadProfile();
   if (!profile) throw new Error("no profile: run `ultrastock profile init` and `profile suitability` first — the gate enforces the profile's limits");
-  const txs = readLedger(bookName);
+  // What a reader had to skip (a line a crash cut short) is said with the check.
+  const notes: string[] = [];
+  const warn = (m: string) => void notes.push(m);
+  const txs = readLedger(bookName, warn);
   const book = buildBook(txs);
   const held = book.positions.filter((p) => p.quantity > 0);
   const contract = parsePredictionSymbol(order.symbol);
   const resolved = contract ? undefined : await resolveSymbol(order.symbol);
   const quote = contract ? await predictionQuote(order.symbol) : await getQuote(resolved!, now);
   const symbols = [...new Set(held.map((p) => p.symbol))].filter((s) => s !== order.symbol).slice(0, 40);
-  const notes: string[] = [];
   const prices: Record<string, number> = { [order.symbol]: quote.price };
   const kinds: Record<string, string> = { [order.symbol]: resolved?.instrument.market ?? "prediction" };
   const instruments: Record<string, Instrument> = resolved ? { [order.symbol]: resolved.instrument } : {};
@@ -139,7 +141,7 @@ export async function gateContextFor(
   for (const t of pending)
     pendingBuysBase[t.order.symbol] = (pendingBuysBase[t.order.symbol] ?? 0) + t.order.quantity * t.order.price * (fx.rates[t.order.currency] ?? 1);
   const today = now.toISOString().slice(0, 10);
-  const ordersToday = readAudit().filter(
+  const ordersToday = readAudit(warn).filter(
     (e) => e.at.startsWith(today) && e.event === "ticket" && (e.to === "filled" || e.to === "submitted" || e.to === "working"),
   ).length;
   // The sector cap: what the book (and the buys still to be paid) already holds in the order's sector, shares only.
@@ -185,7 +187,7 @@ export async function gateContextFor(
     quoteAt: eod ? `${quote.at.slice(0, 10)}T23:59:59Z` : quote.at,
     now,
     maxQuoteAgeMs: eod ? 4 * 86_400_000 : 15 * 60_000,
-    breaker: breakerState(readEquity(bookName), closedTradeResults(txs), profile.limits, now),
+    breaker: breakerState(readEquity(bookName, warn), closedTradeResults(txs), profile.limits, now),
     events: opts.events,
   };
   if (eod) notes.push(`${order.symbol}: end-of-day prices — the order is checked against the last official close of ${quote.at.slice(0, 10)}`);

@@ -12,9 +12,10 @@
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { writeFileAtomic } from "../engine.js";
-import { withFileLock } from "../core/lock.js";
+import { withFileLock, withFileLockSync } from "../core/lock.js";
 import { netMode } from "../core/net.js";
 import { homeDir } from "../core/paths.js";
+import { readJsonl, sealJsonlTail, type Warn } from "../portfolio/jsonl.js";
 import { type GateResult, type Order, orderFingerprint } from "./riskgate.js";
 
 export const CHECK_TTL_MS = 15 * 60_000;
@@ -58,26 +59,31 @@ const ticketPath = (id: string) => {
   return join(ticketsDir(), `${id}.json`);
 };
 
-/** Append one line to the order audit trail and flush it to disk before returning. */
+const auditPath = () => join(homeDir(), "audit", "orders.jsonl");
+
+/**
+ * Append one line to the order audit trail and flush it to disk before
+ * returning. Under the audit's lock: a line a crashed append cut short is moved
+ * to `orders.jsonl.torn` first, so it never sits in the middle of the trail.
+ */
 export function audit(event: Record<string, unknown>): void {
-  const dir = join(homeDir(), "audit");
-  mkdirSync(dir, { recursive: true });
-  const fd = openSync(join(dir, "orders.jsonl"), "a", 0o600);
-  try {
-    writeSync(fd, `${JSON.stringify({ at: new Date().toISOString(), ...event })}\n`);
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
+  const path = auditPath();
+  mkdirSync(join(homeDir(), "audit"), { recursive: true });
+  withFileLockSync(`${path}.lock`, () => {
+    sealJsonlTail(path);
+    const fd = openSync(path, "a", 0o600);
+    try {
+      writeSync(fd, `${JSON.stringify({ at: new Date().toISOString(), ...event })}\n`);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+  });
 }
 
-export function readAudit(): Array<Record<string, unknown> & { at: string }> {
-  const f = join(homeDir(), "audit", "orders.jsonl");
-  if (!existsSync(f)) return [];
-  return readFileSync(f, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l));
+/** The audit trail; a last line cut short by a crash is skipped with a warning, an unreadable line before it is an error. */
+export function readAudit(warn?: Warn): Array<Record<string, unknown> & { at: string }> {
+  return readJsonl(auditPath(), warn);
 }
 
 export function loadTicket(id: string): Ticket {
