@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.2](https://github.com/maxgfr/ultrastock/compare/v1.13.1...v1.13.2) (2026-11-11)
+
+
+### Bug Fixes
+
+* **gate:** enforce the sector limit ([a330396](https://github.com/maxgfr/ultrastock/commit/a330396086983fae50040fa1dc4cbca5f6f156a5))
+
 ## [1.13.1](https://github.com/maxgfr/ultrastock/compare/v1.13.0...v1.13.1) (2026-11-11)
 
 
