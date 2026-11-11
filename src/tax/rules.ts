@@ -104,11 +104,11 @@ const fr = (year: number, ps: number, psAv: number): RuleSet => ({
     },
     "crypto.exemptionThreshold": {
       value: 305,
-      label: "annual crypto disposals (gross proceeds) at or below which gains are exempt",
-      sources: CRYPTO,
-      verifiedAt: V,
+      label: "annual total of crypto disposal prices (net of fees) at or below which gains are exempt",
+      sources: [...CRYPTO, "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000038612228 (CGI art. 150 VH bis, II B and III A)"],
+      verifiedAt: "2026-11-11",
       confidence: "high",
-      note: 'CGI art. 150 VH bis II B: exempt when the year\'s total disposal prices do not exceed 305 € (the 2086 notice, line 51, says "inférieur à 305 €") — the total uses prices net of fees (line 218)',
+      note: 'CGI art. 150 VH bis II B: exempt when the sum of the year\'s disposal prices "tels que définis au A du III" does not exceed ("n\'excède pas") 305 €; III A: the price is the price received, "réduit, sur justificatifs, des frais supportés par le cédant" — so the total is net of fees (2086 line 218) and 305 € itself is exempt (the 2086 notice, line 51, says "inférieur à 305 €")',
     },
     "av.rate8y": {
       value: 0.075,

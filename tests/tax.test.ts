@@ -290,6 +290,14 @@ describe("France", () => {
     expect(box(s, "3AN")).toBeUndefined();
     const u = fr.annualSummary(input(txs, [KRAKEN]));
     expect(u.warnings.join(" ")).toMatch(/total value at that moment is unknown/);
+    // Art. 150 VH bis II B and III A: the prices summed are the prices received less the fees, and the exemption holds
+    // while they do not exceed 305 €. 310 € received with 5 € of fees is exempt; with 4 € it is not.
+    const sale = (fee: number) => [txs[0]!, tx({ ...txs[1]!, price: 620, fee })];
+    expect(fig(fr.annualSummary(input(sale(5), [KRAKEN], { cryptoValue: () => 620 })), "crypto.exempt")).toBe("yes");
+    expect(fig(fr.annualSummary(input(sale(4), [KRAKEN], { cryptoValue: () => 620 })), "crypto.exempt")).toBeUndefined();
+    const rule = rulesFor("fr", 2025).rules.params["crypto.exemptionThreshold"]!;
+    expect(rule.label).toMatch(/net of fees/);
+    expect(`${rule.label} ${rule.note}`).not.toMatch(/gross/);
   });
 
   it("crypto: a gain computed after a disposal of unknown portfolio value is flagged as understated", () => {
