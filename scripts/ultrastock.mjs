@@ -43644,6 +43644,11 @@ function splitPair(symbol, currency) {
   const base2 = q ? s.slice(0, -q.length) : s;
   return { base: base2 === "XBT" ? "BTC" : base2 === "XDG" ? "DOGE" : base2, quote: q };
 }
+function isConvertLeg(t) {
+  if (t.origin !== "import:coinbase" || !t.note) return false;
+  if (t.type === "sell") return /^convert to [A-Z0-9]+$/.test(t.note);
+  return t.type === "buy" && /^convert from [A-Z0-9]+$/.test(t.note);
+}
 var FOREIGN_BROKERS = /ibkr|interactive|degiro|trade ?republic|revolut|etoro|xtb|freedom ?24|lightyear|scalable|saxo|trading ?212|binance|kraken|coinbase|bitpanda|bitstamp|crypto\.com|bybit|okx|kucoin|bitget|gemini|nexo|swissborg|ledger ?(live)?|metamask/i;
 var FRENCH_BROKERS = /bourso|fortuneo|bourse ?direct|cr[eé]dit ?agricole|bnp|soci[eé]t[eé] ?g[eé]n[eé]rale|\bsg\b|lcl|linxea|yomoni|bforbank|hello ?bank|caisse ?d'?[eé]pargne|banque ?populaire|cic|cr[eé]dit ?mutuel|la ?banque ?postale|axa|binck|easybourse|paymium|coinhouse|meria|deskoin|stack ?sats/i;
 function brokerIsForeign(broker) {
@@ -47266,6 +47271,17 @@ var FranceRegime = class extends TaxRegime {
   crypto(t, st, input, base2, fee, inYear) {
     const c = st.crypto;
     const { base: asset } = splitPair(t.symbol ?? t.currency, t.currency);
+    if (isConvertLeg(t)) {
+      c.holdings.set(asset, (c.holdings.get(asset) ?? 0) + (t.type === "buy" ? 1 : -1) * (t.quantity ?? 0));
+      if (inYear)
+        st.events.push({
+          ...base2,
+          kind: "crypto-exchange",
+          quantity: t.quantity,
+          notes: [`${t.note}: an exchange between crypto-assets, deferred (no tax, acquisition price unchanged)`]
+        });
+      return;
+    }
     if (t.type === "buy") {
       c.holdings.set(asset, (c.holdings.get(asset) ?? 0) + (t.quantity ?? 0));
       if (isFiat(t.currency)) c.acquisitions += this.toBase(t, gross2(t), input) + fee;
@@ -48381,7 +48397,7 @@ async function buildInput(args, regime, year, opts = {}) {
   }
   if (regime.id === "fr") {
     const isCrypto = (t) => envelopeOf2(t.account, envelopes, t.symbol).type === "CRYPTO";
-    const dates = txs.filter((t) => isCrypto(t) && t.type === "sell" && isFiat(t.currency) && yearOf2(t.date) === year).map((t) => day3(t.date));
+    const dates = txs.filter((t) => isCrypto(t) && t.type === "sell" && isFiat(t.currency) && !isConvertLeg(t) && yearOf2(t.date) === year).map((t) => day3(t.date));
     if (opts.asOf && txs.some(isCrypto)) dates.push(opts.asOf);
     if (dates.length) {
       const v = await cryptoValuer(txs, envelopes, dates, fx);

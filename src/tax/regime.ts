@@ -167,6 +167,17 @@ export function splitPair(symbol: string, currency?: string): { base: string; qu
   return { base: base === "XBT" ? "BTC" : base === "XDG" ? "DOGE" : base, quote: q };
 }
 
+/**
+ * A leg of a Coinbase "Convert". The statement prices both sides in fiat, so the importer books a sell of the asset given
+ * (note "convert to BTC") and a buy of the asset received (note "convert from ETH") — but no fiat changed hands: it is an
+ * exchange between two crypto-assets. Only rows the Coinbase importer wrote are read this way.
+ */
+export function isConvertLeg(t: Pick<Transaction, "type" | "note" | "origin">): boolean {
+  if (t.origin !== "import:coinbase" || !t.note) return false;
+  if (t.type === "sell") return /^convert to [A-Z0-9]+$/.test(t.note);
+  return t.type === "buy" && /^convert from [A-Z0-9]+$/.test(t.note);
+}
+
 /** Brokers and platforms established outside France — their accounts are declared on form 3916 / 3916-bis. */
 const FOREIGN_BROKERS =
   /ibkr|interactive|degiro|trade ?republic|revolut|etoro|xtb|freedom ?24|lightyear|scalable|saxo|trading ?212|binance|kraken|coinbase|bitpanda|bitstamp|crypto\.com|bybit|okx|kucoin|bitget|gemini|nexo|swissborg|ledger ?(live)?|metamask/i;

@@ -10,7 +10,7 @@ import { buildBook, readLedger, type Transaction } from "../portfolio/ledger.js"
 import { EXPORT_FORMATS, type ExportFormat, export2074, export2086, export8949, exportKoinly } from "../tax/export.js";
 import { regimeFor } from "../tax/index.js";
 import { cryptoValuer, currentPrices, historicalFx } from "../tax/inputs.js";
-import { day, envelopeOf, isFiat, type TaxInput, type TaxRegime, type TaxSummary, yearOf } from "../tax/regime.js";
+import { day, envelopeOf, isConvertLeg, isFiat, type TaxInput, type TaxRegime, type TaxSummary, yearOf } from "../tax/regime.js";
 import { emitDatasets, printResult as print } from "./emit.js";
 
 const USAGE =
@@ -90,7 +90,10 @@ async function buildInput(args: CommandArgs, regime: TaxRegime, year: number, op
   }
   if (regime.id === "fr") {
     const isCrypto = (t: Transaction) => envelopeOf(t.account, envelopes, t.symbol).type === "CRYPTO";
-    const dates = txs.filter((t) => isCrypto(t) && t.type === "sell" && isFiat(t.currency) && yearOf(t.date) === year).map((t) => day(t.date));
+    // The disposals the formula needs a portfolio value for: sales for fiat, a convert's leg priced in fiat excepted.
+    const dates = txs
+      .filter((t) => isCrypto(t) && t.type === "sell" && isFiat(t.currency) && !isConvertLeg(t) && yearOf(t.date) === year)
+      .map((t) => day(t.date));
     if (opts.asOf && txs.some(isCrypto)) dates.push(opts.asOf);
     if (dates.length) {
       const v = await cryptoValuer(txs, envelopes, dates, fx);

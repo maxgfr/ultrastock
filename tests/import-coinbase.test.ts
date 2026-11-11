@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseStatement } from "../src/portfolio/import/index.js";
 import { appendTransactions } from "../src/portfolio/ledger.js";
+import { isConvertLeg } from "../src/tax/regime.js";
 import { bySymbol, replay, sample } from "./helpers/import.js";
 
 const parse = (text: string) => parseStatement("coinbase", text, { account: "coinbase" });
@@ -30,6 +31,8 @@ describe("Coinbase transaction history", () => {
     expect(sell).toMatchObject({ quantity: 0.05, price: 2450, fee: 1.84, note: "convert to BTC" });
     expect(into).toMatchObject({ quantity: 0.003175, note: "convert from ETH" });
     expect(sell.quantity! * sell.price! - sell.fee! - into.quantity! * into.price!).toBeCloseTo(0, 6);
+    // The French tax engine reads exactly these two rows as an exchange between crypto-assets, and no other.
+    expect(r.transactions.filter(isConvertLeg)).toEqual([sell, into]);
     // Income enters at the spot price; a receive at the running average cost.
     expect(r.transactions[5]).toMatchObject({ type: "transfer-in", quantity: 0.0005, price: 2500 });
     expect(r.transactions[8]!.price).toBeUndefined();

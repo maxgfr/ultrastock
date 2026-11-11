@@ -162,6 +162,35 @@ describe("France", () => {
     expect(s.events.some((e) => e.kind === "crypto-disposal")).toBe(false);
   });
 
+  it("crypto: a Coinbase convert is an exchange between crypto-assets, not a disposal", () => {
+    const COINBASE: Envelope = { id: "coinbase", type: "CRYPTO", broker: "Coinbase", currency: "EUR" };
+    const cb = (t: Partial<Transaction> & Pick<Transaction, "date" | "type">) => tx({ account: "coinbase", origin: "import:coinbase", ...t });
+    // 1 ETH bought 1 000 €, converted to BTC when it is worth 3 000 €: the statement books the convert as a sale and a
+    // purchase priced in euros, but no euro changed hands.
+    const txs = [
+      cb({ date: "2025-01-10T09:00:00", type: "buy", symbol: "ETHEUR", quantity: 1, price: 1_000 }),
+      cb({ date: "2025-06-01T09:00:00", type: "sell", symbol: "ETHEUR", quantity: 1, price: 3_000, fee: 30, note: "convert to BTC" }),
+      cb({ date: "2025-06-01T09:00:00", type: "buy", symbol: "BTCEUR", quantity: 0.0495, price: 60_000, note: "convert from ETH" }),
+    ];
+    const fr = new FranceRegime(2025);
+    const s = fr.annualSummary(input(txs, [COINBASE], { cryptoValue: () => 3_000 }));
+    expect(s.events.filter((e) => e.kind === "crypto-disposal")).toEqual([]);
+    expect(s.events.filter((e) => e.kind === "crypto-exchange").map((e) => e.symbol)).toEqual(["ETHEUR", "BTCEUR"]);
+    expect(box(s, "3AN")).toBeUndefined();
+    expect(s.warnings.join(" ")).not.toMatch(/portfolio's total value/);
+    // The acquisition price is still the 1 000 € paid: a later sale of the BTC for euros is computed on it.
+    const later = [...txs, cb({ date: "2025-09-01T09:00:00", type: "sell", symbol: "BTCEUR", quantity: 0.0495, price: 80_000 })];
+    const sold = fr.annualSummary(input(later, [COINBASE], { cryptoValue: () => 3_960 })).events.filter((e) => e.kind === "crypto-disposal");
+    expect(sold).toHaveLength(1);
+    expect(sold[0]!.lines).toMatchObject({ "220": 1000, "221": 0, "223": 1000, "224": 2960 });
+    // The same two rows typed by hand are a sale and a purchase in euros: only the statement's convert is deferred.
+    const manual = txs.map((t) => tx({ ...t, origin: "manual" }));
+    expect(fr.realize(input(manual, [COINBASE], { cryptoValue: () => 3_000 })).filter((e) => e.kind === "crypto-disposal")).toHaveLength(1);
+    // The United States tax a convert: a disposal at fair value.
+    const us = new UsRegime(2025).realize(input(txs, [{ ...COINBASE, currency: "USD" }]));
+    expect(us.filter((e) => e.kind === "crypto-disposal")).toHaveLength(1);
+  });
+
   it("crypto: 305 € or less of disposals in the year is exempt; an unknown portfolio value is named", () => {
     const txs = [
       tx({ date: "2025-01-10", type: "buy", account: "kraken", symbol: "ETHEUR", quantity: 1, price: 200 }),

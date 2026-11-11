@@ -12,7 +12,8 @@
 //   (and the plan closes). AV: same share rule, 7.5 % after 8 years with an
 //   allowance, 12.8 % before; social levies at their own rate.
 // - Crypto-assets (CGI art. 150 VH bis, form 2086): only disposals for fiat
-//   (or goods) are taxable; crypto-to-crypto exchanges are deferred. Gain =
+//   (or goods) are taxable; crypto-to-crypto exchanges are deferred, a
+//   Coinbase "Convert" (imported as two legs priced in fiat) included. Gain =
 //   net price − total acquisition price × price / portfolio value; exempt
 //   when the year's disposals total 305 € or less. Net crypto losses offset
 //   only crypto gains of the same year.
@@ -31,6 +32,7 @@ import {
   type FormLine,
   gross,
   type HarvestCandidate,
+  isConvertLeg,
   isFiat,
   isStablecoin,
   round2,
@@ -225,6 +227,19 @@ export class FranceRegime extends TaxRegime {
   private crypto(t: Transaction, st: FrState, input: TaxInput, base: Omit<TaxEvent, "kind">, fee: number, inYear: boolean): void {
     const c = st.crypto;
     const { base: asset } = splitPair(t.symbol ?? t.currency, t.currency);
+    if (isConvertLeg(t)) {
+      // A convert is booked as a sale and a purchase priced in fiat, but it is an exchange without a balancing payment
+      // (art. 150 VH bis II-A): no disposal, and the acquisition price of the portfolio does not move.
+      c.holdings.set(asset, (c.holdings.get(asset) ?? 0) + (t.type === "buy" ? 1 : -1) * (t.quantity ?? 0));
+      if (inYear)
+        st.events.push({
+          ...base,
+          kind: "crypto-exchange",
+          quantity: t.quantity,
+          notes: [`${t.note}: an exchange between crypto-assets, deferred (no tax, acquisition price unchanged)`],
+        });
+      return;
+    }
     if (t.type === "buy") {
       c.holdings.set(asset, (c.holdings.get(asset) ?? 0) + (t.quantity ?? 0));
       if (isFiat(t.currency)) c.acquisitions += this.toBase(t, gross(t), input) + fee;
