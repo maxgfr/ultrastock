@@ -56,9 +56,20 @@ import {
 
 const ORIGIN = "import:binance";
 
-/** "0.0012BTC" → { value: 0.0012, unit: "BTC" }; a bare number has no unit. */
-export function amountWithUnit(cell: string | undefined): { value: number; unit?: string } | undefined {
-  const m = /^\s*(-?[\d.,]+(?:[eE][-+]?\d+)?)\s*([A-Za-z][A-Za-z0-9]{1,14}|\d[A-Za-z][A-Za-z0-9]{0,13})?\s*$/.exec(cell ?? "");
+/**
+ * "0.0012BTC" → { value: 0.0012, unit: "BTC" }; a bare number has no unit.
+ * `units` are the coins the cell may be in (the row's pair): "100.51INCH" is
+ * 100.5 1INCH, which the digits alone cannot tell from 100.51 INCH.
+ */
+export function amountWithUnit(cell: string | undefined, units: readonly string[] = []): { value: number; unit?: string } | undefined {
+  const s = (cell ?? "").trim();
+  for (const u of [...units].sort((a, b) => b.length - a.length)) {
+    if (!u || s.length <= u.length || s.slice(-u.length).toUpperCase() !== u.toUpperCase()) continue;
+    const head = s.slice(0, -u.length).trim();
+    const value = /^-?[\d.,]+(?:[eE][-+]?\d+)?$/.test(head) ? statementNumber(head) : undefined;
+    if (value !== undefined) return { value, unit: u.toUpperCase() };
+  }
+  const m = /^\s*(-?[\d.,]+(?:[eE][-+]?\d+)?)\s*([A-Za-z][A-Za-z0-9]{1,14}|\d[A-Za-z][A-Za-z0-9]{0,13})?\s*$/.exec(s);
   if (!m) return undefined;
   const value = statementNumber(m[1]);
   return value === undefined ? undefined : { value, unit: m[2]?.toUpperCase() };
@@ -86,10 +97,11 @@ function tradeHistory(recs: Array<{ line: number; rec: Record<string, string> }>
     // New layout: Executed (base, with unit), Amount (quote, with unit), Fee (with unit).
     // Old layout: Amount (base), Total (quote), Fee + Fee Coin.
     const newLayout = rec.executed !== undefined;
-    const executed = amountWithUnit(newLayout ? rec.executed : rec.amount);
-    const quoteAmt = amountWithUnit(newLayout ? rec.amount : rec.total);
-    const feeCell = amountWithUnit(rec.fee);
     const pair = splitPair(pairCell);
+    const units = pair ? [pair.base, pair.quote] : [];
+    const executed = amountWithUnit(newLayout ? rec.executed : rec.amount, units);
+    const quoteAmt = amountWithUnit(newLayout ? rec.amount : rec.total, units);
+    const feeCell = amountWithUnit(rec.fee, units);
     const base = executed?.unit ?? pair?.base;
     const quote = quoteAmt?.unit ?? pair?.quote;
     if (!date || price === undefined || !executed || (side !== "BUY" && side !== "SELL") || !base || !quote) {

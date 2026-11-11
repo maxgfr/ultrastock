@@ -48795,8 +48795,15 @@ var round3 = (n2, dp = 10) => Number(n2.toFixed(dp));
 
 // src/portfolio/import/binance.ts
 var ORIGIN = "import:binance";
-function amountWithUnit(cell2) {
-  const m = /^\s*(-?[\d.,]+(?:[eE][-+]?\d+)?)\s*([A-Za-z][A-Za-z0-9]{1,14}|\d[A-Za-z][A-Za-z0-9]{0,13})?\s*$/.exec(cell2 ?? "");
+function amountWithUnit(cell2, units = []) {
+  const s = (cell2 ?? "").trim();
+  for (const u of [...units].sort((a, b) => b.length - a.length)) {
+    if (!u || s.length <= u.length || s.slice(-u.length).toUpperCase() !== u.toUpperCase()) continue;
+    const head = s.slice(0, -u.length).trim();
+    const value2 = /^-?[\d.,]+(?:[eE][-+]?\d+)?$/.test(head) ? statementNumber(head) : void 0;
+    if (value2 !== void 0) return { value: value2, unit: u.toUpperCase() };
+  }
+  const m = /^\s*(-?[\d.,]+(?:[eE][-+]?\d+)?)\s*([A-Za-z][A-Za-z0-9]{1,14}|\d[A-Za-z][A-Za-z0-9]{0,13})?\s*$/.exec(s);
   if (!m) return void 0;
   const value = statementNumber(m[1]);
   return value === void 0 ? void 0 : { value, unit: m[2]?.toUpperCase() };
@@ -48819,10 +48826,11 @@ function tradeHistory(recs, opts) {
     const date = statementDate(rec.dateutc);
     const price = statementNumber(rec.price);
     const newLayout = rec.executed !== void 0;
-    const executed = amountWithUnit(newLayout ? rec.executed : rec.amount);
-    const quoteAmt = amountWithUnit(newLayout ? rec.amount : rec.total);
-    const feeCell = amountWithUnit(rec.fee);
     const pair = splitPair2(pairCell);
+    const units = pair ? [pair.base, pair.quote] : [];
+    const executed = amountWithUnit(newLayout ? rec.executed : rec.amount, units);
+    const quoteAmt = amountWithUnit(newLayout ? rec.amount : rec.total, units);
+    const feeCell = amountWithUnit(rec.fee, units);
     const base2 = executed?.unit ?? pair?.base;
     const quote2 = quoteAmt?.unit ?? pair?.quote;
     if (!date || price === void 0 || !executed || side2 !== "BUY" && side2 !== "SELL" || !base2 || !quote2) {

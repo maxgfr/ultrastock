@@ -33,6 +33,18 @@ describe("Binance exports", () => {
     expect(book.cash.find((c) => c.currency === "BNB")!.amount).toBeCloseTo(-0.0006, 12);
     expect(book.positions.find((p) => p.symbol === "ETHUSDT")).toMatchObject({ quantity: 0.3 });
   });
+  it("reads amounts glued to a coin whose ticker starts with a digit (1INCH, 1000SATS)", () => {
+    const csv =
+      "Date(UTC),Pair,Side,Price,Executed,Amount,Fee\n" +
+      "2026-01-05 10:30:00,1INCHUSDT,BUY,0.5,100.51INCH,50.25USDT,0.11INCH\n" +
+      "2026-01-06 10:30:00,1000SATSUSDT,SELL,0.0004,5000001000SATS,200USDT,0.2USDT\n";
+    const r = parseStatement("binance", csv, { account: "binance" });
+    expect(r.skipped).toEqual([]);
+    expect(r.transactions.map((t) => [t.symbol, t.type, t.quantity, t.price, t.fee])).toEqual([
+      ["1INCHUSDT", "buy", 100.4, 0.5, 0.05],
+      ["1000SATSUSDT", "sell", 500000, 0.0004, 0.2],
+    ]);
+  });
   it("reads the older Trade History layout (Market, Type, Amount, Total, Fee Coin)", () => {
     const old = "Date(UTC),Market,Type,Price,Amount,Total,Fee,Fee Coin\n2026-01-05 10:30:00,ETHBTC,BUY,0.05,2,0.1,0.0001,BTC\n";
     const r = parseStatement("binance", old, { account: "binance" });
