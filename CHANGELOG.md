@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.48](https://github.com/maxgfr/ultrastock/compare/v1.12.47...v1.12.48) (2026-11-11)
+
+
+### Bug Fixes
+
+* **profile:** once live trading is on, lowering a guard takes a code and 24 hours ([b625d19](https://github.com/maxgfr/ultrastock/commit/b625d1900c5d4a625989a0ba6fc147405a0701c7))
+
 ## [1.12.47](https://github.com/maxgfr/ultrastock/compare/v1.12.46...v1.12.47) (2026-11-11)
 
 
