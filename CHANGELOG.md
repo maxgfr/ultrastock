@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.24](https://github.com/maxgfr/ultrastock/compare/v1.13.23...v1.13.24) (2026-11-11)
+
+
+### Bug Fixes
+
+* **check:** read a percentage as a fraction only for a unitless or ratio item ([7272738](https://github.com/maxgfr/ultrastock/commit/72727382787210392e117e2fda9fcef401b3b27d))
+
 ## [1.13.23](https://github.com/maxgfr/ultrastock/compare/v1.13.22...v1.13.23) (2026-11-11)
 
 
