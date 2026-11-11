@@ -6,9 +6,10 @@
 //  2. Company dates — next earnings and ex-dividend dates per symbol
 //     (`catalysts` in its light mode: no filings, macro or option chain per
 //     symbol), with the number of sessions to go.
-//  3. The book's guard rails — the stops of filled tickets against the latest
-//     price, the open tickets, the `watch` conditions true now (read without
-//     consuming the edges `watch run` fires on), the theses due for review.
+//  3. The book's guard rails — the stops of the tickets filled since each line
+//     was last opened, against the latest price, the open tickets, the `watch`
+//     conditions true now (read without consuming the edges `watch run` fires
+//     on), the theses due for review.
 //  4. The market — the regime of the markets the universe lives in, the next
 //     sessions and closures, the high-impact macro releases today and on the
 //     next weekday, the rate decisions and the elections that touch the book.
@@ -28,6 +29,7 @@ import { loadProfile } from "../../core/profile.js";
 import { sanitizeExternalText } from "../../core/untrusted.js";
 import { mapLimit, UsageError, writeArtifact, writeFileAtomic } from "../../engine.js";
 import { listTheses, type Thesis } from "../../journal/journal.js";
+import type { Transaction } from "../../portfolio/ledger.js";
 import { loadWatchlist } from "../../portfolio/watchlist.js";
 import { newsSearch } from "../../providers/macro/news.js";
 import type { SearchDelegate } from "../../research/delegate.js";
@@ -353,6 +355,34 @@ interface Row {
   notes: string[];
 }
 
+/** When a ticket was filled: its last fill, else its last move to filled. */
+const filledAt = (t: Ticket): string => t.fills.at(-1)?.at ?? [...t.history].reverse().find((h) => h.to === "filled")?.at ?? t.updatedAt;
+
+/**
+ * When each account's line (`account|symbol`) was last opened: the date of the
+ * trade that took its quantity up from zero, replayed in `buildBook`'s order
+ * and with its rounding (a quantity at or under 1e-12 is closed).
+ */
+function lineOpenedAt(txs: readonly Transaction[]): Map<string, string> {
+  const held = new Map<string, number>();
+  const opened = new Map<string, string>();
+  for (const t of txs) {
+    if (!t.symbol) continue;
+    const k = `${t.account}|${t.symbol}`;
+    const before = held.get(k) ?? 0;
+    const q = t.quantity ?? 0;
+    let after: number;
+    if (t.type === "buy" || t.type === "transfer-in") after = before + q;
+    else if (t.type === "sell" || t.type === "transfer-out") after = before - q;
+    else if (t.type === "split") after = before * q;
+    else continue;
+    if (after <= 1e-12) after = 0;
+    if (before === 0 && after > 0) opened.set(k, t.date);
+    held.set(k, after);
+  }
+  return opened;
+}
+
 export async function morningRun(dir: string, opts: MorningOptions = {}): Promise<MorningResult> {
   const now = opts.now ?? clockNow();
   const today = isoDay(now);
@@ -504,9 +534,16 @@ export async function morningRun(dir: string, opts: MorningOptions = {}): Promis
   const ticketPoints: Point[] = [];
   const stopTickets = tickets.filter((t) => t.status === "filled" && t.order.side === "buy" && t.order.stop !== undefined);
   const stopFor = new Map<string, { ticket: Ticket; symbol: string }>();
+  // A stop protects the position its ticket built: once the line was sold out, that level was left behind with it, and
+  // reading it as current would flag a level the user abandoned. Only a ticket filled since the line was last opened counts.
+  const opened = lineOpenedAt(marked?.book.transactions ?? []);
+  const unprotected: MarkdownContext["unprotected"] = [];
   for (const p of marked?.book.positions.filter((x) => x.quantity > 0) ?? []) {
-    const t = stopTickets.find((x) => x.order.account === p.account && x.order.symbol.toUpperCase() === p.symbol.toUpperCase());
+    const since = opened.get(`${p.account}|${p.symbol}`) ?? "";
+    const line = (x: Ticket) => x.order.account === p.account && x.order.symbol.toUpperCase() === p.symbol.toUpperCase();
+    const t = stopTickets.find((x) => line(x) && filledAt(x) >= since);
     if (t && !stopFor.has(t.id)) stopFor.set(t.id, { ticket: t, symbol: p.symbol.toUpperCase() });
+    else if (!t && stopTickets.some(line)) unprotected.push({ symbol: p.symbol.toUpperCase(), account: p.account, since: since.slice(0, 10) });
   }
   for (const { ticket: t } of stopFor.values())
     ticketPoints.push({
@@ -867,6 +904,7 @@ export async function morningRun(dir: string, opts: MorningOptions = {}): Promis
       theses,
       openTickets,
       stops,
+      unprotected,
       agenda: agenda.items,
       events,
       venues: [...venues].sort(),
@@ -944,6 +982,8 @@ interface MarkdownContext {
   theses: Thesis[];
   openTickets: Ticket[];
   stops: MorningFacts["stops"];
+  /** Held lines whose only stop on file came from a ticket filled before the line was last opened. */
+  unprotected: Array<{ symbol: string; account: string; since: string }>;
   agenda: AgendaItem[];
   events: MorningFacts["events"];
   venues: CalendarMarket[];
@@ -1010,13 +1050,15 @@ function morningMarkdown(c: MarkdownContext, f: Findings, emitted: ReturnType<ty
     lines.push("");
   }
 
-  if (c.openTickets.length || c.stops.length) {
+  if (c.openTickets.length || c.stops.length || c.unprotected.length) {
     lines.push("## Orders and stops", "");
     for (const t of c.openTickets)
       lines.push(
         `- ticket ${t.id}: ${t.order.side} ${t.order.quantity} ${t.order.symbol} at ${num(`TICKET.${t.id}.price`, 4)}, status ${t.status}${ref(`TICKET.${t.id}.status`)}${t.order.stop !== undefined ? `, planned stop ${num(`TICKET.${t.id}.plannedStop`, 4)}` : ""}`,
       );
     for (const s of c.stops) lines.push(`- ${s.symbol}: stop ${num(`TICKET.${s.ticket}.stop`, 4)}, ${num(s.keys[0], 1)} below the latest price`);
+    for (const u of c.unprotected)
+      lines.push(`- ${u.symbol} (${u.account}): no stop on record since the line was last opened on ${u.since} — the stop on file was set before it`);
     lines.push("");
   }
 

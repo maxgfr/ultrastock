@@ -51261,6 +51261,26 @@ function namesCompany(headline, name, symbol) {
   const ticker = symbol.replace(/[.-].*$/, "");
   return word(fold2(name)) || ticker.length >= 3 && word(fold2(ticker));
 }
+var filledAt = (t) => t.fills.at(-1)?.at ?? [...t.history].reverse().find((h) => h.to === "filled")?.at ?? t.updatedAt;
+function lineOpenedAt(txs) {
+  const held = /* @__PURE__ */ new Map();
+  const opened = /* @__PURE__ */ new Map();
+  for (const t of txs) {
+    if (!t.symbol) continue;
+    const k = `${t.account}|${t.symbol}`;
+    const before = held.get(k) ?? 0;
+    const q = t.quantity ?? 0;
+    let after;
+    if (t.type === "buy" || t.type === "transfer-in") after = before + q;
+    else if (t.type === "sell" || t.type === "transfer-out") after = before - q;
+    else if (t.type === "split") after = before * q;
+    else continue;
+    if (after <= 1e-12) after = 0;
+    if (before === 0 && after > 0) opened.set(k, t.date);
+    held.set(k, after);
+  }
+  return opened;
+}
 async function morningRun(dir2, opts = {}) {
   const now = opts.now ?? clockNow();
   const today = isoDayOf(now);
@@ -51401,9 +51421,14 @@ async function morningRun(dir2, opts = {}) {
   const ticketPoints = [];
   const stopTickets = tickets.filter((t) => t.status === "filled" && t.order.side === "buy" && t.order.stop !== void 0);
   const stopFor = /* @__PURE__ */ new Map();
+  const opened = lineOpenedAt(marked?.book.transactions ?? []);
+  const unprotected = [];
   for (const p of marked?.book.positions.filter((x) => x.quantity > 0) ?? []) {
-    const t = stopTickets.find((x) => x.order.account === p.account && x.order.symbol.toUpperCase() === p.symbol.toUpperCase());
+    const since = opened.get(`${p.account}|${p.symbol}`) ?? "";
+    const line = (x) => x.order.account === p.account && x.order.symbol.toUpperCase() === p.symbol.toUpperCase();
+    const t = stopTickets.find((x) => line(x) && filledAt(x) >= since);
     if (t && !stopFor.has(t.id)) stopFor.set(t.id, { ticket: t, symbol: p.symbol.toUpperCase() });
+    else if (!t && stopTickets.some(line)) unprotected.push({ symbol: p.symbol.toUpperCase(), account: p.account, since: since.slice(0, 10) });
   }
   for (const { ticket: t } of stopFor.values())
     ticketPoints.push({
@@ -51734,6 +51759,7 @@ async function morningRun(dir2, opts = {}) {
       theses,
       openTickets,
       stops,
+      unprotected,
       agenda: agenda.items,
       events,
       venues: [...venues].sort(),
@@ -51843,13 +51869,15 @@ function morningMarkdown(c, f3, emitted, store) {
       );
     lines.push("");
   }
-  if (c.openTickets.length || c.stops.length) {
+  if (c.openTickets.length || c.stops.length || c.unprotected.length) {
     lines.push("## Orders and stops", "");
     for (const t of c.openTickets)
       lines.push(
         `- ticket ${t.id}: ${t.order.side} ${t.order.quantity} ${t.order.symbol} at ${num16(`TICKET.${t.id}.price`, 4)}, status ${t.status}${ref(`TICKET.${t.id}.status`)}${t.order.stop !== void 0 ? `, planned stop ${num16(`TICKET.${t.id}.plannedStop`, 4)}` : ""}`
       );
     for (const s of c.stops) lines.push(`- ${s.symbol}: stop ${num16(`TICKET.${s.ticket}.stop`, 4)}, ${num16(s.keys[0], 1)} below the latest price`);
+    for (const u of c.unprotected)
+      lines.push(`- ${u.symbol} (${u.account}): no stop on record since the line was last opened on ${u.since} \u2014 the stop on file was set before it`);
     lines.push("");
   }
   if (c.headlines.length) {

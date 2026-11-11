@@ -257,4 +257,70 @@ describe("morning on a recorded fixture", () => {
       expect(bare.notes.some((n) => /^no real book read/.test(n))).toBe(true);
     });
   }, 120_000);
+
+  it("shows no stop for a line closed and reopened since its ticket, and keeps the stop of a line only trimmed", async () => {
+    process.env.ULTRASTOCK_HOME = mkdtempSync(join(tmpdir(), "morning-stale-stop-"));
+    saveProfile(defaultProfile("FR", "EUR"));
+    const buy = (account: string, date: string, quantity: number, origin: string) =>
+      ({ date, type: "buy", account, symbol: "ALO.PA", quantity, price: 20, fee: 0, currency: "EUR", origin }) as const;
+    const sell = (account: string, date: string, quantity: number) =>
+      ({ date, type: "sell", account, symbol: "ALO.PA", quantity, price: 21, fee: 0, currency: "EUR", origin: "manual" }) as const;
+    await appendTransactions(
+      [
+        { date: "2026-06-01", type: "deposit", account: "pea", amount: 10_000, currency: "EUR", origin: "manual" },
+        { date: "2026-06-01", type: "deposit", account: "cto", amount: 5000, currency: "EUR", origin: "manual" },
+        // pea: bought with a stop, sold out, bought again by a ticket that sets no stop.
+        buy("pea", "2026-06-01T09:00:00", 100, "ticket:t-pea-first"),
+        sell("pea", "2026-07-01", 100),
+        buy("pea", "2026-08-03T09:00:00", 100, "ticket:t-pea-again"),
+        // cto: bought with a stop, then only trimmed — never closed.
+        buy("cto", "2026-06-01T09:00:00", 50, "ticket:t-cto-first"),
+        sell("cto", "2026-07-01", 20),
+      ],
+      "real",
+    );
+    const ticket = (id: string, account: string, filledAt: string, stop?: number) => ({
+      id,
+      createdAt: filledAt.replace("T09", "T08"),
+      updatedAt: filledAt,
+      status: "filled",
+      order: {
+        account,
+        symbol: "ALO.PA",
+        side: "buy",
+        quantity: 100,
+        price: 20,
+        orderType: "limit",
+        currency: "EUR",
+        stop,
+        assetKind: "equity",
+        venue: "paper",
+      },
+      fingerprint: "test",
+      fills: [{ at: filledAt, quantity: 100, price: 20, fee: 0, venue: "paper", method: "test" }],
+      history: [{ at: filledAt, from: "working", to: "filled", why: "test" }],
+    });
+    mkdirSync(join(homeDir(), "tickets"), { recursive: true });
+    // The abandoned stop sits far above the price: read as current, it raises a HIGH "at or below its stop" flag.
+    for (const t of [
+      ticket("t-pea-first", "pea", "2026-06-01T09:00:00.000Z", 1000),
+      ticket("t-pea-again", "pea", "2026-08-03T09:00:00.000Z"),
+      ticket("t-cto-first", "cto", "2026-06-01T09:00:00.000Z", 16),
+    ])
+      writeFileSync(join(homeDir(), "tickets", `${t.id}.json`), JSON.stringify(t));
+
+    await withFixture("morning-alo", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "morning-stale-stop-run-"));
+      const r = await morningRun(dir, { markets: ["eu"] });
+      const store = EvidenceStore.load(dir)!;
+      expect(store.byKey("TICKET.t-pea-first.stop")).toBeUndefined();
+      expect(store.byKey("TICKET.t-pea-first.stopDistance")).toBeUndefined();
+      expect(r.flags.filter((f) => f.kind === "stop").map((f) => f.text)).not.toContainEqual(expect.stringMatching(/t-pea-first/));
+      // The cto line was trimmed, never closed: its entry ticket's stop still holds.
+      expect(store.byKey("TICKET.t-cto-first.stopDistance")).toBeDefined();
+      const md = readFileSync(r.file, "utf8");
+      expect(md).toMatch(/- ALO\.PA \(pea\): no stop on record since the line was last opened on 2026-08-03/);
+      expect(md).not.toMatch(/stop 1000/);
+    });
+  }, 120_000);
 });
