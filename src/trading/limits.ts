@@ -4,6 +4,7 @@
 // instruction slipped into a conversation to raise a limit and use it at once.
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { withFileLockSync } from "../core/lock.js";
 import { homeDir } from "../core/paths.js";
 import { writeFileAtomic } from "../engine.js";
 import type { Venue } from "./brokers/types.js";
@@ -49,16 +50,24 @@ function save(s: Stored): void {
   mkdirSync(join(homeDir(), "state"), { recursive: true });
   writeFileAtomic(path(), `${JSON.stringify(s, null, 2)}\n`, 0o600);
 }
+/**
+ * Every read-change-write of the stored limits under one lock: a change saved
+ * over another process's would erase it — a tightening included.
+ */
+const limitsLock = <T>(fn: () => T): T => withFileLockSync(`${path()}.lock`, fn);
 
 /** The limits in force now (a matured loosening is applied), capped by the tier. */
 export function effectiveLimits(liveFills: number, now = new Date()): { limits: LiveLimits; tier: string; pending?: Stored["pending"] } {
-  const s = load();
-  if (s.pending && now.getTime() >= Date.parse(s.pending.effectiveAt)) {
-    s.history.push({ at: now.toISOString(), from: s.current, to: s.pending.limits, how: "loosened" });
-    s.current = s.pending.limits;
-    s.pending = undefined;
-    save(s);
-  }
+  const s = limitsLock(() => {
+    const s = load();
+    if (s.pending && now.getTime() >= Date.parse(s.pending.effectiveAt)) {
+      s.history.push({ at: now.toISOString(), from: s.current, to: s.pending.limits, how: "loosened" });
+      s.current = s.pending.limits;
+      s.pending = undefined;
+      save(s);
+    }
+    return s;
+  });
   const t = tierFor(liveFills);
   return {
     limits: { ...s.current, maxOrder: Math.min(s.current.maxOrder, t.maxOrder), maxDaily: Math.min(s.current.maxDaily, t.maxDaily) },
@@ -86,6 +95,10 @@ export const limitsBinding = (l: LiveLimits) => JSON.stringify([l.maxOrder, l.ma
  */
 export function requestLimits(next: LiveLimits, approved: boolean, now = new Date()): { applied: boolean; effectiveAt?: string; reason?: string } {
   if (!(next.maxOrder >= 0 && next.maxDaily >= next.maxOrder)) return { applied: false, reason: "the daily limit must be at least the order limit, both ≥ 0" };
+  return limitsLock(() => changeLimits(next, approved, now));
+}
+
+function changeLimits(next: LiveLimits, approved: boolean, now: Date): { applied: boolean; effectiveAt?: string; reason?: string } {
   const s = load();
   if (isTightening(s.current, next)) {
     s.history.push({ at: now.toISOString(), from: s.current, to: next, how: "tightened" });

@@ -43341,14 +43341,18 @@ function save2(s) {
   writeFileAtomic(path(), `${JSON.stringify(s, null, 2)}
 `, 384);
 }
+var limitsLock = (fn) => withFileLockSync(`${path()}.lock`, fn);
 function effectiveLimits(liveFills, now = /* @__PURE__ */ new Date()) {
-  const s = load();
-  if (s.pending && now.getTime() >= Date.parse(s.pending.effectiveAt)) {
-    s.history.push({ at: now.toISOString(), from: s.current, to: s.pending.limits, how: "loosened" });
-    s.current = s.pending.limits;
-    s.pending = void 0;
-    save2(s);
-  }
+  const s = limitsLock(() => {
+    const s2 = load();
+    if (s2.pending && now.getTime() >= Date.parse(s2.pending.effectiveAt)) {
+      s2.history.push({ at: now.toISOString(), from: s2.current, to: s2.pending.limits, how: "loosened" });
+      s2.current = s2.pending.limits;
+      s2.pending = void 0;
+      save2(s2);
+    }
+    return s2;
+  });
   const t = tierFor(liveFills);
   return {
     limits: { ...s.current, maxOrder: Math.min(s.current.maxOrder, t.maxOrder), maxDaily: Math.min(s.current.maxDaily, t.maxDaily) },
@@ -43362,6 +43366,9 @@ function isTightening(cur, next2) {
 var limitsBinding = (l) => JSON.stringify([l.maxOrder, l.maxDaily, [...l.venues].sort(), [...l.attestedNoWithdraw].sort()]);
 function requestLimits(next2, approved, now = /* @__PURE__ */ new Date()) {
   if (!(next2.maxOrder >= 0 && next2.maxDaily >= next2.maxOrder)) return { applied: false, reason: "the daily limit must be at least the order limit, both \u2265 0" };
+  return limitsLock(() => changeLimits(next2, approved, now));
+}
+function changeLimits(next2, approved, now) {
   const s = load();
   if (isTightening(s.current, next2)) {
     s.history.push({ at: now.toISOString(), from: s.current, to: next2, how: "tightened" });

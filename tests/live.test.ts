@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { homeDir } from "../src/core/paths.js";
@@ -161,6 +161,17 @@ describe("live limits", () => {
       ),
     ).toBe(false);
   });
+
+  it("keep every change when two processes set them at once", async () => {
+    // The same limits again count as a tightening, recorded each time: a change saved over another's loses its history line.
+    await inParallelProcesses(
+      `import { requestLimits } from ${JSON.stringify(join(SRC, "trading/limits.ts"))};
+for (let i = 0; i < 100; i++) requestLimits({ maxOrder: 100, maxDaily: 200, venues: [], attestedNoWithdraw: [] }, false);`,
+      [[], []],
+    );
+    const stored = JSON.parse(readFileSync(join(homeDir(), "state", "live-limits.json"), "utf8")) as { history: unknown[] };
+    expect(stored.history).toHaveLength(200);
+  }, 60_000);
 });
 
 describe("live preconditions and the single submission", () => {
