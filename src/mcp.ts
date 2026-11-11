@@ -577,25 +577,24 @@ function checkGuard(run: string, answer: string): void {
   const dir = real(resolve(run));
   const file = real(resolve(answer));
   const home = real(homedir());
-  const refuse = (why: string): never => {
-    throw new ToolError(`check: ${why} — write the answer to <run>/answer.md after the run's tools, and check that`);
-  };
-  if (dirname(dir) === dir || home === dir || isInside(home, dir)) refuse(`${run} is the home directory, a root or an ancestor of the home, not a run`);
+  const refusal = (why: string) => new ToolError(`check: ${why} — write the answer to <run>/answer.md after the run's tools, and check that`);
+  if (dirname(dir) === dir || home === dir || isInside(home, dir)) throw refusal(`${run} is the home directory, a root or an ancestor of the home, not a run`);
   let created: number;
   try {
     created = Date.parse((JSON.parse(readFileSync(join(dir, EVIDENCE_FILE), "utf8")) as { createdAt?: string }).createdAt ?? "");
   } catch {
-    return refuse(`${run} holds no ${EVIDENCE_FILE}: it is not a run an ultrastock tool wrote`);
+    throw refusal(`${run} holds no ${EVIDENCE_FILE}: it is not a run an ultrastock tool wrote`);
   }
-  if (dirname(file) !== dir || !/\.(?:md|markdown|txt)$/i.test(file)) refuse(`the answer must be a .md or .txt file at the top of the run directory ${run}`);
+  if (dirname(file) !== dir || !/\.(?:md|markdown|txt)$/i.test(file))
+    throw refusal(`the answer must be a .md or .txt file at the top of the run directory ${run}`);
   let written: number;
   try {
     written = statSync(file).mtimeMs;
   } catch {
-    return refuse(`cannot read ${answer}`);
+    throw refusal(`cannot read ${answer}`);
   }
   // Two seconds of slack: a file system that keeps whole seconds rounds an answer written just after the run down.
-  if (Number.isFinite(created) && written + 2000 < created) refuse(`${answer} was last written before the run was created: it is no answer to it`);
+  if (Number.isFinite(created) && written + 2000 < created) throw refusal(`${answer} was last written before the run was created: it is no answer to it`);
 }
 
 function runBundle(argv: string[], signal?: AbortSignal): Promise<string> {

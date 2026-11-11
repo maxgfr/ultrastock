@@ -47338,24 +47338,23 @@ function checkGuard(run3, answer) {
   const dir2 = real2(resolve12(run3));
   const file = real2(resolve12(answer));
   const home = real2(homedir5());
-  const refuse = (why2) => {
-    throw new ToolError(`check: ${why2} \u2014 write the answer to <run>/answer.md after the run's tools, and check that`);
-  };
-  if (dirname8(dir2) === dir2 || home === dir2 || isInside(home, dir2)) refuse(`${run3} is the home directory, a root or an ancestor of the home, not a run`);
+  const refusal2 = (why2) => new ToolError(`check: ${why2} \u2014 write the answer to <run>/answer.md after the run's tools, and check that`);
+  if (dirname8(dir2) === dir2 || home === dir2 || isInside(home, dir2)) throw refusal2(`${run3} is the home directory, a root or an ancestor of the home, not a run`);
   let created;
   try {
     created = Date.parse(JSON.parse(readFileSync38(join49(dir2, EVIDENCE_FILE), "utf8")).createdAt ?? "");
   } catch {
-    return refuse(`${run3} holds no ${EVIDENCE_FILE}: it is not a run an ultrastock tool wrote`);
+    throw refusal2(`${run3} holds no ${EVIDENCE_FILE}: it is not a run an ultrastock tool wrote`);
   }
-  if (dirname8(file) !== dir2 || !/\.(?:md|markdown|txt)$/i.test(file)) refuse(`the answer must be a .md or .txt file at the top of the run directory ${run3}`);
+  if (dirname8(file) !== dir2 || !/\.(?:md|markdown|txt)$/i.test(file))
+    throw refusal2(`the answer must be a .md or .txt file at the top of the run directory ${run3}`);
   let written;
   try {
     written = statSync12(file).mtimeMs;
   } catch {
-    return refuse(`cannot read ${answer}`);
+    throw refusal2(`cannot read ${answer}`);
   }
-  if (Number.isFinite(created) && written + 2e3 < created) refuse(`${answer} was last written before the run was created: it is no answer to it`);
+  if (Number.isFinite(created) && written + 2e3 < created) throw refusal2(`${answer} was last written before the run was created: it is no answer to it`);
 }
 function runBundle(argv, signal) {
   const bundle = fileURLToPath2(import.meta.url);
