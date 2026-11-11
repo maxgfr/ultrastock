@@ -6,7 +6,7 @@
 // discount to them — the "cheap or dear against whom" a judge needs.
 import type { Dataset, Point } from "../core/datasets.js";
 import { clockNow } from "../core/net.js";
-import { cribleScreen, cribleStaleWarning, cribleStats } from "../providers/external/crible.js";
+import { cribleScreen, cribleStaleWarning, cribleStats, cribleString } from "../providers/external/crible.js";
 import { medianOf } from "./regime/sectors.js";
 import { collapseForeignLines, issuerKey } from "./screen/crible.js";
 
@@ -138,12 +138,12 @@ export async function distributionPoints(symbol: string, group: string, groupLab
 
 /** The peers dataset for one company, or undefined when crible does not know its industry. */
 export async function peersDataset(symbol: string, opts: { max?: number } = {}): Promise<Dataset | undefined> {
-  const me = (await cribleScreen(`symbol = '${symbol.replace(/'/g, "\\'")}'`, { limit: 1 })).rows[0];
+  const me = (await cribleScreen(`symbol = ${cribleString(symbol)}`, { limit: 1 })).rows[0];
   const industry = typeof me?.industry === "string" ? me.industry : undefined;
   const country = typeof me?.country === "string" ? me.country : undefined;
   if (!me || !industry || !country) return undefined;
   const countries = peerCountries(country);
-  const dsl = `industry = '${industry.replace(/'/g, "\\'")}' AND primary_listing = true AND country IN (${countries.map((c) => `'${c}'`).join(", ")})`;
+  const dsl = `industry = ${cribleString(industry)} AND primary_listing = true AND country IN (${countries.map(cribleString).join(", ")})`;
   const screen = await cribleScreen(dsl, { sort: "-cap_eur", limit: 30 });
   const self = typeof me.name === "string" ? issuerKey(me.name) : symbol;
   const rows = collapseForeignLines(screen.rows)

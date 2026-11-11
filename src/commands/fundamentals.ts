@@ -2,7 +2,7 @@
 // short interest, dividends, Congress trades, and resolving a name to a listing.
 import type { Dataset } from "../core/datasets.js";
 import { argInt, argList, argValue, type CommandArgs, UsageError } from "../engine.js";
-import { cribleScreen, cribleStaleWarning, SOURCE as CRIBLE } from "../providers/external/crible.js";
+import { cribleScreen, cribleStaleWarning, cribleString, SOURCE as CRIBLE } from "../providers/external/crible.js";
 import { searchEuronext } from "../providers/euronext.js";
 import { amfInsiderDeclarations } from "../providers/fundamentals/amf.js";
 import { esefFundamentals } from "../providers/fundamentals/esef.js";
@@ -49,7 +49,7 @@ const CRIBLE_FIELDS: Array<[string, string, string]> = [
 
 /** One company's latest period from crible, as a dataset. */
 export async function cribleFundamentals(symbol: string, currency: string): Promise<Dataset> {
-  const r = await cribleScreen(`symbol = '${symbol.replace(/'/g, "")}'`, { limit: 1 });
+  const r = await cribleScreen(`symbol = ${cribleString(symbol)}`, { limit: 1 });
   const row = r.rows[0];
   if (!row) throw new ProviderError(CRIBLE, `crible does not cover ${symbol}`, 404);
   const period = String(row.period ?? "");

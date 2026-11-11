@@ -14638,6 +14638,7 @@ async function cribleStaleWarning() {
     return void 0;
   }
 }
+var cribleString = (value2) => `'${value2.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
 async function cribleScreen(query2, opts = {}) {
   if (!cribleBootstrapped())
     throw new ProviderError(
@@ -16991,7 +16992,7 @@ var CRIBLE_FIELDS = [
   ["momentum_rank", "momentum rank 0\u2013100 (crible)", "rank"]
 ];
 async function cribleFundamentals(symbol, currency) {
-  const r3 = await cribleScreen(`symbol = '${symbol.replace(/'/g, "")}'`, { limit: 1 });
+  const r3 = await cribleScreen(`symbol = ${cribleString(symbol)}`, { limit: 1 });
   const row = r3.rows[0];
   if (!row) throw new ProviderError(SOURCE8, `crible does not cover ${symbol}`, 404);
   const period2 = String(row.period ?? "");
@@ -29562,12 +29563,12 @@ async function distributionPoints(symbol, group, groupLabel) {
   return { points };
 }
 async function peersDataset(symbol, opts = {}) {
-  const me = (await cribleScreen(`symbol = '${symbol.replace(/'/g, "\\'")}'`, { limit: 1 })).rows[0];
+  const me = (await cribleScreen(`symbol = ${cribleString(symbol)}`, { limit: 1 })).rows[0];
   const industry = typeof me?.industry === "string" ? me.industry : void 0;
   const country2 = typeof me?.country === "string" ? me.country : void 0;
   if (!me || !industry || !country2) return void 0;
   const countries = peerCountries(country2);
-  const dsl = `industry = '${industry.replace(/'/g, "\\'")}' AND primary_listing = true AND country IN (${countries.map((c) => `'${c}'`).join(", ")})`;
+  const dsl = `industry = ${cribleString(industry)} AND primary_listing = true AND country IN (${countries.map(cribleString).join(", ")})`;
   const screen = await cribleScreen(dsl, { sort: "-cap_eur", limit: 30 });
   const self = typeof me.name === "string" ? issuerKey(me.name) : symbol;
   const rows = collapseForeignLines(screen.rows).rows.filter((r3) => r3.symbol !== symbol && !(typeof r3.name === "string" && issuerKey(r3.name) === self)).slice(0, opts.max ?? 6);

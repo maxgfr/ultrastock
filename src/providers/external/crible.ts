@@ -227,6 +227,15 @@ export interface CribleScreen {
   rows: Array<Record<string, unknown>>;
 }
 
+/**
+ * A value as a crible DSL string literal: single-quoted, a backslash and a
+ * single quote escaped by a backslash. crible's lexer reads
+ * `'(?:[^'\\]|\\.)*'` and unescapes `\'` and `\\` (src/crible/dsl/parser.py
+ * at the pinned tag); a doubled `''` is not an escape there. Build every value
+ * a query compares against with this, never by hand.
+ */
+export const cribleString = (value: string): string => `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+
 /** Run a DSL query: `piotroski_f >= 7 AND altman_z > 3`, `symbol = 'MC.PA'`. */
 export async function cribleScreen(query: string, opts: { sort?: string; limit?: number; offset?: number } = {}): Promise<CribleScreen> {
   if (!cribleBootstrapped())
