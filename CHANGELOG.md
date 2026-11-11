@@ -2,6 +2,37 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.43](https://github.com/maxgfr/ultrastock/compare/v1.13.42...v1.13.43) (2026-11-11)
+
+
+### Bug Fixes
+
+* **import:** read a Kraken pair whose ticker ends in X before XBT ([c2fdfc7](https://github.com/maxgfr/ultrastock/commit/c2fdfc70e68875733e1195c17051f6672cfe3616))
+* **import:** read refunds, 12-hour times, real dates and accounting negatives ([818a2ef](https://github.com/maxgfr/ultrastock/commit/818a2efae619f9dc581fc4db282618d0782ee692))
+* **journal:** pair and review short round trips ([20b6969](https://github.com/maxgfr/ultrastock/commit/20b69692a5cbdc0322a8ef149dc5885b0bc9ed59))
+* **markets:** build the gate's context before ticketing a contract order ([0293d88](https://github.com/maxgfr/ultrastock/commit/0293d88499b96e0787db95557076be8c9e7fb657))
+* **portfolio:** count a transfer from outside in the XIRR, and an internal one as nothing ([2dbbc46](https://github.com/maxgfr/ultrastock/commit/2dbbc46c8334cf2f3bc37ced9efa9d79d2457a74))
+* **portfolio:** give no XIRR when no time separates the flows ([51d8724](https://github.com/maxgfr/ultrastock/commit/51d8724aa61be4102a2530f92999272d192ac74c))
+* **portfolio:** price prediction-market contracts in the portfolio analyses ([b9404ac](https://github.com/maxgfr/ultrastock/commit/b9404ac8df8ba0e7e435a2705c064f53a37b1257))
+* **portfolio:** read a JSONL file whose last append a crash cut short ([df66488](https://github.com/maxgfr/ultrastock/commit/df664888980b0faca6e8af6467cd98bcdb7ad415))
+* **portfolio:** read a SQLite ledger on a read-only handle ([e8b7f11](https://github.com/maxgfr/ultrastock/commit/e8b7f11a17fe4b494355f5be4a8eda14f1160f42))
+* **tax:** refuse an unreadable --income, an unknown --household and an empty --book ([068f348](https://github.com/maxgfr/ultrastock/commit/068f348983b705ed7a4ac022d1a33b583c7894e6))
+* **trading:** apply the exclusion list to the sector the gate looked up ([f3aa0bd](https://github.com/maxgfr/ultrastock/commit/f3aa0bd86f5686f04df353654fa6caa53f39ab73))
+* **trading:** book a live order's fill once, whatever the venue reports later ([76da583](https://github.com/maxgfr/ultrastock/commit/76da583b03e348f451085ab003e099706c092d19))
+* **trading:** build a limits change from the limits read under their lock ([48ca67b](https://github.com/maxgfr/ultrastock/commit/48ca67b0a9bbf3ca7e637e254a9a0a2189ff4a57))
+* **trading:** count orders per day once each, in the order's book ([0701c74](https://github.com/maxgfr/ultrastock/commit/0701c7454bf42951ea1ab5e0a707c51bfe2a121f))
+* **trading:** count the pending buys of the order's own share in its sector ([ed422da](https://github.com/maxgfr/ultrastock/commit/ed422da2d8a6006a1633aa714527d4eefe1011a9))
+* **trading:** let a reconcile book what a cancel could not read ([7e34cf5](https://github.com/maxgfr/ultrastock/commit/7e34cf54445a42077bcff1fcdf35723df37da78f))
+* **trading:** mark a check run under --record as not the market's ([64a1319](https://github.com/maxgfr/ultrastock/commit/64a13199b5775b95201dcb6123d8c0b33a720d15))
+* **trading:** match a transfer's two rows in either order, and once ([b94cf2c](https://github.com/maxgfr/ultrastock/commit/b94cf2c5e57ed393e37e05d68aba48570eed9713))
+* **trading:** measure the breaker's losses net of deposits and withdrawals ([311c028](https://github.com/maxgfr/ultrastock/commit/311c028e767bc65e6bcf223fa0d68c5baeab15e3))
+* **trading:** move a ticket only from the state the caller read ([a52e1c9](https://github.com/maxgfr/ultrastock/commit/a52e1c98853a3c9fd0df455ea9285f8fec789ce5))
+* **trading:** never drop an emergency cancel behind another ticket's live call ([8794c43](https://github.com/maxgfr/ultrastock/commit/8794c43224512128872e644f73cb640bdf0c9762))
+* **trading:** read the kill switch again right before a live order is sent ([927247b](https://github.com/maxgfr/ultrastock/commit/927247b23771bca076b6ea4b7a485f24c50c506e))
+* **trading:** record an unchecked sector limit in the risk check ([8b619c6](https://github.com/maxgfr/ultrastock/commit/8b619c69330b1a0163d4f0d6d059333ce573b727))
+* **trading:** switch live trading on with an out-of-band code, not a variable ([baeb957](https://github.com/maxgfr/ultrastock/commit/baeb957cece58bdc553967d8ad3c168b6d22a354))
+* **trading:** write the equity curve on the wall clock only ([ee78404](https://github.com/maxgfr/ultrastock/commit/ee78404d4a680135cb6a9ecaf668bbc8c604e68d))
+
 ## [1.13.42](https://github.com/maxgfr/ultrastock/compare/v1.13.41...v1.13.42) (2026-11-11)
 
 
