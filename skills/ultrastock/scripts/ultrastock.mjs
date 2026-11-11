@@ -21682,11 +21682,13 @@ function documentFigures(doc, text2) {
   return extractFigures(text2).map((f3) => ({ ...doc, value: f3.value, unit: f3.percent ? "%" : void 0, doc: void 0 }));
 }
 var NEAR_LINES = 3;
-function nearClaim(text2, claim) {
+function nearClaim(doc, claim) {
   const words3 = claim.replace(/\[[^\]]*\]/g, " ").replace(/[+\-−–]?[$€£]?\d[\d\s.,'  ]*%?/g, " ");
   const terms = new Set(bm25Tokenize(words3).filter((t) => t.length > 2 && !/^\d+$/.test(t)));
+  const { text: text2 } = doc;
   const lines = text2.split("\n");
-  const hits = lines.map((l) => bm25Tokenize(l).some((t) => terms.has(t)));
+  doc.lineTokens ??= lines.map((l) => bm25Tokenize(l));
+  const hits = doc.lineTokens.map((toks) => toks.some((t) => terms.has(t)));
   if (!hits.some(Boolean)) return text2;
   return lines.filter((_, i) => hits.slice(Math.max(0, i - NEAR_LINES), i + NEAR_LINES + 1).some(Boolean)).join("\n");
 }
@@ -21844,7 +21846,9 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
         const holder = citedDocs.find((d) => figureMatches(f3, docOf(d).figures));
         if (holder) {
           const doc = docOf(holder);
-          if (!figureMatches(f3, documentFigures(holder, nearClaim(doc.text, text2))))
+          doc.near ??= /* @__PURE__ */ new Map();
+          if (!doc.near.has(text2)) doc.near.set(text2, documentFigures(holder, nearClaim(doc, text2)));
+          if (!figureMatches(f3, doc.near.get(text2)))
             problems.push({
               line,
               kind: "distant",

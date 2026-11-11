@@ -191,6 +191,17 @@ export function documentFigures(doc: EvidenceItem, text: string): EvidenceItem[]
   return extractFigures(text).map((f) => ({ ...doc, value: f.value, unit: f.percent ? "%" : undefined, doc: undefined }));
 }
 
+/** A cited document as `check` reads it once: its text, its figures, and what is derived from them on demand. */
+interface CitedDoc {
+  text: string;
+  figures: EvidenceItem[];
+  dates?: Set<string>;
+  /** The tokens of each line, for `nearClaim`. */
+  lineTokens?: string[][];
+  /** The figures near the words of each claim that found one of its figures here. */
+  near?: Map<string, EvidenceItem[]>;
+}
+
 /** Lines either side of a line sharing a word with the claim that still count as near it. */
 const NEAR_LINES = 3;
 
@@ -202,11 +213,14 @@ const NEAR_LINES = 3;
  * a word — an English page under a French claim — the whole text is returned:
  * nearness cannot be judged, so no note is raised.
  */
-function nearClaim(text: string, claim: string): string {
+function nearClaim(doc: CitedDoc, claim: string): string {
   const words = claim.replace(/\[[^\]]*\]/g, " ").replace(/[+\-−–]?[$€£]?\d[\d\s.,'  ]*%?/g, " ");
   const terms = new Set(bm25Tokenize(words).filter((t) => t.length > 2 && !/^\d+$/.test(t)));
+  const { text } = doc;
   const lines = text.split("\n");
-  const hits = lines.map((l) => bm25Tokenize(l).some((t) => terms.has(t)));
+  // A document is tokenised once per check, not once per figure a claim finds in it.
+  doc.lineTokens ??= lines.map((l) => bm25Tokenize(l));
+  const hits = doc.lineTokens.map((toks) => toks.some((t) => terms.has(t)));
   if (!hits.some(Boolean)) return text;
   return lines.filter((_, i) => hits.slice(Math.max(0, i - NEAR_LINES), i + NEAR_LINES + 1).some(Boolean)).join("\n");
 }
@@ -311,7 +325,7 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
   let figures = 0;
   const staleReported = new Set<string>();
   // Each cited document is read once: its text and its figures.
-  const docs = new Map<string, { text: string; figures: EvidenceItem[]; dates?: Set<string> } | null>();
+  const docs = new Map<string, CitedDoc | null>();
   const docOf = (item: EvidenceItem) => {
     if (!docs.has(item.id)) {
       const text = readDocText(dir, item);
@@ -416,7 +430,9 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
         const holder = citedDocs.find((d) => figureMatches(f, docOf(d)!.figures));
         if (holder) {
           const doc = docOf(holder)!;
-          if (!figureMatches(f, documentFigures(holder, nearClaim(doc.text, text))))
+          doc.near ??= new Map();
+          if (!doc.near.has(text)) doc.near.set(text, documentFigures(holder, nearClaim(doc, text)));
+          if (!figureMatches(f, doc.near.get(text)!))
             problems.push({
               line,
               kind: "distant",
