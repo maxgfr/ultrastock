@@ -30,7 +30,10 @@ news beside them. See [local-store](local-store.md).
   - A sell beyond holdings refuses the whole file.
 - **Reading it:** `portfolio show` lists positions marked to market in the
   base currency (ECB rates). `portfolio perf` gives the money-weighted return
-  (XIRR), the realised results and the circuit breaker's state.
+  (XIRR), the realised results and the circuit breaker's state. The XIRR, in
+  `perf` and the dashboard, takes each deposit and withdrawal at the ECB rate
+  of its own date; without that rate it is n/a, with a note (`xirrNotes`), and
+  a transfer in or out is not counted as a contribution (a note says so).
 - **Portfolio context:** `analyze` reads the real book to say whether the user
   holds the symbol, is flat, or has no ledger at all.
 

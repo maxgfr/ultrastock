@@ -41,7 +41,9 @@ no ledger, the holdings are skipped and said so; the rest still runs.
   light mode of `catalysts` (US: Nasdaq/Zacks, TradingView standing in; elsewhere
   TradingView — unofficial; a projected date says so). Sessions to go are
   counted on the listing's calendar.
-- **Guard rails**: the stop of each filled buy ticket against the latest price;
+- **Guard rails**: the newest stop among the buy tickets filled since each
+  held line was last opened, against the latest price (a line whose only stop
+  was set before then reads "no stop on record");
   the open tickets; the `watch` conditions **true now** — read without saving
   the rules' state, so `watch run` still fires on its edge; theses past their
   review date.

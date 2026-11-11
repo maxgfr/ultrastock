@@ -5,10 +5,16 @@
 - `decide <run> <decision.json>` records the portfolio manager's call. It is
   refused when it cites an `[E#]` the run does not hold, has no falsifier, or
   carries a plan without a stop. The call lands in
-  `<home>/journal/decisions.jsonl` and `decisions.md`, append-only.
+  `<home>/journal/decisions.jsonl` and `decisions.md`, append-only. It is
+  dated by the clock, with the tool's id and run: a `decidedAt`, `id` or `run`
+  the file sets is ignored, with a note, and a file `decide` already recorded
+  is not recorded twice (`alreadyRecorded`).
 - `journal settle` measures each call at **+5, +20 and +60 sessions**: the
   symbol's return, the benchmark's, and the **alpha** between them. A settled
-  horizon is final, never re-scored.
+  horizon is final, never re-scored. A matured horizon stays pending until the
+  symbol's and the benchmark's histories hold a bar on or after its end date:
+  `settle` lists it under `waiting`, with the history that falls short and its
+  last bar, and a delisted or renamed name waits for good.
   - A buy or overweight is right when the alpha is positive.
   - A sell or underweight is right when it is negative.
   - A hold is right when |alpha| stays under a band of 2 % a month.
@@ -49,7 +55,7 @@ open thesis past its `review-by` date shows as OVERDUE in `journal digest`.
 |---|---|
 | `watch add <SYM> "<condition>"` | the condition becomes true on the latest closed bar, e.g. `close < sma200 and rsi14 < 30` |
 | `watch add 8k <US SYM>` | an important 8-K is filed |
-| `watch add stops` | an open position (real or paper) trades at or below the stop of its entry ticket |
+| `watch add stops` | an open position (real or paper) trades at or below the newest stop among the buy tickets filled since the line was last opened |
 
 - **Condition variables:** `close open high low volume change_pct ret5d
   ret20d rsi14 sma20 sma50 sma200 ema21 atr14 macd macd_signal macd_hist

@@ -93,7 +93,9 @@ then split by the goal:
 | defensive | world 100 | euro government 65, money market 35 |
 
 A line under 5 % of the plan, or beyond `--max-funds`, is folded into its
-sleeve's first line; weights are whole percentages summing to 100.
+sleeve's first line; weights are whole percentages summing to 100. A
+`--max-funds` below the plan's sleeves (one fund each for the equity and the
+rest) is a usage error that names the minimum.
 
 - **Envelope.** A PEA holds no bond fund (funds ≥ 75 % in EU-company shares,
   or swap funds built to qualify): that part is placed **outside**, in a CTO
