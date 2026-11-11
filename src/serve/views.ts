@@ -175,8 +175,12 @@ export async function portfolioView(book: BookName, now: Date): Promise<Portfoli
   // today's value — without appending that value to the file.
   // Today's point carries the money paid in so far, as a recorded point does: the breaker measures losses net of
   // deposits, withdrawals and transfers across, and a point without it would read a deposit as a gain and a withdrawal as a loss.
+  // A valuation that left a position out (no price, no rate) is not what the book is worth: no point for today then,
+  // as `portfolio show` records none — the breaker reads the last complete one.
+  const unpriced = m.holdings.filter((h) => h.valueBase === undefined).map((h) => h.symbol);
   const contributed = contributions(m.txs, m.rates, m.base);
-  const curve = m.totalBase > 0 ? [...readEquity(book), { at: now.toISOString(), equity: m.totalBase, ...(contributed ?? {}) }] : readEquity(book);
+  const curve =
+    m.totalBase > 0 && !unpriced.length ? [...readEquity(book), { at: now.toISOString(), equity: m.totalBase, ...(contributed ?? {}) }] : readEquity(book);
   // Each deposit's rate on its own date: read here, so that bookPerformance stays pure; a failed read leaves the XIRR n/a, with why.
   const rates = await flowRates(m.txs, m.base, now);
   return {
@@ -187,7 +191,7 @@ export async function portfolioView(book: BookName, now: Date): Promise<Portfoli
     cash: m.cashBase,
     positions: positionRows(m, f),
     cashByAccount: m.cash,
-    unpriced: m.holdings.filter((h) => h.valueBase === undefined).map((h) => h.symbol),
+    unpriced,
     performance: bookPerformance(m.txs, m.book, m.totalBase, curve, m.profile.limits, now, rates),
     history: historyOf(book, now),
     sources: sourcesOf(f),

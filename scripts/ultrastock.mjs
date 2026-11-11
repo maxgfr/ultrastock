@@ -51851,8 +51851,9 @@ async function portfolioView(book2, now) {
   if (hint) return hint;
   const f3 = new Findings();
   const m = await loadMarkedBook(book2, f3, now, { dayChange: true });
+  const unpriced = m.holdings.filter((h) => h.valueBase === void 0).map((h) => h.symbol);
   const contributed = contributions(m.txs, m.rates, m.base);
-  const curve = m.totalBase > 0 ? [...readEquity(book2), { at: now.toISOString(), equity: m.totalBase, ...contributed ?? {} }] : readEquity(book2);
+  const curve = m.totalBase > 0 && !unpriced.length ? [...readEquity(book2), { at: now.toISOString(), equity: m.totalBase, ...contributed ?? {} }] : readEquity(book2);
   const rates = await flowRates(m.txs, m.base, now);
   return {
     book: book2,
@@ -51862,7 +51863,7 @@ async function portfolioView(book2, now) {
     cash: m.cashBase,
     positions: positionRows(m, f3),
     cashByAccount: m.cash,
-    unpriced: m.holdings.filter((h) => h.valueBase === void 0).map((h) => h.symbol),
+    unpriced,
     performance: bookPerformance(m.txs, m.book, m.totalBase, curve, m.profile.limits, now, rates),
     history: historyOf(book2, now),
     sources: sourcesOf(f3),
