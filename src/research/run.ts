@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { EvidenceStore, readDocText } from "../core/evidence.js";
 import { clockNow, FixtureMiss } from "../core/net.js";
 import { runDirFor } from "../core/paths.js";
-import { runId, UsageError, writeFileAtomic } from "../engine.js";
+import { canonicalizeUrl, runId, UsageError, writeFileAtomic } from "../engine.js";
 import { resolveSymbol } from "../providers/router.js";
 import { followUpAngles, type ResearchFocus, type ResearchKind, type ResearchSubject, researchAngles } from "./angles.js";
 import { delegatedSearch, type SearchDelegate } from "./delegate.js";
@@ -31,7 +31,10 @@ import { type Dropped, engineSearch, fuseHits, notADocument, type ReadPage, read
 
 interface IndexEntry {
   id: string;
+  /** Where the page was read: the URL after any redirect. */
   url: string;
+  /** The URL asked for, when a redirect led elsewhere: a later round's hit on it is the same page. */
+  requested?: string;
   title?: string;
   host: string;
   angles: string[];
@@ -127,7 +130,7 @@ function previousDocs(dir: string, tag?: string): RegisteredDoc[] {
     const text = item ? readDocText(dir, item) : undefined;
     if (!item || text === undefined) continue;
     const page: ReadPage = {
-      url: e.url,
+      url: e.requested ?? e.url,
       finalUrl: e.url,
       title: e.title,
       text,
@@ -201,8 +204,9 @@ export async function researchRound(dir: string, todo: ResearchTodo, notes: stri
   if (!lists.length) throw new UsageError(`no search result with a url to read${notes.length ? ` (${notes.slice(-3).join("; ")})` : ""}`);
 
   const before = previousDocs(dir, todo.tag);
-  const known = new Set(before.map((d) => d.page.url));
-  const candidates = fuseHits(lists, notADocument).filter((c) => !known.has(c.url));
+  // A page read is known by the URL asked and the one it was read at: a hit on either is not read again.
+  const known = new Set(before.flatMap((d) => [d.page.url, d.page.finalUrl].map(canonicalizeUrl)));
+  const candidates = fuseHits(lists, notADocument).filter((c) => !known.has(canonicalizeUrl(c.url)));
   const { pages, dropped } = await readCandidates(candidates, {
     max: opts.limit ?? 15,
     read: opts.read ?? { wayback: true, browser: false },
@@ -216,6 +220,7 @@ export async function researchRound(dir: string, todo: ResearchTodo, notes: stri
   const index: IndexEntry[] = docs.map((d) => ({
     id: d.id,
     url: d.page.finalUrl,
+    ...(d.page.url !== d.page.finalUrl ? { requested: d.page.url } : {}),
     title: d.page.title,
     host: d.host,
     angles: d.page.angles,

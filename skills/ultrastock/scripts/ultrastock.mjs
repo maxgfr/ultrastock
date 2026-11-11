@@ -22754,7 +22754,7 @@ function previousDocs(dir2, tag) {
     const text2 = item ? readDocText(dir2, item) : void 0;
     if (!item || text2 === void 0) continue;
     const page = {
-      url: e.url,
+      url: e.requested ?? e.url,
       finalUrl: e.url,
       title: e.title,
       text: text2,
@@ -22796,8 +22796,8 @@ async function researchRound(dir2, todo, notes, opts = {}) {
   }
   if (!lists.length) throw new UsageError(`no search result with a url to read${notes.length ? ` (${notes.slice(-3).join("; ")})` : ""}`);
   const before = previousDocs(dir2, todo.tag);
-  const known = new Set(before.map((d) => d.page.url));
-  const candidates2 = fuseHits(lists, notADocument).filter((c) => !known.has(c.url));
+  const known = new Set(before.flatMap((d) => [d.page.url, d.page.finalUrl].map(canonicalizeUrl)));
+  const candidates2 = fuseHits(lists, notADocument).filter((c) => !known.has(canonicalizeUrl(c.url)));
   const { pages, dropped } = await readCandidates(candidates2, {
     max: opts.limit ?? 15,
     read: opts.read ?? { wayback: true, browser: false },
@@ -22811,6 +22811,7 @@ async function researchRound(dir2, todo, notes, opts = {}) {
   const index = docs.map((d) => ({
     id: d.id,
     url: d.page.finalUrl,
+    ...d.page.url !== d.page.finalUrl ? { requested: d.page.url } : {},
     title: d.page.title,
     host: d.host,
     angles: d.page.angles,
