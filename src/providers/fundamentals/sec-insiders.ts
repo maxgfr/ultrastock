@@ -149,11 +149,13 @@ const sameLine = (a: InsiderTransaction, b: InsiderTransaction) =>
  * The transactions each filing still stands for once amendments are applied,
  * in the order given. A 4/A is matched to the form of the same reporting
  * person filed on the day it names (and to earlier amendments of that form);
- * each of its lines then replaces the line it repeats, else one line of the
- * same date and code (a corrected price or share count). A line that matches
- * nothing is an addition. What cannot be told from the documents is left as
- * filed and said: an original that was not read, and a line whose date or code
- * was itself corrected — it reads as an addition and its original stays.
+ * each of its lines then replaces the line it repeats, else the one line of
+ * the same date and code that kept its price (the share count was corrected)
+ * or its share count (the price was), or the only line of that date and code.
+ * A line that matches nothing is an addition. What cannot be told from the
+ * documents is left as filed and said: an original that was not read, a line
+ * whose date or code was itself corrected — it reads as an addition and its
+ * original stays — and a line that could replace several of its day.
  */
 export function netOfAmendments(filings: readonly FiledForm4[]): { transactions: InsiderTransaction[][]; notes: string[] } {
   const live = filings.map((f) => [...f.transactions]);
@@ -194,14 +196,32 @@ export function netOfAmendments(filings: readonly FiledForm4[]): { transactions:
       }
       return false;
     };
+    // A corrected line replaces the one line of its date and code that kept the other figure: the price when the share
+    // count was corrected, the share count when the price was. Never the first by position: a Form 4 often holds
+    // several fills of one day.
+    let ambiguous = 0;
+    const correct = (r: InsiderTransaction): boolean => {
+      const cands = targets.flatMap((j) => live[j]!.flatMap((t, k) => (t.date === r.date && t.code === r.code ? [{ j, k, t }] : [])));
+      const samePrice = cands.filter((c) => c.t.price === r.price);
+      const sameShares = cands.filter((c) => c.t.shares === r.shares);
+      const hit = samePrice.length === 1 ? samePrice[0] : sameShares.length === 1 ? sameShares[0] : cands.length === 1 ? cands[0] : undefined;
+      if (!hit) {
+        if (cands.length > 1) ambiguous++;
+        return false;
+      }
+      live[hit.j]!.splice(hit.k, 1);
+      return true;
+    };
     // Repeated lines first, so that a corrected line never takes the place of one restated as it was.
     const changed = a.transactions.filter((r) => !supersede((t) => sameLine(t, r)));
-    const added = changed.filter((r) => !supersede((t) => t.date === r.date && t.code === r.code));
+    const added = changed.filter((r) => !correct(r));
     const n = a.transactions.length;
     notes.push(
       `${name} amends the form filed ${a.originalFiled}: ${n - added.length} of its ${n} line${n > 1 ? "s" : ""} replace${n - added.length === 1 ? "s" : ""} what that form reported${
         added.length
-          ? `, ${added.length} ${added.length > 1 ? "are" : "is"} counted as new (a line whose date or code was corrected cannot be matched to the one it replaces)`
+          ? `, ${added.length} ${added.length > 1 ? "are" : "is"} counted as new (a line whose date or code was corrected cannot be matched to the one it replaces${
+              ambiguous ? `; ${ambiguous} could replace several lines of its day, neither price nor share count telling which, and none is picked` : ""
+            })`
           : ""
       }`,
     );

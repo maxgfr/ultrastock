@@ -16986,11 +16986,24 @@ function netOfAmendments(filings) {
       }
       return false;
     };
+    let ambiguous = 0;
+    const correct = (r3) => {
+      const cands = targets.flatMap((j) => live[j].flatMap((t, k) => t.date === r3.date && t.code === r3.code ? [{ j, k, t }] : []));
+      const samePrice = cands.filter((c) => c.t.price === r3.price);
+      const sameShares = cands.filter((c) => c.t.shares === r3.shares);
+      const hit = samePrice.length === 1 ? samePrice[0] : sameShares.length === 1 ? sameShares[0] : cands.length === 1 ? cands[0] : void 0;
+      if (!hit) {
+        if (cands.length > 1) ambiguous++;
+        return false;
+      }
+      live[hit.j].splice(hit.k, 1);
+      return true;
+    };
     const changed = a.transactions.filter((r3) => !supersede((t) => sameLine(t, r3)));
-    const added = changed.filter((r3) => !supersede((t) => t.date === r3.date && t.code === r3.code));
+    const added = changed.filter((r3) => !correct(r3));
     const n2 = a.transactions.length;
     notes.push(
-      `${name} amends the form filed ${a.originalFiled}: ${n2 - added.length} of its ${n2} line${n2 > 1 ? "s" : ""} replace${n2 - added.length === 1 ? "s" : ""} what that form reported${added.length ? `, ${added.length} ${added.length > 1 ? "are" : "is"} counted as new (a line whose date or code was corrected cannot be matched to the one it replaces)` : ""}`
+      `${name} amends the form filed ${a.originalFiled}: ${n2 - added.length} of its ${n2} line${n2 > 1 ? "s" : ""} replace${n2 - added.length === 1 ? "s" : ""} what that form reported${added.length ? `, ${added.length} ${added.length > 1 ? "are" : "is"} counted as new (a line whose date or code was corrected cannot be matched to the one it replaces${ambiguous ? `; ${ambiguous} could replace several lines of its day, neither price nor share count telling which, and none is picked` : ""})` : ""}`
     );
   }
   return { transactions: live, notes };
