@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.44](https://github.com/maxgfr/ultrastock/compare/v1.12.43...v1.12.44) (2026-11-11)
+
+
+### Bug Fixes
+
+* **tax:** a Coinbase convert is not a taxable disposal in France ([fb60a34](https://github.com/maxgfr/ultrastock/commit/fb60a34cc9283ec056dd488deda63a4a1d441527))
+
 ## [1.12.43](https://github.com/maxgfr/ultrastock/compare/v1.12.42...v1.12.43) (2026-11-11)
 
 
