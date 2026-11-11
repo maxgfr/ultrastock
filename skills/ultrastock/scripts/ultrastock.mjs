@@ -45924,79 +45924,85 @@ async function applyResult(t, r3, rec, now) {
     FOLLOWED
   );
 }
-var liveLock = (fn) => withFileLock(join48(homeDir(), "state", "live.lock"), fn);
+var ticketLiveLock = (ticketId, fn, waitMs) => {
+  loadTicket(ticketId);
+  return withFileLock(join48(homeDir(), "state", "live", `${ticketId}.lock`), fn, waitMs);
+};
+var CANCEL_WAIT_MS = 6e4;
+var sendLock = (fn) => withFileLock(join48(homeDir(), "state", "live.lock"), fn);
 async function liveSubmit(p) {
   const now = p.now ?? /* @__PURE__ */ new Date();
-  return liveLock(async () => {
-    const t = loadTicket(p.ticket.id);
-    const prev = liveOf(t);
-    if (prev && (prev.state === "unknown" || prev.state === "accepted" || prev.state === "partially-filled"))
-      return {
-        ticket: t,
-        refusals: [{ code: "PENDING", reason: `this ticket already went to ${prev.venue} (${prev.state}): \`broker reconcile ${t.id}\` before anything else` }]
-      };
-    const { refusals, notional } = await preconditions({ ...p, ticket: t, now });
-    if (refusals.length) {
-      audit({ event: "live-refused", ticket: t.id, venue: p.venue, env: p.env, refusals });
-      return { ticket: t, refusals };
-    }
-    const attempt2 = (prev?.attempt ?? 0) + 1;
-    const order = {
-      symbol: p.venueSym,
-      side: t.order.side,
-      quantity: t.order.quantity,
-      limitPrice: t.order.price,
-      clientOrderId: clientOrderIdFor(t.id, attempt2),
-      timeInForce: "GTC"
+  return sendLock(() => ticketLiveLock(p.ticket.id, () => submitLocked(p, now)));
+}
+async function submitLocked(p, now) {
+  const t = loadTicket(p.ticket.id);
+  const prev = liveOf(t);
+  if (prev && (prev.state === "unknown" || prev.state === "accepted" || prev.state === "partially-filled"))
+    return {
+      ticket: t,
+      refusals: [{ code: "PENDING", reason: `this ticket already went to ${prev.venue} (${prev.state}): \`broker reconcile ${t.id}\` before anything else` }]
     };
-    const rec = {
-      venue: p.venue,
-      env: p.env,
-      clientOrderId: order.clientOrderId,
-      venueSymbol: p.venueSym,
-      attempt: attempt2,
-      state: "unknown",
-      at: now.toISOString()
-    };
-    audit({ event: "live-intent", ticket: t.id, venue: p.venue, env: p.env, clientOrderId: order.clientOrderId, order, notional, fingerprint: t.fingerprint });
-    await transition(
-      t.id,
-      "submitted",
-      `sending to ${p.venue} ${p.env} as ${order.clientOrderId}`,
-      (x) => {
-        x.live = rec;
-      },
-      void 0,
-      ["checked"]
-    );
-    let result;
-    try {
-      result = await p.adapter.submit(order);
-    } catch (e) {
-      result = { state: "unknown", clientOrderId: order.clientOrderId, message: e.message };
-    }
-    audit({
-      event: "live-result",
-      ticket: t.id,
-      venue: p.venue,
-      env: p.env,
-      clientOrderId: order.clientOrderId,
-      state: result.state,
-      venueOrderId: result.venueOrderId,
-      filled: result.filledQuantity,
-      price: result.averagePrice,
-      message: result.message
-    });
-    const ticket = await applyResult(loadTicket(t.id), result, rec, now);
-    return { ticket, result, refusals: [] };
+  const { refusals, notional } = await preconditions({ ...p, ticket: t, now });
+  if (refusals.length) {
+    audit({ event: "live-refused", ticket: t.id, venue: p.venue, env: p.env, refusals });
+    return { ticket: t, refusals };
+  }
+  const attempt2 = (prev?.attempt ?? 0) + 1;
+  const order = {
+    symbol: p.venueSym,
+    side: t.order.side,
+    quantity: t.order.quantity,
+    limitPrice: t.order.price,
+    clientOrderId: clientOrderIdFor(t.id, attempt2),
+    timeInForce: "GTC"
+  };
+  const rec = {
+    venue: p.venue,
+    env: p.env,
+    clientOrderId: order.clientOrderId,
+    venueSymbol: p.venueSym,
+    attempt: attempt2,
+    state: "unknown",
+    at: now.toISOString()
+  };
+  audit({ event: "live-intent", ticket: t.id, venue: p.venue, env: p.env, clientOrderId: order.clientOrderId, order, notional, fingerprint: t.fingerprint });
+  await transition(
+    t.id,
+    "submitted",
+    `sending to ${p.venue} ${p.env} as ${order.clientOrderId}`,
+    (x) => {
+      x.live = rec;
+    },
+    void 0,
+    ["checked"]
+  );
+  let result;
+  try {
+    result = await p.adapter.submit(order);
+  } catch (e) {
+    result = { state: "unknown", clientOrderId: order.clientOrderId, message: e.message };
+  }
+  audit({
+    event: "live-result",
+    ticket: t.id,
+    venue: p.venue,
+    env: p.env,
+    clientOrderId: order.clientOrderId,
+    state: result.state,
+    venueOrderId: result.venueOrderId,
+    filled: result.filledQuantity,
+    price: result.averagePrice,
+    message: result.message
   });
+  const ticket = await applyResult(loadTicket(t.id), result, rec, now);
+  return { ticket, result, refusals: [] };
 }
 var NOT_PLACED_WAIT_MS = 10 * 6e4;
 function notPlacedBinding(rec) {
   return `not-placed|${rec.venue}|${rec.env}|${rec.clientOrderId}`;
 }
 async function reconcile(ticketId, adapter, now = /* @__PURE__ */ new Date(), opts = {}) {
-  return liveLock(() => reconcileLocked(ticketId, adapter, now, opts));
+  return ticketLiveLock(ticketId, () => reconcileLocked(ticketId, adapter, now, opts));
 }
 async function reconcileLocked(ticketId, adapter, now, opts) {
   const t = loadTicket(ticketId);
@@ -46063,7 +46069,7 @@ async function reconcileLocked(ticketId, adapter, now, opts) {
   return { ticket, result: r3, note: r3.state };
 }
 async function liveCancel(ticketId, adapter, now = /* @__PURE__ */ new Date()) {
-  return liveLock(() => cancelLocked(ticketId, adapter, now));
+  return ticketLiveLock(ticketId, () => cancelLocked(ticketId, adapter, now), CANCEL_WAIT_MS);
 }
 async function cancelLocked(ticketId, adapter, now) {
   const t = loadTicket(ticketId);

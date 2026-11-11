@@ -408,80 +408,96 @@ async function applyResult(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date
 }
 
 /**
- * One live operation at a time — a submit, a reconcile or a cancel. Each reads
- * the ticket under it, so two of them cannot both apply one venue answer (a
- * fill pushed and booked twice). Not re-entrant: none of them calls another.
+ * One live operation at a time per ticket — a submit, a reconcile or a cancel.
+ * Each reads the ticket under it, so two of them cannot both apply one venue
+ * answer (a fill pushed and booked twice). A ticket's own lock only: a cancel
+ * (`broker panic`) never waits on a slow venue answering about another ticket.
+ * A cancel waits longer than the default for its own ticket: a request in
+ * flight can take its full timeout. Not re-entrant: none of them calls another.
  */
-const liveLock = <T>(fn: () => Promise<T>): Promise<T> => withFileLock(join(homeDir(), "state", "live.lock"), fn);
+const ticketLiveLock = <T>(ticketId: string, fn: () => Promise<T>, waitMs?: number): Promise<T> => {
+  loadTicket(ticketId); // a valid ticket id, before it names a file
+  return withFileLock(join(homeDir(), "state", "live", `${ticketId}.lock`), fn, waitMs);
+};
+const CANCEL_WAIT_MS = 60_000;
+
+/**
+ * Sends, one at a time across tickets: each reads today's live notional and the
+ * tier's limits before its request, so two sends at once could both fit a limit
+ * only one of them fits. Taken before the ticket's own lock, never after it.
+ */
+const sendLock = <T>(fn: () => Promise<T>): Promise<T> => withFileLock(join(homeDir(), "state", "live.lock"), fn);
 
 /** Send a checked, approved ticket to the venue: once. */
 export async function liveSubmit(p: PreconditionInput): Promise<{ ticket: Ticket; result?: OrderResult; refusals: Refusal[] }> {
   const now = p.now ?? new Date();
-  return liveLock(async () => {
-    const t = loadTicket(p.ticket.id);
-    const prev = liveOf(t);
-    if (prev && (prev.state === "unknown" || prev.state === "accepted" || prev.state === "partially-filled"))
-      return {
-        ticket: t,
-        refusals: [{ code: "PENDING", reason: `this ticket already went to ${prev.venue} (${prev.state}): \`broker reconcile ${t.id}\` before anything else` }],
-      };
-    const { refusals, notional } = await preconditions({ ...p, ticket: t, now });
-    if (refusals.length) {
-      audit({ event: "live-refused", ticket: t.id, venue: p.venue, env: p.env, refusals });
-      return { ticket: t, refusals };
-    }
-    const attempt = (prev?.attempt ?? 0) + 1;
-    const order: LiveOrder = {
-      symbol: p.venueSym,
-      side: t.order.side,
-      quantity: t.order.quantity,
-      limitPrice: t.order.price,
-      clientOrderId: clientOrderIdFor(t.id, attempt),
-      timeInForce: "GTC",
+  return sendLock(() => ticketLiveLock(p.ticket.id, () => submitLocked(p, now)));
+}
+
+async function submitLocked(p: PreconditionInput, now: Date): Promise<{ ticket: Ticket; result?: OrderResult; refusals: Refusal[] }> {
+  const t = loadTicket(p.ticket.id);
+  const prev = liveOf(t);
+  if (prev && (prev.state === "unknown" || prev.state === "accepted" || prev.state === "partially-filled"))
+    return {
+      ticket: t,
+      refusals: [{ code: "PENDING", reason: `this ticket already went to ${prev.venue} (${prev.state}): \`broker reconcile ${t.id}\` before anything else` }],
     };
-    const rec: LiveRecord = {
-      venue: p.venue,
-      env: p.env,
-      clientOrderId: order.clientOrderId,
-      venueSymbol: p.venueSym,
-      attempt,
-      state: "unknown",
-      at: now.toISOString(),
-    };
-    audit({ event: "live-intent", ticket: t.id, venue: p.venue, env: p.env, clientOrderId: order.clientOrderId, order, notional, fingerprint: t.fingerprint });
-    // Mark the ticket as submitted BEFORE the request: a crash in flight leaves it "unknown", never resendable.
-    // Checked under the ticket's lock: a cancel by the user since the preconditions read it stops the send.
-    await transition(
-      t.id,
-      "submitted",
-      `sending to ${p.venue} ${p.env} as ${order.clientOrderId}`,
-      (x) => {
-        (x as Ticket & { live?: LiveRecord }).live = rec;
-      },
-      undefined,
-      ["checked"],
-    );
-    let result: OrderResult;
-    try {
-      result = await p.adapter.submit(order);
-    } catch (e) {
-      result = { state: "unknown", clientOrderId: order.clientOrderId, message: (e as Error).message };
-    }
-    audit({
-      event: "live-result",
-      ticket: t.id,
-      venue: p.venue,
-      env: p.env,
-      clientOrderId: order.clientOrderId,
-      state: result.state,
-      venueOrderId: result.venueOrderId,
-      filled: result.filledQuantity,
-      price: result.averagePrice,
-      message: result.message,
-    });
-    const ticket = await applyResult(loadTicket(t.id), result, rec, now);
-    return { ticket, result, refusals: [] };
+  const { refusals, notional } = await preconditions({ ...p, ticket: t, now });
+  if (refusals.length) {
+    audit({ event: "live-refused", ticket: t.id, venue: p.venue, env: p.env, refusals });
+    return { ticket: t, refusals };
+  }
+  const attempt = (prev?.attempt ?? 0) + 1;
+  const order: LiveOrder = {
+    symbol: p.venueSym,
+    side: t.order.side,
+    quantity: t.order.quantity,
+    limitPrice: t.order.price,
+    clientOrderId: clientOrderIdFor(t.id, attempt),
+    timeInForce: "GTC",
+  };
+  const rec: LiveRecord = {
+    venue: p.venue,
+    env: p.env,
+    clientOrderId: order.clientOrderId,
+    venueSymbol: p.venueSym,
+    attempt,
+    state: "unknown",
+    at: now.toISOString(),
+  };
+  audit({ event: "live-intent", ticket: t.id, venue: p.venue, env: p.env, clientOrderId: order.clientOrderId, order, notional, fingerprint: t.fingerprint });
+  // Mark the ticket as submitted BEFORE the request: a crash in flight leaves it "unknown", never resendable.
+  // Checked under the ticket's lock: a cancel by the user since the preconditions read it stops the send.
+  await transition(
+    t.id,
+    "submitted",
+    `sending to ${p.venue} ${p.env} as ${order.clientOrderId}`,
+    (x) => {
+      (x as Ticket & { live?: LiveRecord }).live = rec;
+    },
+    undefined,
+    ["checked"],
+  );
+  let result: OrderResult;
+  try {
+    result = await p.adapter.submit(order);
+  } catch (e) {
+    result = { state: "unknown", clientOrderId: order.clientOrderId, message: (e as Error).message };
+  }
+  audit({
+    event: "live-result",
+    ticket: t.id,
+    venue: p.venue,
+    env: p.env,
+    clientOrderId: order.clientOrderId,
+    state: result.state,
+    venueOrderId: result.venueOrderId,
+    filled: result.filledQuantity,
+    price: result.averagePrice,
+    message: result.message,
   });
+  const ticket = await applyResult(loadTicket(t.id), result, rec, now);
+  return { ticket, result, refusals: [] };
 }
 
 /** How long after a send "the venue does not list it" can still mean "not yet": a request in flight, an index catching up. */
@@ -509,7 +525,7 @@ export async function reconcile(
   now = new Date(),
   opts: { notPlacedCode?: string } = {},
 ): Promise<{ ticket: Ticket; result?: OrderResult; note: string }> {
-  return liveLock(() => reconcileLocked(ticketId, adapter, now, opts));
+  return ticketLiveLock(ticketId, () => reconcileLocked(ticketId, adapter, now, opts));
 }
 
 async function reconcileLocked(
@@ -590,7 +606,7 @@ async function reconcileLocked(
  * filled a moment ago), so nothing can be sent again on a guess.
  */
 export async function liveCancel(ticketId: string, adapter: BrokerAdapter, now = new Date()): Promise<OrderResult | undefined> {
-  return liveLock(() => cancelLocked(ticketId, adapter, now));
+  return ticketLiveLock(ticketId, () => cancelLocked(ticketId, adapter, now), CANCEL_WAIT_MS);
 }
 
 async function cancelLocked(ticketId: string, adapter: BrokerAdapter, now: Date): Promise<OrderResult | undefined> {
