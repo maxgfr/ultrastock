@@ -115,10 +115,17 @@ function cryptoQuote(t: Transaction, crypto: boolean): string | undefined {
   return c;
 }
 
-/** Long-term when sold after the first anniversary of the acquisition (IRS Pub. 550). */
+/**
+ * Long-term when sold after the first anniversary of the acquisition (IRS Pub. 550). The holding period starts the day
+ * after the acquisition and is counted in calendar months (Rev. Rul. 66-7): bought on the last day of a month, it is
+ * long-term from the first day of the thirteenth month — the anniversary of a last-of-February date is the last day of
+ * February a year later (2023-02-28 → 2024-02-29, 2024-02-29 → 2025-02-28).
+ */
 export function isLongTerm(acquired: string, sold: string): boolean {
-  const [y, m, d] = acquired.slice(0, 10).split("-");
-  const anniversary = `${Number(y) + 1}-${m}-${m === "02" && d === "29" ? "28" : d}`;
+  const [y, m, d] = acquired.slice(0, 10).split("-").map(Number) as [number, number, number];
+  const lastDay = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const day = d === lastDay(y, m) ? lastDay(y + 1, m) : Math.min(d, lastDay(y + 1, m));
+  const anniversary = `${y + 1}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   return sold.slice(0, 10) > anniversary;
 }
 

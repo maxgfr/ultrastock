@@ -54502,8 +54502,10 @@ function cryptoQuote(t, crypto) {
   return c;
 }
 function isLongTerm(acquired, sold) {
-  const [y, m, d] = acquired.slice(0, 10).split("-");
-  const anniversary = `${Number(y) + 1}-${m}-${m === "02" && d === "29" ? "28" : d}`;
+  const [y, m, d] = acquired.slice(0, 10).split("-").map(Number);
+  const lastDay = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const day4 = d === lastDay(y, m) ? lastDay(y + 1, m) : Math.min(d, lastDay(y + 1, m));
+  const anniversary = `${y + 1}-${String(m).padStart(2, "0")}-${String(day4).padStart(2, "0")}`;
   return sold.slice(0, 10) > anniversary;
 }
 var UsRegime = class extends TaxRegime {

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Envelope } from "../src/core/profile.js";
 import { type Transaction, transactionId } from "../src/portfolio/ledger.js";
 import type { TaxEvent, TaxInput } from "../src/tax/regime.js";
-import { UsRegime } from "../src/tax/us.js";
+import { isLongTerm, UsRegime } from "../src/tax/us.js";
 
 const tx = (t: Partial<Transaction> & Pick<Transaction, "date" | "type" | "account">): Transaction => {
   const raw = { origin: "manual", currency: "USD", ...t } as Omit<Transaction, "id">;
@@ -78,5 +78,22 @@ describe("US wash sale: a replacement lot the same sale also dips into", () => {
       [-200, undefined],
       [-100, undefined],
     ]);
+  });
+});
+
+describe("US holding period: bought on the last day of February, sold on 29 February a year later", () => {
+  it("is not yet held more than one year (Rev. Rul. 66-7: not before the first day of the 13th month)", () => {
+    // Bought 2023-02-28: the holding period starts 2023-03-01 (Pub. 550) and reaches exactly one year on 2024-02-29.
+    // "More than one year" (§1222) starts on 2024-03-01.
+    expect(isLongTerm("2023-02-28", "2024-02-29")).toBe(false);
+    expect(isLongTerm("2023-02-28", "2024-03-01")).toBe(true);
+  });
+  it("other dates keep the day-after-the-anniversary rule", () => {
+    expect(isLongTerm("2024-02-29", "2025-02-28")).toBe(false);
+    expect(isLongTerm("2024-02-29", "2025-03-01")).toBe(true);
+    expect(isLongTerm("2024-02-28", "2025-02-28")).toBe(false);
+    expect(isLongTerm("2024-02-28", "2025-03-01")).toBe(true);
+    expect(isLongTerm("2024-06-30", "2025-06-30")).toBe(false);
+    expect(isLongTerm("2024-06-30", "2025-07-01")).toBe(true);
   });
 });
