@@ -342,6 +342,29 @@ describe("circuit breaker", () => {
       else process.env.TZ = tz;
     }
   });
+  it("carries the cost across a transfer whatever the order of the two rows of one day", () => {
+    const r = closedTradeResults([
+      tx({ date: "2026-01-02", type: "buy", account: "a", symbol: "X", quantity: 10, price: 100 }),
+      // The receiving account's statement was imported first: same day, the transfer in comes before the transfer out.
+      tx({ date: "2026-02-01", type: "transfer-in", account: "b", symbol: "X", quantity: 10 }),
+      tx({ date: "2026-02-01", type: "transfer-out", account: "a", symbol: "X", quantity: 10 }),
+      tx({ date: "2026-04-01", type: "sell", account: "b", symbol: "X", quantity: 10, price: 90 }),
+    ]);
+    expect(r.map((x) => x.pnl)).toEqual([-100]);
+  });
+  it("does not hand the cost of a transfer already received (with a price) to shares that come from outside later", () => {
+    const r = closedTradeResults([
+      tx({ date: "2026-01-02", type: "buy", account: "a", symbol: "X", quantity: 10, price: 100 }),
+      tx({ date: "2026-02-01", type: "transfer-out", account: "a", symbol: "X", quantity: 10 }),
+      // Received in b with its cost stated: the 10 units that left a have arrived.
+      tx({ date: "2026-02-01", type: "transfer-in", account: "b", symbol: "X", quantity: 10, price: 100 }),
+      // Months later, shares from outside (a gift) reach a third account with no price: their cost is unknown.
+      tx({ date: "2026-06-01", type: "transfer-in", account: "c", symbol: "X", quantity: 10 }),
+      tx({ date: "2026-07-01", type: "sell", account: "c", symbol: "X", quantity: 10, price: 150 }),
+    ]);
+    // "Units whose cost the ledger never states are left out of the results": not a 500 win that breaks a losing streak.
+    expect(r).toEqual([]);
+  });
   it("carries cost across own accounts and splits, and counts no result on units of unknown cost", () => {
     const r = closedTradeResults([
       tx({ date: "2026-01-02", type: "buy", account: "a", symbol: "X", quantity: 10, price: 100 }),

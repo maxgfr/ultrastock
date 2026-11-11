@@ -132,63 +132,100 @@ export function ledgerInstant(date: string): number {
  * record.
  */
 export function closedTradeResults(txs: readonly Transaction[]): Array<{ date: string; pnl: number }> {
-  const avg = new Map<string, { q: number; cost: number; unknown: number }>();
+  type Held = { q: number; cost: number; unknown: number };
+  const avg = new Map<string, Held>();
+  // Units on their way between two of the user's accounts, per symbol: cost NaN when it is not known.
   const moving = new Map<string, Array<{ q: number; cost: number; account: string }>>();
   const out: Array<{ date: string; pnl: number }> = [];
-  for (const t of [...txs].sort((a, b) => a.date.localeCompare(b.date))) {
-    if (!t.symbol) continue;
-    const k = `${t.account}|${t.symbol}`;
-    const p = avg.get(k) ?? { q: 0, cost: 0, unknown: 0 };
+  const sorted = [...txs].sort((a, b) => a.date.localeCompare(b.date));
+  // Units a transfer out (by its index) already handed to a transfer in recorded before it on the same day.
+  const handed = new Map<number, number>();
+  const held = (account: string, symbol: string): Held => {
+    const k = `${account}|${symbol}`;
+    let p = avg.get(k);
+    if (!p) avg.set(k, (p = { q: 0, cost: 0, unknown: 0 }));
+    return p;
+  };
+  const add = (p: Held, units: number, cost: number) => {
+    p.cost = p.q + units > 0 ? (p.cost * p.q + cost * units) / (p.q + units) : 0;
+    p.q += units;
+  };
+  // Units leave in proportion: known-cost and unknown-cost alike.
+  const take = (p: Held, units: number) => {
+    const all = p.q + p.unknown;
+    const known = all > 0 ? Math.min(units, all) * (p.q / all) : 0;
+    const unknown = all > 0 ? Math.min(units, all) - known : 0;
+    p.q = Math.max(0, p.q - known);
+    p.unknown = Math.max(0, p.unknown - unknown);
+    return { known };
+  };
+  /** Units leave `account` for another of the user's: on the moving list, with their cost. */
+  const send = (account: string, symbol: string, units: number) => {
+    const p = held(account, symbol);
+    const cost = p.cost;
+    const { known } = take(p, units);
+    const list = moving.get(symbol) ?? [];
+    list.push({ q: known, cost, account });
+    if (units - known > 0) list.push({ q: units - known, cost: Number.NaN, account });
+    moving.set(symbol, list);
+  };
+  /** Up to `units` arriving in `account` taken off the moving list, with the cost each part left with. */
+  const receive = (account: string, symbol: string, units: number): Array<{ n: number; cost: number }> => {
+    const got: Array<{ n: number; cost: number }> = [];
+    let left = units;
+    for (const m of moving.get(symbol) ?? []) {
+      if (left <= 1e-12) break;
+      if (m.account === account || m.q <= 0) continue;
+      const n = Math.min(left, m.q);
+      got.push({ n, cost: m.cost });
+      m.q -= n;
+      left -= n;
+    }
+    return got;
+  };
+  sorted.forEach((t, i) => {
+    if (!t.symbol) return;
+    const p = held(t.account, t.symbol);
     const q = t.quantity ?? 0;
-    const add = (units: number, cost: number) => {
-      p.cost = p.q + units > 0 ? (p.cost * p.q + cost * units) / (p.q + units) : 0;
-      p.q += units;
-    };
-    // Units leave in proportion: known-cost and unknown-cost alike.
-    const take = (units: number) => {
-      const held = p.q + p.unknown;
-      const known = held > 0 ? Math.min(units, held) * (p.q / held) : 0;
-      const unknown = held > 0 ? Math.min(units, held) - known : 0;
-      p.q = Math.max(0, p.q - known);
-      p.unknown = Math.max(0, p.unknown - unknown);
-      return { known, short: Math.max(0, units - held) };
-    };
-    if (t.type === "buy") add(q, (q * t.price! + (t.fee ?? 0)) / q);
+    if (t.type === "buy") add(p, q, (q * t.price! + (t.fee ?? 0)) / q);
     else if (t.type === "sell") {
       const cost = p.cost;
-      const { known } = take(q);
+      const { known } = take(p, q);
       // Only the units whose cost is known make a result; the fee is shared in proportion.
       if (known > 0) out.push({ date: t.date, pnl: (t.price! - cost) * known - (t.fee ?? 0) * (known / q) });
     } else if (t.type === "transfer-out") {
-      const cost = p.cost;
-      const { known } = take(q);
-      const list = moving.get(t.symbol) ?? [];
-      list.push({ q: known, cost, account: t.account });
-      if (q - known > 0) list.push({ q: q - known, cost: Number.NaN, account: t.account });
-      moving.set(t.symbol, list);
+      const rest = q - (handed.get(i) ?? 0);
+      if (rest > 1e-12) send(t.account, t.symbol, rest);
     } else if (t.type === "transfer-in") {
-      if (t.price !== undefined) add(q, t.price);
+      const got = receive(t.account, t.symbol, q);
+      // The other account's statement may come later the same day: its transfer out is matched now, at its cost now.
+      const day = t.date.slice(0, 10);
+      for (let j = i + 1; j < sorted.length && sorted[j]!.date.slice(0, 10) === day; j++) {
+        const left = q - got.reduce((s, g) => s + g.n, 0);
+        if (left <= 1e-12) break;
+        const o = sorted[j]!;
+        if (o.type !== "transfer-out" || o.symbol !== t.symbol || o.account === t.account) continue;
+        const n = Math.min(left, (o.quantity ?? 0) - (handed.get(j) ?? 0));
+        if (n <= 1e-12) continue;
+        send(o.account, o.symbol, n);
+        handed.set(j, (handed.get(j) ?? 0) + n);
+        got.push(...receive(t.account, t.symbol, n));
+      }
+      // A stated price is the cost of all the units, matched or not; the units it matched have arrived, and
+      // cannot be matched again by a later transfer in from outside.
+      if (t.price !== undefined) add(p, q, t.price);
       else {
-        let left = q;
-        const list = moving.get(t.symbol) ?? [];
-        for (const m of list) {
-          if (left <= 0) break;
-          if (m.account === t.account || m.q <= 0) continue;
-          const n = Math.min(left, m.q);
-          if (Number.isNaN(m.cost)) p.unknown += n;
-          else add(n, m.cost);
-          m.q -= n;
-          left -= n;
-        }
-        p.unknown += left;
+        for (const g of got)
+          if (Number.isNaN(g.cost)) p.unknown += g.n;
+          else add(p, g.n, g.cost);
+        p.unknown += Math.max(0, q - got.reduce((s, g) => s + g.n, 0));
       }
     } else if (t.type === "split" && q > 0) {
       p.q *= q;
       p.unknown *= q;
       p.cost /= q;
     }
-    avg.set(k, p);
-  }
+  });
   return out;
 }
 

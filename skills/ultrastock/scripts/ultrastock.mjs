@@ -38660,58 +38660,87 @@ function closedTradeResults(txs) {
   const avg = /* @__PURE__ */ new Map();
   const moving = /* @__PURE__ */ new Map();
   const out = [];
-  for (const t of [...txs].sort((a, b) => a.date.localeCompare(b.date))) {
-    if (!t.symbol) continue;
-    const k = `${t.account}|${t.symbol}`;
-    const p = avg.get(k) ?? { q: 0, cost: 0, unknown: 0 };
+  const sorted = [...txs].sort((a, b) => a.date.localeCompare(b.date));
+  const handed = /* @__PURE__ */ new Map();
+  const held = (account, symbol) => {
+    const k = `${account}|${symbol}`;
+    let p = avg.get(k);
+    if (!p) avg.set(k, p = { q: 0, cost: 0, unknown: 0 });
+    return p;
+  };
+  const add2 = (p, units, cost) => {
+    p.cost = p.q + units > 0 ? (p.cost * p.q + cost * units) / (p.q + units) : 0;
+    p.q += units;
+  };
+  const take = (p, units) => {
+    const all = p.q + p.unknown;
+    const known = all > 0 ? Math.min(units, all) * (p.q / all) : 0;
+    const unknown2 = all > 0 ? Math.min(units, all) - known : 0;
+    p.q = Math.max(0, p.q - known);
+    p.unknown = Math.max(0, p.unknown - unknown2);
+    return { known };
+  };
+  const send2 = (account, symbol, units) => {
+    const p = held(account, symbol);
+    const cost = p.cost;
+    const { known } = take(p, units);
+    const list = moving.get(symbol) ?? [];
+    list.push({ q: known, cost, account });
+    if (units - known > 0) list.push({ q: units - known, cost: Number.NaN, account });
+    moving.set(symbol, list);
+  };
+  const receive = (account, symbol, units) => {
+    const got = [];
+    let left = units;
+    for (const m of moving.get(symbol) ?? []) {
+      if (left <= 1e-12) break;
+      if (m.account === account || m.q <= 0) continue;
+      const n2 = Math.min(left, m.q);
+      got.push({ n: n2, cost: m.cost });
+      m.q -= n2;
+      left -= n2;
+    }
+    return got;
+  };
+  sorted.forEach((t, i) => {
+    if (!t.symbol) return;
+    const p = held(t.account, t.symbol);
     const q = t.quantity ?? 0;
-    const add2 = (units, cost) => {
-      p.cost = p.q + units > 0 ? (p.cost * p.q + cost * units) / (p.q + units) : 0;
-      p.q += units;
-    };
-    const take = (units) => {
-      const held = p.q + p.unknown;
-      const known = held > 0 ? Math.min(units, held) * (p.q / held) : 0;
-      const unknown2 = held > 0 ? Math.min(units, held) - known : 0;
-      p.q = Math.max(0, p.q - known);
-      p.unknown = Math.max(0, p.unknown - unknown2);
-      return { known, short: Math.max(0, units - held) };
-    };
-    if (t.type === "buy") add2(q, (q * t.price + (t.fee ?? 0)) / q);
+    if (t.type === "buy") add2(p, q, (q * t.price + (t.fee ?? 0)) / q);
     else if (t.type === "sell") {
       const cost = p.cost;
-      const { known } = take(q);
+      const { known } = take(p, q);
       if (known > 0) out.push({ date: t.date, pnl: (t.price - cost) * known - (t.fee ?? 0) * (known / q) });
     } else if (t.type === "transfer-out") {
-      const cost = p.cost;
-      const { known } = take(q);
-      const list = moving.get(t.symbol) ?? [];
-      list.push({ q: known, cost, account: t.account });
-      if (q - known > 0) list.push({ q: q - known, cost: Number.NaN, account: t.account });
-      moving.set(t.symbol, list);
+      const rest = q - (handed.get(i) ?? 0);
+      if (rest > 1e-12) send2(t.account, t.symbol, rest);
     } else if (t.type === "transfer-in") {
-      if (t.price !== void 0) add2(q, t.price);
+      const got = receive(t.account, t.symbol, q);
+      const day4 = t.date.slice(0, 10);
+      for (let j = i + 1; j < sorted.length && sorted[j].date.slice(0, 10) === day4; j++) {
+        const left = q - got.reduce((s, g) => s + g.n, 0);
+        if (left <= 1e-12) break;
+        const o = sorted[j];
+        if (o.type !== "transfer-out" || o.symbol !== t.symbol || o.account === t.account) continue;
+        const n2 = Math.min(left, (o.quantity ?? 0) - (handed.get(j) ?? 0));
+        if (n2 <= 1e-12) continue;
+        send2(o.account, o.symbol, n2);
+        handed.set(j, (handed.get(j) ?? 0) + n2);
+        got.push(...receive(t.account, t.symbol, n2));
+      }
+      if (t.price !== void 0) add2(p, q, t.price);
       else {
-        let left = q;
-        const list = moving.get(t.symbol) ?? [];
-        for (const m of list) {
-          if (left <= 0) break;
-          if (m.account === t.account || m.q <= 0) continue;
-          const n2 = Math.min(left, m.q);
-          if (Number.isNaN(m.cost)) p.unknown += n2;
-          else add2(n2, m.cost);
-          m.q -= n2;
-          left -= n2;
-        }
-        p.unknown += left;
+        for (const g of got)
+          if (Number.isNaN(g.cost)) p.unknown += g.n;
+          else add2(p, g.n, g.cost);
+        p.unknown += Math.max(0, q - got.reduce((s, g) => s + g.n, 0));
       }
     } else if (t.type === "split" && q > 0) {
       p.q *= q;
       p.unknown *= q;
       p.cost /= q;
     }
-    avg.set(k, p);
-  }
+  });
   return out;
 }
 function breakerState(curve, trades2, limits, now) {
