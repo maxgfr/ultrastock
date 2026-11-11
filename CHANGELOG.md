@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.39](https://github.com/maxgfr/ultrastock/compare/v1.13.38...v1.13.39) (2026-11-11)
+
+
+### Bug Fixes
+
+* **tax/fr:** a fiat-base cash-out puts its fee on line 214, not into the price ([bb3fa5d](https://github.com/maxgfr/ultrastock/commit/bb3fa5dc4513c8e62c6af2f7c36adbde818957f2))
+
 ## [1.13.38](https://github.com/maxgfr/ultrastock/compare/v1.13.37...v1.13.38) (2026-11-11)
 
 
