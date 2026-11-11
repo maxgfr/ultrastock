@@ -145,13 +145,57 @@ const ownerKey = (o: InsiderOwner) => o.cik || o.name;
 const sameLine = (a: InsiderTransaction, b: InsiderTransaction) =>
   a.date === b.date && a.code === b.code && a.shares === b.shares && a.price === b.price && a.acquired === b.acquired && a.direct === b.direct;
 
+/** An accession number: the filing agent's CIK, the year, and that agent's own sequence — a clock for one agent only. */
+const accessionParts = (accession: string | undefined) => {
+  const m = /^(\d+)-(\d+)-(\d+)$/.exec(accession ?? "");
+  return m ? { agent: m[1]!, seq: Number(m[2]) * 1e6 + Number(m[3]) } : undefined;
+};
+
+/**
+ * The amendments' indices, oldest first. Days apply in order. Within a day, one filing agent's amendments apply by
+ * its accession sequence, whatever the order given; between agents the accession numbers tell nothing (their first
+ * digits are the agent's CIK), so the order EDGAR lists them in — newest first — stands, and it is said.
+ */
+function sameDayOrder(filings: readonly FiledForm4[], notes: string[]): number[] {
+  const byDay = new Map<string, number[]>();
+  filings.forEach((f, i) => {
+    if (f.amendment) byDay.set(f.filed ?? "", [...(byDay.get(f.filed ?? "") ?? []), i]);
+  });
+  const out: number[] = [];
+  for (const day of [...byDay.keys()].sort()) {
+    // Listed newest first: the last one listed was filed first.
+    const slots = [...byDay.get(day)!].sort((a, b) => b - a);
+    const agents = new Map<string, number[]>();
+    for (const i of slots) {
+      const p = accessionParts(filings[i]!.accession);
+      if (p) agents.set(p.agent, [...(agents.get(p.agent) ?? []), i]);
+    }
+    for (const members of agents.values()) {
+      if (members.length < 2) continue;
+      const positions = members.map((i) => slots.indexOf(i));
+      const bySeq = [...members].sort((a, b) => accessionParts(filings[a]!.accession)!.seq - accessionParts(filings[b]!.accession)!.seq);
+      positions.forEach((pos, k) => {
+        slots[pos] = bySeq[k]!;
+      });
+    }
+    if (agents.size > 1)
+      notes.push(
+        `${slots.length} amendments filed ${day || "the same day"} come from different filing agents, whose accession numbers do not tell which was filed first: they are applied in the order EDGAR lists them`,
+      );
+    out.push(...slots);
+  }
+  return out;
+}
+
 /**
  * The transactions each filing still stands for once amendments are applied,
  * in the order given. A 4/A is matched to the form of the same reporting
  * person filed on the day it names (and to earlier amendments of that form);
  * each of its lines then replaces the line it repeats, else the one line of
  * the same date and code that kept its price (the share count was corrected)
- * or its share count (the price was), or the only line of that date and code.
+ * or its share count (the price was) — the price first, said when the two point
+ * at different lines — or the only line of that date and code. Same-day
+ * amendments apply as `sameDayOrder` tells.
  * A line that matches nothing is an addition. What cannot be told from the
  * documents is left as filed and said: an original that was not read, a line
  * whose date or code was itself corrected — it reads as an addition and its
@@ -160,15 +204,7 @@ const sameLine = (a: InsiderTransaction, b: InsiderTransaction) =>
 export function netOfAmendments(filings: readonly FiledForm4[]): { transactions: InsiderTransaction[][]; notes: string[] } {
   const live = filings.map((f) => [...f.transactions]);
   const notes: string[] = [];
-  const amendments = filings
-    .map((_, i) => i)
-    .filter((i) => filings[i]!.amendment)
-    // Oldest first, in a total order: two amendments filed the same day apply by accession number, never by the order
-    // the filings were listed in (EDGAR lists them newest first).
-    .sort(
-      (a, b) =>
-        (filings[a]!.filed ?? "").localeCompare(filings[b]!.filed ?? "") || (filings[a]!.accession ?? "").localeCompare(filings[b]!.accession ?? "") || a - b,
-    );
+  const amendments = sameDayOrder(filings, notes);
   const applied = new Set<number>();
   for (const i of amendments) {
     const a = filings[i]!;
@@ -205,6 +241,7 @@ export function netOfAmendments(filings: readonly FiledForm4[]): { transactions:
     // count was corrected, the share count when the price was. Never the first by position: a Form 4 often holds
     // several fills of one day.
     let ambiguous = 0;
+    let byPrice = 0;
     const correct = (r: InsiderTransaction): boolean => {
       const cands = targets.flatMap((j) => live[j]!.flatMap((t, k) => (t.date === r.date && t.code === r.code ? [{ j, k, t }] : [])));
       const samePrice = cands.filter((c) => c.t.price === r.price);
@@ -214,6 +251,8 @@ export function netOfAmendments(filings: readonly FiledForm4[]): { transactions:
         if (cands.length > 1) ambiguous++;
         return false;
       }
+      // Another line kept the share count: it could be that line's price that was corrected. The price decides.
+      if (samePrice.length === 1 && sameShares.length === 1 && sameShares[0] !== samePrice[0]) byPrice++;
       live[hit.j]!.splice(hit.k, 1);
       return true;
     };
@@ -227,6 +266,10 @@ export function netOfAmendments(filings: readonly FiledForm4[]): { transactions:
           ? `, ${added.length} ${added.length > 1 ? "are" : "is"} counted as new (a line whose date or code was corrected cannot be matched to the one it replaces${
               ambiguous ? `; ${ambiguous} could replace several lines of its day, neither price nor share count telling which, and none is picked` : ""
             })`
+          : ""
+      }${
+        byPrice
+          ? `; ${byPrice} line${byPrice > 1 ? "s" : ""} matched one line by price and another by the same share count: the line of the same price is taken as the one whose share count was corrected`
           : ""
       }`,
     );

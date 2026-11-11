@@ -17008,12 +17008,43 @@ function parseForm4(xml) {
 }
 var ownerKey = (o) => o.cik || o.name;
 var sameLine = (a, b) => a.date === b.date && a.code === b.code && a.shares === b.shares && a.price === b.price && a.acquired === b.acquired && a.direct === b.direct;
+var accessionParts = (accession) => {
+  const m = /^(\d+)-(\d+)-(\d+)$/.exec(accession ?? "");
+  return m ? { agent: m[1], seq: Number(m[2]) * 1e6 + Number(m[3]) } : void 0;
+};
+function sameDayOrder(filings, notes) {
+  const byDay = /* @__PURE__ */ new Map();
+  filings.forEach((f3, i) => {
+    if (f3.amendment) byDay.set(f3.filed ?? "", [...byDay.get(f3.filed ?? "") ?? [], i]);
+  });
+  const out = [];
+  for (const day4 of [...byDay.keys()].sort()) {
+    const slots = [...byDay.get(day4)].sort((a, b) => b - a);
+    const agents = /* @__PURE__ */ new Map();
+    for (const i of slots) {
+      const p = accessionParts(filings[i].accession);
+      if (p) agents.set(p.agent, [...agents.get(p.agent) ?? [], i]);
+    }
+    for (const members of agents.values()) {
+      if (members.length < 2) continue;
+      const positions = members.map((i) => slots.indexOf(i));
+      const bySeq = [...members].sort((a, b) => accessionParts(filings[a].accession).seq - accessionParts(filings[b].accession).seq);
+      positions.forEach((pos2, k) => {
+        slots[pos2] = bySeq[k];
+      });
+    }
+    if (agents.size > 1)
+      notes.push(
+        `${slots.length} amendments filed ${day4 || "the same day"} come from different filing agents, whose accession numbers do not tell which was filed first: they are applied in the order EDGAR lists them`
+      );
+    out.push(...slots);
+  }
+  return out;
+}
 function netOfAmendments(filings) {
   const live = filings.map((f3) => [...f3.transactions]);
   const notes = [];
-  const amendments = filings.map((_, i) => i).filter((i) => filings[i].amendment).sort(
-    (a, b) => (filings[a].filed ?? "").localeCompare(filings[b].filed ?? "") || (filings[a].accession ?? "").localeCompare(filings[b].accession ?? "") || a - b
-  );
+  const amendments = sameDayOrder(filings, notes);
   const applied = /* @__PURE__ */ new Set();
   for (const i of amendments) {
     const a = filings[i];
@@ -17045,6 +17076,7 @@ function netOfAmendments(filings) {
       return false;
     };
     let ambiguous = 0;
+    let byPrice = 0;
     const correct = (r3) => {
       const cands = targets.flatMap((j) => live[j].flatMap((t, k) => t.date === r3.date && t.code === r3.code ? [{ j, k, t }] : []));
       const samePrice = cands.filter((c) => c.t.price === r3.price);
@@ -17054,6 +17086,7 @@ function netOfAmendments(filings) {
         if (cands.length > 1) ambiguous++;
         return false;
       }
+      if (samePrice.length === 1 && sameShares.length === 1 && sameShares[0] !== samePrice[0]) byPrice++;
       live[hit.j].splice(hit.k, 1);
       return true;
     };
@@ -17061,7 +17094,7 @@ function netOfAmendments(filings) {
     const added = changed.filter((r3) => !correct(r3));
     const n2 = a.transactions.length;
     notes.push(
-      `${name} amends the form filed ${a.originalFiled}: ${n2 - added.length} of its ${n2} line${n2 > 1 ? "s" : ""} replace${n2 - added.length === 1 ? "s" : ""} what that form reported${added.length ? `, ${added.length} ${added.length > 1 ? "are" : "is"} counted as new (a line whose date or code was corrected cannot be matched to the one it replaces${ambiguous ? `; ${ambiguous} could replace several lines of its day, neither price nor share count telling which, and none is picked` : ""})` : ""}`
+      `${name} amends the form filed ${a.originalFiled}: ${n2 - added.length} of its ${n2} line${n2 > 1 ? "s" : ""} replace${n2 - added.length === 1 ? "s" : ""} what that form reported${added.length ? `, ${added.length} ${added.length > 1 ? "are" : "is"} counted as new (a line whose date or code was corrected cannot be matched to the one it replaces${ambiguous ? `; ${ambiguous} could replace several lines of its day, neither price nor share count telling which, and none is picked` : ""})` : ""}${byPrice ? `; ${byPrice} line${byPrice > 1 ? "s" : ""} matched one line by price and another by the same share count: the line of the same price is taken as the one whose share count was corrected` : ""}`
     );
   }
   return { transactions: live, notes };
