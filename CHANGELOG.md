@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.29](https://github.com/maxgfr/ultrastock/compare/v1.13.28...v1.13.29) (2026-11-11)
+
+
+### Bug Fixes
+
+* **mcp:** declare what each tool writes, and confine the files a call reads ([f9cf840](https://github.com/maxgfr/ultrastock/commit/f9cf840b76b6ddd017ce5ce5bee21174f909d3bd))
+
 ## [1.13.28](https://github.com/maxgfr/ultrastock/compare/v1.13.27...v1.13.28) (2026-11-11)
 
 
