@@ -102,6 +102,28 @@ describe("US: a transfer between own accounts and the wash-sale rule", () => {
   });
 });
 
+describe("US: a transfer-in is tied to a transfer-out close to it", () => {
+  const BUY = tx({ date: "2020-01-02", type: "buy", account: "a", symbol: "X", quantity: 10, price: 50 });
+  const OUT = tx({ date: "2024-01-10", type: "transfer-out", account: "a", symbol: "X", quantity: 10 });
+  const SELL = tx({ date: "2025-12-01", type: "sell", account: "b", symbol: "X", quantity: 10, price: 90 });
+
+  it("takes the lots a transfer-out gave up a few days before", () => {
+    const IN = tx({ date: "2024-01-13", type: "transfer-in", account: "b", symbol: "X", quantity: 10 });
+    const s = new UsRegime(2025).annualSummary(input([BUY, OUT, IN, SELL]));
+    expect(s.events.map((e) => [e.cost, e.acquired])).toEqual([[500, "2020-01-02"]]);
+    expect(s.warnings.join(" ")).not.toMatch(/without a price/);
+  });
+
+  it("does not take lots that left another account long before, and says it has no basis", () => {
+    // The shares that left a in January 2024 went somewhere the ledger does not show; 10 X arriving in b 17 months
+    // later are not those shares. Without a price their basis is unknown: 0 from the transfer date, said so.
+    const IN = tx({ date: "2025-06-01", type: "transfer-in", account: "b", symbol: "X", quantity: 10 });
+    const s = new UsRegime(2025).annualSummary(input([BUY, OUT, IN, SELL]));
+    expect(s.events.map((e) => [e.cost, e.acquired, e.term])).toEqual([[0, "2025-06-01", "short"]]);
+    expect(s.warnings.join(" ")).toMatch(/X transferred into b on 2025-06-01 without a price.*basis 0/);
+  });
+});
+
 describe("US: shares taken out of an IRA in kind", () => {
   it("do not arrive in the taxable account with the IRA's purchase price and date", () => {
     // IRS Pub. 590-B: property distributed from an IRA takes its fair market value on the distribution date as basis,

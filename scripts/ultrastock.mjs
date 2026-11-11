@@ -53514,6 +53514,7 @@ var FranceRegime = class extends TaxRegime {
 
 // src/tax/us.ts
 var SHELTERED = /* @__PURE__ */ new Set(["IRA", "ROTH-IRA", "401K"]);
+var TRANSIT_DAYS = 30;
 var NON_US_BROKERS = /degiro|trade ?republic|bourso|fortuneo|bourse ?direct|saxo|scalable|xtb|lightyear|trading ?212|revolut|bitpanda|bitstamp|binance(?!\.?us)|bnp|cr[eé]dit|soci[eé]t[eé]|lcl|linxea|bforbank|hello ?bank|freedom ?24/i;
 var assetOf = (t, crypto) => crypto ? splitPair(t.symbol ?? "", t.currency).base : (t.symbol ?? "").toUpperCase();
 function cryptoQuote(t, crypto) {
@@ -53610,6 +53611,7 @@ var UsRegime = class extends TaxRegime {
     let stableNoted = false;
     const inTransit = [];
     let unmatched = [];
+    const unpriced = [];
     const carriedOf = /* @__PURE__ */ new Map();
     const holds2 = (purchase, l) => carriedOf.set(purchase, [...carriedOf.get(purchase) ?? [], l]);
     const carry = (into) => {
@@ -53617,7 +53619,7 @@ var UsRegime = class extends TaxRegime {
       const pieces2 = [];
       for (const s of inTransit) {
         if (need <= 1e-12) break;
-        if (s.asset !== into.asset || s.account === into.account || s.qty <= 1e-12) continue;
+        if (s.asset !== into.asset || s.account === into.account || s.qty <= 1e-12 || into.bought > addDays2(s.date, TRANSIT_DAYS)) continue;
         const q = Math.min(need, s.qty);
         s.qty -= q;
         need -= q;
@@ -53654,6 +53656,7 @@ var UsRegime = class extends TaxRegime {
         rest.id = lots.length;
         lots.push(rest);
         active2.add(rest);
+        unpriced.push(rest);
       }
       return true;
     };
@@ -53683,7 +53686,7 @@ var UsRegime = class extends TaxRegime {
       if (left > 1e-9)
         warnings.push(`${sym3} (${t.account}) disposed ${qty} on ${day3(t.date)} with ${round22(qty - left)} in recorded lots: the rest has no basis`);
       if (t.type === "transfer-out") {
-        for (const c of consumed) inTransit.push({ account: t.account, asset, lot: c.lot, qty: c.qty });
+        for (const c of consumed) inTransit.push({ account: t.account, asset, date: day3(t.date), lot: c.lot, qty: c.qty });
         unmatched = unmatched.filter((l) => !(l.bought === day3(t.date) && l.remaining === l.quantity && carry(l)));
         return;
       }
@@ -53873,6 +53876,11 @@ var UsRegime = class extends TaxRegime {
         });
       }
     }
+    for (const l of [...unmatched, ...unpriced])
+      if (!l.sheltered)
+        warnings.push(
+          `${l.symbol} transferred into ${l.account} on ${l.bought} without a price: ${round22(l.quantity * 1e6) / 1e6} of it match no transfer-out from another account in the ${TRANSIT_DAYS} days before \u2014 basis 0 from that date; give the original cost (or the value received, for a gift or a distribution) as its price`
+        );
     return { events, open: [...active2].filter((l) => l.remaining > 1e-12), warnings, lots };
   }
   realize(input) {

@@ -75,6 +75,11 @@ interface UsLot {
 }
 
 const SHELTERED = new Set(["IRA", "ROTH-IRA", "401K"]);
+/**
+ * How long shares that left an account wait for the transfer-in that receives them: a move between brokers (ACATS) or
+ * wallets takes days, not months — what arrives later is other shares, from outside the ledger. Not a tax parameter.
+ */
+const TRANSIT_DAYS = 30;
 /** Brokers outside the US (their accounts are foreign financial accounts for a US person). */
 const NON_US_BROKERS =
   /degiro|trade ?republic|bourso|fortuneo|bourse ?direct|saxo|scalable|xtb|lightyear|trading ?212|revolut|bitpanda|bitstamp|binance(?!\.?us)|bnp|cr[eé]dit|soci[eé]t[eé]|lcl|linxea|bforbank|hello ?bank|freedom ?24/i;
@@ -189,9 +194,11 @@ export class UsRegime extends TaxRegime {
     let stableNoted = false;
     // Shares moved between the user's own accounts keep their basis and holding period: what a transfer-out takes from
     // its lots waits here for a transfer-in (without a price) of the same security — or crypto-asset, whichever pair each
-    // platform books it under — into another account.
-    const inTransit: Array<{ account: string; asset: string; lot: UsLot; qty: number }> = [];
+    // platform books it under — into another account within TRANSIT_DAYS.
+    const inTransit: Array<{ account: string; asset: string; date: string; lot: UsLot; qty: number }> = [];
     let unmatched: UsLot[] = [];
+    /** Units of a transfer-in without a price that no transfer-out gave: basis 0 from the transfer date, named. */
+    const unpriced: UsLot[] = [];
     /** The lots in other accounts that hold shares of a purchase, by purchase: a wash adjustment follows them there. */
     const carriedOf = new Map<UsLot, UsLot[]>();
     const holds = (purchase: UsLot, l: UsLot) => carriedOf.set(purchase, [...(carriedOf.get(purchase) ?? []), l]);
@@ -200,7 +207,7 @@ export class UsRegime extends TaxRegime {
       const pieces: Array<{ from: UsLot; qty: number }> = [];
       for (const s of inTransit) {
         if (need <= 1e-12) break;
-        if (s.asset !== into.asset || s.account === into.account || s.qty <= 1e-12) continue;
+        if (s.asset !== into.asset || s.account === into.account || s.qty <= 1e-12 || into.bought > addDays(s.date, TRANSIT_DAYS)) continue;
         const q = Math.min(need, s.qty);
         s.qty -= q;
         need -= q;
@@ -241,6 +248,7 @@ export class UsRegime extends TaxRegime {
         rest.id = lots.length;
         lots.push(rest);
         active.add(rest);
+        unpriced.push(rest);
       }
       return true;
     };
@@ -275,7 +283,7 @@ export class UsRegime extends TaxRegime {
       if (left > 1e-9)
         warnings.push(`${sym} (${t.account}) disposed ${qty} on ${day(t.date)} with ${round2(qty - left)} in recorded lots: the rest has no basis`);
       if (t.type === "transfer-out") {
-        for (const c of consumed) inTransit.push({ account: t.account, asset, lot: c.lot, qty: c.qty });
+        for (const c of consumed) inTransit.push({ account: t.account, asset, date: day(t.date), lot: c.lot, qty: c.qty });
         // A statement may list the day's transfer-in before its transfer-out: an untouched one of that day still takes it.
         unmatched = unmatched.filter((l) => !(l.bought === day(t.date) && l.remaining === l.quantity && carry(l)));
         return;
@@ -483,6 +491,11 @@ export class UsRegime extends TaxRegime {
         });
       }
     }
+    for (const l of [...unmatched, ...unpriced])
+      if (!l.sheltered)
+        warnings.push(
+          `${l.symbol} transferred into ${l.account} on ${l.bought} without a price: ${round2(l.quantity * 1e6) / 1e6} of it match no transfer-out from another account in the ${TRANSIT_DAYS} days before — basis 0 from that date; give the original cost (or the value received, for a gift or a distribution) as its price`,
+        );
     return { events, open: [...active].filter((l) => l.remaining > 1e-12), warnings, lots };
   }
 
