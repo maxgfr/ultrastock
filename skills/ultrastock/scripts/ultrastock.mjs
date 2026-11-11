@@ -23983,15 +23983,16 @@ function riskGate(o, c) {
     else if (o.venue !== "paper" && status !== "allowed") add2("JURISDICTION", "block", `${venue} is ${status} for residents of ${j}: paper only`);
     else if (status !== "allowed") add2("JURISDICTION", "warn", `${venue} is ${status} for residents of ${j}: paper only`);
   }
-  if (o.assetKind === "crypto" && !K.allowCrypto) add2("NO_CRYPTO", "block", "the profile excludes crypto-assets");
-  if (o.assetKind === "option" && !K.allowOptions) add2("NO_OPTIONS", "block", "the profile does not allow options");
-  if (o.assetKind === "prediction" && !K.allowPredictionMarkets) add2("NO_PREDICTION", "block", "the profile does not allow prediction markets");
+  const exitOnly = (code, reason) => add2(code, riskReducing ? "warn" : "block", riskReducing ? `${reason} \u2014 selling what is held reduces it, so it passes` : reason);
+  if (o.assetKind === "crypto" && !K.allowCrypto) exitOnly("NO_CRYPTO", "the profile excludes crypto-assets");
+  if (o.assetKind === "option" && !K.allowOptions) exitOnly("NO_OPTIONS", "the profile does not allow options");
+  if (o.assetKind === "prediction" && !K.allowPredictionMarkets) exitOnly("NO_PREDICTION", "the profile does not allow prediction markets");
   if (o.side === "sell" && !riskReducing && !K.allowShort)
     add2("NO_SHORT", "block", `selling ${o.quantity} while holding ${c.heldQuantity}: short selling is not allowed`);
   const excl = K.exclusions.map((e) => e.toLowerCase());
   const sectorOf2 = o.sector ?? c.sector;
   if (excl.some((e) => e === o.symbol.toLowerCase() || sectorOf2 && e === sectorOf2.toLowerCase()))
-    add2("EXCLUDED", "block", `${o.symbol}${sectorOf2 ? ` (${sectorOf2})` : ""} is on the profile's exclusion list`);
+    exitOnly("EXCLUDED", `${o.symbol}${sectorOf2 ? ` (${sectorOf2})` : ""} is on the profile's exclusion list`);
   if (!riskReducing && o.side === "buy") {
     if (o.assetKind === "prediction") {
       const risk = o.quantity * o.price * c.fxToBase;

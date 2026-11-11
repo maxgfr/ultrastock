@@ -37,7 +37,7 @@ same result, and each check has a code. Blocks:
 | `NO_STOP`, `STOP_SIDE` | a new position has no stop, or the stop is on the wrong side |
 | `PRIIPS` | a US-domiciled ETF for an EU retail investor; use the UCITS equivalent |
 | `JURISDICTION` | the venue is blocked for the user's country (Polymarket for FR) |
-| `NO_CRYPTO`, `NO_OPTIONS`, `NO_PREDICTION`, `NO_SHORT`, `NO_LEVERAGE`, `EXCLUDED` | the profile forbids it |
+| `NO_CRYPTO`, `NO_OPTIONS`, `NO_PREDICTION`, `NO_SHORT`, `NO_LEVERAGE`, `EXCLUDED` | the profile forbids it (selling what is held of it is only a warning: getting out stays possible) |
 | `RISK_PER_TRADE`, `POSITION_PCT`, `SECTOR_PCT`, `CRYPTO_PCT`, `MAX_POSITIONS`, `CASH_BUFFER` | the risk to the stop or a cap would be exceeded after the order, pending orders included |
 | `FREQUENCY` | too many orders today, the overtrading guard |
 

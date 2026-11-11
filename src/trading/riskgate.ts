@@ -6,7 +6,9 @@
 //
 // Every check runs and reports PASS, WARN or BLOCK with a reason and a code; one
 // BLOCK blocks the order. Orders that only REDUCE risk (selling what is held)
-// pass the breaker and the caps: getting out must always be possible.
+// pass the breaker, the caps and the profile's exclusions (crypto, options,
+// prediction markets, the exclusion list — what never to BUY): getting out
+// must always be possible.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { contentHash } from "../engine.js";
@@ -152,16 +154,20 @@ export function riskGate(o: Order, c: GateContext): GateResult {
     else if (o.venue !== "paper" && status !== "allowed") add("JURISDICTION", "block", `${venue} is ${status} for residents of ${j}: paper only`);
     else if (status !== "allowed") add("JURISDICTION", "warn", `${venue} is ${status} for residents of ${j}: paper only`);
   }
-  if (o.assetKind === "crypto" && !K.allowCrypto) add("NO_CRYPTO", "block", "the profile excludes crypto-assets");
-  if (o.assetKind === "option" && !K.allowOptions) add("NO_OPTIONS", "block", "the profile does not allow options");
-  if (o.assetKind === "prediction" && !K.allowPredictionMarkets) add("NO_PREDICTION", "block", "the profile does not allow prediction markets");
+  // The constraints say what never to BUY: selling what is held of it is getting out, which must stay possible
+  // (a constraint set after the buy, a symbol excluded since) — said, not blocked.
+  const exitOnly = (code: string, reason: string) =>
+    add(code, riskReducing ? "warn" : "block", riskReducing ? `${reason} — selling what is held reduces it, so it passes` : reason);
+  if (o.assetKind === "crypto" && !K.allowCrypto) exitOnly("NO_CRYPTO", "the profile excludes crypto-assets");
+  if (o.assetKind === "option" && !K.allowOptions) exitOnly("NO_OPTIONS", "the profile does not allow options");
+  if (o.assetKind === "prediction" && !K.allowPredictionMarkets) exitOnly("NO_PREDICTION", "the profile does not allow prediction markets");
   if (o.side === "sell" && !riskReducing && !K.allowShort)
     add("NO_SHORT", "block", `selling ${o.quantity} while holding ${c.heldQuantity}: short selling is not allowed`);
   const excl = K.exclusions.map((e) => e.toLowerCase());
   // The order's sector, else the one the gate looked up: an order rarely names it.
   const sectorOf = o.sector ?? c.sector;
   if (excl.some((e) => e === o.symbol.toLowerCase() || (sectorOf && e === sectorOf.toLowerCase())))
-    add("EXCLUDED", "block", `${o.symbol}${sectorOf ? ` (${sectorOf})` : ""} is on the profile's exclusion list`);
+    exitOnly("EXCLUDED", `${o.symbol}${sectorOf ? ` (${sectorOf})` : ""} is on the profile's exclusion list`);
 
   if (!riskReducing && o.side === "buy") {
     // 4. Risk per trade: a buy needs a stop, and the loss to the stop is capped.
