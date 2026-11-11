@@ -346,7 +346,7 @@ async function bookFill(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date): 
     .map((x) => ({ quantity: x.quantity ?? 0, price: x.price ?? 0, fee: x.fee ?? 0 }));
   const d = fillDelta(booked, foreignFee ? { ...r, fee: 0 } : r);
   if (!d) return;
-  await appendTransactions(
+  const { duplicates } = await appendTransactions(
     [
       {
         date: now.toISOString().slice(0, 19),
@@ -363,6 +363,17 @@ async function bookFill(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date): 
     ],
     book,
   );
+  // Only an identical row of this very ticket in the same second (two equal partial fills) is a duplicate: the
+  // ticket's fills and the ledger now differ by it — say so where the user reads what happened.
+  if (duplicates)
+    audit({
+      event: "live-fill-not-booked",
+      ticket: t.id,
+      book,
+      quantity: d.quantity,
+      price: d.price,
+      reason: "an identical row of this ticket was booked in the same second: add this fill to the ledger by hand (`portfolio add`)",
+    });
 }
 
 /**

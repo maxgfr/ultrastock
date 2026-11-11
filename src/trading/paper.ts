@@ -118,7 +118,7 @@ async function book(t: Ticket, fill: Fill): Promise<void> {
     const held = buildBook(readLedger("paper")).positions.find((p) => p.account === t.order.account && p.symbol === t.order.symbol)?.quantity ?? 0;
     if (fill.quantity > held + 1e-9) throw new Error(`the paper book holds ${held} ${t.order.symbol} in ${t.order.account}: cannot sell ${fill.quantity}`);
   }
-  await appendTransactions(
+  const { duplicates } = await appendTransactions(
     [
       {
         date: fill.at,
@@ -135,6 +135,8 @@ async function book(t: Ticket, fill: Fill): Promise<void> {
     ],
     "paper",
   );
+  // The fill was not recorded: the ticket must not say it was (the transition is abandoned, nothing changes).
+  if (duplicates) throw new Error(`ticket ${t.id}: an identical fill of this ticket is already in the paper ledger — nothing booked`);
 }
 
 /**

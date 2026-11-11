@@ -46083,7 +46083,7 @@ async function book(t, fill2) {
     const held = buildBook(readLedger("paper")).positions.find((p) => p.account === t.order.account && p.symbol === t.order.symbol)?.quantity ?? 0;
     if (fill2.quantity > held + 1e-9) throw new Error(`the paper book holds ${held} ${t.order.symbol} in ${t.order.account}: cannot sell ${fill2.quantity}`);
   }
-  await appendTransactions(
+  const { duplicates } = await appendTransactions(
     [
       {
         date: fill2.at,
@@ -46100,6 +46100,7 @@ async function book(t, fill2) {
     ],
     "paper"
   );
+  if (duplicates) throw new Error(`ticket ${t.id}: an identical fill of this ticket is already in the paper ledger \u2014 nothing booked`);
 }
 var paperLock = (fn) => withFileLock(join47(homeDir(), "state", "paper.lock"), fn, 6e4);
 async function paperSubmit(id, now = /* @__PURE__ */ new Date()) {
@@ -46400,7 +46401,7 @@ async function bookFill(t, r3, rec, now) {
   const booked = readLedger(book2).filter((x) => x.origin === `ticket:${t.id}`).map((x) => ({ quantity: x.quantity ?? 0, price: x.price ?? 0, fee: x.fee ?? 0 }));
   const d = fillDelta(booked, foreignFee ? { ...r3, fee: 0 } : r3);
   if (!d) return;
-  await appendTransactions(
+  const { duplicates } = await appendTransactions(
     [
       {
         date: now.toISOString().slice(0, 19),
@@ -46417,6 +46418,15 @@ async function bookFill(t, r3, rec, now) {
     ],
     book2
   );
+  if (duplicates)
+    audit({
+      event: "live-fill-not-booked",
+      ticket: t.id,
+      book: book2,
+      quantity: d.quantity,
+      price: d.price,
+      reason: "an identical row of this ticket was booked in the same second: add this fill to the ledger by hand (`portfolio add`)"
+    });
 }
 var FOLLOWED = ["submitted", "cancelled", "blocked", "checked"];
 async function applyResult(t, r3, rec, now) {
