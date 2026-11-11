@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.14](https://github.com/maxgfr/ultrastock/compare/v1.13.13...v1.13.14) (2026-11-11)
+
+
+### Bug Fixes
+
+* **tax:** a US wash sale adjusts only the replacement shares ([c2ac463](https://github.com/maxgfr/ultrastock/commit/c2ac463980539813847ecfccb2db1a2186cac614))
+
 ## [1.13.13](https://github.com/maxgfr/ultrastock/compare/v1.13.12...v1.13.13) (2026-11-11)
 
 
