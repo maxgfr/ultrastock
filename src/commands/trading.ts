@@ -11,7 +11,16 @@ import { argList, argValue, type CommandArgs, mapLimit, UsageError } from "../en
 import { printResult as out } from "./emit.js";
 import { appendTransactions, type Book, buildBook, readLedger, type Transaction, type TxType, valueBook, xirr } from "../portfolio/ledger.js";
 import { getQuote, resolveSymbol } from "../providers/router.js";
-import { breakerState, closedTradeResults, contributions, type EquityPoint, readEquity, recordEquity, transfersAcross } from "../trading/breaker.js";
+import {
+  breakerState,
+  closedTradeResults,
+  contributions,
+  type EquityPoint,
+  INCOMPLETE_VALUATION,
+  readEquity,
+  recordEquity,
+  transfersAcross,
+} from "../trading/breaker.js";
 import { fxToBase, gateContextFor } from "../trading/context.js";
 import { paperSubmit, paperSweep, readiness } from "../trading/paper.js";
 import { planTrade, tradeContextMarkdown } from "../trading/plan.js";
@@ -31,7 +40,7 @@ const bookOf = (args: CommandArgs) => {
   return b;
 };
 
-/** Mark a book to market (quotes and ECB rates) and record an equity snapshot. */
+/** Mark a book to market (quotes and ECB rates) and record an equity snapshot (only when every position is priced). */
 export async function markBook(book: string) {
   const profile = loadProfile();
   if (!profile) throw new Error("no profile: run `ultrastock profile init` first");
@@ -58,8 +67,11 @@ export async function markBook(book: string) {
   });
   const fx = await fxToBase([...held.map((p) => p.currency), ...b.cash.map((c) => c.currency)], profile.baseCurrency);
   const v = valueBook(b, prices, fx.rates, profile.baseCurrency);
+  // A valuation that left a position (or a rate) out is not what the book was worth: the breaker would take it for a
+  // loss, then measure the next day from it. No point is recorded then.
+  if (v.missing.length) notes.push(INCOMPLETE_VALUATION);
   // Never on a fixture's clock: recordEquity writes on the wall clock only, and the notes say so.
-  if (
+  else if (
     v.totalBase > 0 &&
     !recordEquity(
       book,

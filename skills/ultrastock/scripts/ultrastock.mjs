@@ -39029,6 +39029,7 @@ function contributions(txs, rates, base2, note) {
     );
   return { contributed: deposits + transfers, transfers };
 }
+var INCOMPLETE_VALUATION = "the book could not be valued in full: no equity point is recorded \u2014 the circuit breaker reads the last complete valuation";
 function equityPath(book2) {
   return join39(homeDir(), "state", `equity-${book2}.jsonl`);
 }
@@ -39302,7 +39303,8 @@ async function gateContextFor(order, opts = {}) {
   notes.push(...valued2.missing.map((m) => `missing ${m}: the portfolio total is understated`));
   if (!(valued2.totalBase > 0))
     throw new Error(`the ${bookName} book is empty \u2014 record a deposit first (\`ultrastock portfolio deposit <account> <amount> --book ${bookName}\`)`);
-  if (netMode().kind === "live") recordEquity(bookName, valued2.totalBase, now, contributions(txs, fx.rates, profile.baseCurrency, warn));
+  if (valued2.missing.length) notes.push(INCOMPLETE_VALUATION);
+  else if (netMode().kind === "live") recordEquity(bookName, valued2.totalBase, now, contributions(txs, fx.rates, profile.baseCurrency, warn));
   else notes.push("replaying a fixture: the equity curve is not written");
   const rate2 = fx.rates[order.currency] ?? (order.currency === profile.baseCurrency ? 1 : Number.NaN);
   if (!Number.isFinite(rate2)) throw new Error(`no ${order.currency}\u2192${profile.baseCurrency} rate: cannot size the order`);
@@ -51375,7 +51377,8 @@ async function markBook(book2) {
   });
   const fx = await fxToBase([...held.map((p) => p.currency), ...b.cash.map((c) => c.currency)], profile.baseCurrency);
   const v = valueBook(b, prices, fx.rates, profile.baseCurrency);
-  if (v.totalBase > 0 && !recordEquity(
+  if (v.missing.length) notes.push(INCOMPLETE_VALUATION);
+  else if (v.totalBase > 0 && !recordEquity(
     book2,
     v.totalBase,
     now,

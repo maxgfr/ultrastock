@@ -124,6 +124,12 @@ export function contributions(
   return { contributed: deposits + transfers, transfers };
 }
 
+/**
+ * Said instead of recording a point when a valuation left a position (or a rate) out: that total is not what the book
+ * was worth — the breaker would read it as a loss, then measure the next day from it.
+ */
+export const INCOMPLETE_VALUATION = "the book could not be valued in full: no equity point is recorded — the circuit breaker reads the last complete valuation";
+
 export function equityPath(book: string): string {
   return join(homeDir(), "state", `equity-${book}.jsonl`);
 }
