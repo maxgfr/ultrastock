@@ -45208,6 +45208,13 @@ function saveRules(rules) {
   writeFileAtomic(statePath(), `${JSON.stringify(rules, null, 2)}
 `, 384);
 }
+function updateRules(change) {
+  return withFileLockSync(`${statePath()}.lock`, () => {
+    const { rules, result } = change(loadRules());
+    saveRules(rules);
+    return result;
+  });
+}
 var ALERT_VARIABLES = [
   "close",
   "open",
@@ -45267,22 +45274,19 @@ function addRule(input, now = /* @__PURE__ */ new Date()) {
     if (unknown2.length) throw new Error(`unknown variable(s) ${unknown2.join(", ")} \u2014 available: ${ALERT_VARIABLES.join(", ")}`);
   }
   if (input.kind === "8k" && !input.symbol) throw new Error("an 8-K alert needs a US symbol");
-  const rules = loadRules();
   const rule = {
     id: `a-${contentHash(`${input.kind}|${input.symbol ?? ""}|${input.expr ?? ""}|${now.toISOString()}`).slice(0, 10)}`,
     ...input,
     symbol: input.symbol?.toUpperCase(),
     createdAt: now.toISOString()
   };
-  rules.push(rule);
-  saveRules(rules);
-  return rule;
+  return updateRules((rules) => ({ rules: [...rules, rule], result: rule }));
 }
 function removeRule(id) {
-  const rules = loadRules();
-  const kept = rules.filter((r3) => r3.id !== id);
-  saveRules(kept);
-  return kept.length !== rules.length;
+  return updateRules((rules) => {
+    const kept = rules.filter((r3) => r3.id !== id);
+    return { rules: kept, result: kept.length !== rules.length };
+  });
 }
 function evaluateRule(rule, bars, at) {
   const s = alertSeries(bars);
@@ -45331,7 +45335,8 @@ async function peekAlerts(now = clockNow(), symbols) {
   return { hits, errors };
 }
 async function runAlerts(now = clockNow()) {
-  const rules = loadRules();
+  const read2 = loadRules();
+  const rules = [...read2];
   const events = [];
   const errors = [];
   const at = now.toISOString();
@@ -45398,7 +45403,8 @@ async function runAlerts(now = clockNow()) {
       errors.push(`${rule.id} (${rule.symbol ?? rule.kind}): ${e.message}`);
     }
   }
-  saveRules(rules);
+  const changed = new Map(rules.filter((r3, k) => r3 !== read2[k]).map((r3) => [r3.id, r3]));
+  updateRules((current2) => ({ rules: current2.map((r3) => changed.get(r3.id) ?? r3), result: void 0 }));
   return { events, errors };
 }
 function webhookAllowed(hook, entry2) {

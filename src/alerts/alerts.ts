@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { atr, ema, macd, rsi, sma } from "../analytics/indicators.js";
 import { compileExpr, evaluateExpr, exprVariables } from "../core/expr.js";
+import { withFileLockSync } from "../core/lock.js";
 import { clockNow, fetchText } from "../core/net.js";
 import { homeDir } from "../core/paths.js";
 import { contentHash, env, writeFileAtomic } from "../engine.js";
@@ -58,6 +59,14 @@ export function loadRules(): AlertRule[] {
 function saveRules(rules: AlertRule[]): void {
   mkdirSync(join(homeDir(), "state"), { recursive: true });
   writeFileAtomic(statePath(), `${JSON.stringify(rules, null, 2)}\n`, 0o600);
+}
+/** Read, change and write the rules under a lock, so a `watch add`, `watch rm` and `watch run` never undo each other. */
+function updateRules<T>(change: (rules: AlertRule[]) => { rules: AlertRule[]; result: T }): T {
+  return withFileLockSync(`${statePath()}.lock`, () => {
+    const { rules, result } = change(loadRules());
+    saveRules(rules);
+    return result;
+  });
 }
 
 /** The variables an expression rule may read. */
@@ -126,23 +135,20 @@ export function addRule(
     if (unknown.length) throw new Error(`unknown variable(s) ${unknown.join(", ")} — available: ${ALERT_VARIABLES.join(", ")}`);
   }
   if (input.kind === "8k" && !input.symbol) throw new Error("an 8-K alert needs a US symbol");
-  const rules = loadRules();
   const rule: AlertRule = {
     id: `a-${contentHash(`${input.kind}|${input.symbol ?? ""}|${input.expr ?? ""}|${now.toISOString()}`).slice(0, 10)}`,
     ...input,
     symbol: input.symbol?.toUpperCase(),
     createdAt: now.toISOString(),
   };
-  rules.push(rule);
-  saveRules(rules);
-  return rule;
+  return updateRules((rules) => ({ rules: [...rules, rule], result: rule }));
 }
 
 export function removeRule(id: string): boolean {
-  const rules = loadRules();
-  const kept = rules.filter((r) => r.id !== id);
-  saveRules(kept);
-  return kept.length !== rules.length;
+  return updateRules((rules) => {
+    const kept = rules.filter((r) => r.id !== id);
+    return { rules: kept, result: kept.length !== rules.length };
+  });
 }
 
 /** Evaluate one expression rule on bars; pure. Returns the new state and the event when it fires. */
@@ -220,7 +226,8 @@ export async function peekAlerts(now = clockNow(), symbols?: readonly string[]):
 
 /** Run every rule once; fires only on edges and unseen events. */
 export async function runAlerts(now = clockNow()): Promise<{ events: AlertEvent[]; errors: string[] }> {
-  const rules = loadRules();
+  const read = loadRules();
+  const rules = [...read];
   const events: AlertEvent[] = [];
   const errors: string[] = [];
   const at = now.toISOString();
@@ -289,7 +296,10 @@ export async function runAlerts(now = clockNow()): Promise<{ events: AlertEvent[
       errors.push(`${rule.id} (${rule.symbol ?? rule.kind}): ${(e as Error).message}`);
     }
   }
-  saveRules(rules);
+  // The run spans network calls: a rule added or removed meanwhile is in the file, not in `rules`.
+  // Only the rules the run changed are written over, and only if they still exist.
+  const changed = new Map(rules.filter((r, k) => r !== read[k]).map((r) => [r.id, r]));
+  updateRules((current) => ({ rules: current.map((r) => changed.get(r.id) ?? r), result: undefined }));
   return { events, errors };
 }
 
