@@ -12991,18 +12991,32 @@ var ProviderError = class extends Error {
 };
 
 // src/core/fallback.ts
+function classify(source2, e) {
+  if (e instanceof ProviderError) return { source: source2, error: e.message, kind: e.transient ? "outage" : "refusal" };
+  if (e instanceof FixtureMiss) return { source: source2, error: e.message, kind: "unrecorded" };
+  return { source: source2, error: e instanceof Error ? `${e.name}: ${e.message}` : String(e), kind: "defect" };
+}
+var crashed = (f3) => `${f3.source} failed on an internal error (${f3.error})`;
+function failureNote(f3, standIn) {
+  return f3.kind === "defect" ? `${crashed(f3)} \u2014 a defect in its reader or an answer whose shape changed, to report; ${standIn} stood in` : `${f3.source} did not answer (${f3.error}) \u2014 ${standIn} stood in`;
+}
 async function firstAnswer(attempts, opts = {}) {
   const failures = [];
+  let defect;
   for (const a of attempts) {
     try {
       return { value: await a.run(), source: a.source, failures };
     } catch (e) {
-      const transient = !(e instanceof ProviderError) || e.transient;
-      failures.push({ source: a.source, error: e.message });
-      if (!transient && !opts.fallThroughAll) throw e;
+      const failure4 = classify(a.source, e);
+      failures.push(failure4);
+      if (failure4.kind === "refusal" && !opts.fallThroughAll) throw e;
+      if (failure4.kind === "defect") defect ??= e;
     }
   }
-  throw new ProviderError(attempts.map((a) => a.source).join("\u2192"), `every source failed: ${failures.map((f3) => f3.error).join("; ")}`, 0);
+  const why2 = failures.map((f3) => f3.kind === "defect" ? crashed(f3) : f3.error).join("; ");
+  const err = new ProviderError(attempts.map((a) => a.source).join("\u2192"), `every source failed: ${why2}`, 0);
+  if (defect !== void 0) err.cause = defect;
+  throw err;
 }
 
 // src/providers/binance.ts
@@ -14115,7 +14129,7 @@ function stamp(value, failures) {
   return {
     ...value,
     provenance: { ...value.provenance, fallbackFrom: failures.map((f3) => f3.source).join(", ") },
-    notes: [...value.notes, ...failures.map((f3) => `${f3.source} did not answer (${f3.error}) \u2014 ${value.provenance.source} stood in`)]
+    notes: [...value.notes, ...failures.map((f3) => failureNote(f3, value.provenance.source))]
   };
 }
 async function getHistory(r3, req) {

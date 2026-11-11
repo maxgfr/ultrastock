@@ -12,7 +12,7 @@
 // when Euronext did not answer, and a definitive refusal ("no such listing")
 // is not routed around. A crypto venue's jurisdiction refusal (HTTP 451) does
 // fall through to the next venue: it is that venue's answer, not the market's.
-import { firstAnswer } from "../core/fallback.js";
+import { failureNote, firstAnswer, type SourceFailure } from "../core/fallback.js";
 import { clockNow } from "../core/net.js";
 import { binanceHistory, binanceQuote, looksLikeCryptoPair, resolveBinance } from "./binance.js";
 import { euronextHistory, resolveEuronext, SUFFIX_MICS } from "./euronext.js";
@@ -77,15 +77,12 @@ const viaYahoo = (i: Instrument) => i.market === "europe" || i.market === "world
 /** The Yahoo symbol for an instrument another provider resolved: MC.PA stays, NVDA stays. */
 const yahooSymbolOf = (i: Instrument) => i.symbol;
 
-function stamp<T extends { provenance: { source: string; fallbackFrom?: string }; notes: string[] }>(
-  value: T,
-  failures: Array<{ source: string; error: string }>,
-): T {
+function stamp<T extends { provenance: { source: string; fallbackFrom?: string }; notes: string[] }>(value: T, failures: SourceFailure[]): T {
   if (!failures.length) return value;
   return {
     ...value,
     provenance: { ...value.provenance, fallbackFrom: failures.map((f) => f.source).join(", ") },
-    notes: [...value.notes, ...failures.map((f) => `${f.source} did not answer (${f.error}) — ${value.provenance.source} stood in`)],
+    notes: [...value.notes, ...failures.map((f) => failureNote(f, value.provenance.source))],
   };
 }
 
