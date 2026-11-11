@@ -4,14 +4,13 @@
 //
 //   api.llama.fi/v2/chains                    TVL per chain                               ~60 KB
 //   api.llama.fi/tvl/<slug>                   one protocol's current TVL (a bare number)
-//   api.llama.fi/protocols                    every protocol: TVL, 1d/7d change, category  ~9 MB
 //   api.llama.fi/protocol/<slug>              one protocol's TVL history and chain split   1–35 MB
 //   api.llama.fi/overview/fees[/<chain>]      fees by protocol (24h, 7d, 30d)              ~5 MB
 //   stablecoins.llama.fi/stablecoins          circulating supply by stablecoin             ~0.5 MB
 //   yields.llama.fi/pools                     every yield pool: TVL, base vs reward APY    ~10 MB
 //
 // The big answers are filtered and cut to the top N here, and the heaviest
-// (protocols, pools) are cached for the day: never hand thousands of rows to
+// (the pools) is cached for an hour: never hand thousands of rows to
 // the agent. Identifiers (slugs, chain names, pool symbols) are DefiLlama's
 // own and are reduced to a safe character set before they reach a key or a
 // label; protocol names and descriptions are untrusted text.
@@ -150,37 +149,6 @@ export function protocolListPoints(rows: readonly LlamaProtocolRow[]): Point[] {
       out.push({ key: `${s}.defi.mcapToTvl`, label: `${s} market cap / TVL`, value: p.mcap / p.tvl!, unit: "x", formula: "mcap / tvl" });
   }
   return out;
-}
-
-/** The top protocols by TVL, optionally within one category ("Lending", "Dexs") or chain ("Ethereum"). */
-export async function llamaProtocols(f: { category?: string; chain?: string; limit?: number } = {}): Promise<Dataset> {
-  const list = await cachedJson(`defillama:protocols`, TTL.daily, async () => {
-    const r = await get<LlamaProtocolRow[]>(`${API}/protocols`, "protocol list", BIG);
-    if (!Array.isArray(r.data)) throw new ProviderError(SOURCE, "protocol list is not an array");
-    const rows = r.data.map((p) => ({
-      slug: p.slug,
-      name: p.name,
-      category: p.category,
-      chains: p.chains,
-      tvl: p.tvl,
-      change_1d: p.change_1d,
-      change_7d: p.change_7d,
-      mcap: p.mcap,
-    }));
-    return { rows, url: r.url, fetchedAt: r.fetchedAt };
-  });
-  if (!list) throw new ProviderError(SOURCE, "protocol list unavailable (offline, nothing cached)", 0);
-  const rows = filterProtocols(list.rows, f);
-  if (!rows.length) throw new ProviderError(SOURCE, "no protocol matches the filter", 404);
-  const scope = [f.category ? llamaText(f.category) : undefined, f.chain ? `on ${llamaText(f.chain)}` : undefined].filter(Boolean).join(" ");
-  return {
-    kind: "defi",
-    title: `Top ${rows.length} DeFi protocols by TVL${scope ? ` (${scope})` : ""}`,
-    subject: "DEFI",
-    points: protocolListPoints(rows),
-    provenance: prov(list),
-    notes: ["CEX reserves are listed by DefiLlama as protocols too (category CEX): filter by category to compare like with like"],
-  };
 }
 
 export interface LlamaProtocolDetail {

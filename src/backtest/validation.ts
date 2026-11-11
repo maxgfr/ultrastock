@@ -18,7 +18,7 @@ import { cagr, calmar, drawdowns, equityCurve, seededRandom, sharpe, sortino } f
 import { mean, quantile } from "../analytics/stats.js";
 import type { Bar, Interval } from "../providers/types.js";
 import { type Costs, type SimConfig, type SimResult, simulate } from "./simulate.js";
-import { compileStrategy, indicatorRows, paramValue, tunableParams, type Signals, type StrategyDef, withParam } from "./strategy.js";
+import { compileStrategy, indicatorRows, tunableParams, type Signals, type StrategyDef, withParam } from "./strategy.js";
 
 /** At most this many variants per sweep (and per walk-forward, CPCV or PBO grid). */
 export const MAX_RUNS = 500;
@@ -146,16 +146,6 @@ export function defaultGrid(def: StrategyDef): GridDim[] {
       path,
       values: [...new Set([0.75, 1, 1.25].map((f) => (integer ? Math.max(2, Math.round(value * f)) : Number((value * f).toFixed(4)))))],
     }));
-}
-
-/** The strategy's own values of the grid's parameters (the "as written" variant). */
-export function baseParams(def: StrategyDef, dims: readonly GridDim[]): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const d of dims) {
-    const v = paramValue(def, d.path);
-    if (v !== undefined) out[d.path] = v;
-  }
-  return out;
 }
 
 // --- Sweep --------------------------------------------------------------------------------

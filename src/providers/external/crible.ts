@@ -222,10 +222,6 @@ export async function cribleStaleWarning(): Promise<string | undefined> {
   }
 }
 
-export async function cribleStatus(): Promise<Record<string, unknown>> {
-  return JSON.parse(await run(["status"]));
-}
-
 export interface CribleScreen {
   total: number;
   rows: Array<Record<string, unknown>>;
