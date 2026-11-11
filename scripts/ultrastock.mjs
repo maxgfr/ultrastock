@@ -53550,6 +53550,7 @@ var UsRegime = class extends TaxRegime {
         remaining: q,
         basis: q ? cost / q : 0,
         replaced: 0,
+        purchase: t.type === "buy",
         sheltered: SHELTERED.has(env2.type),
         crypto
       };
@@ -53665,6 +53666,7 @@ var UsRegime = class extends TaxRegime {
               remaining: 0,
               basis: 0,
               replaced: 0,
+              purchase: false,
               sheltered: false,
               crypto
             },
@@ -53683,7 +53685,7 @@ var UsRegime = class extends TaxRegime {
             let need = qty;
             for (const r3 of lots) {
               if (need <= 1e-12) break;
-              if (r3.symbol !== sym3 || soldIds.has(r3.id) || r3.bought < from || r3.bought > to || r3.id === l.id) continue;
+              if (!r3.purchase || r3.symbol !== sym3 || soldIds.has(r3.id) || r3.bought < from || r3.bought > to || r3.id === l.id) continue;
               const avail = r3.quantity - r3.replaced;
               if (avail <= 1e-12) continue;
               const q = Math.min(need, avail);

@@ -55,6 +55,11 @@ interface UsLot {
   basis: number;
   /** Shares of this lot already used as a wash-sale replacement. */
   replaced: number;
+  /**
+   * Acquired by purchase (§1091(a)): only such shares can be a wash-sale replacement. A transfer-in is shares moving
+   * between the user's own accounts (or out of an IRA, a gift…), never a purchase, whatever order the statement lists it in.
+   */
+  purchase: boolean;
   sheltered: boolean;
   crypto: boolean;
 }
@@ -105,6 +110,7 @@ export class UsRegime extends TaxRegime {
         remaining: q,
         basis: q ? cost / q : 0,
         replaced: 0,
+        purchase: t.type === "buy",
         sheltered: SHELTERED.has(env.type),
         crypto,
       };
@@ -227,6 +233,7 @@ export class UsRegime extends TaxRegime {
               remaining: 0,
               basis: 0,
               replaced: 0,
+              purchase: false,
               sheltered: false,
               crypto,
             },
@@ -239,14 +246,15 @@ export class UsRegime extends TaxRegime {
           let disallowed = 0;
           const notes: string[] = [];
           if (gain < 0 && (!l.crypto || washCrypto)) {
-            // Replacement shares bought within ±30 days (any account), not the shares sold, not already used.
+            // Replacement shares bought within ±30 days (any account), not the shares sold, not already used — bought: a
+            // transfer-in, even one replayed before its transfer-out, acquires nothing.
             const from = addDays(day(t.date), -window);
             const to = addDays(day(t.date), window);
             const soldIds = new Set(consumed.map((c) => c.lot.id));
             let need = qty;
             for (const r of lots) {
               if (need <= 1e-12) break;
-              if (r.symbol !== sym || soldIds.has(r.id) || r.bought < from || r.bought > to || r.id === l.id) continue;
+              if (!r.purchase || r.symbol !== sym || soldIds.has(r.id) || r.bought < from || r.bought > to || r.id === l.id) continue;
               const avail = r.quantity - r.replaced;
               if (avail <= 1e-12) continue;
               const q = Math.min(need, avail);
