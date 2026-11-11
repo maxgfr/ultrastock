@@ -23,7 +23,7 @@
 // as-of day) or that a cited document writes — in any usual form, so "le 17
 // novembre" stands for 2026-11-17. A results date copied wrong is refused.
 import { bm25Tokenize, citationTokensIn, collectCitations, EVIDENCE_TOKEN, extractClaimUnits, unitTexts } from "./engine.js";
-import { datesIn, extractDates, holdsDate, MONTH_WORD, type WrittenDate } from "./core/dates.js";
+import { dateSpans, datesIn, extractDates, holdsDate, type WrittenDate } from "./core/dates.js";
 import { type EvidenceItem, EvidenceStore, readDocText } from "./core/evidence.js";
 
 export interface CheckProblem {
@@ -143,15 +143,28 @@ const NOT_A_VALUE = "(?![\\p{N}]|[.,]\\d|\\s?(?:%|[$€£]|pts?\\b|bps\\b))";
 
 const INDICATOR_NAMES = "SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA|VWAP|OBV|Stoch|Stochastic|Bollinger|Ichimoku|Supertrend";
 
+/**
+ * A date the date reader accepts is no figure: "17 novembre", "Oct 23, 2026", "17.11.26". Only a valid one: "85 may
+ * fall", "In May 45 %" and "en mars 12 % du CA" keep their figure.
+ */
+function blankDates(text: string): string {
+  let out = "";
+  let from = 0;
+  for (const [at, end] of dateSpans(text)) {
+    out += `${text.slice(from, at)} `;
+    from = end;
+  }
+  return out + text.slice(from);
+}
+
 /** What is not a figure: dates, times, citation tokens, inline code, link targets, labels. */
 function stripNonFigures(text: string): string {
   return (
-    unbracket(text.replace(/`[^`]*`/g, " "))
-      .replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ")
-      .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ")
-      // A month is a whole word: "margin 45 %", "declined 12 %" and "marge 45 %" are figures, not "Mar 4", "Dec 12".
-      .replace(new RegExp(`\\b\\d{1,2}(?:er)?\\s+(?:${MONTH_WORD})(?!\\p{L})\\.?(?:\\s+\\d{4})?`, "giu"), " ")
-      .replace(new RegExp(`(?<!\\p{L})(?:${MONTH_WORD})(?!\\p{L})\\.?\\s+\\d{1,2}(?:,\\s*\\d{4}(?!\\p{N}))?(?!\\p{N}|[.,]\\d)`, "giu"), " ")
+    blankDates(
+      unbracket(text.replace(/`[^`]*`/g, " "))
+        .replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ")
+        .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " "),
+    )
       .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ")
       // A chart timeframe before an indicator is its label: the 15m RSI, the 4h MACD — not 15 million.
       .replace(new RegExp(`\\b\\d{1,2}[mhdwM]\\s?(?=(?:${INDICATOR_NAMES})(?![A-Za-z]))`, "gi"), " ")

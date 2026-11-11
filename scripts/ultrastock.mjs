@@ -21752,8 +21752,16 @@ var year4 = (y) => y.length === 2 ? 2e3 + Number(y) : Number(y);
 var ISO = /(?<![\d-])(\d{4})-(\d{2})-(\d{2})(?![\d])/g;
 var NUMERIC = /(?<![\d./-])(\d{1,2})([/.])(\d{1,2})\2(\d{4}|\d{2})(?![\d./])/g;
 var DAY_MONTH = new RegExp(`(?<![\\p{L}\\p{N}.,])(\\d{1,2})(?:er|st|nd|rd|th)?\\s+(${MONTH_WORD})\\.?(?:,?\\s+(\\d{4}))?(?![\\p{L}\\p{N}])`, "giu");
-var MONTH_DAY = new RegExp(`(?<![\\p{L}])(${MONTH_WORD})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?(?![\\p{L}\\p{N}])`, "giu");
+var NO_UNIT = "(?![.,]\\d)(?!\\s?(?:[%\u2030$\u20AC\xA3]|(?:pts?|bps?|x|k|K|M|m|mn|Mn|bn|Bn|B|Md|Mds|T|tn|EUR|USD|GBP|CHF|millions?|billions?|milliards?)(?![\\p{L}\\p{N}])))";
+var MONTH_DAY = new RegExp(`(?<![\\p{L}])(${MONTH_WORD})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?${NO_UNIT}(?:,?\\s+(\\d{4}))?(?![\\p{L}\\p{N}])`, "giu");
+var WORD_NOT_MONTH = /^(?:may|march)$/;
 function extractDates(text2) {
+  return scanDates(text2).map(({ at: _a, end: _e, ...d }) => d);
+}
+function dateSpans(text2) {
+  return scanDates(text2).map((d) => [d.at, d.end]);
+}
+function scanDates(text2) {
   const out = [];
   const add2 = (m, d) => {
     const at = m.index ?? 0;
@@ -21773,18 +21781,18 @@ function extractDates(text2) {
     add2(m, { raw: m[0], year: y, readings });
   }
   for (const m of text2.matchAll(DAY_MONTH)) {
-    const mo = monthOf(m[2]);
+    const mo = WORD_NOT_MONTH.test(m[2]) ? void 0 : monthOf(m[2]);
     const y = m[3] ? Number(m[3]) : void 0;
     const d = Number(m[1]);
     add2(m, { raw: m[0].trim(), ...y ? { year: y } : {}, readings: mo && valid(y, mo, d) ? [[mo, d]] : [] });
   }
   for (const m of text2.matchAll(MONTH_DAY)) {
-    const mo = monthOf(m[1]);
+    const mo = WORD_NOT_MONTH.test(m[1]) ? void 0 : monthOf(m[1]);
     const y = m[3] ? Number(m[3]) : void 0;
     const d = Number(m[2]);
     add2(m, { raw: m[0].trim(), ...y ? { year: y } : {}, readings: mo && valid(y, mo, d) ? [[mo, d]] : [] });
   }
-  return out.sort((a, b) => a.at - b.at).map(({ at: _a, end: _e, ...d }) => d);
+  return out.sort((a, b) => a.at - b.at);
 }
 var pad2 = (n2) => String(n2).padStart(2, "0");
 function datesIn(text2) {
@@ -21867,8 +21875,19 @@ var INDEX_NAMES = [
 ].join("|");
 var NOT_A_VALUE = "(?![\\p{N}]|[.,]\\d|\\s?(?:%|[$\u20AC\xA3]|pts?\\b|bps\\b))";
 var INDICATOR_NAMES = "SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA|VWAP|OBV|Stoch|Stochastic|Bollinger|Ichimoku|Supertrend";
+function blankDates(text2) {
+  let out = "";
+  let from = 0;
+  for (const [at, end] of dateSpans(text2)) {
+    out += `${text2.slice(from, at)} `;
+    from = end;
+  }
+  return out + text2.slice(from);
+}
 function stripNonFigures(text2) {
-  return unbracket(text2.replace(/`[^`]*`/g, " ")).replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ").replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ").replace(new RegExp(`\\b\\d{1,2}(?:er)?\\s+(?:${MONTH_WORD})(?!\\p{L})\\.?(?:\\s+\\d{4})?`, "giu"), " ").replace(new RegExp(`(?<!\\p{L})(?:${MONTH_WORD})(?!\\p{L})\\.?\\s+\\d{1,2}(?:,\\s*\\d{4}(?!\\p{N}))?(?!\\p{N}|[.,]\\d)`, "giu"), " ").replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ").replace(new RegExp(`\\b\\d{1,2}[mhdwM]\\s?(?=(?:${INDICATOR_NAMES})(?![A-Za-z]))`, "gi"), " ").replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ").replace(new RegExp(`\\b(?:${AVERAGE_NAMES})\\s?(?:${AVERAGE_PERIODS})\\b${NOT_A_VALUE}`, "giu"), " ").replace(new RegExp(`(?:${INDEX_NAMES})${NOT_A_VALUE}`, "gu"), " ").replace(/(?<![\p{L}\p{N}])(?:10-[KQ]|20-F|40-F|8-K|6-K)(?:\/A|405|T)?(?![\p{L}\p{N}])/giu, " ").replace(/\b(?:weeks?|wk|semaines?|sem\.)\s?\d{1,2}\b(?![.,]\d|\s?[%$€£])/gi, " ").replace(/(?<![\p{N}.,/])\d{1,3}(?:\/\d{1,3})+(?![\p{N}/]|[.,]\d)/gu, (m) => m.split("/").reduce((a, b) => a + Number(b), 0) === 100 ? " " : m);
+  return blankDates(
+    unbracket(text2.replace(/`[^`]*`/g, " ")).replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ").replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ")
+  ).replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ").replace(new RegExp(`\\b\\d{1,2}[mhdwM]\\s?(?=(?:${INDICATOR_NAMES})(?![A-Za-z]))`, "gi"), " ").replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ").replace(new RegExp(`\\b(?:${AVERAGE_NAMES})\\s?(?:${AVERAGE_PERIODS})\\b${NOT_A_VALUE}`, "giu"), " ").replace(new RegExp(`(?:${INDEX_NAMES})${NOT_A_VALUE}`, "gu"), " ").replace(/(?<![\p{L}\p{N}])(?:10-[KQ]|20-F|40-F|8-K|6-K)(?:\/A|405|T)?(?![\p{L}\p{N}])/giu, " ").replace(/\b(?:weeks?|wk|semaines?|sem\.)\s?\d{1,2}\b(?![.,]\d|\s?[%$€£])/gi, " ").replace(/(?<![\p{N}.,/])\d{1,3}(?:\/\d{1,3})+(?![\p{N}/]|[.,]\d)/gu, (m) => m.split("/").reduce((a, b) => a + Number(b), 0) === 100 ? " " : m);
 }
 var FIGURE_RE = /(?<![\p{L}\p{N}_.,])([+\-−–]?)\s?([$€£]\s?)?(\d{1,3}(?:[ ,.  ']\d{3})+(?!\d)(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(\s?(?:%|pts?|bps|x|×)|\s?(?:k|K|M|m|mn|Mn|mio|Md|Mds|md|mds|bn|Bn|B|T|tn|million|millions|milliard|milliards|billion|billions|trillion|trillions|mille)\b)?(\s?(?:[$€£]|EUR|USD|USDT|USDC|GBP|CHF|NOK|BTC|ETH)\b|\s?[$€£])?/gu;
 var PARAMETER_AFTER = /^[-\s]?(?:days?|d|jours?|j|weeks?|wks?|w|semaines?|months?|mo|mois|years?|yrs?|y|ans?|années?|bars?|séances?|sessions?|hours?|h|heures?|min|minutes?|périodes?|periods?|ème|e|er|re|st|nd|rd|th)\b/iu;

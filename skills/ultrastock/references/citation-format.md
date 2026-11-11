@@ -44,8 +44,10 @@ A **date** is checked on its own terms. In a claim that cites evidence, every
 calendar date must be one a cited `[E#]` holds — its value, label or as-of day
 (not the day it was read), or the text of a cited document — in any usual form: `2026-11-17`,
 `17/11/2026`, `17 novembre 2026`, `Nov 17, 2026`, `le 17 novembre` (no year:
-matched on the day). A results date copied wrong is refused even next to the
-right `[E#]`. A date **ahead** stated with no `[E#]` at all is refused too (the
+matched on the day). Only a valid date is one: in `85 may fall`, `In May 45 %
+of revenue` and `en mars 12 % du CA` the number is a figure (a day past 31, a
+unit after it, and `may` / `march` in lowercase are no date). A results date
+copied wrong is refused even next to the right `[E#]`. A date **ahead** stated with no `[E#]` at all is refused too (the
 user acts on it); a past day with no citation — "cours au 2026-10-27" — is
 context and passes.
 

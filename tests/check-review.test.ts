@@ -43,6 +43,25 @@ describe("brackets", () => {
   });
 });
 
+describe("month words", () => {
+  it("reads the figure next to 'may', 'March', 'mars', 'mai' used as words", () => {
+    // E1 is 383 EUR: neither 85 nor 45 % is in it.
+    expect(refused("A payout ratio of 85 may not be sustainable [E1].\n")).toBe(true);
+    expect(refused("In May 45 % of revenue came from Asia, close 383 € [E1].\n")).toBe(true);
+    expect(refused("En mars 45 % du chiffre d'affaires venait d'Asie, cours 383 € [E1].\n")).toBe(true);
+    expect(refused("En mai 12 % du chiffre d'affaires venait d'Asie, cours 383 € [E1].\n")).toBe(true);
+  });
+  it("does not hold an honest figure before 'may' to the evidence as a date", () => {
+    // E3 is 21.5: "21" is that value at the written precision.
+    expect(kinds("A forward P/E of 21 may look rich [E3].\n")).toEqual([]);
+  });
+  it("still blanks and checks a real date", () => {
+    expect(kinds("Close 383 € [E1] on 23 October 2026.\n")).toEqual([]);
+    expect(kinds("Close 383 € [E1] on Oct 23, 2026.\n")).toEqual([]);
+    expect(kinds("Close 383 € [E1] on 17.11.26.\n")).toEqual(["unsupported"]);
+  });
+});
+
 describe("labels: filing forms, indicator settings, index names", () => {
   it("reads a filing form named in a link's text as a label", () => {
     expect(kinds("Revenue was 84.7 bn [E4] ([10-K](https://www.sec.gov/x)).\n")).toEqual([]);

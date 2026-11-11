@@ -42,10 +42,24 @@ const year4 = (y: string) => (y.length === 2 ? 2000 + Number(y) : Number(y));
 const ISO = /(?<![\d-])(\d{4})-(\d{2})-(\d{2})(?![\d])/g;
 const NUMERIC = /(?<![\d./-])(\d{1,2})([/.])(\d{1,2})\2(\d{4}|\d{2})(?![\d./])/g;
 const DAY_MONTH = new RegExp(`(?<![\\p{L}\\p{N}.,])(\\d{1,2})(?:er|st|nd|rd|th)?\\s+(${MONTH_WORD})\\.?(?:,?\\s+(\\d{4}))?(?![\\p{L}\\p{N}])`, "giu");
-const MONTH_DAY = new RegExp(`(?<![\\p{L}])(${MONTH_WORD})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?(?![\\p{L}\\p{N}])`, "giu");
+// A day is not followed by a decimal or a unit: "May 45 %", "mars 12 % du CA" and "Nov 17 €" are figures after a month.
+const NO_UNIT =
+  "(?![.,]\\d)(?!\\s?(?:[%‰$€£]|(?:pts?|bps?|x|k|K|M|m|mn|Mn|bn|Bn|B|Md|Mds|T|tn|EUR|USD|GBP|CHF|millions?|billions?|milliards?)(?![\\p{L}\\p{N}])))";
+const MONTH_DAY = new RegExp(`(?<![\\p{L}])(${MONTH_WORD})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?${NO_UNIT}(?:,?\\s+(\\d{4}))?(?![\\p{L}\\p{N}])`, "giu");
+/** English month names that are also words: lowercase, "may" and "march" are a verb ("21 may look rich"). */
+const WORD_NOT_MONTH = /^(?:may|march)$/;
 
 /** Every calendar date a text writes (a month and a year alone are not a date). */
 export function extractDates(text: string): WrittenDate[] {
+  return scanDates(text).map(({ at: _a, end: _e, ...d }) => d);
+}
+
+/** Where a text writes a valid calendar date: [start, end) of each. */
+export function dateSpans(text: string): Array<[start: number, end: number]> {
+  return scanDates(text).map((d) => [d.at, d.end]);
+}
+
+function scanDates(text: string): Array<WrittenDate & { at: number; end: number }> {
   const out: Array<WrittenDate & { at: number; end: number }> = [];
   const add = (m: RegExpMatchArray, d: WrittenDate) => {
     const at = m.index ?? 0;
@@ -65,18 +79,18 @@ export function extractDates(text: string): WrittenDate[] {
     add(m, { raw: m[0], year: y, readings });
   }
   for (const m of text.matchAll(DAY_MONTH)) {
-    const mo = monthOf(m[2]!);
+    const mo = WORD_NOT_MONTH.test(m[2]!) ? undefined : monthOf(m[2]!);
     const y = m[3] ? Number(m[3]) : undefined;
     const d = Number(m[1]);
     add(m, { raw: m[0].trim(), ...(y ? { year: y } : {}), readings: mo && valid(y, mo, d) ? [[mo, d]] : [] });
   }
   for (const m of text.matchAll(MONTH_DAY)) {
-    const mo = monthOf(m[1]!);
+    const mo = WORD_NOT_MONTH.test(m[1]!) ? undefined : monthOf(m[1]!);
     const y = m[3] ? Number(m[3]) : undefined;
     const d = Number(m[2]);
     add(m, { raw: m[0].trim(), ...(y ? { year: y } : {}), readings: mo && valid(y, mo, d) ? [[mo, d]] : [] });
   }
-  return out.sort((a, b) => a.at - b.at).map(({ at: _a, end: _e, ...d }) => d);
+  return out.sort((a, b) => a.at - b.at);
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");

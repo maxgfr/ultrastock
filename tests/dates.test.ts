@@ -25,6 +25,11 @@ describe("written dates", () => {
   it("is no date: a month alone, a price, a year, a ratio", () => {
     expect(extractDates("novembre 2026, 16.185 EUR, en 2026, 3/4 des lignes, mai 2026, 16.8 % du livre")).toEqual([]);
   });
+  it("is no date: 'may' and 'march' as words, a day past 31, a number with a unit after a month", () => {
+    expect(extractDates("A P/E of 21 may look rich; troops march 12 miles; 85 may fall")).toEqual([]);
+    expect(extractDates("In May 45 % of revenue, en mars 12 % du CA, Nov 17 € a share, Mar 4.5 %")).toEqual([]);
+    expect(forms("21 May 2026, May 3, 17 mai, March 4, le 3 mars")).toEqual(["*-03-03", "*-03-04", "*-05-03", "*-05-17", "2026-05-21"]);
+  });
   it("matches a date without its year on its day, a dated one exactly", () => {
     const held = datesIn("Résultats semestriels : 17 novembre 2026");
     expect(holdsDate(held, extractDates("le 17 novembre")[0]!)).toBe(true);
