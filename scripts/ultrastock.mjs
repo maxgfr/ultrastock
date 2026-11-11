@@ -24047,6 +24047,7 @@ function xirr(flows) {
   if (flows.length < 2 || !flows.some((f3) => f3.amount > 0) || !flows.some((f3) => f3.amount < 0)) return void 0;
   const t0 = Date.parse(flows[0].date);
   const yrs = flows.map((f3) => (Date.parse(f3.date) - t0) / (365.25 * 864e5));
+  if (!yrs.some((y) => y !== 0)) return void 0;
   const npv = (r3) => flows.reduce((s, f3, i) => s + f3.amount / (1 + r3) ** yrs[i], 0);
   let lo = -0.9999;
   let hi = 10;

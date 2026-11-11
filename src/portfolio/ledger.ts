@@ -489,12 +489,15 @@ export function valueBook(
 
 /**
  * Money-weighted return (XIRR) of dated cash flows, + into the investor's pocket.
- * Found by bisection between −99.99 % and +1 000 % a year; undefined when the flows do not change sign over that range.
+ * Found by bisection between −99.99 % and +1 000 % a year; undefined when the flows do not change sign over that range,
+ * or when no time passes between them.
  */
 export function xirr(flows: ReadonlyArray<{ date: string; amount: number }>): number | undefined {
   if (flows.length < 2 || !flows.some((f) => f.amount > 0) || !flows.some((f) => f.amount < 0)) return undefined;
   const t0 = Date.parse(flows[0]!.date);
   const yrs = flows.map((f) => (Date.parse(f.date) - t0) / (365.25 * 86_400_000));
+  // No time between the flows (a book funded and valued the same day): every rate, or none, solves it — no return a year.
+  if (!yrs.some((y) => y !== 0)) return undefined;
   const npv = (r: number) => flows.reduce((s, f, i) => s + f.amount / (1 + r) ** yrs[i]!, 0);
   let lo = -0.9999;
   let hi = 10;

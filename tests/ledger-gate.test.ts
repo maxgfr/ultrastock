@@ -104,6 +104,19 @@ describe("ledger", () => {
 describe("book performance", () => {
   const limits = defaultProfile("FR", "EUR").limits;
   const NOW = new Date("2026-11-11T12:00:00Z");
+  it("gives no XIRR when no time has passed, rather than −99.99 % a year", () => {
+    // 10 000 € deposited today, the book worth 10 000 € today: flows −10 000 and +10 000 on the same date. Every rate
+    // solves NPV = 0, so there is no money-weighted return to report (the text says "n/a (needs deposits and time)").
+    const txs = [tx({ date: "2026-11-11", type: "deposit", account: "cto", amount: 10_000 })];
+    const p = bookPerformance(txs, buildBook(txs), 10_000, [], limits, NOW, { base: "EUR", rate: () => undefined, notes: [] });
+    expect(p.xirr).toBeUndefined();
+    expect(
+      xirr([
+        { date: "2026-11-11", amount: -100 },
+        { date: "2026-11-11", amount: 90 },
+      ]),
+    ).toBeUndefined();
+  });
   const funded = [
     tx({ date: "2026-09-01", type: "deposit", account: "pea", amount: 10_000 }),
     tx({ date: "2026-09-01", type: "deposit", account: "cto", amount: 5000, currency: "USD" }),
