@@ -1,6 +1,8 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setNetMode } from "../src/core/net.js";
 import { homeDir } from "../src/core/paths.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
 import type { BrokerAdapter, LiveOrder, OrderResult } from "../src/trading/brokers/types.js";
@@ -338,6 +340,21 @@ describe("live preconditions and the single submission", () => {
     expect((loadTicket(t.id) as unknown as { live: { state: string } }).live.state).toBe("cancelled");
     await expect(liveCancel(t.id, v.a)).rejects.toThrow(/already cancelled/);
     expect(v.calls.cancel).toBe(0);
+  });
+
+  it("refuses a live order checked against a replayed fixture", async () => {
+    switchOn();
+    const o = order();
+    const t = createTicket(o);
+    setNetMode({ kind: "fixture", dir: mkdtempSync(join(tmpdir(), "us-replay-")) });
+    try {
+      await recordCheck(t.id, { verdict: "pass", checks: [], fingerprint: orderFingerprint(o), riskReducing: false, notionalBase: 100 });
+    } finally {
+      setNetMode({ kind: "live" });
+    }
+    expect(loadTicket(t.id).check?.replayed).toBe(true);
+    const p = await preconditions({ ticket: loadTicket(t.id), venue: "kraken", env: "test", adapter: fakeVenue().a, venueSym: "SOLEUR", micaAuthorised: true });
+    expect(p.refusals.map((r) => r.code)).toContain("REPLAY");
   });
 
   it("keeps a ticket pending when the venue refuses the cancel", async () => {

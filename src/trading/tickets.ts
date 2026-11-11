@@ -13,6 +13,7 @@ import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readdirSync, rea
 import { join } from "node:path";
 import { writeFileAtomic } from "../engine.js";
 import { withFileLock } from "../core/lock.js";
+import { netMode } from "../core/net.js";
 import { homeDir } from "../core/paths.js";
 import { type GateResult, type Order, orderFingerprint } from "./riskgate.js";
 
@@ -40,7 +41,8 @@ export interface Ticket {
   /** The analysis run and decision behind the ticket, if any. */
   run?: string;
   note?: string;
-  check?: { at: string; verdict: GateResult["verdict"]; fingerprint: string; checks: GateResult["checks"] };
+  /** `replayed`: the gate read a recorded fixture, not the market: good for paper, never for a live order. */
+  check?: { at: string; verdict: GateResult["verdict"]; fingerprint: string; checks: GateResult["checks"]; replayed?: boolean };
   fills: Fill[];
   /** A working limit order lapses after this instant. */
   validUntil?: string;
@@ -144,7 +146,13 @@ export async function recordCheck(id: string, gate: GateResult, now = new Date()
     gate.verdict === "pass" ? "checked" : "blocked",
     gate.verdict === "pass" ? "risk gate passed" : `risk gate blocked: ${blocks.map((b) => b.code).join(", ")}`,
     (x) => {
-      x.check = { at: now.toISOString(), verdict: gate.verdict, fingerprint: gate.fingerprint, checks: gate.checks };
+      x.check = {
+        at: now.toISOString(),
+        verdict: gate.verdict,
+        fingerprint: gate.fingerprint,
+        checks: gate.checks,
+        ...(netMode().kind === "fixture" ? { replayed: true } : {}),
+      };
     },
     now,
   );

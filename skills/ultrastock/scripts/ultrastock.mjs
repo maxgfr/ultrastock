@@ -22838,7 +22838,13 @@ async function recordCheck(id, gate, now = /* @__PURE__ */ new Date()) {
     gate.verdict === "pass" ? "checked" : "blocked",
     gate.verdict === "pass" ? "risk gate passed" : `risk gate blocked: ${blocks.map((b) => b.code).join(", ")}`,
     (x) => {
-      x.check = { at: now.toISOString(), verdict: gate.verdict, fingerprint: gate.fingerprint, checks: gate.checks };
+      x.check = {
+        at: now.toISOString(),
+        verdict: gate.verdict,
+        fingerprint: gate.fingerprint,
+        checks: gate.checks,
+        ...netMode().kind === "fixture" ? { replayed: true } : {}
+      };
     },
     now
   );
@@ -38275,7 +38281,8 @@ async function gateContextFor(order, opts = {}) {
   notes.push(...valued2.missing.map((m) => `missing ${m}: the portfolio total is understated`));
   if (!(valued2.totalBase > 0))
     throw new Error(`the ${bookName} book is empty \u2014 record a deposit first (\`ultrastock portfolio deposit <account> <amount> --book ${bookName}\`)`);
-  recordEquity(bookName, valued2.totalBase, now);
+  if (netMode().kind === "live") recordEquity(bookName, valued2.totalBase, now);
+  else notes.push("replaying a fixture: the equity curve is not written");
   const rate2 = fx.rates[order.currency] ?? (order.currency === profile.baseCurrency ? 1 : Number.NaN);
   if (!Number.isFinite(rate2)) throw new Error(`no ${order.currency}\u2192${profile.baseCurrency} rate: cannot size the order`);
   const pending = pendingBuys(listTickets(), bookName, opts.ticketId);
@@ -45118,6 +45125,8 @@ async function preconditions(p) {
   }
   const refusal2 = executionRefusal(p.ticket, now);
   if (refusal2) no("TICKET", refusal2);
+  if (p.ticket.check?.replayed)
+    no("REPLAY", "the ticket was checked against a replayed fixture, not the market: check it again without --fixture before any live order");
   if (o.orderType !== "limit") no("MARKET_ORDER", "live orders are limit orders only");
   if (o.assetKind === "prediction") {
     if (p.venue !== "kalshi") no("ASSET", "event contracts trade live on Kalshi only in this version");

@@ -164,6 +164,8 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
   }
   const refusal = executionRefusal(p.ticket, now);
   if (refusal) no("TICKET", refusal);
+  if (p.ticket.check?.replayed)
+    no("REPLAY", "the ticket was checked against a replayed fixture, not the market: check it again without --fixture before any live order");
   if (o.orderType !== "limit") no("MARKET_ORDER", "live orders are limit orders only");
   if (o.assetKind === "prediction") {
     // Event contracts: Kalshi only (Polymarket's order signing is not implemented), and only where the jurisdiction allows it.

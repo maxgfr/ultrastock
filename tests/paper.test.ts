@@ -3,6 +3,7 @@ import { clockNow } from "../src/core/net.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
 import { appendTransactions, buildBook, readLedger } from "../src/portfolio/ledger.js";
 import { feeFor, paperSubmit, readiness, walkBook } from "../src/trading/paper.js";
+import { readEquity } from "../src/trading/breaker.js";
 import { gateContextFor } from "../src/trading/context.js";
 import { planTrade } from "../src/trading/plan.js";
 import { riskGate } from "../src/trading/riskgate.js";
@@ -110,6 +111,8 @@ describe("the sector cap", () => {
       expect(riskGate(bigger, (await gateContextFor(bigger, { now, sectorOf })).ctx).checks.find((c) => c.code === "SECTOR_PCT")).toMatchObject({
         status: "block",
       });
+      // A replay never writes the real equity curve the breaker reads.
+      expect(readEquity("paper")).toEqual([]);
       // No sector to be found: said, and not checked.
       const blind = await gateContextFor(order, { now, sectorOf: async () => undefined });
       expect(blind.notes.join(" ")).toMatch(/sector limit .* is not checked/);

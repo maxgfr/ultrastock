@@ -3,7 +3,7 @@
 // tickets (pending orders), the audit (orders today), the equity curve
 // (breaker) and a fresh quote.
 import { mapLimit } from "../engine.js";
-import { clockNow } from "../core/net.js";
+import { clockNow, netMode } from "../core/net.js";
 import { loadProfile, type Profile } from "../core/profile.js";
 import { buildBook, readLedger, valueBook } from "../portfolio/ledger.js";
 import { ecbFx } from "../providers/macro/ecb.js";
@@ -128,7 +128,10 @@ export async function gateContextFor(
   notes.push(...valued.missing.map((m) => `missing ${m}: the portfolio total is understated`));
   if (!(valued.totalBase > 0))
     throw new Error(`the ${bookName} book is empty — record a deposit first (\`ultrastock portfolio deposit <account> <amount> --book ${bookName}\`)`);
-  recordEquity(bookName, valued.totalBase, now);
+  // A replayed fixture is not the market, and its clock is the recording's: the equity curve the breaker reads is the
+  // real book's history, and a point stamped with a replayed (or invented) time would move its reference points.
+  if (netMode().kind === "live") recordEquity(bookName, valued.totalBase, now);
+  else notes.push("replaying a fixture: the equity curve is not written");
   const rate = fx.rates[order.currency] ?? (order.currency === profile.baseCurrency ? 1 : Number.NaN);
   if (!Number.isFinite(rate)) throw new Error(`no ${order.currency}→${profile.baseCurrency} rate: cannot size the order`);
   const pending = pendingBuys(listTickets(), bookName, opts.ticketId);
