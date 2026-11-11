@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
+import { taxCommand } from "../src/commands/tax.js";
 import { toCsv } from "../src/core/csv.js";
 import type { Envelope } from "../src/core/profile.js";
+import { UsageError } from "../src/engine.js";
 import { appendTransactions, transactionId, type Transaction } from "../src/portfolio/ledger.js";
 import { export2086, export8949, exportKoinly } from "../src/tax/export.js";
 import { FranceRegime } from "../src/tax/fr.js";
@@ -612,6 +614,28 @@ describe("United States", () => {
   it("Koinly export", () => {
     const k = exportKoinly([tx({ date: "2025-01-02", type: "buy", account: "cb", currency: "EUR", symbol: "ETHEUR", quantity: 2, price: 1000 })], () => true);
     expect(k.split("\r\n")[1]).toMatch(/^2025-01-02 00:00 UTC,2000,EUR,2,ETH,/);
+  });
+});
+
+describe("tax command inputs", () => {
+  const run = (...argv: string[]) => {
+    const values: Record<string, string> = {};
+    for (let i = 1; i < argv.length; i += 2) values[argv[i]!.replace(/^--/, "")] = argv[i + 1]!;
+    return taxCommand({ command: "tax", positional: [argv[0]!], values, bools: new Set() }, true);
+  };
+  it("refuses a number it cannot read, a household it does not know and a book that holds nothing, before any request", async () => {
+    await appendTransactions([{ date: "2025-01-10", type: "deposit", account: "cto", amount: 1000, currency: "EUR", origin: "manual" }], "inputs");
+    // "85,000" read as a number is NaN, and so were the US tax figures computed from it.
+    await expect(run("report", "--regime", "us", "--year", "2025", "--book", "inputs", "--income", "85,000")).rejects.toThrow(UsageError);
+    await expect(run("report", "--regime", "us", "--year", "2025", "--book", "inputs", "--income", "85,000")).rejects.toThrow(/--income.*85000/);
+    await expect(run("report", "--regime", "us", "--year", "2025", "--book", "inputs", "--income", "-5")).rejects.toThrow(UsageError);
+    // Anything but "couple" meant single: "married" too.
+    await expect(run("report", "--regime", "fr", "--year", "2025", "--book", "inputs", "--household", "married")).rejects.toThrow(
+      /--household is single or couple/,
+    );
+    // A misspelt book read as an empty ledger: a report of nothing, silently.
+    await expect(run("report", "--regime", "fr", "--year", "2025", "--book", "foo")).rejects.toThrow(/no transaction in the "foo" book/);
+    await expect(run("report", "--regime", "fr", "--year", "2025", "--book", "Not A Book")).rejects.toThrow(UsageError);
   });
 });
 

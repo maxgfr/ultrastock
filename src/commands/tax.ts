@@ -31,9 +31,31 @@ function regimeId(args: CommandArgs): string {
   throw new UsageError("no tax residence in the profile: pass --regime fr|us (or run `ultrastock profile init`)");
 }
 
+/** An amount flag: digits and an optional decimal point. "85,000" is refused, not read as NaN (or as 85). */
+function amountFlag(args: CommandArgs, flag: string): number | undefined {
+  const raw = argValue(args, flag);
+  if (raw === undefined) return undefined;
+  if (!/^\d+(?:\.\d+)?$/.test(raw.trim())) throw new UsageError(`--${flag} is an amount ≥ 0 written like 85000 or 85000.50, not "${raw}"`);
+  return Number(raw.trim());
+}
+
+/** The ledger of `--book` (default real). A book named on purpose must hold something: a misspelt name is not an empty year. */
+function bookTransactions(args: CommandArgs): Transaction[] {
+  const named = argValue(args, "book");
+  const book = named ?? "real";
+  if (!/^[a-z0-9-]{1,40}$/.test(book)) throw new UsageError(`--book is a book name (lowercase letters, digits and dashes), not "${book}"`);
+  const txs = readLedger(book);
+  if (named !== undefined && !txs.length) throw new UsageError(`no transaction in the "${book}" book: check its name (real, paper, or one you recorded into)`);
+  return txs;
+}
+
 /** Everything the regime needs, network included (FX, crypto values). */
 async function buildInput(args: CommandArgs, regime: TaxRegime, year: number, opts: { asOf?: string } = {}): Promise<{ input: TaxInput; notes: string[] }> {
-  const txs = readLedger(argValue(args, "book") ?? "real");
+  // The flags are read before anything is fetched: a usage error costs no request.
+  const income = amountFlag(args, "income");
+  const hh = argValue(args, "household");
+  if (hh !== undefined && hh !== "single" && hh !== "couple") throw new UsageError(`--household is single or couple, not "${hh}"`);
+  const txs = bookTransactions(args);
   const envelopes = loadProfile()?.envelopes ?? [];
   const notes: string[] = [];
   const today = day(clockNow().toISOString());
@@ -63,15 +85,13 @@ async function buildInput(args: CommandArgs, regime: TaxRegime, year: number, op
     if (!["single", "joint", "separate", "head"].includes(filing)) throw new UsageError("--filing is single, joint, separate or head");
     input.filingStatus = filing as TaxInput["filingStatus"];
   }
-  const income = argValue(args, "income");
-  if (income !== undefined) input.ordinaryIncome = Number(income);
+  if (income !== undefined) input.ordinaryIncome = income;
   const lm = argValue(args, "lot-method");
   if (lm) {
     if (!["fifo", "hifo", "lifo"].includes(lm)) throw new UsageError("--lot-method is fifo, hifo or lifo");
     input.lotMethod = lm as TaxInput["lotMethod"];
   }
-  const hh = argValue(args, "household");
-  if (hh) input.household = hh === "couple" ? "couple" : "single";
+  if (hh) input.household = hh;
   const cf = argList(args, "carryforward");
   if (cf.length) {
     input.carryforward = {};

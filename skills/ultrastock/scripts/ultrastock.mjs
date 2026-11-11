@@ -54673,8 +54673,25 @@ function regimeId(args) {
   if (res) return res.toLowerCase();
   throw new UsageError("no tax residence in the profile: pass --regime fr|us (or run `ultrastock profile init`)");
 }
+function amountFlag(args, flag) {
+  const raw = argValue(args, flag);
+  if (raw === void 0) return void 0;
+  if (!/^\d+(?:\.\d+)?$/.test(raw.trim())) throw new UsageError(`--${flag} is an amount \u2265 0 written like 85000 or 85000.50, not "${raw}"`);
+  return Number(raw.trim());
+}
+function bookTransactions(args) {
+  const named = argValue(args, "book");
+  const book2 = named ?? "real";
+  if (!/^[a-z0-9-]{1,40}$/.test(book2)) throw new UsageError(`--book is a book name (lowercase letters, digits and dashes), not "${book2}"`);
+  const txs = readLedger(book2);
+  if (named !== void 0 && !txs.length) throw new UsageError(`no transaction in the "${book2}" book: check its name (real, paper, or one you recorded into)`);
+  return txs;
+}
 async function buildInput(args, regime, year, opts = {}) {
-  const txs = readLedger(argValue(args, "book") ?? "real");
+  const income = amountFlag(args, "income");
+  const hh = argValue(args, "household");
+  if (hh !== void 0 && hh !== "single" && hh !== "couple") throw new UsageError(`--household is single or couple, not "${hh}"`);
+  const txs = bookTransactions(args);
   const envelopes = loadProfile()?.envelopes ?? [];
   const notes = [];
   const today = day3(clockNow().toISOString());
@@ -54699,15 +54716,13 @@ async function buildInput(args, regime, year, opts = {}) {
     if (!["single", "joint", "separate", "head"].includes(filing)) throw new UsageError("--filing is single, joint, separate or head");
     input.filingStatus = filing;
   }
-  const income = argValue(args, "income");
-  if (income !== void 0) input.ordinaryIncome = Number(income);
+  if (income !== void 0) input.ordinaryIncome = income;
   const lm = argValue(args, "lot-method");
   if (lm) {
     if (!["fifo", "hifo", "lifo"].includes(lm)) throw new UsageError("--lot-method is fifo, hifo or lifo");
     input.lotMethod = lm;
   }
-  const hh = argValue(args, "household");
-  if (hh) input.household = hh === "couple" ? "couple" : "single";
+  if (hh) input.household = hh;
   const cf = argList(args, "carryforward");
   if (cf.length) {
     input.carryforward = {};
