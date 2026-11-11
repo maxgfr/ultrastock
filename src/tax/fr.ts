@@ -2,7 +2,8 @@
 //
 // - Securities on an ordinary account (CTO): the gain is the net disposal
 //   price minus the weighted average cost (PMP) of the same security held by
-//   the household, fees included (CGI art. 150-0 D, BOI-RPPM-PVBMI-20-10-20-40).
+//   the household, fees included (CGI art. 150-0 D, BOI-RPPM-PVBMI-20-10-20-40);
+//   a security is its ISIN, whatever symbol each account books it under.
 //   Net losses carry forward 10 years against securities gains only.
 // - Taxed at the PFU — 12.8 % income tax plus the prélèvements sociaux — or,
 //   on a household-wide option (2OP), at the progressive scale with the 40 %
@@ -49,8 +50,8 @@ import {
 } from "./regime.js";
 
 interface FrState {
-  /** Household PMP per security over ordinary accounts. */
-  securities: Map<string, { quantity: number; cost: number; firstBuy?: string; currency: string }>;
+  /** Household PMP per security (its ISIN when known, else its symbol) over ordinary accounts, with the symbols it was booked under. */
+  securities: Map<string, { quantity: number; cost: number; firstBuy?: string; currency: string; symbols: Set<string> }>;
   transfers: Map<string, number>;
   /** `unknownSince`: the first disposal whose share of the acquisition price could not be computed (no portfolio value). */
   crypto: { acquisitions: number; fractions: number; holdings: Map<string, number>; unknownSince?: string };
@@ -88,6 +89,10 @@ export class FranceRegime extends TaxRegime {
     const inYear = (t: Transaction) => yearOf(t.date) === input.year;
     const pfuIr = this.param("pfu.ir");
     const ps = this.param("ps.capital");
+    // The same security may be booked under several symbols (a ticker at one broker, its ISIN at another): the pool is
+    // the ISIN's, learnt from every row that carries both, so a row without one still finds it.
+    const isinOf = new Map<string, string>();
+    for (const t of input.transactions) if (t.symbol && t.isin) isinOf.set(t.symbol.toUpperCase(), t.isin.toUpperCase());
     for (const t of this.history(input)) {
       const env = envelopeOf(t.account, input.envelopes, t.symbol);
       if (env.guessed && !guessed.has(t.account)) {
@@ -134,12 +139,14 @@ export class FranceRegime extends TaxRegime {
         continue;
       }
       const sym = t.symbol ?? "";
-      const pos = st.securities.get(sym) ?? { quantity: 0, cost: 0, currency: t.currency };
+      const key = t.isin?.toUpperCase() ?? isinOf.get(sym.toUpperCase()) ?? sym;
+      const pos = st.securities.get(key) ?? { quantity: 0, cost: 0, currency: t.currency, symbols: new Set<string>() };
+      if (sym) pos.symbols.add(sym);
       if (t.type === "buy") {
         pos.cost += this.toBase(t, gross(t), input) + fee;
         pos.quantity += t.quantity ?? 0;
         pos.firstBuy ??= day(t.date);
-        st.securities.set(sym, pos);
+        st.securities.set(key, pos);
       } else if (t.type === "sell") {
         const q = t.quantity ?? 0;
         if (pos.quantity <= 1e-12) {
@@ -169,25 +176,25 @@ export class FranceRegime extends TaxRegime {
                 ? ["held since before 2018: the progressive-scale option may allow the holding-period allowance (not computed)"]
                 : [],
           });
-        if (pos.quantity <= 1e-12) st.securities.delete(sym);
+        if (pos.quantity <= 1e-12) st.securities.delete(key);
       } else if (t.type === "split") {
         pos.quantity *= t.quantity ?? 1;
-        st.securities.set(sym, pos);
+        st.securities.set(key, pos);
       } else if (t.type === "transfer-out") {
         const qty = Math.min(t.quantity ?? 0, pos.quantity);
         const cost = pos.quantity ? (pos.cost / pos.quantity) * qty : 0;
-        st.transfers.set(sym, (st.transfers.get(sym) ?? 0) + cost);
+        st.transfers.set(key, (st.transfers.get(key) ?? 0) + cost);
         pos.cost -= cost;
         pos.quantity -= qty;
       } else if (t.type === "transfer-in") {
-        const carried = st.transfers.get(sym);
+        const carried = st.transfers.get(key);
         pos.cost += t.price !== undefined ? this.toBase(t, gross(t), input) : (carried ?? 0);
         if (t.price === undefined && carried === undefined)
           st.warnings.push(`${sym} transferred in on ${day(t.date)} without a cost: give the original purchase price`);
-        st.transfers.delete(sym);
+        st.transfers.delete(key);
         pos.quantity += t.quantity ?? 0;
         pos.firstBuy ??= day(t.date);
-        st.securities.set(sym, pos);
+        st.securities.set(key, pos);
       } else if ((t.type === "dividend" || t.type === "interest") && inYear(t)) {
         const amount = this.toBase(t, t.amount ?? 0, input);
         const foreign = brokerIsForeign(env.envelope?.broker);
@@ -675,10 +682,12 @@ export class FranceRegime extends TaxRegime {
     const rate = this.param("pfu.ir") + this.param("ps.capital");
     let room = Math.max(0, realized);
     const out: HarvestCandidate[] = [];
-    const rows = [...st.securities.entries()]
-      .map(([symbol, p]) => {
-        const px = prices[symbol];
-        if (px === undefined || p.quantity <= 0) return undefined;
+    const rows = [...st.securities.values()]
+      .map((p) => {
+        // Priced under the first of its symbols the caller has a price for.
+        const symbol = [...p.symbols].find((s) => prices[s] !== undefined);
+        const px = symbol === undefined ? undefined : prices[symbol];
+        if (symbol === undefined || px === undefined || p.quantity <= 0) return undefined;
         const fx = p.currency === "EUR" ? 1 : input.fx(p.currency, asOf);
         if (fx === undefined) return undefined;
         const value = px * fx * p.quantity;

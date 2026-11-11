@@ -90,6 +90,25 @@ describe("France", () => {
     expect(fig(s, "pfu.incomeTax")).toBe(8.26);
   });
 
+  it("pools the cost by security (ISIN), whatever symbol each account books it under", () => {
+    const MC = "FR0000121014";
+    const txs = [
+      tx({ date: "2025-01-10", type: "buy", account: "cto", symbol: "MC.PA", isin: MC, quantity: 10, price: 100 }),
+      // The same share at IBKR, kept as its ISIN when the listing could not be placed.
+      tx({ date: "2025-02-10", type: "buy", account: "ibkr", symbol: MC, isin: MC, quantity: 10, price: 120 }),
+      // A row typed by hand without the ISIN: its symbol was seen with one.
+      tx({ date: "2025-03-10", type: "sell", account: "cto", symbol: "MC.PA", quantity: 20, price: 130 }),
+      // Another security stays its own pool.
+      tx({ date: "2025-01-10", type: "buy", account: "cto", symbol: "AI.PA", isin: "FR0000120073", quantity: 1, price: 150 }),
+    ];
+    const s = new FranceRegime(2025).annualSummary(input(txs, [CTO, IBKR]));
+    const d = s.events.filter((e) => e.kind === "securities-disposal");
+    expect(d.map((e) => [e.symbol, e.cost, e.gain])).toEqual([["MC.PA", 2200, 400]]);
+    expect(s.warnings.join(" ")).not.toMatch(/no cost|no recorded purchase/);
+    const h = new FranceRegime(2025).harvestCandidates(input(txs, [CTO, IBKR]), { "AI.PA": 140 }, "2025-12-01");
+    expect(h.map((c) => [c.symbol, c.unrealized])).toEqual([["AI.PA", -10]]);
+  });
+
   it("a net loss goes to 3VH and is carried forward with its year", () => {
     const txs = [
       tx({ date: "2025-01-10", type: "buy", account: "cto", symbol: "AI.PA", quantity: 10, price: 200 }),

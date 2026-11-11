@@ -52693,6 +52693,8 @@ var FranceRegime = class extends TaxRegime {
     const inYear = (t) => yearOf2(t.date) === input.year;
     const pfuIr = this.param("pfu.ir");
     const ps = this.param("ps.capital");
+    const isinOf = /* @__PURE__ */ new Map();
+    for (const t of input.transactions) if (t.symbol && t.isin) isinOf.set(t.symbol.toUpperCase(), t.isin.toUpperCase());
     for (const t of this.history(input)) {
       const env2 = envelopeOf2(t.account, input.envelopes, t.symbol);
       if (env2.guessed && !guessed.has(t.account)) {
@@ -52735,12 +52737,14 @@ var FranceRegime = class extends TaxRegime {
         continue;
       }
       const sym3 = t.symbol ?? "";
-      const pos2 = st.securities.get(sym3) ?? { quantity: 0, cost: 0, currency: t.currency };
+      const key = t.isin?.toUpperCase() ?? isinOf.get(sym3.toUpperCase()) ?? sym3;
+      const pos2 = st.securities.get(key) ?? { quantity: 0, cost: 0, currency: t.currency, symbols: /* @__PURE__ */ new Set() };
+      if (sym3) pos2.symbols.add(sym3);
       if (t.type === "buy") {
         pos2.cost += this.toBase(t, gross2(t), input) + fee;
         pos2.quantity += t.quantity ?? 0;
         pos2.firstBuy ??= day3(t.date);
-        st.securities.set(sym3, pos2);
+        st.securities.set(key, pos2);
       } else if (t.type === "sell") {
         const q = t.quantity ?? 0;
         if (pos2.quantity <= 1e-12) {
@@ -52767,25 +52771,25 @@ var FranceRegime = class extends TaxRegime {
             formula: `(${q} \xD7 ${t.price} ${t.currency} \u2212 fees ${round22(fee)} \u20AC) \u2212 PMP ${pmp.toFixed(4)} \u20AC \xD7 ${qty}`,
             notes: pos2.firstBuy && pos2.firstBuy < "2018-01-01" ? ["held since before 2018: the progressive-scale option may allow the holding-period allowance (not computed)"] : []
           });
-        if (pos2.quantity <= 1e-12) st.securities.delete(sym3);
+        if (pos2.quantity <= 1e-12) st.securities.delete(key);
       } else if (t.type === "split") {
         pos2.quantity *= t.quantity ?? 1;
-        st.securities.set(sym3, pos2);
+        st.securities.set(key, pos2);
       } else if (t.type === "transfer-out") {
         const qty = Math.min(t.quantity ?? 0, pos2.quantity);
         const cost = pos2.quantity ? pos2.cost / pos2.quantity * qty : 0;
-        st.transfers.set(sym3, (st.transfers.get(sym3) ?? 0) + cost);
+        st.transfers.set(key, (st.transfers.get(key) ?? 0) + cost);
         pos2.cost -= cost;
         pos2.quantity -= qty;
       } else if (t.type === "transfer-in") {
-        const carried = st.transfers.get(sym3);
+        const carried = st.transfers.get(key);
         pos2.cost += t.price !== void 0 ? this.toBase(t, gross2(t), input) : carried ?? 0;
         if (t.price === void 0 && carried === void 0)
           st.warnings.push(`${sym3} transferred in on ${day3(t.date)} without a cost: give the original purchase price`);
-        st.transfers.delete(sym3);
+        st.transfers.delete(key);
         pos2.quantity += t.quantity ?? 0;
         pos2.firstBuy ??= day3(t.date);
-        st.securities.set(sym3, pos2);
+        st.securities.set(key, pos2);
       } else if ((t.type === "dividend" || t.type === "interest") && inYear(t)) {
         const amount = this.toBase(t, t.amount ?? 0, input);
         const foreign = brokerIsForeign(env2.envelope?.broker);
@@ -53220,9 +53224,10 @@ var FranceRegime = class extends TaxRegime {
     const rate2 = this.param("pfu.ir") + this.param("ps.capital");
     let room = Math.max(0, realized);
     const out = [];
-    const rows = [...st.securities.entries()].map(([symbol, p]) => {
-      const px = prices[symbol];
-      if (px === void 0 || p.quantity <= 0) return void 0;
+    const rows = [...st.securities.values()].map((p) => {
+      const symbol = [...p.symbols].find((s) => prices[s] !== void 0);
+      const px = symbol === void 0 ? void 0 : prices[symbol];
+      if (symbol === void 0 || px === void 0 || p.quantity <= 0) return void 0;
       const fx = p.currency === "EUR" ? 1 : input.fx(p.currency, asOf);
       if (fx === void 0) return void 0;
       const value3 = px * fx * p.quantity;
