@@ -53306,6 +53306,34 @@ var UsRegime = class extends TaxRegime {
     const window = this.param("washSale.windowDays");
     const inYear = (t) => yearOf2(t.date) === input.year;
     let stableNoted = false;
+    const inTransit = [];
+    let unmatched = [];
+    const carry = (into) => {
+      let need = into.quantity;
+      const pieces = [];
+      for (const s of inTransit) {
+        if (need <= 1e-12) break;
+        if (s.symbol !== into.symbol || s.account === into.account || s.qty <= 1e-12) continue;
+        const q = Math.min(need, s.qty);
+        s.qty -= q;
+        need -= q;
+        pieces.push({ from: s.lot, qty: q });
+      }
+      if (!pieces.length) return false;
+      const rest = need > 1e-12 ? { ...into, quantity: need, remaining: need } : void 0;
+      pieces.forEach(({ from, qty }, i) => {
+        const piece = i === 0 ? into : { ...into, id: lots.length };
+        Object.assign(piece, { quantity: qty, remaining: qty, basis: from.basis, acquired: from.acquired, bought: from.bought, replaced: qty });
+        if (i > 0) lots.push(piece);
+        active2.add(piece);
+      });
+      if (rest) {
+        rest.id = lots.length;
+        lots.push(rest);
+        active2.add(rest);
+      }
+      return true;
+    };
     for (const t of history) {
       const env2 = envelopeOf2(t.account, input.envelopes, t.symbol);
       const sym3 = (t.symbol ?? "").toUpperCase();
@@ -53313,6 +53341,7 @@ var UsRegime = class extends TaxRegime {
       const lot = byTx.get(t);
       if (lot) {
         active2.add(lot);
+        if (t.type === "transfer-in" && t.price === void 0 && !carry(lot)) unmatched.push(lot);
         continue;
       }
       if (t.type === "split") {
@@ -53351,7 +53380,12 @@ var UsRegime = class extends TaxRegime {
           warnings.push(
             `${sym3} (${t.account}) disposed ${t.quantity} on ${day3(t.date)} with ${round22((t.quantity ?? 0) - left)} in recorded lots: the rest has no basis`
           );
-        if (t.type === "transfer-out" || SHELTERED.has(env2.type)) continue;
+        if (t.type === "transfer-out") {
+          for (const c of consumed) inTransit.push({ account: t.account, symbol: sym3, lot: c.lot, qty: c.qty });
+          unmatched = unmatched.filter((l) => !(l.bought === day3(t.date) && l.remaining === l.quantity && carry(l)));
+          continue;
+        }
+        if (SHELTERED.has(env2.type)) continue;
         if (left > 1e-9)
           consumed.push({
             lot: {

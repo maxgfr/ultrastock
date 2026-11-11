@@ -5,6 +5,9 @@
 //   the buy fee, proceeds are net of the sell fee (Form 8949 columns d/e).
 // - Long-term when the asset is held more than one year (sold after the first
 //   anniversary of the acquisition), short-term otherwise.
+// - A transfer between the user's own accounts is not a disposal: a
+//   transfer-in without a price takes the lots (basis and acquisition date)
+//   that a transfer-out of the same symbol from another account gave up.
 // - Wash sales (§1091, stocks and securities): a loss is disallowed when
 //   substantially identical shares are bought within 30 days before or after
 //   the sale — in any account, an IRA included (then permanently) — and added
@@ -122,6 +125,37 @@ export class UsRegime extends TaxRegime {
     const window = this.param("washSale.windowDays");
     const inYear = (t: Transaction) => yearOf(t.date) === input.year;
     let stableNoted = false;
+    // Shares moved between the user's own accounts keep their basis and holding period: what a transfer-out takes from
+    // its lots waits here for a transfer-in (without a price) of the same symbol into another account.
+    const inTransit: Array<{ account: string; symbol: string; lot: UsLot; qty: number }> = [];
+    let unmatched: UsLot[] = [];
+    const carry = (into: UsLot): boolean => {
+      let need = into.quantity;
+      const pieces: Array<{ from: UsLot; qty: number }> = [];
+      for (const s of inTransit) {
+        if (need <= 1e-12) break;
+        if (s.symbol !== into.symbol || s.account === into.account || s.qty <= 1e-12) continue;
+        const q = Math.min(need, s.qty);
+        s.qty -= q;
+        need -= q;
+        pieces.push({ from: s.lot, qty: q });
+      }
+      if (!pieces.length) return false;
+      const rest = need > 1e-12 ? { ...into, quantity: need, remaining: need } : undefined;
+      pieces.forEach(({ from, qty }, i) => {
+        // A carried lot is not a new purchase: it is never taken again as a wash-sale replacement.
+        const piece = i === 0 ? into : { ...into, id: lots.length };
+        Object.assign(piece, { quantity: qty, remaining: qty, basis: from.basis, acquired: from.acquired, bought: from.bought, replaced: qty });
+        if (i > 0) lots.push(piece);
+        active.add(piece);
+      });
+      if (rest) {
+        rest.id = lots.length;
+        lots.push(rest);
+        active.add(rest);
+      }
+      return true;
+    };
     for (const t of history) {
       const env = envelopeOf(t.account, input.envelopes, t.symbol);
       const sym = (t.symbol ?? "").toUpperCase();
@@ -129,6 +163,7 @@ export class UsRegime extends TaxRegime {
       const lot = byTx.get(t);
       if (lot) {
         active.add(lot);
+        if (t.type === "transfer-in" && t.price === undefined && !carry(lot)) unmatched.push(lot);
         continue;
       }
       if (t.type === "split") {
@@ -168,7 +203,13 @@ export class UsRegime extends TaxRegime {
           warnings.push(
             `${sym} (${t.account}) disposed ${t.quantity} on ${day(t.date)} with ${round2((t.quantity ?? 0) - left)} in recorded lots: the rest has no basis`,
           );
-        if (t.type === "transfer-out" || SHELTERED.has(env.type)) continue;
+        if (t.type === "transfer-out") {
+          for (const c of consumed) inTransit.push({ account: t.account, symbol: sym, lot: c.lot, qty: c.qty });
+          // A statement may list the day's transfer-in before its transfer-out: an untouched one of that day still takes it.
+          unmatched = unmatched.filter((l) => !(l.bought === day(t.date) && l.remaining === l.quantity && carry(l)));
+          continue;
+        }
+        if (SHELTERED.has(env.type)) continue;
         if (left > 1e-9)
           consumed.push({
             lot: {

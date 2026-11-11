@@ -378,6 +378,32 @@ describe("United States", () => {
     expect(fr.find((e) => e.kind === "crypto-disposal")?.gain).toBeCloseTo(100, 6);
   });
 
+  it("a transfer between own accounts keeps the lots' basis and holding period", () => {
+    const FIDELITY: Envelope = { id: "fidelity", type: "TAXABLE", broker: "Fidelity", currency: "USD" };
+    const txs = [
+      u({ date: "2022-03-02", type: "buy", symbol: "AAPL", quantity: 10, price: 150 }),
+      u({ date: "2025-06-01", type: "transfer-out", symbol: "AAPL", quantity: 10 }),
+      tx({ date: "2025-06-01", type: "transfer-in", account: "fidelity", currency: "USD", symbol: "AAPL", quantity: 10 }),
+      tx({ date: "2025-12-01", type: "sell", account: "fidelity", currency: "USD", symbol: "AAPL", quantity: 10, price: 190 }),
+    ];
+    const run = (rows: Transaction[]) => new UsRegime(2025).realize(input(rows, [BROKER, FIDELITY])).filter((e) => e.kind === "securities-disposal");
+    expect(run(txs).map((e) => [e.account, e.cost, e.gain, e.term, e.acquired])).toEqual([["fidelity", 1500, 400, "long", "2022-03-02"]]);
+    // Listed in the other order on the statement, the day's two legs still meet.
+    expect(run([txs[0]!, txs[2]!, txs[1]!, txs[3]!]).map((e) => [e.gain, e.term])).toEqual([[400, "long"]]);
+    // Moved in two lots: each keeps its own date and basis.
+    const two = [
+      u({ date: "2022-03-02", type: "buy", symbol: "AAPL", quantity: 4, price: 150 }),
+      u({ date: "2025-05-02", type: "buy", symbol: "AAPL", quantity: 6, price: 170 }),
+      ...txs.slice(1),
+    ];
+    expect(run(two).map((e) => [e.quantity, e.cost, e.term])).toEqual([
+      [4, 600, "long"],
+      [6, 1020, "short"],
+    ]);
+    // Nothing transferred out: as before, no basis and a holding period from the transfer.
+    expect(run(txs.slice(2)).map((e) => [e.cost, e.gain, e.term])).toEqual([[0, 1900, "short"]]);
+  });
+
   it("judges a dividend's holding period on the shares still held, not on lots sold long ago", () => {
     const txs = [
       u({ date: "2020-01-10", type: "buy", symbol: "KO", quantity: 10, price: 50 }),
