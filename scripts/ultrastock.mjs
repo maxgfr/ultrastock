@@ -23595,6 +23595,14 @@ function buildBook(txs) {
     }
     return p;
   };
+  const inTransit = [];
+  const waiting = [];
+  const take = (m, account, symbol, need) => {
+    if (m.symbol !== symbol || m.account === account || m.quantity <= 1e-12 || need <= 1e-12) return { qty: 0, cost: 0 };
+    const qty = Math.min(need, m.quantity);
+    m.quantity -= qty;
+    return { qty, cost: qty * m.cost };
+  };
   const sorted = inReplayOrder(txs);
   for (const t of sorted) {
     switch (t.type) {
@@ -23613,10 +23621,24 @@ function buildBook(txs) {
       case "transfer-in": {
         const p = pos2(t);
         const q = t.quantity;
-        const costTotal = t.type === "buy" ? q * t.price + (t.fee ?? 0) : q * (t.price ?? p.averageCost);
+        let costTotal = t.type === "buy" ? q * t.price + (t.fee ?? 0) : q * (t.price ?? p.averageCost);
+        let left = 0;
+        if (t.type === "transfer-in" && t.price === void 0) {
+          const fallback = p.averageCost;
+          left = q;
+          costTotal = 0;
+          for (const m of inTransit) {
+            const got = take(m, t.account, t.symbol, left);
+            left -= got.qty;
+            costTotal += got.cost;
+          }
+          costTotal += left * fallback;
+        }
+        const lot = { date: t.date, quantity: q, costPerUnit: costTotal / q };
+        if (left > 1e-12) waiting.push({ t, p, lot, left, fallback: p.averageCost });
         p.averageCost = (p.averageCost * p.quantity + costTotal) / (p.quantity + q);
         p.quantity += q;
-        p.lots.push({ date: t.date, quantity: q, costPerUnit: costTotal / q });
+        p.lots.push(lot);
         p.firstBuy ??= t.date;
         if (t.type === "buy") addCash(t.account, t.currency, tradeCash(t));
         break;
@@ -23629,12 +23651,25 @@ function buildBook(txs) {
           throw new Error(`${t.date}: ${t.type} of ${q} ${t.symbol} in ${t.account} exceeds the ${p.quantity} held \u2014 the ledger is missing a buy`);
         const proceedsPerUnit = t.type === "sell" ? (q * t.price - (t.fee ?? 0)) / q : p.averageCost;
         if (t.type === "sell") p.realizedPmp += (proceedsPerUnit - p.averageCost) * q;
+        else {
+          const m = { account: t.account, symbol: t.symbol, quantity: q, cost: p.averageCost };
+          inTransit.push(m);
+          for (const w of waiting) {
+            if (w.t.date.slice(0, 10) !== t.date.slice(0, 10) || w.lot.quantity !== w.t.quantity || !w.p.lots.includes(w.lot)) continue;
+            const got = take(m, w.t.account, w.t.symbol, w.left);
+            if (!got.qty) continue;
+            const delta = got.cost - got.qty * w.fallback;
+            w.left -= got.qty;
+            w.lot.costPerUnit += delta / w.lot.quantity;
+            w.p.averageCost += delta / w.p.quantity;
+          }
+        }
         while (q > 1e-12 && p.lots.length) {
           const lot = p.lots[0];
-          const take = Math.min(q, lot.quantity);
-          if (t.type === "sell") p.realizedFifo += (proceedsPerUnit - lot.costPerUnit) * take;
-          lot.quantity -= take;
-          q -= take;
+          const take2 = Math.min(q, lot.quantity);
+          if (t.type === "sell") p.realizedFifo += (proceedsPerUnit - lot.costPerUnit) * take2;
+          lot.quantity -= take2;
+          q -= take2;
           if (lot.quantity <= 1e-12) p.lots.shift();
         }
         p.quantity -= t.quantity;

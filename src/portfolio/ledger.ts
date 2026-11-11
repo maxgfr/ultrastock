@@ -285,6 +285,19 @@ export function buildBook(txs: readonly Transaction[]): Book {
     }
     return p;
   };
+  // Units moved out of an account, at the average cost they left with: a transfer-in without a price of the same
+  // symbol into another account takes that cost over (a move between the user's own accounts).
+  type Move = { account: string; symbol: string; quantity: number; cost: number };
+  const inTransit: Move[] = [];
+  // Arrivals that found nothing in transit: a statement may list the day's transfer-in before its transfer-out.
+  const waiting: Array<{ t: Transaction; p: Position; lot: Lot; left: number; fallback: number }> = [];
+  /** Up to `need` units of `symbol` for `account` from the move `m` (out of another account): the units and their cost. */
+  const take = (m: Move, account: string, symbol: string, need: number): { qty: number; cost: number } => {
+    if (m.symbol !== symbol || m.account === account || m.quantity <= 1e-12 || need <= 1e-12) return { qty: 0, cost: 0 };
+    const qty = Math.min(need, m.quantity);
+    m.quantity -= qty;
+    return { qty, cost: qty * m.cost };
+  };
   const sorted = inReplayOrder(txs);
   for (const t of sorted) {
     switch (t.type) {
@@ -303,10 +316,25 @@ export function buildBook(txs: readonly Transaction[]): Book {
       case "transfer-in": {
         const p = pos(t);
         const q = t.quantity!;
-        const costTotal = t.type === "buy" ? q * t.price! + (t.fee ?? 0) : q * (t.price ?? p.averageCost);
+        let costTotal = t.type === "buy" ? q * t.price! + (t.fee ?? 0) : q * (t.price ?? p.averageCost);
+        let left = 0;
+        if (t.type === "transfer-in" && t.price === undefined) {
+          // Units of the user's own, moved from another account: they keep the average cost they left with.
+          const fallback = p.averageCost;
+          left = q;
+          costTotal = 0;
+          for (const m of inTransit) {
+            const got = take(m, t.account, t.symbol!, left);
+            left -= got.qty;
+            costTotal += got.cost;
+          }
+          costTotal += left * fallback;
+        }
+        const lot = { date: t.date, quantity: q, costPerUnit: costTotal / q };
+        if (left > 1e-12) waiting.push({ t, p, lot, left, fallback: p.averageCost });
         p.averageCost = (p.averageCost * p.quantity + costTotal) / (p.quantity + q);
         p.quantity += q;
-        p.lots.push({ date: t.date, quantity: q, costPerUnit: costTotal / q });
+        p.lots.push(lot);
         p.firstBuy ??= t.date;
         if (t.type === "buy") addCash(t.account, t.currency, tradeCash(t));
         break;
@@ -319,6 +347,20 @@ export function buildBook(txs: readonly Transaction[]): Book {
           throw new Error(`${t.date}: ${t.type} of ${q} ${t.symbol} in ${t.account} exceeds the ${p.quantity} held — the ledger is missing a buy`);
         const proceedsPerUnit = t.type === "sell" ? (q * t.price! - (t.fee ?? 0)) / q : p.averageCost;
         if (t.type === "sell") p.realizedPmp += (proceedsPerUnit - p.averageCost) * q;
+        else {
+          const m = { account: t.account, symbol: t.symbol!, quantity: q, cost: p.averageCost };
+          inTransit.push(m);
+          // An arrival of the same day, still untouched, takes its cost now.
+          for (const w of waiting) {
+            if (w.t.date.slice(0, 10) !== t.date.slice(0, 10) || w.lot.quantity !== w.t.quantity || !w.p.lots.includes(w.lot)) continue;
+            const got = take(m, w.t.account, w.t.symbol!, w.left);
+            if (!got.qty) continue;
+            const delta = got.cost - got.qty * w.fallback;
+            w.left -= got.qty;
+            w.lot.costPerUnit += delta / w.lot.quantity;
+            w.p.averageCost += delta / w.p.quantity;
+          }
+        }
         // FIFO: consume the oldest lots first.
         while (q > 1e-12 && p.lots.length) {
           const lot = p.lots[0]!;

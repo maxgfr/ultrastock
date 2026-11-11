@@ -60,6 +60,20 @@ describe("ledger", () => {
     const buy = tx({ date: "2026-04-02T10:00:00", type: "buy", account: "x", symbol: "NVDA", quantity: 1, price: 50, currency: "USD" });
     expect(buildBook([buy, manual]).transactions).toEqual([manual, buy]);
   });
+  it("a transfer-in without a price carries the average cost of the transfer-out it matches", () => {
+    const rows = [
+      tx({ date: "2026-01-05", type: "buy", account: "cto", symbol: "MC.PA", quantity: 10, price: 500, fee: 10 }),
+      tx({ date: "2026-03-02", type: "transfer-out", account: "cto", symbol: "MC.PA", quantity: 10 }),
+      tx({ date: "2026-03-02", type: "transfer-in", account: "pea", symbol: "MC.PA", quantity: 10 }),
+    ];
+    const moved = (b: ReturnType<typeof buildBook>) => b.positions.find((p) => p.account === "pea")!;
+    expect(moved(buildBook(rows))).toMatchObject({ quantity: 10, averageCost: 501, lots: [{ quantity: 10, costPerUnit: 501 }] });
+    // The statement lists the day's arrival first: the same.
+    expect(moved(buildBook([rows[0]!, rows[2]!, rows[1]!])).averageCost).toBe(501);
+    // A price given wins; no transfer-out to match: as before, the position's own running cost (0 for a new one).
+    expect(moved(buildBook([rows[0]!, rows[1]!, { ...rows[2]!, price: 520 }])).averageCost).toBe(520);
+    expect(moved(buildBook([rows[2]!])).averageCost).toBe(0);
+  });
   it("appends under a lock, skips duplicates, and refuses malformed transactions", async () => {
     const t = { date: "2026-01-05", type: "buy" as const, account: "pea", symbol: "CW8.PA", quantity: 2, price: 500, currency: "EUR", origin: "import:test" };
     expect((await appendTransactions([t])).added).toHaveLength(1);
