@@ -191,6 +191,7 @@ export async function gateContextFor(
   // The sector cap: what the book (and the buys still to be paid) already holds in the order's sector, shares only.
   let sector = order.sector;
   let sectorValueBase: number | undefined;
+  let sectorUnknown: string[] = [];
   if (order.assetKind === "equity" && order.side === "buy") {
     const sectorOf = opts.sectorOf ?? tradingviewSector;
     const ask = async (s: string) => {
@@ -201,8 +202,18 @@ export async function gateContextFor(
     if (!sector) notes.push(`${order.symbol}: no sector found — the sector limit (${profile.limits.maxSectorPct} %) is not checked for this order`);
     else {
       const others = [...new Set([...held.map((p) => p.symbol), ...Object.keys(pendingBuysBase)])].filter((s) => s !== order.symbol && kinds[s] !== "crypto");
-      const sectors = await mapLimit(others, 4, (s) => ask(s).catch(() => undefined));
-      const unknown = others.filter((_, i) => !sectors[i]);
+      // A share with no sector to be found (the lookup failed, or found none) may be in this one; a fund or a coin is not
+      // a share and has none to find.
+      const sectors = await mapLimit(others, 4, async (s): Promise<string | null | undefined> => {
+        try {
+          const i = instruments[s] ?? (await resolveSymbol(s)).instrument;
+          return i?.kind === "equity" ? await sectorOf(s, i) : null;
+        } catch {
+          return undefined;
+        }
+      });
+      const unknown = others.filter((_, i) => sectors[i] === undefined);
+      sectorUnknown = unknown;
       const same = new Set([order.symbol, ...others.filter((_, i) => sectors[i] === sector)]);
       sectorValueBase =
         valued.positions.filter((v) => same.has(v.symbol)).reduce((t, v) => t + (v.valueBase ?? 0), 0) +
@@ -223,6 +234,7 @@ export async function gateContextFor(
     heldQuantity: held.find((p) => p.symbol === order.symbol && p.account === order.account)?.quantity ?? 0,
     ...(sector ? { sector } : {}),
     ...(sectorValueBase !== undefined ? { sectorValueBase } : {}),
+    ...(sectorUnknown.length ? { sectorUnknown } : {}),
     cryptoValueBase: valued.positions.filter((v) => kinds[v.symbol] === "crypto").reduce((s, v) => s + (v.valueBase ?? 0), 0),
     openSymbols: [...new Set([...held.map((p) => p.symbol), ...Object.keys(pendingBuysBase)])],
     pendingBuysBase,

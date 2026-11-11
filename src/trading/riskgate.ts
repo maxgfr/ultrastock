@@ -48,6 +48,8 @@ export interface GateContext {
   sector?: string;
   /** Value in base of the open positions and pending buys in the order's sector. */
   sectorValueBase?: number;
+  /** Other held or pending symbols whose sector could not be looked up: left out of `sectorValueBase`. */
+  sectorUnknown?: string[];
   cryptoValueBase: number;
   /** Symbols currently held, plus pending buys. */
   openSymbols: string[];
@@ -196,7 +198,17 @@ export function riskGate(o: Order, c: GateContext): GateResult {
     const sector = o.sector ?? c.sector;
     if (c.sectorValueBase !== undefined && sector) {
       const secPct = ((c.sectorValueBase + notionalBase) / c.equityBase) * 100;
-      add("SECTOR_PCT", secPct > L.maxSectorPct + 1e-9 ? "block" : "pass", `${sector} after the order ${pct(secPct)} (limit ${pct(L.maxSectorPct)})`);
+      const unknown = c.sectorUnknown ?? [];
+      if (secPct > L.maxSectorPct + 1e-9) add("SECTOR_PCT", "block", `${sector} after the order ${pct(secPct)} (limit ${pct(L.maxSectorPct)})`);
+      // What could not be looked up may be in the same sector: the limit was measured on part of the book only — the
+      // same treatment as the order's own unknown sector.
+      else if (unknown.length)
+        add(
+          "SECTOR_PCT",
+          o.venue === "paper" ? "warn" : "block",
+          `${sector} after the order ${pct(secPct)} at least (limit ${pct(L.maxSectorPct)}): the sector of ${unknown.join(", ")} could not be found, so the limit is not checked on the whole book${o.venue === "paper" ? "" : " — check the ticket again online before a live order"}`,
+        );
+      else add("SECTOR_PCT", "pass", `${sector} after the order ${pct(secPct)} (limit ${pct(L.maxSectorPct)})`);
     } else if (o.assetKind === "equity")
       // A sector that could not be looked up (offline, a lookup that failed) leaves the limit unchecked: the stored check
       // says so, and real money does not go on an unchecked limit.

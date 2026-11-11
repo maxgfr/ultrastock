@@ -24024,7 +24024,15 @@ function riskGate(o, c) {
     const sector = o.sector ?? c.sector;
     if (c.sectorValueBase !== void 0 && sector) {
       const secPct = (c.sectorValueBase + notionalBase) / c.equityBase * 100;
-      add2("SECTOR_PCT", secPct > L.maxSectorPct + 1e-9 ? "block" : "pass", `${sector} after the order ${pct(secPct)} (limit ${pct(L.maxSectorPct)})`);
+      const unknown2 = c.sectorUnknown ?? [];
+      if (secPct > L.maxSectorPct + 1e-9) add2("SECTOR_PCT", "block", `${sector} after the order ${pct(secPct)} (limit ${pct(L.maxSectorPct)})`);
+      else if (unknown2.length)
+        add2(
+          "SECTOR_PCT",
+          o.venue === "paper" ? "warn" : "block",
+          `${sector} after the order ${pct(secPct)} at least (limit ${pct(L.maxSectorPct)}): the sector of ${unknown2.join(", ")} could not be found, so the limit is not checked on the whole book${o.venue === "paper" ? "" : " \u2014 check the ticket again online before a live order"}`
+        );
+      else add2("SECTOR_PCT", "pass", `${sector} after the order ${pct(secPct)} (limit ${pct(L.maxSectorPct)})`);
     } else if (o.assetKind === "equity")
       add2(
         "SECTOR_PCT",
@@ -39258,6 +39266,7 @@ async function gateContextFor(order, opts = {}) {
     pendingBuysBase[t.order.symbol] = (pendingBuysBase[t.order.symbol] ?? 0) + t.order.quantity * t.order.price * (fx.rates[t.order.currency] ?? 1);
   let sector = order.sector;
   let sectorValueBase;
+  let sectorUnknown = [];
   if (order.assetKind === "equity" && order.side === "buy") {
     const sectorOf2 = opts.sectorOf ?? tradingviewSector;
     const ask = async (s) => {
@@ -39268,8 +39277,16 @@ async function gateContextFor(order, opts = {}) {
     if (!sector) notes.push(`${order.symbol}: no sector found \u2014 the sector limit (${profile.limits.maxSectorPct} %) is not checked for this order`);
     else {
       const others = [.../* @__PURE__ */ new Set([...held.map((p) => p.symbol), ...Object.keys(pendingBuysBase)])].filter((s) => s !== order.symbol && kinds[s] !== "crypto");
-      const sectors = await mapLimit(others, 4, (s) => ask(s).catch(() => void 0));
-      const unknown2 = others.filter((_, i) => !sectors[i]);
+      const sectors = await mapLimit(others, 4, async (s) => {
+        try {
+          const i = instruments2[s] ?? (await resolveSymbol(s)).instrument;
+          return i?.kind === "equity" ? await sectorOf2(s, i) : null;
+        } catch {
+          return void 0;
+        }
+      });
+      const unknown2 = others.filter((_, i) => sectors[i] === void 0);
+      sectorUnknown = unknown2;
       const same = /* @__PURE__ */ new Set([order.symbol, ...others.filter((_, i) => sectors[i] === sector)]);
       sectorValueBase = valued2.positions.filter((v) => same.has(v.symbol)).reduce((t, v) => t + (v.valueBase ?? 0), 0) + // Pending buys of the order's own symbol too: they are the same share, in the same sector (the ticket being re-checked is not among them).
       Object.entries(pendingBuysBase).filter(([s]) => same.has(s)).reduce((t, [, v]) => t + v, 0);
@@ -39286,6 +39303,7 @@ async function gateContextFor(order, opts = {}) {
     heldQuantity: held.find((p) => p.symbol === order.symbol && p.account === order.account)?.quantity ?? 0,
     ...sector ? { sector } : {},
     ...sectorValueBase !== void 0 ? { sectorValueBase } : {},
+    ...sectorUnknown.length ? { sectorUnknown } : {},
     cryptoValueBase: valued2.positions.filter((v) => kinds[v.symbol] === "crypto").reduce((s, v) => s + (v.valueBase ?? 0), 0),
     openSymbols: [.../* @__PURE__ */ new Set([...held.map((p) => p.symbol), ...Object.keys(pendingBuysBase)])],
     pendingBuysBase,
