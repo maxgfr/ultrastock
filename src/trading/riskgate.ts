@@ -195,7 +195,14 @@ export function riskGate(o: Order, c: GateContext): GateResult {
     if (c.sectorValueBase !== undefined && sector) {
       const secPct = ((c.sectorValueBase + notionalBase) / c.equityBase) * 100;
       add("SECTOR_PCT", secPct > L.maxSectorPct + 1e-9 ? "block" : "pass", `${sector} after the order ${pct(secPct)} (limit ${pct(L.maxSectorPct)})`);
-    }
+    } else if (o.assetKind === "equity")
+      // A sector that could not be looked up (offline, a lookup that failed) leaves the limit unchecked: the stored check
+      // says so, and real money does not go on an unchecked limit.
+      add(
+        "SECTOR_PCT",
+        o.venue === "paper" ? "warn" : "block",
+        `the sector of ${o.symbol} could not be found: the ${pct(L.maxSectorPct)} sector limit is not checked${o.venue === "paper" ? "" : " — check the ticket again online before a live order"}`,
+      );
     if (o.assetKind === "crypto") {
       const cPct = ((c.cryptoValueBase + notionalBase) / c.equityBase) * 100;
       add("CRYPTO_PCT", cPct > L.maxCryptoPct + 1e-9 ? "block" : "pass", `crypto after the order ${pct(cPct)} (limit ${pct(L.maxCryptoPct)})`);

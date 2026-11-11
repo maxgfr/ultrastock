@@ -23140,7 +23140,12 @@ function riskGate(o, c) {
     if (c.sectorValueBase !== void 0 && sector) {
       const secPct = (c.sectorValueBase + notionalBase) / c.equityBase * 100;
       add2("SECTOR_PCT", secPct > L.maxSectorPct + 1e-9 ? "block" : "pass", `${sector} after the order ${pct(secPct)} (limit ${pct(L.maxSectorPct)})`);
-    }
+    } else if (o.assetKind === "equity")
+      add2(
+        "SECTOR_PCT",
+        o.venue === "paper" ? "warn" : "block",
+        `the sector of ${o.symbol} could not be found: the ${pct(L.maxSectorPct)} sector limit is not checked${o.venue === "paper" ? "" : " \u2014 check the ticket again online before a live order"}`
+      );
     if (o.assetKind === "crypto") {
       const cPct = (c.cryptoValueBase + notionalBase) / c.equityBase * 100;
       add2("CRYPTO_PCT", cPct > L.maxCryptoPct + 1e-9 ? "block" : "pass", `crypto after the order ${pct(cPct)} (limit ${pct(L.maxCryptoPct)})`);

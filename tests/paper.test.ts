@@ -113,10 +113,10 @@ describe("the sector cap", () => {
       });
       // A replay never writes the real equity curve the breaker reads.
       expect(readEquity("paper")).toEqual([]);
-      // No sector to be found: said, and not checked.
+      // No sector to be found: said, not checked, and the stored check carries the warning.
       const blind = await gateContextFor(order, { now, sectorOf: async () => undefined });
       expect(blind.notes.join(" ")).toMatch(/sector limit .* is not checked/);
-      expect(riskGate(order, blind.ctx).checks.some((c) => c.code === "SECTOR_PCT")).toBe(false);
+      expect(riskGate(order, blind.ctx).checks.find((c) => c.code === "SECTOR_PCT")).toMatchObject({ status: "warn" });
     });
   });
 });
@@ -128,7 +128,9 @@ describe("paper flow on a recorded fixture", () => {
     await withFixture("trading-paper-mcpa", async () => {
       const now = clockNow();
       const p = await planTrade({ symbol: "MC.PA", account: "cto", now });
-      expect(p.verdict).toBe("ready");
+      // The recording holds no sector lookup: the sector limit is not checked, and the plan says so as a condition.
+      expect(p.verdict).toBe("ready with conditions");
+      expect(p.gate.checks.filter((c) => c.status !== "pass").map((c) => c.code)).toEqual(["SECTOR_PCT"]);
       expect(p.quantity).toBeGreaterThan(0);
       expect(p.positionPct).toBeLessThanOrEqual(5 + 1e-9);
       expect(p.riskPct!).toBeLessThanOrEqual(0.5 + 1e-9);
