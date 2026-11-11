@@ -81,6 +81,11 @@ const SHELTERED = new Set(["IRA", "ROTH-IRA", "401K"]);
  * wallets takes days, not months — what arrives later is other shares, from outside the ledger. Not a tax parameter.
  */
 const TRANSIT_DAYS = 30;
+/**
+ * The note an importer gives a reward it books as a transfer-in without a price (Kraken "kraken staking reward: …",
+ * Binance "binance <operation>: …"), or a hand-written one saying so.
+ */
+const REWARD_NOTE = /\b(staking|rewards?|airdrops?|interest|income|distribution|rebate|cashback|bonus|mining|launchpool|referral)\b/i;
 /** Brokers outside the US (their accounts are foreign financial accounts for a US person). */
 const NON_US_BROKERS =
   /degiro|trade ?republic|bourso|fortuneo|bourse ?direct|saxo|scalable|xtb|lightyear|trading ?212|revolut|bitpanda|bitstamp|binance(?!\.?us)|bnp|cr[eé]dit|soci[eé]t[eé]|lcl|linxea|bforbank|hello ?bank|freedom ?24/i;
@@ -219,6 +224,8 @@ export class UsRegime extends TaxRegime {
     let unmatched: UsLot[] = [];
     /** Units of a transfer-in without a price that no transfer-out gave: basis 0 from the transfer date, named. */
     const unpriced: UsLot[] = [];
+    /** Rewards booked as a transfer-in without a price: basis 0 from the day received, named. */
+    const rewards: UsLot[] = [];
     /** The lots in other accounts that hold shares of a purchase, by purchase: a wash adjustment follows them there. */
     const carriedOf = new Map<UsLot, UsLot[]>();
     const holds = (purchase: UsLot, l: UsLot) => carriedOf.set(purchase, [...(carriedOf.get(purchase) ?? []), l]);
@@ -449,7 +456,11 @@ export class UsRegime extends TaxRegime {
       if (lot) {
         active.add(lot);
         for (const w of pieces.get(lot) ?? []) active.add(w);
-        if (t.type === "transfer-in" && t.price === undefined && !carry(lot)) unmatched.push(lot);
+        if (t.type === "transfer-in" && t.price === undefined) {
+          // A reward is new coins, never coins moved from another account: it takes no transfer's basis or date.
+          if (REWARD_NOTE.test(t.note ?? "")) rewards.push(lot);
+          else if (!carry(lot)) unmatched.push(lot);
+        }
         continue;
       }
       if (t.type === "split") {
@@ -512,6 +523,11 @@ export class UsRegime extends TaxRegime {
         });
       }
     }
+    for (const l of rewards)
+      if (!l.sheltered)
+        warnings.push(
+          `${l.symbol} transferred into ${l.account} on ${l.bought} without a price is a reward (staking, interest, airdrop): ordinary income at its fair market value when received, which is also its basis, held from that day (Rev. Rul. 2023-14, Notice 2014-21) — basis 0 from that date until you give that value as its price`,
+        );
     for (const l of [...unmatched, ...unpriced])
       if (!l.sheltered)
         warnings.push(

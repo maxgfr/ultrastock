@@ -54487,6 +54487,7 @@ var FranceRegime = class extends TaxRegime {
 // src/tax/us.ts
 var SHELTERED = /* @__PURE__ */ new Set(["IRA", "ROTH-IRA", "401K"]);
 var TRANSIT_DAYS = 30;
+var REWARD_NOTE = /\b(staking|rewards?|airdrops?|interest|income|distribution|rebate|cashback|bonus|mining|launchpool|referral)\b/i;
 var NON_US_BROKERS = /degiro|trade ?republic|bourso|fortuneo|bourse ?direct|saxo|scalable|xtb|lightyear|trading ?212|revolut|bitpanda|bitstamp|binance(?!\.?us)|bnp|cr[eé]dit|soci[eé]t[eé]|lcl|linxea|bforbank|hello ?bank|freedom ?24/i;
 var assetOf = (t, crypto) => crypto ? splitPair(t.symbol ?? "", t.currency).base : (t.symbol ?? "").toUpperCase();
 var dollarLike = (t, crypto) => {
@@ -54593,6 +54594,7 @@ var UsRegime = class extends TaxRegime {
     const inTransit = [];
     let unmatched = [];
     const unpriced = [];
+    const rewards = [];
     const carriedOf = /* @__PURE__ */ new Map();
     const holds2 = (purchase, l) => carriedOf.set(purchase, [...carriedOf.get(purchase) ?? [], l]);
     const carry = (into) => {
@@ -54800,7 +54802,10 @@ var UsRegime = class extends TaxRegime {
       if (lot) {
         active2.add(lot);
         for (const w of pieces.get(lot) ?? []) active2.add(w);
-        if (t.type === "transfer-in" && t.price === void 0 && !carry(lot)) unmatched.push(lot);
+        if (t.type === "transfer-in" && t.price === void 0) {
+          if (REWARD_NOTE.test(t.note ?? "")) rewards.push(lot);
+          else if (!carry(lot)) unmatched.push(lot);
+        }
         continue;
       }
       if (t.type === "split") {
@@ -54856,6 +54861,11 @@ var UsRegime = class extends TaxRegime {
         });
       }
     }
+    for (const l of rewards)
+      if (!l.sheltered)
+        warnings.push(
+          `${l.symbol} transferred into ${l.account} on ${l.bought} without a price is a reward (staking, interest, airdrop): ordinary income at its fair market value when received, which is also its basis, held from that day (Rev. Rul. 2023-14, Notice 2014-21) \u2014 basis 0 from that date until you give that value as its price`
+        );
     for (const l of [...unmatched, ...unpriced])
       if (!l.sheltered)
         warnings.push(
