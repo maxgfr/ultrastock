@@ -20,7 +20,7 @@
 // support: what is dated and what moved, never what to do.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { carriesStop, loadRules, type PeekedAlert, peekAlerts } from "../../alerts/alerts.js";
+import { carriesStop, filledSinceOpened, loadRules, type PeekedAlert, peekAlerts } from "../../alerts/alerts.js";
 import { type CalendarMarket, calendarFor, holidays, MARKETS, nextSessions } from "../../core/calendar.js";
 import type { Point } from "../../core/datasets.js";
 import { EvidenceStore } from "../../core/evidence.js";
@@ -29,7 +29,7 @@ import { loadProfile } from "../../core/profile.js";
 import { sanitizeExternalText } from "../../core/untrusted.js";
 import { mapLimit, UsageError, writeArtifact, writeFileAtomic } from "../../engine.js";
 import { listTheses, type Thesis } from "../../journal/journal.js";
-import { lineOpenedAt, type Transaction } from "../../portfolio/ledger.js";
+import { lineOpenedAt } from "../../portfolio/ledger.js";
 import { loadWatchlist } from "../../portfolio/watchlist.js";
 import { newsSearch } from "../../providers/macro/news.js";
 import type { SearchDelegate } from "../../research/delegate.js";
@@ -354,24 +354,6 @@ interface Row {
   catalysts?: Report;
   error?: string;
   notes: string[];
-}
-
-/**
- * Was the ticket filled since the line was last opened on `since`? A time
- * compares as written. A date-only opening on a day the line was also sold
- * out holds no hour: a fill that day may be the line sold, so only a later
- * day counts — or the ticket's own row, booked after that day's last exit.
- */
-function filledSinceOpened(t: Ticket, since: string, lineRows: readonly Transaction[]): boolean {
-  const at = filledAt(t);
-  if (since.length > 10) return at >= since;
-  const day = lineRows.filter((r) => r.date.slice(0, 10) === since);
-  let lastExit = -1;
-  day.forEach((r, i) => {
-    if (r.type === "sell" || r.type === "transfer-out") lastExit = i;
-  });
-  if (lastExit < 0) return at >= since;
-  return at.slice(0, 10) > since || day.slice(lastExit + 1).some((r) => r.origin === `ticket:${t.id}`);
 }
 
 export async function morningRun(dir: string, opts: MorningOptions = {}): Promise<MorningResult> {

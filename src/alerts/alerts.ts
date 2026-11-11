@@ -229,9 +229,9 @@ export async function peekAlerts(now = clockNow(), symbols?: readonly string[]):
  * compares as written. A date-only opening on a day the line was also sold
  * out holds no hour: a fill that day may be the line sold, so only a later
  * day counts — or the ticket's own row, booked after that day's last exit.
- * (The morning brief reads a line's stop by the same rule.)
+ * The morning brief reads a line's stop by this same rule.
  */
-function filledSinceOpened(t: Ticket, since: string, lineRows: readonly Transaction[]): boolean {
+export function filledSinceOpened(t: Ticket, since: string, lineRows: readonly Transaction[]): boolean {
   const at = filledAt(t);
   if (since.length > 10) return at >= since;
   const day = lineRows.filter((r) => r.date.slice(0, 10) === since);

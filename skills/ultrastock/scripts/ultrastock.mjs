@@ -52908,17 +52908,6 @@ function namesCompany(headline, name, symbol) {
   const ticker = symbol.replace(/[.-].*$/, "");
   return word(fold2(name)) || ticker.length >= 3 && word(fold2(ticker));
 }
-function filledSinceOpened2(t, since, lineRows) {
-  const at = filledAt(t);
-  if (since.length > 10) return at >= since;
-  const day4 = lineRows.filter((r3) => r3.date.slice(0, 10) === since);
-  let lastExit = -1;
-  day4.forEach((r3, i) => {
-    if (r3.type === "sell" || r3.type === "transfer-out") lastExit = i;
-  });
-  if (lastExit < 0) return at >= since;
-  return at.slice(0, 10) > since || day4.slice(lastExit + 1).some((r3) => r3.origin === `ticket:${t.id}`);
-}
 async function morningRun(dir2, opts = {}) {
   const now = opts.now ?? clockNow();
   const today = isoDayOf(now);
@@ -53071,7 +53060,7 @@ async function morningRun(dir2, opts = {}) {
     const rows2 = txs.filter((r3) => r3.account === p.account && r3.symbol === p.symbol);
     const booked = new Set(rows2.map((r3) => r3.origin));
     const mine = stopTickets.filter((x) => booked.has(`ticket:${x.id}`));
-    const t = mine.filter((x) => filledSinceOpened2(x, since, rows2)).reduce((best, x) => !best || filledAt(x) > filledAt(best) ? x : best, void 0);
+    const t = mine.filter((x) => filledSinceOpened(x, since, rows2)).reduce((best, x) => !best || filledAt(x) > filledAt(best) ? x : best, void 0);
     if (t && !stopFor.has(t.id)) stopFor.set(t.id, { ticket: t, symbol: p.symbol.toUpperCase() });
     else if (!t && mine.length) unprotected.push({ symbol: p.symbol.toUpperCase(), account: p.account, since: since.slice(0, 10) });
   }
