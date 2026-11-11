@@ -73,6 +73,24 @@ describe("scores", () => {
     expect(partial.computed).toBeLessThan(7);
     expect(partial.verdict).toMatch(/incomplete/);
   });
+  it("Piotroski: both years' ROA and asset turnover on one asset convention", () => {
+    const find = (s: ReturnType<typeof piotroski>, id: string) => s.components.find((c) => c.id === id)!;
+    // Assets doubled during the year: on end-of-year assets for both years, ROA and turnover fell.
+    const grown = { ...cur, totalAssets: 2000 };
+    const two = piotroski(grown, prev);
+    expect(find(two, "droa").pass).toBe(false);
+    expect(find(two, "droa").reason).toMatch(/0\.080 → 0\.055.*end-of-year assets/);
+    expect(find(two, "dturn").pass).toBe(false);
+    expect(find(two, "dturn").reason).toMatch(/1\.000 → 0\.575.*end-of-year assets/);
+    expect(find(two, "roa").value).toBeCloseTo(110 / 2000, 12);
+    // With the year before, each year is over its own start-of-year assets.
+    const three = piotroski(cur, prev, { end: "2023-12-31", totalAssets: 500 });
+    expect(find(three, "droa").pass).toBe(false);
+    expect(find(three, "droa").reason).toMatch(/0\.160 → 0\.110.*beginning-of-year assets/);
+    expect(find(three, "dturn").pass).toBe(false);
+    expect(find(three, "dturn").reason).toMatch(/2\.000 → 1\.150.*beginning-of-year assets/);
+    expect(find(three, "roa").value).toBeCloseTo(110 / 1000, 12);
+  });
   it("Altman Z″ and Z, with zones", () => {
     const z = altmanZ(cur, 2000, "non-manufacturer");
     const expected = 6.56 * (160 / 1050) + 3.26 * (300 / 1050) + 6.72 * (160 / 1050) + 1.05 * (460 / 590);

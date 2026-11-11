@@ -69,18 +69,27 @@ const f2 = (x: number) => (Math.abs(x) >= 100 ? x.toFixed(0) : x.toFixed(3));
  * Piotroski F-score (2000), nine binary tests on profitability, leverage and
  * efficiency, current year `cur` against the prior year `prev`. 8–9 strong,
  * 0–2 weak. Criteria that cannot be computed are excluded and counted.
+ *
+ * ROA and asset turnover divide both years by one asset convention: the
+ * paper's beginning-of-year assets when `prior` (the year before `prev`)
+ * reports them, else each year's own end-of-year assets. The criterion's
+ * reason names the convention used.
  */
-export function piotroski(cur: FinancialPeriod, prev: FinancialPeriod): Score {
-  const roa = div(cur.netIncome, prev.totalAssets ?? cur.totalAssets);
-  const roaPrev = div(prev.netIncome, prev.totalAssets);
+export function piotroski(cur: FinancialPeriod, prev: FinancialPeriod, prior?: FinancialPeriod): Score {
+  const beginning = prior?.totalAssets !== undefined && prev.totalAssets !== undefined;
+  const assetsCur = beginning ? prev.totalAssets : cur.totalAssets;
+  const assetsPrev = beginning ? prior?.totalAssets : prev.totalAssets;
+  const basis = beginning ? "on beginning-of-year assets" : "on end-of-year assets (no third year for beginning-of-year)";
+  const roa = div(cur.netIncome, assetsCur);
+  const roaPrev = div(prev.netIncome, assetsPrev);
   const lev = div(cur.longTermDebt, cur.totalAssets);
   const levPrev = div(prev.longTermDebt, prev.totalAssets);
   const cr = div(cur.currentAssets, cur.currentLiabilities);
   const crPrev = div(prev.currentAssets, prev.currentLiabilities);
   const gm = div(gross(cur), cur.revenue);
   const gmPrev = div(gross(prev), prev.revenue);
-  const at = div(cur.revenue, prev.totalAssets ?? cur.totalAssets);
-  const atPrev = div(prev.revenue, prev.totalAssets);
+  const at = div(cur.revenue, assetsCur);
+  const atPrev = div(prev.revenue, assetsPrev);
   const c = (id: string, label: string, pass: boolean | undefined, value: number | undefined, reason: string): Criterion => ({
     id,
     label,
@@ -89,7 +98,13 @@ export function piotroski(cur: FinancialPeriod, prev: FinancialPeriod): Score {
     reason,
   });
   const components: Criterion[] = [
-    c("roa", "positive return on assets", roa === undefined ? undefined : roa > 0, roa, roa === undefined ? "net income or assets missing" : `ROA ${f2(roa)}`),
+    c(
+      "roa",
+      "positive return on assets",
+      roa === undefined ? undefined : roa > 0,
+      roa,
+      roa === undefined ? "net income or assets missing" : `ROA ${f2(roa)} ${basis}`,
+    ),
     c(
       "cfo",
       "positive operating cash flow",
@@ -102,7 +117,7 @@ export function piotroski(cur: FinancialPeriod, prev: FinancialPeriod): Score {
       "ROA improved",
       roa === undefined || roaPrev === undefined ? undefined : roa > roaPrev,
       roa,
-      roa === undefined || roaPrev === undefined ? "two years of ROA needed" : `ROA ${f2(roaPrev)} → ${f2(roa)}`,
+      roa === undefined || roaPrev === undefined ? "two years of ROA needed" : `ROA ${f2(roaPrev)} → ${f2(roa)} ${basis}`,
     ),
     c(
       "accrual",
@@ -148,7 +163,7 @@ export function piotroski(cur: FinancialPeriod, prev: FinancialPeriod): Score {
       "asset turnover rose",
       at === undefined || atPrev === undefined ? undefined : at > atPrev,
       at,
-      at === undefined || atPrev === undefined ? "revenue or assets missing" : `asset turnover ${f2(atPrev)} → ${f2(at)}`,
+      at === undefined || atPrev === undefined ? "revenue or assets missing" : `asset turnover ${f2(atPrev)} → ${f2(at)} ${basis}`,
     ),
   ];
   const computed = components.filter((x) => x.pass !== undefined);

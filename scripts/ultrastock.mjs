@@ -32406,17 +32406,21 @@ var div = (a, b) => a === void 0 || b === void 0 || b === 0 ? void 0 : a / b;
 var fcfOf = (p) => p.operatingCashFlow !== void 0 && p.capex !== void 0 ? p.operatingCashFlow - Math.abs(p.capex) : void 0;
 var gross = (p) => p.grossProfit ?? (p.revenue !== void 0 && p.costOfRevenue !== void 0 ? p.revenue - p.costOfRevenue : void 0);
 var f2 = (x) => Math.abs(x) >= 100 ? x.toFixed(0) : x.toFixed(3);
-function piotroski(cur, prev) {
-  const roa = div(cur.netIncome, prev.totalAssets ?? cur.totalAssets);
-  const roaPrev = div(prev.netIncome, prev.totalAssets);
+function piotroski(cur, prev, prior) {
+  const beginning = prior?.totalAssets !== void 0 && prev.totalAssets !== void 0;
+  const assetsCur = beginning ? prev.totalAssets : cur.totalAssets;
+  const assetsPrev = beginning ? prior?.totalAssets : prev.totalAssets;
+  const basis = beginning ? "on beginning-of-year assets" : "on end-of-year assets (no third year for beginning-of-year)";
+  const roa = div(cur.netIncome, assetsCur);
+  const roaPrev = div(prev.netIncome, assetsPrev);
   const lev = div(cur.longTermDebt, cur.totalAssets);
   const levPrev = div(prev.longTermDebt, prev.totalAssets);
   const cr = div(cur.currentAssets, cur.currentLiabilities);
   const crPrev = div(prev.currentAssets, prev.currentLiabilities);
   const gm = div(gross(cur), cur.revenue);
   const gmPrev = div(gross(prev), prev.revenue);
-  const at = div(cur.revenue, prev.totalAssets ?? cur.totalAssets);
-  const atPrev = div(prev.revenue, prev.totalAssets);
+  const at = div(cur.revenue, assetsCur);
+  const atPrev = div(prev.revenue, assetsPrev);
   const c = (id, label2, pass, value3, reason) => ({
     id,
     label: label2,
@@ -32425,7 +32429,13 @@ function piotroski(cur, prev) {
     reason
   });
   const components = [
-    c("roa", "positive return on assets", roa === void 0 ? void 0 : roa > 0, roa, roa === void 0 ? "net income or assets missing" : `ROA ${f2(roa)}`),
+    c(
+      "roa",
+      "positive return on assets",
+      roa === void 0 ? void 0 : roa > 0,
+      roa,
+      roa === void 0 ? "net income or assets missing" : `ROA ${f2(roa)} ${basis}`
+    ),
     c(
       "cfo",
       "positive operating cash flow",
@@ -32438,7 +32448,7 @@ function piotroski(cur, prev) {
       "ROA improved",
       roa === void 0 || roaPrev === void 0 ? void 0 : roa > roaPrev,
       roa,
-      roa === void 0 || roaPrev === void 0 ? "two years of ROA needed" : `ROA ${f2(roaPrev)} \u2192 ${f2(roa)}`
+      roa === void 0 || roaPrev === void 0 ? "two years of ROA needed" : `ROA ${f2(roaPrev)} \u2192 ${f2(roa)} ${basis}`
     ),
     c(
       "accrual",
@@ -32480,7 +32490,7 @@ function piotroski(cur, prev) {
       "asset turnover rose",
       at === void 0 || atPrev === void 0 ? void 0 : at > atPrev,
       at,
-      at === void 0 || atPrev === void 0 ? "revenue or assets missing" : `asset turnover ${f2(atPrev)} \u2192 ${f2(at)}`
+      at === void 0 || atPrev === void 0 ? "revenue or assets missing" : `asset turnover ${f2(atPrev)} \u2192 ${f2(at)} ${basis}`
     )
   ];
   const computed2 = components.filter((x) => x.pass !== void 0);
