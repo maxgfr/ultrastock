@@ -6,7 +6,9 @@ import { importCommand } from "../src/commands/import.js";
 import type { CommandArgs } from "../src/engine.js";
 import { parseStatement } from "../src/portfolio/import/index.js";
 import { appendTransactions, buildBook, ledgerPath, readLedger, type Transaction, transactionId } from "../src/portfolio/ledger.js";
+import { keepDistinctFills } from "../src/portfolio/import/shared.js";
 import { parseGeneric as parseGenericBefore } from "./helpers/generic-before-818a2ef.js";
+import { parseKraken as parseKrakenBefore } from "./helpers/kraken-before-c2fdfc7.js";
 
 const fixture = (name: string) => new URL(`./fixtures/import/${name}`, import.meta.url).pathname;
 
@@ -135,5 +137,23 @@ describe("portfolio import into a ledger an earlier release wrote", () => {
       /1 row\(s\) are already in the real book as an earlier release of the importer read them .*date 2026-01-05T02:30:00 for 2026-01-05T14:30:00/,
     );
     expect(readLedger("real")).toHaveLength(2);
+  });
+  it("does not add again a Kraken trade stored under the symbol the reader before c2fdfc7 gave it, and names it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ultrastock-import-src-"));
+    const file = join(dir, "trades.csv");
+    writeFileSync(
+      file,
+      '"txid","ordertxid","pair","time","type","ordertype","price","cost","fee","vol","margin","misc","ledgers"\n' +
+        '"T1","O1","XXBTZUSD","2024-01-02 10:00:00","buy","limit",40000,40000,0,1,0,"",""\n' +
+        '"T2","O2","AVAXXBT","2025-02-03 10:00:00","buy","limit",0.0005,0.05,0,100,0,"",""\n',
+    );
+    // What that release wrote, through the same reference rule as today.
+    await appendTransactions(keepDistinctFills(parseKrakenBefore(readFileSync(file, "utf8"), { account: "kraken" })).transactions, "real");
+    const out = JSON.parse(await run(file, { format: "kraken", account: "kraken" }, [], true));
+    expect(out).toMatchObject({ added: [], duplicates: 2 });
+    expect(out.warnings.join(" ")).toMatch(
+      /1 row\(s\) are already in the real book as an earlier release .*AVAXBTC .*\(stored with symbol AVABTC for AVAXBTC\)/,
+    );
+    expect(readLedger("real").map((t) => t.symbol)).toEqual(["BTCUSD", "AVABTC"]);
   });
 });

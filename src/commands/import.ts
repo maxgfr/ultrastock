@@ -87,6 +87,7 @@ export async function importCommand(args: CommandArgs, asJson: boolean): Promise
       already++;
       const was = legacyReadingsOf(t)[legacy]!;
       const diff = Object.entries(was)
+        .filter(([k, v]) => k !== "ref" && v !== t[k as keyof typeof t])
         .map(([k, v]) => `${k} ${String(v)} for ${String(t[k as keyof typeof t] ?? "")}`)
         .join(", ");
       asReadBefore.push(`${txLine(t)} (stored with ${diff})`);

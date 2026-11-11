@@ -49473,6 +49473,14 @@ function krakenPair(pair) {
   const q = PAIR_QUOTES2.find((x) => s.endsWith(x) && s.length > x.length && (x.length === 4 && /^[XZ]/.test(x) ? known(s.slice(0, -x.length)) : true));
   return q ? { base: krakenAsset(s.slice(0, -q.length)), quote: krakenAsset(q) } : void 0;
 }
+function legacyKrakenPair(pair) {
+  const s = pair.trim().toUpperCase();
+  if (s.includes("/") || s.length === 8 && LEGACY[s.slice(0, 4)] && LEGACY[s.slice(4)]) return void 0;
+  const q = PAIR_QUOTES2.find((x) => s.endsWith(x) && s.length - x.length >= (x.length === 4 && /^[XZ]/.test(x) ? 3 : 1));
+  const old = q ? { base: krakenAsset(s.slice(0, -q.length)), quote: krakenAsset(q) } : void 0;
+  const now = krakenPair(s);
+  return old && (old.base !== now?.base || old.quote !== now?.quote) ? old : void 0;
+}
 function parseKraken(text2, opts) {
   const rows = csvRowsWithLines(text2);
   const lg = findHeader(rows, ["refid", "asset", "amount", "balance"]);
@@ -49500,19 +49508,26 @@ function trades(recs, opts) {
       res.skipped.push({ line, reason: "margin trade: the ledger has no leverage" });
       continue;
     }
-    accept(res, line, {
-      date,
-      type: side2 === "buy" ? "buy" : "sell",
-      account: opts.account,
-      symbol: pairSymbol(pair.base, pair.quote),
-      quantity: Math.abs(vol),
-      price,
-      fee: Math.abs(fee) || void 0,
-      currency: pair.quote,
-      note: rec.txid ? `kraken trade ${rec.txid}` : void 0,
-      ref: rec.txid || void 0,
-      origin: ORIGIN5
-    });
+    const old = legacyKrakenPair(rec.pair ?? "");
+    const was = old && { symbol: pairSymbol(old.base, old.quote), currency: old.quote };
+    accept(
+      res,
+      line,
+      {
+        date,
+        type: side2 === "buy" ? "buy" : "sell",
+        account: opts.account,
+        symbol: pairSymbol(pair.base, pair.quote),
+        quantity: Math.abs(vol),
+        price,
+        fee: Math.abs(fee) || void 0,
+        currency: pair.quote,
+        note: rec.txid ? `kraken trade ${rec.txid}` : void 0,
+        ref: rec.txid || void 0,
+        origin: ORIGIN5
+      },
+      was ? [was, ...rec.txid ? [{ ...was, ref: rec.txid }] : []] : []
+    );
   }
   return res;
 }
@@ -49740,7 +49755,7 @@ async function importCommand(args, asJson) {
     if (legacy >= 0) {
       already++;
       const was = legacyReadingsOf(t)[legacy];
-      const diff = Object.entries(was).map(([k, v]) => `${k} ${String(v)} for ${String(t[k] ?? "")}`).join(", ");
+      const diff = Object.entries(was).filter(([k, v]) => k !== "ref" && v !== t[k]).map(([k, v]) => `${k} ${String(v)} for ${String(t[k] ?? "")}`).join(", ");
       asReadBefore.push(`${txLine(t)} (stored with ${diff})`);
       continue;
     }

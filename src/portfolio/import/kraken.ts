@@ -107,6 +107,20 @@ export function krakenPair(pair: string): { base: string; quote: string } | unde
   return q ? { base: krakenAsset(s.slice(0, -q.length)), quote: krakenAsset(q) } : undefined;
 }
 
+/**
+ * How the release before c2fdfc7 split a pair without a slash, when it differs from `krakenPair`: it took a legacy
+ * quote (XXBT, ZEUR…) after any base of three characters or more, so AVAXXBT was "AVA" in BTC and DYDXXBT "DYD". A
+ * ledger imported then holds those trades under that symbol.
+ */
+export function legacyKrakenPair(pair: string): { base: string; quote: string } | undefined {
+  const s = pair.trim().toUpperCase();
+  if (s.includes("/") || (s.length === 8 && LEGACY[s.slice(0, 4)] && LEGACY[s.slice(4)])) return undefined;
+  const q = PAIR_QUOTES.find((x) => s.endsWith(x) && s.length - x.length >= (x.length === 4 && /^[XZ]/.test(x) ? 3 : 1));
+  const old = q ? { base: krakenAsset(s.slice(0, -q.length)), quote: krakenAsset(q) } : undefined;
+  const now = krakenPair(s);
+  return old && (old.base !== now?.base || old.quote !== now?.quote) ? old : undefined;
+}
+
 /** Parse a Kraken trades.csv or ledgers.csv export. */
 export function parseKraken(text: string, opts: ImportOptions): ImportResult {
   const rows = csvRowsWithLines(text);
@@ -136,19 +150,28 @@ function trades(recs: Array<{ line: number; rec: Record<string, string> }>, opts
       res.skipped.push({ line, reason: "margin trade: the ledger has no leverage" });
       continue;
     }
-    accept(res, line, {
-      date,
-      type: side === "buy" ? "buy" : "sell",
-      account: opts.account,
-      symbol: pairSymbol(pair.base, pair.quote),
-      quantity: Math.abs(vol),
-      price,
-      fee: Math.abs(fee) || undefined,
-      currency: pair.quote,
-      note: rec.txid ? `kraken trade ${rec.txid}` : undefined,
-      ref: rec.txid || undefined,
-      origin: ORIGIN,
-    });
+    // A ledger imported before c2fdfc7 holds this trade under the symbol that release read: the same trade, never a
+    // second one (stored without the broker's id, as a fill of its own is, or with it inside a group of identical fills).
+    const old = legacyKrakenPair(rec.pair ?? "");
+    const was = old && { symbol: pairSymbol(old.base, old.quote), currency: old.quote };
+    accept(
+      res,
+      line,
+      {
+        date,
+        type: side === "buy" ? "buy" : "sell",
+        account: opts.account,
+        symbol: pairSymbol(pair.base, pair.quote),
+        quantity: Math.abs(vol),
+        price,
+        fee: Math.abs(fee) || undefined,
+        currency: pair.quote,
+        note: rec.txid ? `kraken trade ${rec.txid}` : undefined,
+        ref: rec.txid || undefined,
+        origin: ORIGIN,
+      },
+      was ? [was, ...(rec.txid ? [{ ...was, ref: rec.txid }] : [])] : [],
+    );
   }
   return res;
 }
