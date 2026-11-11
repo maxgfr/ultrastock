@@ -181,6 +181,8 @@ describe("serve: the HTTP guard", () => {
     expect((await call("/", { headers: { host: `evil.example:${d.port}` } })).status).toBe(403);
     expect((await call("/watch", { headers: { host: `localhost:${d.port}` } })).status).toBe(200);
     expect((await call("/watch", { headers: { origin: "https://evil.example" } })).status).toBe(403);
+    // Another local server is the same site for the cookie, but not the same origin.
+    expect((await call("/watch", { headers: { origin: "http://localhost:3000" } })).status).toBe(403);
     const post = await call("/", { method: "POST" });
     expect(post.status).toBe(405);
     expect(post.headers.allow).toBe("GET, HEAD");

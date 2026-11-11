@@ -181,7 +181,8 @@ Security, since the page is a person's finances:
 
 - it binds 127.0.0.1 only (there is no flag to bind elsewhere) and answers only
   `Host: 127.0.0.1:<port>` or `localhost:<port>`, so a DNS-rebinding page
-  cannot reach it under its own name; a cross-origin `Origin` is refused;
+  cannot reach it under its own name; an `Origin` other than the dashboard's
+  own (another site, or another local port) is refused;
 - every route needs the token (`--token` or `ULTRASTOCK_SERVE_TOKEN`, 24+
   URL-safe characters, else 48 random hex digits per start). The printed URL
   carries it once: the first visit trades it for an `HttpOnly; SameSite=Strict`

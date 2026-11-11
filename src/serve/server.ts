@@ -17,7 +17,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import * as http from "node:http";
 import type { AddressInfo } from "node:net";
 import { clockNow } from "../core/net.js";
-import { argInt, argValue, type CommandArgs, EXIT_OK, isOriginAllowed, jsonLine, UsageError } from "../engine.js";
+import { argInt, argValue, type CommandArgs, EXIT_OK, jsonLine, UsageError } from "../engine.js";
 import {
   analysisPage,
   analysisTitle,
@@ -50,7 +50,9 @@ import {
 } from "./views.js";
 
 export const DEFAULT_SERVE_PORT = 8766;
-const COOKIE = "ultrastock_serve";
+// The cookie is named after the port: browsers do not separate cookies by port, so two dashboards on one machine
+// would otherwise overwrite each other's.
+const cookieName = (port: number) => `ultrastock_serve_${port}`;
 
 /** Sent with every answer, whatever its status. */
 const SECURITY_HEADERS: Record<string, string> = {
@@ -78,10 +80,10 @@ const digest = (s: string) => createHash("sha256").update(s).digest();
 /** Equal-length digests, so the comparison takes the same time whatever the guess. */
 const tokenMatches = (given: string | undefined, want: Buffer) => given !== undefined && timingSafeEqual(digest(given), want);
 
-function cookieToken(header: string | undefined): string | undefined {
+function cookieToken(header: string | undefined, name: string): string | undefined {
   for (const part of (header ?? "").split(";")) {
     const [k, ...v] = part.trim().split("=");
-    if (k === COOKIE) return v.join("=");
+    if (k === name) return v.join("=");
   }
   return undefined;
 }
@@ -153,7 +155,10 @@ export async function startDashboard(opts: DashboardOptions = {}): Promise<Dashb
   const token = serveToken(opts.token);
   const want = digest(token);
   const defaultBook = opts.book ?? "real";
+  // Known once the server listens (the port may be picked by the system).
   let hosts = new Set<string>();
+  let origins = new Set<string>();
+  let cookie = "";
   // One computation per (view, book, filter) at a time: concurrent requests share it (the net layer then shares
   // identical GETs for five minutes, so a refresh does not hammer the sources).
   const inFlight = new Map<string, Promise<unknown>>();
@@ -171,7 +176,9 @@ export async function startDashboard(opts: DashboardOptions = {}): Promise<Dashb
   async function answer(req: http.IncomingMessage): Promise<Answer> {
     const host = (req.headers.host ?? "").toLowerCase();
     if (!hosts.has(host)) return text(403, "Forbidden: this dashboard answers on 127.0.0.1 and localhost only.");
-    if (!isOriginAllowed(req.headers.origin)) return text(403, "Forbidden: cross-origin request.");
+    // A browser names the page a request comes from: only the dashboard's own pages may ask — not another site, and
+    // not another local server on a different port (same site for the cookie, but not the same origin).
+    if (req.headers.origin !== undefined && !origins.has(req.headers.origin)) return text(403, "Forbidden: cross-origin request.");
     if (req.method !== "GET" && req.method !== "HEAD") return text(405, "Method not allowed: the dashboard is read-only.", { allow: "GET, HEAD" });
     const url = new URL(req.url ?? "/", `http://${host}`);
     const route = routeOf(url.pathname);
@@ -183,10 +190,10 @@ export async function startDashboard(opts: DashboardOptions = {}): Promise<Dashb
       // A redirect target is a known route's path (routeOf matched it exactly) or the root — never `//elsewhere`.
       return text(303, "See other", {
         location: `${route ? url.pathname : "/"}${search ? `?${search}` : ""}`,
-        "set-cookie": `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/`,
+        "set-cookie": `${cookie}=${token}; HttpOnly; SameSite=Strict; Path=/`,
       });
     }
-    if (!tokenMatches(cookieToken(req.headers.cookie), want) && !tokenMatches(bearerToken(req.headers.authorization), want))
+    if (!tokenMatches(cookieToken(req.headers.cookie, cookie), want) && !tokenMatches(bearerToken(req.headers.authorization), want))
       return route?.api
         ? {
             status: 401,
@@ -255,6 +262,8 @@ export async function startDashboard(opts: DashboardOptions = {}): Promise<Dashb
   });
   const port = (server.address() as AddressInfo).port;
   hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
+  origins = new Set([...hosts].map((h) => `http://${h}`));
+  cookie = cookieName(port);
   return {
     url: `http://127.0.0.1:${port}/?token=${token}`,
     port,

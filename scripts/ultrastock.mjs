@@ -50302,7 +50302,7 @@ function ticketsPage(v, book2) {
 
 // src/serve/server.ts
 var DEFAULT_SERVE_PORT = 8766;
-var COOKIE = "ultrastock_serve";
+var cookieName = (port) => `ultrastock_serve_${port}`;
 var SECURITY_HEADERS = {
   "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
   "x-content-type-options": "nosniff",
@@ -50318,10 +50318,10 @@ function serveToken(given) {
 }
 var digest3 = (s) => createHash6("sha256").update(s).digest();
 var tokenMatches = (given, want) => given !== void 0 && timingSafeEqual4(digest3(given), want);
-function cookieToken(header2) {
+function cookieToken(header2, name) {
   for (const part of (header2 ?? "").split(";")) {
     const [k, ...v] = part.trim().split("=");
-    if (k === COOKIE) return v.join("=");
+    if (k === name) return v.join("=");
   }
   return void 0;
 }
@@ -50349,6 +50349,8 @@ async function startDashboard(opts = {}) {
   const want = digest3(token);
   const defaultBook = opts.book ?? "real";
   let hosts = /* @__PURE__ */ new Set();
+  let origins = /* @__PURE__ */ new Set();
+  let cookie = "";
   const inFlight = /* @__PURE__ */ new Map();
   const shared = (key, fn) => {
     let p = inFlight.get(key);
@@ -50361,7 +50363,7 @@ async function startDashboard(opts = {}) {
   async function answer(req) {
     const host = (req.headers.host ?? "").toLowerCase();
     if (!hosts.has(host)) return text(403, "Forbidden: this dashboard answers on 127.0.0.1 and localhost only.");
-    if (!isOriginAllowed(req.headers.origin)) return text(403, "Forbidden: cross-origin request.");
+    if (req.headers.origin !== void 0 && !origins.has(req.headers.origin)) return text(403, "Forbidden: cross-origin request.");
     if (req.method !== "GET" && req.method !== "HEAD") return text(405, "Method not allowed: the dashboard is read-only.", { allow: "GET, HEAD" });
     const url = new URL(req.url ?? "/", `http://${host}`);
     const route2 = routeOf(url.pathname);
@@ -50372,10 +50374,10 @@ async function startDashboard(opts = {}) {
       const search2 = url.searchParams.toString();
       return text(303, "See other", {
         location: `${route2 ? url.pathname : "/"}${search2 ? `?${search2}` : ""}`,
-        "set-cookie": `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/`
+        "set-cookie": `${cookie}=${token}; HttpOnly; SameSite=Strict; Path=/`
       });
     }
-    if (!tokenMatches(cookieToken(req.headers.cookie), want) && !tokenMatches(bearerToken(req.headers.authorization), want))
+    if (!tokenMatches(cookieToken(req.headers.cookie, cookie), want) && !tokenMatches(bearerToken(req.headers.authorization), want))
       return route2?.api ? {
         status: 401,
         type: "json",
@@ -50428,6 +50430,8 @@ async function startDashboard(opts = {}) {
   });
   const port = server.address().port;
   hosts = /* @__PURE__ */ new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
+  origins = new Set([...hosts].map((h) => `http://${h}`));
+  cookie = cookieName(port);
   return {
     url: `http://127.0.0.1:${port}/?token=${token}`,
     port,
