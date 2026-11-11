@@ -42,7 +42,7 @@ export interface Ticket {
   /** The analysis run and decision behind the ticket, if any. */
   run?: string;
   note?: string;
-  /** `replayed`: the gate read a recorded fixture, not the market: good for paper, never for a live order. */
+  /** `replayed`: the gate ran on a fixture (replayed, or recorded into one whose clock it read), not the market now: good for paper, never for a live order. */
   check?: { at: string; verdict: GateResult["verdict"]; fingerprint: string; checks: GateResult["checks"]; replayed?: boolean };
   fills: Fill[];
   /** A working limit order lapses after this instant. */
@@ -180,7 +180,8 @@ export async function recordCheck(id: string, gate: GateResult, now = new Date()
         verdict: gate.verdict,
         fingerprint: gate.fingerprint,
         checks: gate.checks,
-        ...(netMode().kind === "fixture" ? { replayed: true } : {}),
+        // Replayed, or recorded into a directory whose fixture.json sets the clock: either way not the market now.
+        ...(netMode().kind !== "live" ? { replayed: true } : {}),
       };
     },
     now,

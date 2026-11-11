@@ -1,9 +1,11 @@
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { acquireLock } from "../src/core/lock.js";
+import { clockNow, setNetMode } from "../src/core/net.js";
 import { homeDir } from "../src/core/paths.js";
-import type { Order } from "../src/trading/riskgate.js";
+import { type Order, orderFingerprint } from "../src/trading/riskgate.js";
 import { createTicket, loadTicket, recordCheck, ticketsDir, transition } from "../src/trading/tickets.js";
 
 const order: Order = {
@@ -20,6 +22,26 @@ const order: Order = {
 };
 
 beforeEach(() => rmSync(homeDir(), { recursive: true, force: true }));
+
+describe("a check run on a clock that is not the wall clock", () => {
+  it("`ticket check --record <dir holding a fixture.json>`: the gate's clock is the file's, so the check is marked", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "us-review-fixture-"));
+    writeFileSync(join(dir, "fixture.json"), JSON.stringify({ recordedAt: "2020-01-01T00:00:00.000Z" }));
+    const o = { ...order, venue: "kraken" };
+    const t = createTicket(o);
+    setNetMode({ kind: "record", dir });
+    try {
+      // gateContextFor takes clockNow() as "now": orders today, the breaker's day, week and month, the losing-streak pause.
+      const gateNow = clockNow();
+      await recordCheck(t.id, { verdict: "pass", checks: [], fingerprint: orderFingerprint(o), riskReducing: false, notionalBase: 600 });
+      const honestClock = Math.abs(gateNow.getTime() - Date.now()) < 60_000;
+      const marked = loadTicket(t.id).check?.replayed === true;
+      expect(honestClock || marked).toBe(true);
+    } finally {
+      setNetMode({ kind: "live" });
+    }
+  });
+});
 
 describe("ticket transitions", () => {
   it("refuse a move from a state the caller did not expect, read under the lock", async () => {

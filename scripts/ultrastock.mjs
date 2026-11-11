@@ -23258,7 +23258,8 @@ async function recordCheck(id, gate, now = /* @__PURE__ */ new Date()) {
         verdict: gate.verdict,
         fingerprint: gate.fingerprint,
         checks: gate.checks,
-        ...netMode().kind === "fixture" ? { replayed: true } : {}
+        // Replayed, or recorded into a directory whose fixture.json sets the clock: either way not the market now.
+        ...netMode().kind !== "live" ? { replayed: true } : {}
       };
     },
     now,
@@ -45803,7 +45804,7 @@ async function preconditions(p) {
   const refusal2 = executionRefusal(p.ticket, now);
   if (refusal2) no("TICKET", refusal2);
   if (p.ticket.check?.replayed)
-    no("REPLAY", "the ticket was checked against a replayed fixture, not the market: check it again without --fixture before any live order");
+    no("REPLAY", "the ticket was checked against a fixture, not the market: check it again without --fixture or --record before any live order");
   if (o.orderType !== "limit") no("MARKET_ORDER", "live orders are limit orders only");
   if (o.assetKind === "prediction") {
     if (p.venue !== "kalshi") no("ASSET", "event contracts trade live on Kalshi only in this version");
