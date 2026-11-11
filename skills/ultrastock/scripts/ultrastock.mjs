@@ -45401,8 +45401,27 @@ function changeLimits(change, approved, now) {
   save2(s);
   return { applied: false, effectiveAt };
 }
-function currentLimits() {
-  return load().current;
+function currentLimits(now = /* @__PURE__ */ new Date()) {
+  return limitsLock(() => {
+    const s = load();
+    if (mature(s, now)) save2(s);
+    return s.current;
+  });
+}
+function describeLimitsChange(cur, next2) {
+  const parts = [];
+  if (next2.maxOrder !== cur.maxOrder) parts.push(`order limit ${cur.maxOrder} \u2192 ${next2.maxOrder}`);
+  if (next2.maxDaily !== cur.maxDaily) parts.push(`daily limit ${cur.maxDaily} \u2192 ${next2.maxDaily}`);
+  const on = next2.venues.filter((v) => !cur.venues.includes(v));
+  const off = cur.venues.filter((v) => !next2.venues.includes(v));
+  if (on.length) parts.push(`switch live orders ON for ${on.join(", ")}`);
+  if (off.length) parts.push(`switch live orders off for ${off.join(", ")}`);
+  const attest = next2.attestedNoWithdraw.filter((v) => !cur.attestedNoWithdraw.includes(v));
+  const unattest = cur.attestedNoWithdraw.filter((v) => !next2.attestedNoWithdraw.includes(v));
+  for (const v of attest) parts.push(`YOU ATTEST that the ${v} key cannot withdraw (no withdrawal right: ultrastock cannot ask ${v})`);
+  if (unattest.length) parts.push(`withdraw your attestation for ${unattest.join(", ")}`);
+  const inForce = `now ${cur.maxOrder}/order, ${cur.maxDaily}/day, venues ${cur.venues.join(",") || "none"}`;
+  return parts.length ? `live limits: ${parts.join("; ")} (${inForce})` : `live limits unchanged (${inForce})`;
 }
 function liveEverApproved() {
   const s = load();
@@ -46813,12 +46832,9 @@ async function brokerCommand(args, asJson) {
   }
   if (sub === "code") {
     if (id === "limits") {
-      const next2 = nextLimits(args, currentLimits());
-      const r4 = await issueCode(
-        "limits",
-        limitsBinding(next2),
-        `live limits ${next2.maxOrder}/order, ${next2.maxDaily}/day, venues ${next2.venues.join(",") || "none"}`
-      );
+      const cur = currentLimits(now);
+      const next2 = nextLimits(args, cur);
+      const r4 = await issueCode("limits", limitsBinding(next2), describeLimitsChange(cur, next2));
       return printResult(
         asJson,
         r4,

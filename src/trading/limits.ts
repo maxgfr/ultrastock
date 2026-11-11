@@ -167,8 +167,33 @@ function changeLimits(
   return { applied: false, effectiveAt };
 }
 
-export function currentLimits(): LiveLimits {
-  return load().current;
+/** The stored limits in force now: a loosening whose 24 hours are over is applied (and written back). */
+export function currentLimits(now = new Date()): LiveLimits {
+  return limitsLock(() => {
+    const s = load();
+    if (mature(s, now)) save(s);
+    return s.current;
+  });
+}
+
+/**
+ * What a change of the limits does, in the words the user reads with its code: every limit that moves from the ones
+ * in force, an attestation included ("you attest that the kraken key cannot withdraw") — what the code approves.
+ */
+export function describeLimitsChange(cur: LiveLimits, next: LiveLimits): string {
+  const parts: string[] = [];
+  if (next.maxOrder !== cur.maxOrder) parts.push(`order limit ${cur.maxOrder} → ${next.maxOrder}`);
+  if (next.maxDaily !== cur.maxDaily) parts.push(`daily limit ${cur.maxDaily} → ${next.maxDaily}`);
+  const on = next.venues.filter((v) => !cur.venues.includes(v));
+  const off = cur.venues.filter((v) => !next.venues.includes(v));
+  if (on.length) parts.push(`switch live orders ON for ${on.join(", ")}`);
+  if (off.length) parts.push(`switch live orders off for ${off.join(", ")}`);
+  const attest = next.attestedNoWithdraw.filter((v) => !cur.attestedNoWithdraw.includes(v));
+  const unattest = cur.attestedNoWithdraw.filter((v) => !next.attestedNoWithdraw.includes(v));
+  for (const v of attest) parts.push(`YOU ATTEST that the ${v} key cannot withdraw (no withdrawal right: ultrastock cannot ask ${v})`);
+  if (unattest.length) parts.push(`withdraw your attestation for ${unattest.join(", ")}`);
+  const inForce = `now ${cur.maxOrder}/order, ${cur.maxDaily}/day, venues ${cur.venues.join(",") || "none"}`;
+  return parts.length ? `live limits: ${parts.join("; ")} (${inForce})` : `live limits unchanged (${inForce})`;
 }
 
 /**

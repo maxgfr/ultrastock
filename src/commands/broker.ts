@@ -18,7 +18,7 @@ import { ibkrAdapter } from "../trading/brokers/ibkr.js";
 import { kalshiAdapter } from "../trading/brokers/kalshi.js";
 import { krakenAdapter } from "../trading/brokers/kraken.js";
 import type { BrokerAdapter, Environment, Venue } from "../trading/brokers/types.js";
-import { currentLimits, effectiveLimits, limitsBinding, type LiveLimits, requestLimits } from "../trading/limits.js";
+import { currentLimits, describeLimitsChange, effectiveLimits, limitsBinding, type LiveLimits, requestLimits } from "../trading/limits.js";
 import {
   CRYPTO_VENUES,
   LIVE_SWITCH_BINDING,
@@ -179,12 +179,10 @@ export async function brokerCommand(args: CommandArgs, asJson: boolean): Promise
 
   if (sub === "code") {
     if (id === "limits") {
-      const next = nextLimits(args, currentLimits());
-      const r = await issueCode(
-        "limits",
-        limitsBinding(next),
-        `live limits ${next.maxOrder}/order, ${next.maxDaily}/day, venues ${next.venues.join(",") || "none"}`,
-      );
+      const cur = currentLimits(now);
+      const next = nextLimits(args, cur);
+      // The message is all the user reads before typing the code: it names what the code approves.
+      const r = await issueCode("limits", limitsBinding(next), describeLimitsChange(cur, next));
       return out(
         asJson,
         r,

@@ -36,7 +36,9 @@ either switch for the user.
 3. **Switch the venue on.** `broker code limits --venues kraken` sends a code,
    then `broker limits set --venues kraken --code <code>` takes effect **24
    hours later**. Do the same with `--attest kraken` for venues that cannot be
-   asked whether the key can withdraw (Kraken).
+   asked whether the key can withdraw (Kraken). The code's message lists what
+   changes from the limits in force, the attestation included ("you attest
+   that the kraken key cannot withdraw"): the user reads what they approve.
 4. **Add a harness approval rule.** It is a second human gate on top of the
    code. For Claude Code, in `.claude/settings.json`:
    ```json
