@@ -56,7 +56,8 @@
     "url": "https://github.com/maxgfr/ultrastock"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.11",
+    "@biomejs/biome": "^2.6.4",
+    "@maxgfr/webindex": "https://codeload.github.com/maxgfr/webindex/tar.gz/814753f525c208abebd218ff1d3b30972310bd3c",
     "@semantic-release/changelog": "^7.0.0",
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/git": "^11.0.1",
@@ -65,8 +66,7 @@
     "semantic-release": "^25.0.9",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.11",
-    "@maxgfr/webindex": "https://codeload.github.com/maxgfr/webindex/tar.gz/814753f525c208abebd218ff1d3b30972310bd3c"
+    "vitest": "^4.1.11"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
