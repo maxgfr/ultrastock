@@ -49,7 +49,7 @@ import { join as join11 } from "path";
 import { promisify } from "util";
 import { gunzip } from "zlib";
 import { spawnSync as spawnSync3 } from "child_process";
-import { existsSync as existsSync10, lstatSync as lstatSync3, mkdirSync as mkdirSync6, readFileSync as readFileSync10, statSync as statSync8, writeFileSync as writeFileSync6 } from "fs";
+import { existsSync as existsSync10, lstatSync as lstatSync3, mkdirSync as mkdirSync7, readFileSync as readFileSync10, statSync as statSync8, writeFileSync as writeFileSync6 } from "fs";
 import { dirname as dirname2, join as join15, resolve as resolve6 } from "path";
 import { createHash as createHash3 } from "crypto";
 import { existsSync as existsSync12, readdirSync as readdirSync8, readFileSync as readFileSync12, realpathSync as realpathSync2, statSync as statSync9 } from "fs";
@@ -116,6 +116,9 @@ function envInt(suffix, def2, min = 0, max = Number.MAX_SAFE_INTEGER) {
   const n2 = Number(raw);
   if (!Number.isFinite(n2)) return def2;
   return Math.min(max, Math.max(min, Math.trunc(n2)));
+}
+function countOption(value, def2) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(1, Math.floor(value)) : def2;
 }
 var DEFAULT_BRAND;
 var current;
@@ -1651,11 +1654,11 @@ function openDocumentText(xml, budget) {
       const p = paragraphs[paragraphs.length - 1];
       const table = tables[tables.length - 1];
       if (name === "text:p" || name === "text:h") {
-        const level = name === "text:h" ? Math.min(6, Number(attr(attrs2, "text:outline-level")) || 1) : 0;
+        const level = name === "text:h" ? Math.min(6, Math.max(1, Number(attr(attrs2, "text:outline-level")) || 1)) : 0;
         paragraphs.push({ text: "", prefix: level ? `${"#".repeat(level)} ` : listItem && !table ? "- " : "" });
         listItem = false;
       } else if (name === "text:list-item") listItem = true;
-      else if (name === "text:s") add2(p, " ".repeat(Math.min(100, Number(attr(attrs2, "text:c")) || 1)));
+      else if (name === "text:s") add2(p, " ".repeat(Math.min(100, Math.max(1, Number(attr(attrs2, "text:c")) || 1))));
       else if (name === "text:tab") add2(p, "	");
       else if (name === "text:line-break") add2(p, "\n");
       else if (name === "office:spreadsheet") spreadsheet = true;
@@ -1750,7 +1753,9 @@ function packageText(bytes, budget) {
 function readOffice(bytes) {
   try {
     const text = packageText(bytes, new Budget()).replace(/\n{3,}/g, "\n\n").trim();
-    return { text: text.length > MAX_OUTPUT_CHARS ? text.slice(0, text.lastIndexOf("\n", MAX_OUTPUT_CHARS)) : text };
+    if (text.length <= MAX_OUTPUT_CHARS) return { text };
+    const lineEnd = text.lastIndexOf("\n", MAX_OUTPUT_CHARS);
+    return { text: text.slice(0, lineEnd < 0 ? MAX_OUTPUT_CHARS : lineEnd) };
   } catch (e) {
     return { failure: e instanceof Refused ? e.message : "the built-in reader could not parse it" };
   }
@@ -2951,6 +2956,7 @@ function foldTerm(raw) {
   return foldPlural(deaccent(raw.toLowerCase()));
 }
 function subtokens(raw) {
+  if (raw.length > MAX_IDENT) return [];
   const spaced = raw.replace(new RegExp("([\\p{Ll}\\p{N}])(\\p{Lu})", "gu"), "$1 $2").replace(new RegExp("(\\p{Lu}+)(\\p{Lu}\\p{Ll})", "gu"), "$1 $2").replace(new RegExp("(\\p{L})(\\p{N})", "gu"), "$1 $2").replace(new RegExp("(\\p{N})(\\p{L})", "gu"), "$1 $2");
   const parts = spaced.split(/[^\p{L}\p{M}\p{N}]+/u).filter(Boolean);
   if (parts.length < 2) return [];
@@ -2968,6 +2974,7 @@ function expandTokens(tokens, max = 8) {
   const byCanonical = /* @__PURE__ */ new Map();
   for (const raw of tokens) {
     if (byCanonical.size >= max) break;
+    if (raw.length > MAX_KEYWORD_CHARS) continue;
     const canonical = foldTerm(raw);
     if (!canonical || byCanonical.has(canonical)) continue;
     const plain22 = deaccent(raw.toLowerCase());
@@ -3096,7 +3103,9 @@ var CJK_RUNS;
 var ACCENT_CLASSES;
 var BASE_OF;
 var NON_ASCII;
+var MAX_IDENT;
 var MAX_PATTERNS;
+var MAX_KEYWORD_CHARS;
 var VARIANT_PRIORITY;
 var LIGATURE_SPELLING;
 var LIGATURE_OF;
@@ -3323,7 +3332,9 @@ var init_text = __esm({
       for (const ch of cls) BASE_OF.set(ch, base2);
     }
     NON_ASCII = /[\u0080-\uffff]/;
+    MAX_IDENT = 64;
     MAX_PATTERNS = 24;
+    MAX_KEYWORD_CHARS = 256;
     VARIANT_PRIORITY = { original: 0, folded: 1, subtoken: 2 };
     LIGATURE_SPELLING = { \u0153: "oe", \u00E6: "ae", \u00DF: "ss" };
     LIGATURE_OF = { oe: "\u0153", ae: "\xE6", ss: "\xDF" };
@@ -3370,7 +3381,7 @@ function pushTerm(raw, out, expand2) {
   const t = foldCached(raw);
   if (t.length < 2) return;
   out.push(t);
-  if (!expand2 || raw.length > MAX_IDENT) return;
+  if (!expand2 || raw.length > MAX_IDENT2) return;
   for (const sub of subtermsCached(raw, t)) out.push(sub);
 }
 function pushBigrams(run3, out) {
@@ -3511,7 +3522,7 @@ function fuse(lists, keyOf3 = (item) => canonicalizeUrl(item.url)) {
   for (const [key, it] of best) it.meta = { ...it.meta, foundBy: foundBy.get(key) ?? 1 };
   const merged = [...best.values()];
   for (const it of merged) it.score = fused.get(keyOf3(it)) ?? 0;
-  merged.sort((a, b) => b.score - a.score || a.url.localeCompare(b.url));
+  merged.sort((a, b) => b.score - a.score || byCodeUnit(a.url, b.url));
   return merged;
 }
 function coverageWindow(nTerms) {
@@ -3531,7 +3542,7 @@ var NON_ASCII2;
 var CJK_CHAR2;
 var CJK_RUNS2;
 var IDENT_BOUNDARY;
-var MAX_IDENT;
+var MAX_IDENT2;
 var FOLD_CACHE_MAX;
 var foldCache;
 var NO_SUBTERMS;
@@ -3558,7 +3569,7 @@ var init_rank = __esm({
     CJK_CHAR2 = /[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]/u;
     CJK_RUNS2 = /([\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]+)/u;
     IDENT_BOUNDARY = new RegExp("_|[\\p{Ll}\\p{N}]\\p{Lu}|\\p{Lu}\\p{Lu}\\p{Ll}|\\p{L}\\p{N}|\\p{N}\\p{L}", "u");
-    MAX_IDENT = 64;
+    MAX_IDENT2 = 64;
     FOLD_CACHE_MAX = 5e4;
     foldCache = /* @__PURE__ */ new Map();
     NO_SUBTERMS = [];
@@ -4699,7 +4710,9 @@ function detectBrowserBinary(opts = {}) {
   const explicit = opts.env ? opts.env("BROWSER_BIN") : env("BROWSER_BIN");
   if (explicit) {
     const bare = !/[\\/]/.test(explicit);
-    const options = bare ? (sys.PATH ?? "").split(":").filter(Boolean).map((d) => posix.join(d, explicit)) : [explicit];
+    const win = platform === "win32";
+    const names2 = win && !/\.[a-z0-9]+$/i.test(explicit) ? [explicit, `${explicit}.exe`] : [explicit];
+    const options = bare ? (sys.PATH ?? (win ? sys.Path : void 0) ?? "").split(win ? ";" : ":").filter(Boolean).flatMap((d) => names2.map((n2) => (win ? win32 : posix).join(d, n2))) : [explicit];
     const found = options.find(exists);
     if (!found) throw new Error(`BROWSER_BIN points at "${explicit}", which is not an executable file`);
     return { kind: kindOf(found), path: found };
@@ -7465,7 +7478,10 @@ function probeFirecrawl(base2, explicit = false) {
     const t = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS2);
     try {
       const res = await fetch(`${base2}/`, { signal: ctrl.signal });
-      const body = await res.text().catch(() => "");
+      const body = await readCappedBytes(res, PROBE_BODY_BYTES).then(
+        (b) => b.toString("utf8"),
+        () => ""
+      );
       return explicit || looksLikeFirecrawl(res.headers.get("content-type"), body);
     } catch {
       return false;
@@ -7610,6 +7626,7 @@ async function searchViaFirecrawl(query2, limit, opts = {}) {
 }
 var FIRECRAWL_DEFAULT_BASE;
 var PROBE_TIMEOUT_MS2;
+var PROBE_BODY_BYTES;
 var SCRAPE_TIMEOUT_MS;
 var SEARCH_TIMEOUT_MS;
 var SERVER_MARGIN_MS;
@@ -7627,6 +7644,7 @@ var init_firecrawl = __esm({
     init_trim();
     FIRECRAWL_DEFAULT_BASE = "http://localhost:3002";
     PROBE_TIMEOUT_MS2 = 2e3;
+    PROBE_BODY_BYTES = 4096;
     SCRAPE_TIMEOUT_MS = 45e3;
     SEARCH_TIMEOUT_MS = 3e4;
     SERVER_MARGIN_MS = { scrape: 5e3, search: 2e3 };
@@ -8341,7 +8359,15 @@ async function fetchAndExtract(url, opts = {}) {
   if (opts.signal?.aborted) return cancelled();
   const video = opts.video === false ? void 0 : knownVideo(url);
   if (video) {
-    if (opts.authorizeUrl && !await opts.authorizeUrl(url)) return { text: "", finalUrl: url, status: 0, note: `Refused ${url}: not a public address.` };
+    if (opts.authorizeUrl) {
+      let refusal2;
+      try {
+        if (!await opts.authorizeUrl(url)) refusal2 = "the URL is not authorized";
+      } catch (e) {
+        refusal2 = `its authorization failed (${e.message})`;
+      }
+      if (refusal2) return { text: "", finalUrl: url, status: 0, note: `Refused ${url}: ${refusal2}.` };
+    }
     const t = await transcribeVideo(url, {
       lang: opts.acceptLanguage?.split(/[,;]/)[0]?.trim() || void 0,
       signal: opts.signal,
@@ -8447,7 +8473,7 @@ async function readWithoutBrowser(url, opts, wantsPdf, wantsDoc, seen) {
       asBrowser ? { ...fetchOpts, userAgent: contactUa() } : { ...fetchOpts, userAgent: browserUa(), acceptLanguage: opts.acceptLanguage ?? "en-US,en;q=0.9" }
     );
     if (opts.signal?.aborted) return cancelled();
-    if (!challengeUrl(again.url)) res = again;
+    if (again.status !== 0 && !challengeUrl(again.url)) res = again;
   }
   if (challengeUrl(res.url)) {
     seen.page = true;
@@ -8457,7 +8483,7 @@ async function readWithoutBrowser(url, opts, wantsPdf, wantsDoc, seen) {
     return { text: "", finalUrl: res.url, status: 304, etag: res.etag ?? opts.headers?.["if-none-match"], lastModified: res.lastModified };
   }
   if (!res.ok) {
-    seen.page = true;
+    seen.page = !(res.truncated && res.status >= 200 && res.status < 300);
     const wait = res.retryAfterMs !== void 0 ? `, retry after ${Math.ceil(res.retryAfterMs / 1e3)} s` : "";
     const why2 = res.status === 429 ? `rate-limited (HTTP 429${wait})` : `status ${res.status}${res.error ? ", " + res.error : ""}${wait}`;
     return {
@@ -9896,7 +9922,7 @@ var init_read = __esm({
     ASK_GRACE_MS = 15e3;
   }
 });
-var ENGINE_VERSION = "1.37.0";
+var ENGINE_VERSION = "1.37.1";
 init_brand();
 init_pdf();
 init_doc();
@@ -9925,6 +9951,7 @@ init_exec2();
 init_brand();
 init_exec2();
 init_forge_host();
+init_no_write();
 init_text();
 var STALE_STAGING_MS = 24 * 60 * 60 * 1e3;
 init_brand();
@@ -10605,8 +10632,8 @@ async function searchViaKeyless(engine, query2, opts = {}) {
   const spec = SPECS[engine];
   const q = query2.trim();
   if (!q) return { hits: [], note: "Empty query." };
-  const pages = Math.max(1, opts.pages ?? 1);
-  const limit = Math.max(1, opts.limit ?? 10);
+  const pages = countOption(opts.pages, 1);
+  const limit = countOption(opts.limit, 10);
   const localised = !!(opts.lang || opts.region);
   const kl = localised ? ddgRegion(opts.lang, opts.region) : "wt-wt";
   const acceptLanguage = acceptLanguageHeader(opts.lang, opts.region);
@@ -10671,6 +10698,7 @@ init_trim();
 init_url();
 var SEARXNG_DEFAULT_BASE = "http://localhost:8888";
 var PROBE_TIMEOUT_MS4 = 2e3;
+var PROBE_BODY_BYTES2 = 4096;
 var QUERY_TIMEOUT_MS = 8e3;
 function searxngBase(opts = {}) {
   const raw = (opts.searxng ?? env("SEARXNG") ?? SEARXNG_DEFAULT_BASE).trim();
@@ -10687,7 +10715,10 @@ function probeSearxng(base2, explicit = false) {
     const t = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS4);
     try {
       const res = await fetch(`${base2}/healthz`, { signal: ctrl.signal });
-      const body = await res.text().catch(() => "");
+      const body = await readCappedBytes(res, PROBE_BODY_BYTES2).then(
+        (b) => b.toString("utf8"),
+        () => ""
+      );
       return explicit || res.ok && /^\s*ok\s*$/i.test(body);
     } catch {
       return false;
@@ -10710,8 +10741,8 @@ async function searchViaSearxng(query2, opts = {}) {
       ]
     );
   }
-  const pages = Math.max(1, opts.pages ?? 1);
-  const limit = Math.max(1, opts.limit ?? 10);
+  const pages = countOption(opts.pages, 1);
+  const limit = countOption(opts.limit, 10);
   const acceptLanguage = acceptLanguageHeader(opts.lang, opts.region);
   const language = searxngLanguage(opts.lang, opts.region);
   const root = `${base2}/search?q=${encodeURIComponent(query2)}&format=json&safesearch=1` + (language ? `&language=${encodeURIComponent(language)}` : "");
@@ -10876,7 +10907,7 @@ async function search(query2, opts = {}) {
   if (!hits.length) notes.push(closingNote(rungs, opts.signal?.aborted === true));
   return { hits, notes, rungs, searched: rungs.some((r3) => answered2(r3.outcome)) };
 }
-var limitOf = (opts) => Math.max(1, opts.limit ?? 10);
+var limitOf = (opts) => countOption(opts.limit, 10);
 function firecrawlHits(found, limit) {
   const seen = /* @__PURE__ */ new Set();
   const hits = [];
@@ -11241,7 +11272,7 @@ function untrustedStack() {
 function writeIfChanged(path2, content) {
   try {
     if (existsSync10(path2) && readFileSync10(path2, "utf8") === content) return;
-    mkdirSync6(dirname2(path2), { recursive: true, mode: 448 });
+    mkdirSync7(dirname2(path2), { recursive: true, mode: 448 });
     writeFileSync6(path2, content);
   } catch {
   }
@@ -12074,37 +12105,31 @@ async function runStdioServer(adapter, opts = {}) {
     void p.finally(() => inFlight.delete(p));
     return p;
   };
-  let active2 = 0;
-  const waiting = [];
+  const slots = toolSlots();
   const queued = /* @__PURE__ */ new Map();
   let negotiated;
   const handleOpts = { notify: send };
   const runToolCall = async (msg, id, reply) => {
-    const ticket = { cancelled: false };
+    const ticket = new AbortController();
     queued.set(id, ticket);
+    let release;
     try {
-      while (active2 >= MAX_IN_FLIGHT) await new Promise((resolve92) => waiting.push(resolve92));
+      release = await slots.acquire(ticket.signal);
     } finally {
       if (queued.get(id) === ticket) queued.delete(id);
     }
-    if (ticket.cancelled) {
-      waiting.shift()?.();
-      return;
-    }
-    active2++;
+    if (!release) return;
     try {
       await server.handle(msg, reply, handleOpts);
     } finally {
-      active2--;
-      waiting.shift()?.();
+      release();
     }
   };
   const dispatch = async (msg, reply) => {
     if (msg !== null && typeof msg === "object" && !Array.isArray(msg)) {
       if (msg.method === "notifications/cancelled") {
         const target = msg.params?.requestId;
-        const ticket = typeof target === "string" || typeof target === "number" ? queued.get(target) : void 0;
-        if (ticket) ticket.cancelled = true;
+        if (typeof target === "string" || typeof target === "number") queued.get(target)?.abort();
       }
       if (msg.method === "tools/call" && (typeof msg.id === "string" || typeof msg.id === "number")) {
         await runToolCall(msg, msg.id, reply);
@@ -13139,7 +13164,7 @@ async function binanceQuote(instrument, notes = []) {
 }
 
 // src/core/cache.ts
-import { existsSync as existsSync9, mkdirSync as mkdirSync7, readFileSync as readFileSync13 } from "fs";
+import { existsSync as existsSync9, mkdirSync as mkdirSync6, readFileSync as readFileSync13 } from "fs";
 import { join as join12 } from "path";
 
 // src/core/paths.ts
@@ -13189,7 +13214,7 @@ async function cachedJson(key, ttlMs, produce) {
   if (mode3.offline) return void 0;
   const value = await produce();
   if (value !== void 0) {
-    mkdirSync7(join12(dataCacheDir(), "datasets"), { recursive: true });
+    mkdirSync6(join12(dataCacheDir(), "datasets"), { recursive: true });
     writeFileAtomic(pathFor(key), JSON.stringify({ storedAt: Date.now(), key, value }));
   }
   return value;

@@ -66,7 +66,7 @@
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11",
-    "@maxgfr/webindex": "https://codeload.github.com/maxgfr/webindex/tar.gz/f96bf60c3fa99fb474720f9449f3d1d880ee7268"
+    "@maxgfr/webindex": "https://codeload.github.com/maxgfr/webindex/tar.gz/814753f525c208abebd218ff1d3b30972310bd3c"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
