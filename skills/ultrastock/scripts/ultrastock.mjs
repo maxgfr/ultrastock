@@ -16955,7 +16955,9 @@ var sameLine = (a, b) => a.date === b.date && a.code === b.code && a.shares === 
 function netOfAmendments(filings) {
   const live = filings.map((f3) => [...f3.transactions]);
   const notes = [];
-  const amendments = filings.map((_, i) => i).filter((i) => filings[i].amendment).sort((a, b) => (filings[a].filed ?? "").localeCompare(filings[b].filed ?? ""));
+  const amendments = filings.map((_, i) => i).filter((i) => filings[i].amendment).sort(
+    (a, b) => (filings[a].filed ?? "").localeCompare(filings[b].filed ?? "") || (filings[a].accession ?? "").localeCompare(filings[b].accession ?? "") || a - b
+  );
   const applied = /* @__PURE__ */ new Set();
   for (const i of amendments) {
     const a = filings[i];

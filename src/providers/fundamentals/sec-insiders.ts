@@ -163,7 +163,12 @@ export function netOfAmendments(filings: readonly FiledForm4[]): { transactions:
   const amendments = filings
     .map((_, i) => i)
     .filter((i) => filings[i]!.amendment)
-    .sort((a, b) => (filings[a]!.filed ?? "").localeCompare(filings[b]!.filed ?? ""));
+    // Oldest first, in a total order: two amendments filed the same day apply by accession number, never by the order
+    // the filings were listed in (EDGAR lists them newest first).
+    .sort(
+      (a, b) =>
+        (filings[a]!.filed ?? "").localeCompare(filings[b]!.filed ?? "") || (filings[a]!.accession ?? "").localeCompare(filings[b]!.accession ?? "") || a - b,
+    );
   const applied = new Set<number>();
   for (const i of amendments) {
     const a = filings[i]!;

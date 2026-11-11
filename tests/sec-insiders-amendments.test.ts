@@ -48,3 +48,25 @@ describe("a 4/A whose corrected line could replace several of its day", () => {
     expect(notes.join(" ")).toMatch(/could replace several lines of its day.*none is picked/);
   });
 });
+
+describe("two amendments of one form filed on the same day", () => {
+  // Original 1 000 @ 10; a first 4/A (accession …002) corrects the price to 11; a second 4/A (accession …003),
+  // filed the same day, corrects the share count to 900. The last word is 900 @ 11 = 9 900, in whatever order the
+  // filings are given — EDGAR lists them newest first, which is the order that fails.
+  const one = { owners: [jane], transactions: [buy("2026-10-01", 1000, 10)], filed: "2026-10-02", accession: "0001-26-000001" };
+  const amend = (accession: string, shares: number) => ({
+    owners: [jane],
+    transactions: [buy("2026-10-01", shares, 11)],
+    filed: "2026-10-05",
+    accession,
+    amendment: true,
+    originalFiled: "2026-10-02",
+  });
+  const first = amend("0001-26-000002", 1000);
+  const second = amend("0001-26-000003", 900);
+
+  it("keeps the later amendment, newest first as EDGAR lists them", () => {
+    expect(summarizeInsiders([one, first, second], now)).toMatchObject({ buyShares: 900, buyValue: 9900 });
+    expect(summarizeInsiders([second, first, one], now)).toMatchObject({ buyShares: 900, buyValue: 9900 });
+  });
+});
