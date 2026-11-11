@@ -22893,6 +22893,7 @@ function riskGate(o, c) {
 
 // src/trading/tickets.ts
 var CHECK_TTL_MS = 15 * 6e4;
+var filledAt = (t) => t.fills.at(-1)?.at ?? [...t.history].reverse().find((h) => h.to === "filled")?.at ?? t.updatedAt;
 var ticketsDir = () => join25(homeDir(), "tickets");
 var ticketPath = (id) => {
   if (!/^t-[a-z0-9-]{6,80}$/.test(id)) throw new Error(`"${id}" is not a ticket id`);
@@ -23663,6 +23664,25 @@ function buildBook(txs) {
     }),
     transactions: sorted
   };
+}
+function lineOpenedAt(txs) {
+  const held = /* @__PURE__ */ new Map();
+  const opened = /* @__PURE__ */ new Map();
+  for (const t of txs) {
+    if (!t.symbol) continue;
+    const k = `${t.account}|${t.symbol}`;
+    const before = held.get(k) ?? 0;
+    const q = t.quantity ?? 0;
+    let after;
+    if (t.type === "buy" || t.type === "transfer-in") after = before + q;
+    else if (t.type === "sell" || t.type === "transfer-out") after = before - q;
+    else if (t.type === "split") after = before * q;
+    else continue;
+    if (after <= 1e-12) after = 0;
+    if (before === 0 && after > 0) opened.set(k, t.date);
+    held.set(k, after);
+  }
+  return opened;
 }
 function valueBook(book2, prices, fx, base2) {
   const missing = [];
@@ -47222,15 +47242,13 @@ async function runAlerts(now = clockNow()) {
         rules[k] = { ...rule, seen: [...seen].slice(-200) };
       } else if (rule.kind === "stops") {
         const seen = new Set(rule.seen ?? []);
-        const stops = new Map(
-          listTickets((t) => t.status === "filled" && t.order.side === "buy" && t.order.stop !== void 0).map((t) => [
-            `${t.order.account}|${t.order.symbol}`,
-            t
-          ])
-        );
+        const stops = listTickets((t) => t.status === "filled" && t.order.side === "buy" && t.order.stop !== void 0);
         for (const bookName of ["real", "paper"]) {
-          for (const p of buildBook(readLedger(bookName)).positions.filter((x) => x.quantity > 0)) {
-            const t = stops.get(`${p.account}|${p.symbol}`);
+          const book2 = buildBook(readLedger(bookName));
+          const opened = lineOpenedAt(book2.transactions);
+          for (const p of book2.positions.filter((x) => x.quantity > 0)) {
+            const since = opened.get(`${p.account}|${p.symbol}`) ?? "";
+            const t = stops.find((x) => x.order.account === p.account && x.order.symbol === p.symbol && filledAt(x) >= since);
             if (!t) continue;
             const bars = await barsOf(p.symbol);
             const last2 = bars[bars.length - 1];
@@ -51262,26 +51280,6 @@ function namesCompany(headline, name, symbol) {
   const word = (w) => new RegExp(`(?<![\\p{L}\\p{N}])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u").test(title);
   const ticker = symbol.replace(/[.-].*$/, "");
   return word(fold2(name)) || ticker.length >= 3 && word(fold2(ticker));
-}
-var filledAt = (t) => t.fills.at(-1)?.at ?? [...t.history].reverse().find((h) => h.to === "filled")?.at ?? t.updatedAt;
-function lineOpenedAt(txs) {
-  const held = /* @__PURE__ */ new Map();
-  const opened = /* @__PURE__ */ new Map();
-  for (const t of txs) {
-    if (!t.symbol) continue;
-    const k = `${t.account}|${t.symbol}`;
-    const before = held.get(k) ?? 0;
-    const q = t.quantity ?? 0;
-    let after;
-    if (t.type === "buy" || t.type === "transfer-in") after = before + q;
-    else if (t.type === "sell" || t.type === "transfer-out") after = before - q;
-    else if (t.type === "split") after = before * q;
-    else continue;
-    if (after <= 1e-12) after = 0;
-    if (before === 0 && after > 0) opened.set(k, t.date);
-    held.set(k, after);
-  }
-  return opened;
 }
 async function morningRun(dir2, opts = {}) {
   const now = opts.now ?? clockNow();

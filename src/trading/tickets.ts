@@ -49,6 +49,9 @@ export interface Ticket {
   history: Array<{ at: string; from: TicketStatus | "none"; to: TicketStatus; why: string }>;
 }
 
+/** When a ticket was filled: its last fill, else its last move to filled. */
+export const filledAt = (t: Ticket): string => t.fills.at(-1)?.at ?? [...t.history].reverse().find((h) => h.to === "filled")?.at ?? t.updatedAt;
+
 export const ticketsDir = () => join(homeDir(), "tickets");
 const ticketPath = (id: string) => {
   if (!/^t-[a-z0-9-]{6,80}$/.test(id)) throw new Error(`"${id}" is not a ticket id`);

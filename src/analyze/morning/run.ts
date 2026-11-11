@@ -29,7 +29,7 @@ import { loadProfile } from "../../core/profile.js";
 import { sanitizeExternalText } from "../../core/untrusted.js";
 import { mapLimit, UsageError, writeArtifact, writeFileAtomic } from "../../engine.js";
 import { listTheses, type Thesis } from "../../journal/journal.js";
-import type { Transaction } from "../../portfolio/ledger.js";
+import { lineOpenedAt } from "../../portfolio/ledger.js";
 import { loadWatchlist } from "../../portfolio/watchlist.js";
 import { newsSearch } from "../../providers/macro/news.js";
 import type { SearchDelegate } from "../../research/delegate.js";
@@ -38,7 +38,7 @@ import { researchRound, searchName, startResearch } from "../../research/run.js"
 import { type Confirmation, confirmDates, type DateToConfirm } from "./confirm.js";
 import { getQuote, resolveSymbol } from "../../providers/router.js";
 import type { Instrument, QuoteResult } from "../../providers/types.js";
-import { listTickets, type Ticket } from "../../trading/tickets.js";
+import { filledAt, listTickets, type Ticket } from "../../trading/tickets.js";
 import { bookExposure, eventExposure, type MarketEvent, marketEvents } from "../events/run.js";
 import { loadMarkedBook, type MarkedBook } from "../portfolio/book.js";
 import { Findings, formatFindings, registerFindings } from "../portfolio/findings.js";
@@ -353,34 +353,6 @@ interface Row {
   catalysts?: Report;
   error?: string;
   notes: string[];
-}
-
-/** When a ticket was filled: its last fill, else its last move to filled. */
-const filledAt = (t: Ticket): string => t.fills.at(-1)?.at ?? [...t.history].reverse().find((h) => h.to === "filled")?.at ?? t.updatedAt;
-
-/**
- * When each account's line (`account|symbol`) was last opened: the date of the
- * trade that took its quantity up from zero, replayed in `buildBook`'s order
- * and with its rounding (a quantity at or under 1e-12 is closed).
- */
-function lineOpenedAt(txs: readonly Transaction[]): Map<string, string> {
-  const held = new Map<string, number>();
-  const opened = new Map<string, string>();
-  for (const t of txs) {
-    if (!t.symbol) continue;
-    const k = `${t.account}|${t.symbol}`;
-    const before = held.get(k) ?? 0;
-    const q = t.quantity ?? 0;
-    let after: number;
-    if (t.type === "buy" || t.type === "transfer-in") after = before + q;
-    else if (t.type === "sell" || t.type === "transfer-out") after = before - q;
-    else if (t.type === "split") after = before * q;
-    else continue;
-    if (after <= 1e-12) after = 0;
-    if (before === 0 && after > 0) opened.set(k, t.date);
-    held.set(k, after);
-  }
-  return opened;
 }
 
 export async function morningRun(dir: string, opts: MorningOptions = {}): Promise<MorningResult> {

@@ -17,11 +17,11 @@ import { withFileLockSync } from "../core/lock.js";
 import { clockNow, fetchText } from "../core/net.js";
 import { homeDir } from "../core/paths.js";
 import { contentHash, env, writeFileAtomic } from "../engine.js";
-import { buildBook, readLedger } from "../portfolio/ledger.js";
+import { buildBook, lineOpenedAt, readLedger } from "../portfolio/ledger.js";
 import { secFilings } from "../providers/fundamentals/sec.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
 import type { Bar, PriceSeries } from "../providers/types.js";
-import { listTickets } from "../trading/tickets.js";
+import { filledAt, listTickets } from "../trading/tickets.js";
 
 export type RuleKind = "expr" | "8k" | "stops" | "events";
 
@@ -263,17 +263,16 @@ export async function runAlerts(now = clockNow()): Promise<{ events: AlertEvent[
         }
         rules[k] = { ...rule, seen: [...seen].slice(-200) };
       } else if (rule.kind === "stops") {
-        // Every open position with a stop from its entry ticket, real and paper books.
+        // Every open position with a stop from its entry ticket, real and paper books. Only a ticket filled since the line
+        // was last opened protects the position held now; tickets come newest first, so the first match is its latest stop.
         const seen = new Set(rule.seen ?? []);
-        const stops = new Map(
-          listTickets((t) => t.status === "filled" && t.order.side === "buy" && t.order.stop !== undefined).map((t) => [
-            `${t.order.account}|${t.order.symbol}`,
-            t,
-          ]),
-        );
+        const stops = listTickets((t) => t.status === "filled" && t.order.side === "buy" && t.order.stop !== undefined);
         for (const bookName of ["real", "paper"]) {
-          for (const p of buildBook(readLedger(bookName)).positions.filter((x) => x.quantity > 0)) {
-            const t = stops.get(`${p.account}|${p.symbol}`);
+          const book = buildBook(readLedger(bookName));
+          const opened = lineOpenedAt(book.transactions);
+          for (const p of book.positions.filter((x) => x.quantity > 0)) {
+            const since = opened.get(`${p.account}|${p.symbol}`) ?? "";
+            const t = stops.find((x) => x.order.account === p.account && x.order.symbol === p.symbol && filledAt(x) >= since);
             if (!t) continue;
             const bars = await barsOf(p.symbol);
             const last = bars[bars.length - 1]!;

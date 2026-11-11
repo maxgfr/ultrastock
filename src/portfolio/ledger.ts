@@ -330,6 +330,31 @@ export function buildBook(txs: readonly Transaction[]): Book {
   };
 }
 
+/**
+ * When each account's line (`account|symbol`) was last opened: the date of the
+ * trade that took its quantity up from zero, replayed in `buildBook`'s order
+ * and with its rounding (a quantity at or under 1e-12 is closed).
+ */
+export function lineOpenedAt(txs: readonly Transaction[]): Map<string, string> {
+  const held = new Map<string, number>();
+  const opened = new Map<string, string>();
+  for (const t of txs) {
+    if (!t.symbol) continue;
+    const k = `${t.account}|${t.symbol}`;
+    const before = held.get(k) ?? 0;
+    const q = t.quantity ?? 0;
+    let after: number;
+    if (t.type === "buy" || t.type === "transfer-in") after = before + q;
+    else if (t.type === "sell" || t.type === "transfer-out") after = before - q;
+    else if (t.type === "split") after = before * q;
+    else continue;
+    if (after <= 1e-12) after = 0;
+    if (before === 0 && after > 0) opened.set(k, t.date);
+    held.set(k, after);
+  }
+  return opened;
+}
+
 export interface Valued {
   account: string;
   symbol: string;
