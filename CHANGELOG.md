@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.36](https://github.com/maxgfr/ultrastock/compare/v1.13.35...v1.13.36) (2026-11-11)
+
+
+### Bug Fixes
+
+* **tax/us:** a trade quoted in a crypto-asset disposes of the coin given and acquires the coin received ([b6a588e](https://github.com/maxgfr/ultrastock/commit/b6a588e90e1fc46cb6f039e5e44d9219e3ab3cce))
+
 ## [1.13.35](https://github.com/maxgfr/ultrastock/compare/v1.13.34...v1.13.35) (2026-11-11)
 
 
