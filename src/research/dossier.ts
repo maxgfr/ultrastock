@@ -397,7 +397,8 @@ export function writeDossier(
     );
   if (dropped.length) {
     lines.push("## Dropped", "");
-    for (const d of dropped.slice(0, 60)) lines.push(`- <${d.url}> — ${d.reason}`);
+    // A hit's URL is external text (a search engine's, a page's): one line, our markers out.
+    for (const d of dropped.slice(0, 60)) lines.push(`- <${sanitizeExternalText(d.url, 300)}> — ${sanitizeExternalText(d.reason, 400)}`);
     if (dropped.length > 60) lines.push(`- … and ${dropped.length - 60} more`);
     lines.push("");
   }

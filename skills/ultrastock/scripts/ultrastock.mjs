@@ -21922,7 +21922,7 @@ function writeDossier(dir2, todo, docs, dropped, extras) {
     );
   if (dropped.length) {
     lines.push("## Dropped", "");
-    for (const d of dropped.slice(0, 60)) lines.push(`- <${d.url}> \u2014 ${d.reason}`);
+    for (const d of dropped.slice(0, 60)) lines.push(`- <${sanitizeExternalText(d.url, 300)}> \u2014 ${sanitizeExternalText(d.reason, 400)}`);
     if (dropped.length > 60) lines.push(`- \u2026 and ${dropped.length - 60} more`);
     lines.push("");
   }
