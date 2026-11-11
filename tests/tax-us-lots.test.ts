@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import type { Envelope } from "../src/core/profile.js";
 import { type Transaction, transactionId } from "../src/portfolio/ledger.js";
+import { withCryptoQuotes } from "../src/tax/inputs.js";
 import type { TaxEvent, TaxInput } from "../src/tax/regime.js";
 import { UsRegime } from "../src/tax/us.js";
 
@@ -98,6 +99,32 @@ describe("US: a transfer between own accounts and the wash-sale rule", () => {
     ];
     const ev = disposals(txs, { envelopes: [CB, BIN] });
     expect(ev.map((e) => [e.cost, e.gain, e.term, e.acquired])).toEqual([[20_000, 80_000, "long", "2022-03-02"]]);
+  });
+});
+
+describe("US: a trade quoted in a crypto-asset", () => {
+  it("buying ETH with BTC disposes of the BTC given, at its fair value", async () => {
+    // IRS Notice 2014-21 (Q&A 6): a crypto-to-crypto trade disposes of the asset given at fair value.
+    //   2023-01-02 buy 1 BTC @ 20 000 $.
+    //   2025-02-01 buy 10 ETHBTC @ 0.05 BTC, fee 0.001 BTC, BTC closing at 100 000 $:
+    //              0.501 BTC given → proceeds 50 100 $, basis 0.501 × 20 000 = 10 020 $, gain 40 080 $ long-term.
+    const CB: Envelope = { id: "cb", type: "CRYPTO", broker: "Coinbase", currency: "USD" };
+    const txs = [
+      tx({ date: "2023-01-02", type: "buy", account: "cb", symbol: "BTCUSD", quantity: 1, price: 20_000 }),
+      tx({ date: "2025-02-01", type: "buy", account: "cb", symbol: "ETHBTC", currency: "BTC", quantity: 10, price: 0.05, fee: 0.001 }),
+    ];
+    const closes = async () => new Map<string, number>([["2025-02-01", 100_000]]);
+    const quoted = await withCryptoQuotes((c) => (c === "USD" ? 1 : undefined), ["BTC"], "2023-01-01", "2025-12-31", closes);
+    const us = new UsRegime(2025);
+    const s = us.annualSummary(input(txs, { envelopes: [CB], fx: quoted.fx }));
+    const btc = s.events.filter((e) => e.kind === "crypto-disposal" && /^BTC/.test(e.symbol ?? ""));
+    expect(btc.map((e) => [e.quantity, e.proceeds, e.cost, e.gain, e.term, e.acquired])).toEqual([[0.501, 50_100, 10_020, 40_080, "long", "2023-01-02"]]);
+    // What is left: 0.499 BTC of the 2023 lot and the 10 ETH at the 50 100 $ given for them.
+    const open = us.replay(input(txs, { envelopes: [CB], fx: quoted.fx })).open;
+    expect(open.map((l) => [l.asset, Math.round(l.remaining * 1e6) / 1e6, Math.round(l.basis * l.remaining)])).toEqual([
+      ["BTC", 0.499, 9980],
+      ["ETH", 10, 50_100],
+    ]);
   });
 });
 

@@ -31,6 +31,7 @@ import {
   gross,
   type HarvestCandidate,
   isCryptoTx,
+  isFiat,
   isStablecoin,
   round2,
   splitPair,
@@ -77,6 +78,17 @@ const NON_US_BROKERS =
 /** What a row moves: the security, or the crypto-asset whatever the pair a platform quotes it in. */
 const assetOf = (t: Transaction, crypto: boolean) => (crypto ? splitPair(t.symbol ?? "", t.currency).base : (t.symbol ?? "").toUpperCase());
 
+/**
+ * The crypto-asset a trade is priced in (BTC in ETHBTC): a buy gives it, a sale receives it — a disposal and an
+ * acquisition at fair value of their own (IRS Notice 2014-21). Fiat and stablecoins (dollars here) are not.
+ */
+function cryptoQuote(t: Transaction, crypto: boolean): string | undefined {
+  if (!crypto || (t.type !== "buy" && t.type !== "sell")) return undefined;
+  const c = t.currency.toUpperCase();
+  if (isFiat(c) || isStablecoin(c) || isFiat(splitPair(t.symbol ?? "", c).base)) return undefined;
+  return c;
+}
+
 /** Long-term when sold after the first anniversary of the acquisition (IRS Pub. 550). */
 export function isLongTerm(acquired: string, sold: string): boolean {
   const [y, m, d] = acquired.slice(0, 10).split("-");
@@ -97,14 +109,40 @@ export class UsRegime extends TaxRegime {
     return `${m} lots per account and security (the broker must apply the same standing method), buy fees in the basis, sell fees out of the proceeds; wash sales adjust the replacement lots`;
   }
 
-  /** Every purchase becomes a lot up front, so a later replacement buy can absorb a disallowed loss. */
-  private lots(input: TaxInput, history: Transaction[]): { lots: UsLot[]; byTx: Map<Transaction, UsLot> } {
+  /**
+   * Every purchase becomes a lot up front, so a later replacement buy can absorb a disallowed loss — the crypto-asset a
+   * sale is paid in too (`received`, by sale).
+   */
+  private lots(input: TaxInput, history: Transaction[]): { lots: UsLot[]; byTx: Map<Transaction, UsLot>; received: Map<Transaction, UsLot> } {
     const lots: UsLot[] = [];
     const byTx = new Map<Transaction, UsLot>();
+    const received = new Map<Transaction, UsLot>();
     for (const t of history) {
-      if (t.type !== "buy" && t.type !== "transfer-in") continue;
       const env = envelopeOf(t.account, input.envelopes, t.symbol);
       const crypto = isCryptoTx(t, input.envelopes);
+      const quote = t.type === "sell" ? cryptoQuote(t, crypto) : undefined;
+      if (quote) {
+        // What the sale received, net of its fee, at its fair value: the same dollars as the sale's proceeds.
+        const q = gross(t) - (t.fee ?? 0);
+        const lot: UsLot = {
+          id: lots.length,
+          account: t.account,
+          symbol: quote,
+          asset: quote,
+          acquired: day(t.date),
+          bought: day(t.date),
+          quantity: q,
+          remaining: q,
+          basis: q > 0 ? this.toBase(t, q, input) / q : 0,
+          replaced: 0,
+          purchase: true,
+          sheltered: SHELTERED.has(env.type),
+          crypto,
+        };
+        lots.push(lot);
+        received.set(t, lot);
+      }
+      if (t.type !== "buy" && t.type !== "transfer-in") continue;
       if (crypto && isStablecoin(splitPair(t.symbol ?? "", t.currency).base)) continue;
       const q = t.quantity ?? 0;
       const cost = t.price !== undefined ? this.toBase(t, gross(t), input) + this.toBase(t, t.fee ?? 0, input) : 0;
@@ -126,13 +164,13 @@ export class UsRegime extends TaxRegime {
       lots.push(lot);
       byTx.set(t, lot);
     }
-    return { lots, byTx };
+    return { lots, byTx, received };
   }
 
   /** Replay; returns the year's events and the open lots at the year's end (or at `until`). */
   replay(input: TaxInput, until?: string): { events: TaxEvent[]; open: UsLot[]; warnings: string[]; lots: UsLot[] } {
     const history = this.history(input).filter((t) => !until || day(t.date) <= until);
-    const { lots, byTx } = this.lots(input, history);
+    const { lots, byTx, received } = this.lots(input, history);
     const events: TaxEvent[] = [];
     const warnings: string[] = [];
     const active = new Set<UsLot>();
@@ -189,11 +227,177 @@ export class UsRegime extends TaxRegime {
       }
       return true;
     };
+    /**
+     * `qty` of `asset` leave the account's lots (by the lot method): a transfer-out puts what it took in transit, a sale
+     * (or the crypto-asset given in a trade) books each lot's part on Form 8949 with `proceedsTotal` (USD) pro rata.
+     */
+    const dispose = (t: Transaction, asset: string, sym: string, qty: number, proceedsTotal: number, crypto: boolean, extra: string[] = []): void => {
+      const env = envelopeOf(t.account, input.envelopes, t.symbol);
+      const base = {
+        date: day(t.date),
+        account: t.account,
+        envelope: env.type,
+        symbol: sym === (t.symbol ?? "").toUpperCase() ? t.symbol : sym,
+        notes: [] as string[],
+      };
+      const pool = [...active].filter((l) => l.asset === asset && l.account === t.account && l.remaining > 1e-12);
+      pool.sort(
+        (a, b) =>
+          (method === "hifo" ? b.basis - a.basis : method === "lifo" ? b.bought.localeCompare(a.bought) : a.bought.localeCompare(b.bought)) || a.id - b.id,
+      );
+      let left = qty;
+      const perUnit = qty ? proceedsTotal / qty : 0;
+      const consumed: Array<{ lot: UsLot; qty: number }> = [];
+      for (const l of pool) {
+        if (left <= 1e-12) break;
+        const q = Math.min(left, l.remaining);
+        l.remaining -= q;
+        left -= q;
+        consumed.push({ lot: l, qty: q });
+      }
+      if (left > 1e-9)
+        warnings.push(`${sym} (${t.account}) disposed ${qty} on ${day(t.date)} with ${round2(qty - left)} in recorded lots: the rest has no basis`);
+      if (t.type === "transfer-out") {
+        for (const c of consumed) inTransit.push({ account: t.account, asset, lot: c.lot, qty: c.qty });
+        // A statement may list the day's transfer-in before its transfer-out: an untouched one of that day still takes it.
+        unmatched = unmatched.filter((l) => !(l.bought === day(t.date) && l.remaining === l.quantity && carry(l)));
+        return;
+      }
+      if (SHELTERED.has(env.type)) return;
+      if (left > 1e-9)
+        consumed.push({
+          lot: {
+            id: -1,
+            account: t.account,
+            symbol: sym,
+            asset,
+            acquired: day(t.date),
+            bought: day(t.date),
+            quantity: left,
+            remaining: 0,
+            basis: 0,
+            replaced: 0,
+            purchase: false,
+            sheltered: false,
+            crypto,
+          },
+          qty: left,
+        });
+      for (const { lot: l, qty } of consumed) {
+        const proceeds = perUnit * qty;
+        const cost = l.basis * qty;
+        let gain = proceeds - cost;
+        let disallowed = 0;
+        const notes: string[] = [...extra];
+        if (gain < 0 && (!l.crypto || washCrypto)) {
+          // Replacement shares bought within ±30 days (any account), not the shares sold, not already used — bought: a
+          // transfer-in, even one replayed before its transfer-out, acquires nothing.
+          const from = addDays(day(t.date), -window);
+          const to = addDays(day(t.date), window);
+          const soldIds = new Set(consumed.map((c) => c.lot.id));
+          let need = qty;
+          const lossPerShare = -gain / qty;
+          const held = Date.parse(`${day(t.date)}T00:00:00Z`) - Date.parse(`${l.acquired}T00:00:00Z`);
+          // `q` replacement shares of `h` split off into a lot of their own, used up as a replacement; the rest of `h`
+          // keeps its basis and date.
+          const take = (h: UsLot, q: number): UsLot => {
+            if (q >= h.quantity - 1e-12) {
+              h.replaced = h.quantity;
+              return h;
+            }
+            const w: UsLot = { ...h, id: lots.length, quantity: q, remaining: Math.min(q, h.remaining), replaced: q };
+            h.quantity -= q;
+            h.remaining -= w.remaining;
+            lots.push(w);
+            if (active.has(h)) active.add(w);
+            else pieces.set(h, [...(pieces.get(h) ?? []), w]);
+            if (w.origin) holds(w.origin, w);
+            return w;
+          };
+          for (const r of lots) {
+            if (need <= 1e-12) break;
+            if (!r.purchase || r.asset !== asset || soldIds.has(r.id) || r.bought < from || r.bought > to || r.id === l.id) continue;
+            // Only replacement shares that still exist can take the loss into their basis: those already sold (or used
+            // by an earlier wash sale) are not counted, and the loss they cannot take stays allowed.
+            const here = r.replaced >= r.quantity - 1e-12 ? 0 : active.has(r) ? r.remaining : r.quantity;
+            const carried = (carriedOf.get(r) ?? []).filter((c) => active.has(c) && c.replaced < c.quantity - 1e-12 && c.remaining > 1e-12);
+            const avail = r.sheltered ? r.quantity - r.replaced : here + carried.reduce((a, c) => a + c.remaining, 0);
+            if (avail <= 1e-12) continue;
+            const q = Math.min(need, avail);
+            const loss = lossPerShare * q;
+            disallowed += loss;
+            need -= q;
+            if (r.sheltered) {
+              r.replaced += q;
+              notes.push(`wash sale against a purchase in ${r.account} (${r.bought}): the ${round2(loss)} $ loss is lost for good (IRA replacement)`);
+              continue;
+            }
+            // §1091(d) and §1223(3): the q replacement shares take the loss in their basis and the sold shares' holding
+            // time before their own purchase date — wherever they now are: still in the purchase's account, or moved
+            // to another of the user's accounts (the lots carried from it).
+            const holders: Array<[UsLot, number]> = [];
+            let left = q;
+            for (const [h, has] of [[r, here] as const, ...carried.map((c) => [c, c.remaining] as const)]) {
+              if (left <= 1e-12) break;
+              const n = Math.min(left, has);
+              if (n > 1e-12) holders.push([h, n]);
+              left -= n;
+            }
+            for (const [h, n] of holders) {
+              const w = take(h, n);
+              // Shares carried from r count as r's: r has that many fewer left to be a replacement.
+              if (h !== r) r.quantity -= n;
+              w.basis += lossPerShare;
+              w.acquired = new Date(Date.parse(`${w.bought}T00:00:00Z`) - held).toISOString().slice(0, 10);
+              notes.push(
+                `wash sale: ${round2(lossPerShare * n)} $ added to the basis of ${round2(n)} share(s) bought ${r.bought} in ${r.account}${h.account !== r.account ? `, now in ${h.account}` : ""}`,
+              );
+            }
+          }
+          gain += disallowed;
+        }
+        const term = isLongTerm(l.acquired, day(t.date)) ? "long" : "short";
+        if (l.id === -1) notes.push("no recorded lot: basis 0 — import the purchase");
+        if (inYear(t))
+          events.push({
+            ...base,
+            kind: l.crypto ? "crypto-disposal" : "securities-disposal",
+            quantity: round2(qty * 1e6) / 1e6,
+            proceeds: round2(proceeds),
+            cost: round2(cost),
+            gain: round2(gain),
+            term,
+            acquired: l.acquired,
+            washSaleDisallowed: disallowed ? round2(disallowed) : undefined,
+            formula: `${round2(proceeds)} − ${round2(cost)}${disallowed ? ` + wash-sale ${round2(disallowed)}` : ""}`,
+            lines: {
+              a: `${round2(qty * 1e6) / 1e6} ${sym}`,
+              b: l.acquired,
+              c: day(t.date),
+              d: round2(proceeds),
+              e: round2(cost),
+              f: disallowed ? "W" : "",
+              g: disallowed ? round2(disallowed) : 0,
+              h: round2(gain),
+            },
+            notes,
+          });
+      }
+    };
     for (const t of history) {
       const env = envelopeOf(t.account, input.envelopes, t.symbol);
       const sym = (t.symbol ?? "").toUpperCase();
       const crypto = isCryptoTx(t, input.envelopes);
       const base = { date: day(t.date), account: t.account, envelope: env.type, symbol: t.symbol, notes: [] as string[] };
+      const quote = cryptoQuote(t, crypto);
+      if (quote && t.type === "buy") {
+        const given = gross(t) + (t.fee ?? 0);
+        dispose(t, quote, quote, given, this.toBase(t, given, input), true, [
+          `${quote} given for ${t.quantity} ${sym}: a disposal at fair value (IRS Notice 2014-21) — the same dollars are the basis of the ${splitPair(sym, quote).base} received`,
+        ]);
+      }
+      const got = received.get(t);
+      if (got) active.add(got);
       const lot = byTx.get(t);
       if (lot) {
         active.add(lot);
@@ -218,152 +422,8 @@ export class UsRegime extends TaxRegime {
           stableNoted = true;
           continue;
         }
-        const pool = [...active].filter((l) => l.symbol === sym && l.account === t.account && l.remaining > 1e-12);
-        pool.sort(
-          (a, b) =>
-            (method === "hifo" ? b.basis - a.basis : method === "lifo" ? b.bought.localeCompare(a.bought) : a.bought.localeCompare(b.bought)) || a.id - b.id,
-        );
-        let left = t.quantity ?? 0;
-        const proceedsTotal = t.type === "sell" ? this.toBase(t, gross(t), input) - this.toBase(t, t.fee ?? 0, input) : 0;
-        const perUnit = t.quantity ? proceedsTotal / t.quantity : 0;
-        const consumed: Array<{ lot: UsLot; qty: number }> = [];
-        for (const l of pool) {
-          if (left <= 1e-12) break;
-          const q = Math.min(left, l.remaining);
-          l.remaining -= q;
-          left -= q;
-          consumed.push({ lot: l, qty: q });
-        }
-        if (left > 1e-9)
-          warnings.push(
-            `${sym} (${t.account}) disposed ${t.quantity} on ${day(t.date)} with ${round2((t.quantity ?? 0) - left)} in recorded lots: the rest has no basis`,
-          );
-        if (t.type === "transfer-out") {
-          for (const c of consumed) inTransit.push({ account: t.account, asset: assetOf(t, crypto), lot: c.lot, qty: c.qty });
-          // A statement may list the day's transfer-in before its transfer-out: an untouched one of that day still takes it.
-          unmatched = unmatched.filter((l) => !(l.bought === day(t.date) && l.remaining === l.quantity && carry(l)));
-          continue;
-        }
-        if (SHELTERED.has(env.type)) continue;
-        if (left > 1e-9)
-          consumed.push({
-            lot: {
-              id: -1,
-              account: t.account,
-              symbol: sym,
-              asset: assetOf(t, crypto),
-              acquired: day(t.date),
-              bought: day(t.date),
-              quantity: left,
-              remaining: 0,
-              basis: 0,
-              replaced: 0,
-              purchase: false,
-              sheltered: false,
-              crypto,
-            },
-            qty: left,
-          });
-        for (const { lot: l, qty } of consumed) {
-          const proceeds = perUnit * qty;
-          const cost = l.basis * qty;
-          let gain = proceeds - cost;
-          let disallowed = 0;
-          const notes: string[] = [];
-          if (gain < 0 && (!l.crypto || washCrypto)) {
-            // Replacement shares bought within ±30 days (any account), not the shares sold, not already used — bought: a
-            // transfer-in, even one replayed before its transfer-out, acquires nothing.
-            const from = addDays(day(t.date), -window);
-            const to = addDays(day(t.date), window);
-            const soldIds = new Set(consumed.map((c) => c.lot.id));
-            let need = qty;
-            const lossPerShare = -gain / qty;
-            const held = Date.parse(`${day(t.date)}T00:00:00Z`) - Date.parse(`${l.acquired}T00:00:00Z`);
-            // `q` replacement shares of `h` split off into a lot of their own, used up as a replacement; the rest of `h`
-            // keeps its basis and date.
-            const take = (h: UsLot, q: number): UsLot => {
-              if (q >= h.quantity - 1e-12) {
-                h.replaced = h.quantity;
-                return h;
-              }
-              const w: UsLot = { ...h, id: lots.length, quantity: q, remaining: Math.min(q, h.remaining), replaced: q };
-              h.quantity -= q;
-              h.remaining -= w.remaining;
-              lots.push(w);
-              if (active.has(h)) active.add(w);
-              else pieces.set(h, [...(pieces.get(h) ?? []), w]);
-              if (w.origin) holds(w.origin, w);
-              return w;
-            };
-            for (const r of lots) {
-              if (need <= 1e-12) break;
-              if (!r.purchase || r.symbol !== sym || soldIds.has(r.id) || r.bought < from || r.bought > to || r.id === l.id) continue;
-              // Only replacement shares that still exist can take the loss into their basis: those already sold (or used
-              // by an earlier wash sale) are not counted, and the loss they cannot take stays allowed.
-              const here = r.replaced >= r.quantity - 1e-12 ? 0 : active.has(r) ? r.remaining : r.quantity;
-              const carried = (carriedOf.get(r) ?? []).filter((c) => active.has(c) && c.replaced < c.quantity - 1e-12 && c.remaining > 1e-12);
-              const avail = r.sheltered ? r.quantity - r.replaced : here + carried.reduce((a, c) => a + c.remaining, 0);
-              if (avail <= 1e-12) continue;
-              const q = Math.min(need, avail);
-              const loss = lossPerShare * q;
-              disallowed += loss;
-              need -= q;
-              if (r.sheltered) {
-                r.replaced += q;
-                notes.push(`wash sale against a purchase in ${r.account} (${r.bought}): the ${round2(loss)} $ loss is lost for good (IRA replacement)`);
-                continue;
-              }
-              // §1091(d) and §1223(3): the q replacement shares take the loss in their basis and the sold shares' holding
-              // time before their own purchase date — wherever they now are: still in the purchase's account, or moved
-              // to another of the user's accounts (the lots carried from it).
-              const holders: Array<[UsLot, number]> = [];
-              let left = q;
-              for (const [h, has] of [[r, here] as const, ...carried.map((c) => [c, c.remaining] as const)]) {
-                if (left <= 1e-12) break;
-                const n = Math.min(left, has);
-                if (n > 1e-12) holders.push([h, n]);
-                left -= n;
-              }
-              for (const [h, n] of holders) {
-                const w = take(h, n);
-                // Shares carried from r count as r's: r has that many fewer left to be a replacement.
-                if (h !== r) r.quantity -= n;
-                w.basis += lossPerShare;
-                w.acquired = new Date(Date.parse(`${w.bought}T00:00:00Z`) - held).toISOString().slice(0, 10);
-                notes.push(
-                  `wash sale: ${round2(lossPerShare * n)} $ added to the basis of ${round2(n)} share(s) bought ${r.bought} in ${r.account}${h.account !== r.account ? `, now in ${h.account}` : ""}`,
-                );
-              }
-            }
-            gain += disallowed;
-          }
-          const term = isLongTerm(l.acquired, day(t.date)) ? "long" : "short";
-          if (l.id === -1) notes.push("no recorded lot: basis 0 — import the purchase");
-          if (inYear(t))
-            events.push({
-              ...base,
-              kind: l.crypto ? "crypto-disposal" : "securities-disposal",
-              quantity: round2(qty * 1e6) / 1e6,
-              proceeds: round2(proceeds),
-              cost: round2(cost),
-              gain: round2(gain),
-              term,
-              acquired: l.acquired,
-              washSaleDisallowed: disallowed ? round2(disallowed) : undefined,
-              formula: `${round2(proceeds)} − ${round2(cost)}${disallowed ? ` + wash-sale ${round2(disallowed)}` : ""}`,
-              lines: {
-                a: `${round2(qty * 1e6) / 1e6} ${sym}`,
-                b: l.acquired,
-                c: day(t.date),
-                d: round2(proceeds),
-                e: round2(cost),
-                f: disallowed ? "W" : "",
-                g: disallowed ? round2(disallowed) : 0,
-                h: round2(gain),
-              },
-              notes,
-            });
-        }
+        const proceeds = t.type === "sell" ? this.toBase(t, gross(t), input) - this.toBase(t, t.fee ?? 0, input) : 0;
+        dispose(t, assetOf(t, crypto), sym, t.quantity ?? 0, proceeds, crypto);
         continue;
       }
       if (SHELTERED.has(env.type)) continue;

@@ -584,7 +584,14 @@ describe("United States", () => {
     expect(closes).toHaveBeenCalledTimes(1);
     expect(quoted.notes.join(" ")).toMatch(/BTC.*daily close/);
     const ev = us.realize(input(txs, [CB], { fx: quoted.fx }));
-    expect(ev.map((e) => [e.kind, e.proceeds, e.cost, e.gain])).toEqual([["crypto-disposal", 2800, 3000, -200]]);
+    // The buy gives 0.03 BTC (no BTC lot recorded: basis 0) for ETH worth 3 000 $; the sale gives the ETH for 0.035 BTC.
+    expect(ev.map((e) => [e.kind, e.symbol, e.proceeds, e.cost, e.gain])).toEqual([
+      ["crypto-disposal", "BTC", 3000, 0, 3000],
+      ["crypto-disposal", "ETHBTC", 2800, 3000, -200],
+    ]);
+    // The 0.035 BTC received is a lot of its own, at the 2 800 $ it was worth.
+    const open = us.replay(input(txs, [CB], { fx: quoted.fx })).open;
+    expect(open.map((l) => [l.asset, l.remaining, Math.round(l.basis * l.remaining)])).toEqual([["BTC", 0.035, 2800]]);
     // In euros, the close is converted at the day's USD rate.
     const eur = await withCryptoQuotes(fx({ USD: 0.9 }), ["BTC"], "2025-01-01", "2025-12-31", closes);
     expect(eur.fx("BTC", "2025-02-01")).toBeCloseTo(90_000, 6);
