@@ -25868,28 +25868,40 @@ function securityLines(lines) {
 function etfOverlap(a, b) {
   const A = securityLines(a);
   const B = securityLines(b);
-  const used = /* @__PURE__ */ new Set();
-  const byIsin = /* @__PURE__ */ new Map();
-  const byTicker = /* @__PURE__ */ new Map();
-  const byName = /* @__PURE__ */ new Map();
-  const put = (m, k, i) => m.set(k, [...m.get(k) ?? [], i]);
-  B.forEach((l, i) => {
-    if (l.isin) put(byIsin, l.isin.toUpperCase(), i);
-    if (l.ticker) put(byTicker, l.ticker.toUpperCase(), i);
-    const n2 = holdingNameKey(l.name);
-    if (n2) put(byName, n2, i);
-  });
-  const free = (xs) => xs?.find((x) => !used.has(x));
+  const usedA = /* @__PURE__ */ new Set();
+  const usedB = /* @__PURE__ */ new Set();
+  const pairs = [];
+  const keys = [
+    (l) => l.isin?.toUpperCase() || void 0,
+    (l) => l.ticker?.toUpperCase() || void 0,
+    (l) => holdingNameKey(l.name) || void 0
+  ];
+  const groups = (lines, used, key) => {
+    const m = /* @__PURE__ */ new Map();
+    lines.forEach((l, i) => {
+      const k = used.has(i) ? void 0 : key(l);
+      if (k) m.set(k, [...m.get(k) ?? [], i]);
+    });
+    return m;
+  };
+  const heaviest = (lines) => (x, y) => lines[y].weightPct - lines[x].weightPct || lines[x].name.localeCompare(lines[y].name);
+  for (const key of keys) {
+    const gb = groups(B, usedB, key);
+    for (const [k, ia] of groups(A, usedA, key)) {
+      const ib = gb.get(k);
+      if (!ib) continue;
+      ia.sort(heaviest(A));
+      ib.sort(heaviest(B));
+      for (let n2 = 0; n2 < Math.min(ia.length, ib.length); n2++) {
+        pairs.push([ia[n2], ib[n2]]);
+        usedA.add(ia[n2]);
+        usedB.add(ib[n2]);
+      }
+    }
+  }
   const common = [];
-  for (const l of A) {
-    const cands = [
-      l.isin ? free(byIsin.get(l.isin.toUpperCase())) : void 0,
-      l.ticker ? free(byTicker.get(l.ticker.toUpperCase())) : void 0,
-      free(byName.get(holdingNameKey(l.name)))
-    ];
-    const j = cands.find((x) => x !== void 0);
-    if (j === void 0) continue;
-    used.add(j);
+  for (const [i, j] of pairs) {
+    const l = A[i];
     const m = B[j];
     common.push({
       name: l.name,
@@ -25900,7 +25912,7 @@ function etfOverlap(a, b) {
       min: Math.min(l.weightPct, m.weightPct)
     });
   }
-  common.sort((x, y) => y.min - x.min);
+  common.sort((x, y) => y.min - x.min || x.name.localeCompare(y.name));
   return { overlapPct: common.reduce((s, c) => s + c.min, 0), common, aLines: A.length, bLines: B.length };
 }
 var US_EXCHANGES = ["AMEX", "NASDAQ", "NYSE", "CBOE"];

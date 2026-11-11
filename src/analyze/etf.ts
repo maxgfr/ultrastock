@@ -177,34 +177,50 @@ export interface OverlapResult {
 /**
  * The overlap of two funds: the sum over common lines of the smaller weight
  * (the share of A's money that sits in what B also holds). Lines match by
- * ISIN, then ticker, then a normalised name; each line is matched once.
+ * ISIN across both funds first, then by ticker among the lines left, then by
+ * a normalised name; each line is matched once. Several lines under one key
+ * (two share classes under one name) pair by weight, largest with largest —
+ * the pairing that shares the most — so the result is the same whatever
+ * order either fund lists its lines in, and the same from B to A.
  */
 export function etfOverlap(a: readonly FundLine[], b: readonly FundLine[]): OverlapResult {
   const A = securityLines(a);
   const B = securityLines(b);
-  const used = new Set<number>();
-  // Every B line under each key: two share classes reduce to one name ("Alphabet"), and each must stay matchable.
-  const byIsin = new Map<string, number[]>();
-  const byTicker = new Map<string, number[]>();
-  const byName = new Map<string, number[]>();
-  const put = (m: Map<string, number[]>, k: string, i: number) => m.set(k, [...(m.get(k) ?? []), i]);
-  B.forEach((l, i) => {
-    if (l.isin) put(byIsin, l.isin.toUpperCase(), i);
-    if (l.ticker) put(byTicker, l.ticker.toUpperCase(), i);
-    const n = holdingNameKey(l.name);
-    if (n) put(byName, n, i);
-  });
-  const free = (xs: number[] | undefined) => xs?.find((x) => !used.has(x));
+  const usedA = new Set<number>();
+  const usedB = new Set<number>();
+  const pairs: Array<[number, number]> = [];
+  const keys: Array<(l: FundLine) => string | undefined> = [
+    (l) => l.isin?.toUpperCase() || undefined,
+    (l) => l.ticker?.toUpperCase() || undefined,
+    (l) => holdingNameKey(l.name) || undefined,
+  ];
+  const groups = (lines: readonly FundLine[], used: ReadonlySet<number>, key: (l: FundLine) => string | undefined) => {
+    const m = new Map<string, number[]>();
+    lines.forEach((l, i) => {
+      const k = used.has(i) ? undefined : key(l);
+      if (k) m.set(k, [...(m.get(k) ?? []), i]);
+    });
+    return m;
+  };
+  const heaviest = (lines: readonly FundLine[]) => (x: number, y: number) =>
+    lines[y]!.weightPct - lines[x]!.weightPct || lines[x]!.name.localeCompare(lines[y]!.name);
+  for (const key of keys) {
+    const gb = groups(B, usedB, key);
+    for (const [k, ia] of groups(A, usedA, key)) {
+      const ib = gb.get(k);
+      if (!ib) continue;
+      ia.sort(heaviest(A));
+      ib.sort(heaviest(B));
+      for (let n = 0; n < Math.min(ia.length, ib.length); n++) {
+        pairs.push([ia[n]!, ib[n]!]);
+        usedA.add(ia[n]!);
+        usedB.add(ib[n]!);
+      }
+    }
+  }
   const common: OverlapResult["common"] = [];
-  for (const l of A) {
-    const cands = [
-      l.isin ? free(byIsin.get(l.isin.toUpperCase())) : undefined,
-      l.ticker ? free(byTicker.get(l.ticker.toUpperCase())) : undefined,
-      free(byName.get(holdingNameKey(l.name))),
-    ];
-    const j = cands.find((x): x is number => x !== undefined);
-    if (j === undefined) continue;
-    used.add(j);
+  for (const [i, j] of pairs) {
+    const l = A[i]!;
     const m = B[j]!;
     common.push({
       name: l.name,
@@ -215,7 +231,7 @@ export function etfOverlap(a: readonly FundLine[], b: readonly FundLine[]): Over
       min: Math.min(l.weightPct, m.weightPct),
     });
   }
-  common.sort((x, y) => y.min - x.min);
+  common.sort((x, y) => y.min - x.min || x.name.localeCompare(y.name));
   return { overlapPct: common.reduce((s, c) => s + c.min, 0), common, aLines: A.length, bLines: B.length };
 }
 

@@ -126,6 +126,23 @@ describe("overlap", () => {
     expect(etfOverlap(ishares, nport).overlapPct).toBeCloseTo(3.9 + 3.4, 10);
     expect(etfOverlap(nport, ishares).overlapPct).toBeCloseTo(3.9 + 3.4, 10);
     expect(etfOverlap(nport, nport).overlapPct).toBeCloseTo(7.3, 10);
+    // A property of the two funds, not of the order their lines are listed in: 6.9 % with N-PORT's lines reversed.
+    expect(etfOverlap(ishares, [...nport].reverse()).overlapPct).toBeCloseTo(7.3, 10);
+    expect(etfOverlap([...ishares].reverse(), nport).overlapPct).toBeCloseTo(7.3, 10);
+  });
+  it("matches exact keys first: a name match never takes the line another line matches by ISIN", () => {
+    // Both funds carry class A's ISIN; one lacks class C's. By ISIN A↔A = min(4, 3.9); the two left match by name: 3.4.
+    const a: FundLine[] = [
+      { name: "Alphabet Inc Class A", isin: "US02079K3059", weightPct: 4 },
+      { name: "Alphabet Inc Class C", weightPct: 3.5 },
+    ];
+    const b: FundLine[] = [
+      { name: "Alphabet Inc Class C", isin: "US02079K1079", weightPct: 3.4 },
+      { name: "Alphabet Inc Class A", isin: "US02079K3059", weightPct: 3.9 },
+    ];
+    expect(etfOverlap(a, b).overlapPct).toBeCloseTo(7.3, 10);
+    expect(etfOverlap(b, a).overlapPct).toBeCloseTo(7.3, 10);
+    expect(etfOverlap([...a].reverse(), b).overlapPct).toBeCloseTo(7.3, 10);
   });
 });
 
