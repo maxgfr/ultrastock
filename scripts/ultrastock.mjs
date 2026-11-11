@@ -42721,6 +42721,7 @@ function maturedHorizons(market, start, due, today) {
 async function settleDecisions(now = clockNow()) {
   const done = new Set(readSettlements().map((s) => `${s.decisionId}|${s.horizon}`));
   const settled = [];
+  const waiting = [];
   const errors = [];
   let pending = 0;
   const today = now.toISOString().slice(0, 10);
@@ -42740,6 +42741,13 @@ async function settleDecisions(now = clockNow()) {
       const bench = benchSym ? await getHistory(await resolveSymbol(benchSym), { from, to: now }).catch(() => void 0) : void 0;
       for (const h of matured) {
         const endDate = horizonEnd(market, start, h);
+        const histories = [[d.symbol, series.bars]];
+        if (benchSym) histories.push([benchSym, bench?.bars ?? []]);
+        const short = histories.find(([, bars]) => (bars.at(-1)?.date.slice(0, 10) ?? "") < endDate);
+        if (short) {
+          waiting.push({ decisionId: d.id, symbol: d.symbol, horizon: h, endDate, series: short[0], lastBar: short[1].at(-1)?.date.slice(0, 10) });
+          continue;
+        }
         const s0 = closeAtOrBefore(series.bars, start);
         const s1 = closeAtOrBefore(series.bars, endDate);
         if (!s0 || !s1) {
@@ -42785,7 +42793,7 @@ async function settleDecisions(now = clockNow()) {
       ).join("")
     );
   }
-  return { settled, pending, errors };
+  return { settled, pending, waiting, errors };
 }
 function hitRates(settlements) {
   const groups = /* @__PURE__ */ new Map();
@@ -50640,9 +50648,13 @@ async function journalCommand(args, asJson) {
       asJson,
       r3,
       [
-        `${r3.settled.length} settlement(s), ${r3.pending} horizon(s) not matured yet`,
+        `${r3.settled.length} settlement(s), ${r3.pending} horizon(s) not matured yet${r3.waiting.length ? `, ${r3.waiting.length} waiting for the price history` : ""}`,
         ...r3.settled.map(
           (s) => `  ${s.symbol} ${s.rating} +${s.horizon} \u2192 ${s.endDate}: ${s.returnPct} %${s.alphaPct !== void 0 ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} \u2014 ${s.hit ? "right" : "wrong"}`
+        ),
+        // A name no longer quoted never gets that bar: it is said, not settled on its last close.
+        ...r3.waiting.map(
+          (w) => `  waiting: ${w.symbol} +${w.horizon} (${w.decisionId}) ends ${w.endDate}, but ${w.series === w.symbol ? "its" : `the benchmark ${w.series}'s`} history ${w.lastBar ? `stops at ${w.lastBar}` : "is empty"} \u2014 pending until it holds a bar on or after ${w.endDate}; a delisted or renamed name stays pending`
         ),
         ...r3.errors.map((e) => `  error: ${e}`)
       ].join("\n")

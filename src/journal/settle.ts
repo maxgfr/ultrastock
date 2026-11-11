@@ -1,9 +1,10 @@
 // Settling decisions: did the call work? Once 5, 20 and 60 sessions have
-// passed after a decision, its symbol's return and its alpha against a
-// benchmark are measured and appended to journal/settlements.jsonl — never
-// edited, never re-scored. A buy or overweight is right when the alpha is
-// positive, a sell or underweight when it is negative; a hold is judged
-// neutral (|alpha| under 2 % a month) — the hit rates by rating come from here.
+// passed after a decision, and the price histories reach that far, its
+// symbol's return and its alpha against a benchmark are measured and appended
+// to journal/settlements.jsonl — never edited, never re-scored. A buy or
+// overweight is right when the alpha is positive, a sell or underweight when it
+// is negative; a hold is judged neutral (|alpha| under 2 % a month) — the hit
+// rates by rating come from here.
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Decision, journalDir } from "../analyze/decision.js";
@@ -83,10 +84,23 @@ export function maturedHorizons(market: CalendarMarket | undefined, start: strin
   return due.filter((h) => horizonEnd(market, start, h) < today);
 }
 
+/** A matured horizon left pending because a price history stops before its end. */
+export interface Waiting {
+  decisionId: string;
+  symbol: string;
+  horizon: number;
+  endDate: string;
+  /** The history that falls short: the symbol's or its benchmark's. */
+  series: string;
+  /** Its last bar's day; none when it has no history at all. */
+  lastBar?: string;
+}
+
 /** Settle every decision horizon that has matured and is not settled yet. */
-export async function settleDecisions(now = clockNow()): Promise<{ settled: Settlement[]; pending: number; errors: string[] }> {
+export async function settleDecisions(now = clockNow()): Promise<{ settled: Settlement[]; pending: number; waiting: Waiting[]; errors: string[] }> {
   const done = new Set(readSettlements().map((s) => `${s.decisionId}|${s.horizon}`));
   const settled: Settlement[] = [];
+  const waiting: Waiting[] = [];
   const errors: string[] = [];
   let pending = 0;
   const today = now.toISOString().slice(0, 10);
@@ -107,6 +121,15 @@ export async function settleDecisions(now = clockNow()): Promise<{ settled: Sett
       const bench = benchSym ? await getHistory(await resolveSymbol(benchSym), { from, to: now }).catch(() => undefined) : undefined;
       for (const h of matured) {
         const endDate = horizonEnd(market, start, h);
+        // A history that stops before the end session — stale, lagging, or a name no longer quoted — would score the call
+        // on an earlier close, and a settlement is never re-scored: the horizon waits for a bar on or after its end.
+        const histories: Array<[string, readonly Bar[]]> = [[d.symbol, series.bars]];
+        if (benchSym) histories.push([benchSym, bench?.bars ?? []]);
+        const short = histories.find(([, bars]) => (bars.at(-1)?.date.slice(0, 10) ?? "") < endDate);
+        if (short) {
+          waiting.push({ decisionId: d.id, symbol: d.symbol, horizon: h, endDate, series: short[0], lastBar: short[1].at(-1)?.date.slice(0, 10) });
+          continue;
+        }
         const s0 = closeAtOrBefore(series.bars, start);
         const s1 = closeAtOrBefore(series.bars, endDate);
         if (!s0 || !s1) {
@@ -153,7 +176,7 @@ export async function settleDecisions(now = clockNow()): Promise<{ settled: Sett
         .join(""),
     );
   }
-  return { settled, pending, errors };
+  return { settled, pending, waiting, errors };
 }
 
 /** Hit rate and mean alpha by rating and horizon — how good the calls have been. */
