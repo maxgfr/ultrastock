@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.45](https://github.com/maxgfr/ultrastock/compare/v1.13.44...v1.13.45) (2026-11-11)
+
+
+### Bug Fixes
+
+* **journal:** read the decision journal past a line a crash cut short ([dca46c6](https://github.com/maxgfr/ultrastock/commit/dca46c67fb3477d2fcb35f2fd63e5763e3474aac))
+
 ## [1.13.44](https://github.com/maxgfr/ultrastock/compare/v1.13.43...v1.13.44) (2026-11-11)
 
 
