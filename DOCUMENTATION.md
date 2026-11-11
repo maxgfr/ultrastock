@@ -28,11 +28,16 @@ id, so a re-run into the same directory keeps an answer valid.
 ## The check
 
 `check` splits the answer into claims (paragraphs, list items, table rows,
-blockquotes — the engine's claim parser), reads every figure in each claim with
-its own financial number reader (signs, `%`, `bn`/`Md`, French and English
-separators, more than eight figures per row), and requires each figure to be
-among the values of the `[E#]` the same claim cites, at the precision written.
-Dates, years, indicator settings, index names and spans are not figures. A
+blockquotes — the engine's claim parser — plus each heading and each table's
+header row, which the parser sets aside as structure), reads every figure in
+each claim with its own financial number reader (signs, `%`, `bn`/`Md`, French
+and English separators, more than eight figures per row), and requires each
+figure to be among the values of the `[E#]` the same claim cites, at the
+precision written: a figure in a heading or a header row needs its `[E#]` in
+that same line or row. Dates, years, indicator settings, index names and spans
+are not figures, nor are a heading's section number (`2.3`) and a header cell
+holding only a whole number (a horizon or a year labelling its column); a
+heading with no figure and no `[E#]` is a title, its date a label. A
 calendar date is checked on its own (`src/core/dates.ts` reads ISO, numeric,
 French and English forms): in a claim that cites evidence it must be a date a
 cited `[E#]` holds or a cited document writes, and a date ahead with no `[E#]`

@@ -123,6 +123,27 @@ describe("checkAnswer", () => {
     // Citations, cited links and footnote markers are still not figures.
     expect(kinds("Closing at [383 €](https://example.com/q) [E1](https://example.com/e) [12] [^3].\n")).toEqual([]);
   });
+  it("checks a figure written in a heading or in a table's header row", () => {
+    // E1 is 383 EUR: neither 450 € nor 45 % nor 2.3 bn is in it.
+    const kinds = (answer: string) => failing(checkAnswer(run(), answer));
+    expect(kinds("## Buy, target 450 €\n\nClose 383 € [E1].\n")).toEqual(["uncited"]);
+    expect(kinds("## Buy, target 450 € [E1]\n\nClose 383 € [E1].\n")).toEqual(["unsupported"]);
+    expect(kinds("| LVMH up 45 % | x |\n|---|---|\n| close | 383 € [E1] |\n")).toEqual(["uncited"]);
+    expect(kinds("### 2.3 bn of revenue\n\nClose 383 € [E1].\n")).toEqual(["uncited"]);
+    // A heading or a header row citing the evidence that holds its figure passes, and its [E#] grounds it.
+    const r = checkAnswer(run(), "## Close 383 € [E1]\n\nThe rest of the answer.\n");
+    expect(failing(r)).toEqual([]);
+    if (!("error" in r)) expect(r.problems.map((p) => p.kind)).not.toContain("inert");
+    expect(kinds("| Close 383 € [E1] | 1y |\n|---|---|\n| a | b |\n")).toEqual([]);
+    // Labels are not figures: section numbers, periods, index names, indicator settings, ordinals, a dated title.
+    const headings =
+      "# LVMH — Q3 2026 results, FY2025\n\n## 1. Thesis\n\n### 2.3 Risks\n\n#### 2.3.1 Detail\n\n## 10) CAC 40, S&P 500, RSI(14), SMA 200\n\n## The 2nd quarter, the week of 2099-12-07\n";
+    expect(kinds(`${headings}\nClose 383 € [E1].\n`)).toEqual([]);
+    // Nor are horizons and years heading the columns.
+    expect(
+      kinds("| Horizon | +5 | +20 | +60 | 5 d | 20 sessions | J+20 | 2026 |\n|---|---|---|---|---|---|---|---|\n| close | 383 € [E1] | | | | | | |\n"),
+    ).toEqual([]);
+  });
   it("fails uncited, dangling and unsupported figures, each on its line", () => {
     const r = checkAnswer(run(), "A 383 € close [E1].\n\nTarget 450 € soon.\n\nPE of 22.5 [E9].\n\nUp 12% [E2].\n");
     expect(failing(r)).toEqual(["uncited", "dangling", "unsupported", "unsupported"]);

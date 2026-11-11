@@ -9,10 +9,20 @@ once assigned.
 
 ## What counts as a claim
 
-Each paragraph, list item, table row and blockquote is a claim. A claim that
-states a figure must cite, **in the same claim**, the `[E#]` that holds it: a
-table row cites in its own cells, a list item in its own text — a lead-in
-sentence above a list grounds nothing below it.
+Each paragraph, list item, table row and blockquote is a claim — and so is
+each heading and each table's header row. A claim that states a figure must
+cite, **in the same claim**, the `[E#]` that holds it: a table row cites in its
+own cells, a list item in its own text, a heading in its own line, a header
+row in its own cells (a column never grounds its header) — a lead-in sentence
+above a list grounds nothing below it. `## Buy, target 450 €` with no `[E#]`
+is refused.
+
+Labels are not figures: a heading's section number (`## 1. Thesis`,
+`### 2.3 Risks`; `2.3 bn` opening a heading is still a figure), a header cell
+holding only a whole number (horizons and years heading columns: `+5`, `20`,
+`J+60`, `2026`), and everything listed below. A heading with no figure and no
+`[E#]` is a title: a date in it labels the section and is not held to the rule
+for dates ahead.
 
 A **figure** is any number written as a quantity: `383,00 €`, `−1.24 %`,
 `$1.6 trillion`, `188,6 Md€`, `31.4x`, `12 bps`, `39,539,690 shares`. These are

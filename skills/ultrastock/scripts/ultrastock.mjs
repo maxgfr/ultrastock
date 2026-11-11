@@ -21688,6 +21688,19 @@ function closingSourcesMask(lines) {
   if (last2 !== void 0 && SOURCES_HEADING.test(lines[last2].trim())) for (let i = last2; i < lines.length; i++) mask[i] = true;
   return mask;
 }
+function withoutColumnLabels(answer) {
+  const separator = (l) => /\|/.test(l) && /^[\s:|-]+$/.test(l.trim()) && /-/.test(l);
+  const lines = answer.split("\n");
+  return lines.map(
+    (l, i) => /\|/.test(l) && !separator(l) && separator(lines[i + 1] ?? "") ? l.split("|").map((c) => new RegExp("^\\s*(?:\\p{L}?[+\\-\u2212\u2013])?\\d+\\s*$", "u").test(c) ? " " : c).join("|") : l
+  ).join("\n");
+}
+function headingText(heading) {
+  const t = heading.replace(/^#{1,6}\s+/, "");
+  const n2 = /^(\d+(?:\.\d+)+|\d+(?=[.)]))[.)]?\s/.exec(t);
+  const first = n2 && extractFigures(t)[0];
+  return n2 && (!first || n2[1].startsWith(first.raw)) ? t.slice(n2[0].length) : t;
+}
 function lineFinder(lines) {
   const flat = lines.map(
     (l) => l.replace(/`/g, "").replace(/^\s*(?:[-*+]|\d+\.|>)\s+/, "").replace(/\|/g, " ").replace(/\s+/g, " ").trim()
@@ -21714,10 +21727,10 @@ var quote = (t) => t.length > 70 ? `${t.slice(0, 67)}\u2026` : t;
 function checkAnswer(dir2, rawAnswer, opts = {}) {
   const store = EvidenceStore.load(dir2);
   if (!store) return { error: `${dir2} holds no evidence.json \u2014 run \`ultrastock analyze\`, \`quote\` or \`history\` with --out ${dir2} first` };
-  const answer = normalizeEvidenceCitations(rawAnswer);
+  const answer = withoutColumnLabels(normalizeEvidenceCitations(rawAnswer));
   const lines = answer.split(/\r?\n/);
   const lineOf = lineFinder(lines);
-  const unitOpts = { exclude: closingSourcesMask };
+  const unitOpts = { exclude: closingSourcesMask, skipTableHeader: false };
   const problems = [];
   const cited = /* @__PURE__ */ new Set();
   const now = (opts.now ?? /* @__PURE__ */ new Date()).getTime();
@@ -21745,12 +21758,24 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
       itemDates.set(item.id, datesIn([String(item.value), item.label, item.key, item.asOf ?? "", item.fetchedAt.slice(0, 10)].join(" ")));
     return itemDates.get(item.id);
   };
-  for (const unit of extractClaimUnits(answer, unitOpts)) {
-    for (const text2 of unitTexts(unit)) {
+  const headings = [];
+  const units = [];
+  let nextHeading = 0;
+  const headingsTo = (n2) => {
+    for (; nextHeading <= n2; nextHeading++) units.push({ texts: [headingText(headings[nextHeading])], heading: true });
+  };
+  for (const unit of extractClaimUnits(answer, { ...unitOpts, sectionTag: (h) => String(headings.push(h) - 1) })) {
+    headingsTo(unit.section === void 0 ? -1 : Number(unit.section));
+    units.push({ texts: unitTexts(unit) });
+  }
+  headingsTo(headings.length - 1);
+  for (const { texts, heading } of units) {
+    for (const text2 of texts) {
       const tokens = citationTokensIn(text2, isEvidenceCitation);
       const figs = extractFigures(text2);
       const dates = extractDates(unbracket(text2.replace(/`[^`]*`/g, " ")));
       const line = lineOf(text2);
+      if (heading && !figs.length && !tokens.length) continue;
       if (!figs.length && !tokens.length) {
         const ahead = dates.filter((d) => isAhead(d, today));
         if (ahead.length) {
@@ -21837,7 +21862,7 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
   }
   if (!claims) problems.push({ kind: "empty", message: "the answer states no figure and cites no evidence \u2014 nothing to check" });
   const { inertOnly } = collectCitations(answer, isEvidenceCitation, unitOpts);
-  for (const tok of inertOnly)
+  for (const tok of inertOnly.filter((t) => !cited.has(t)))
     problems.push({ kind: "inert", message: `[${tok}] appears only in code or in a closing sources list, where it grounds no claim` });
   problems.sort((a, b) => (a.line ?? Number.MAX_SAFE_INTEGER) - (b.line ?? Number.MAX_SAFE_INTEGER));
   return { claims, figures, citations: cited.size, evidence: store.items.length, problems };

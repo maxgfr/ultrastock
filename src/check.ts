@@ -208,6 +208,38 @@ function closingSourcesMask(lines: readonly string[]): boolean[] {
   return mask;
 }
 
+/**
+ * A table's header row is read like any row, but a header cell holding only a
+ * whole number — a horizon (`+5`, `20`, `J+60`) or a year — labels its column:
+ * it is blanked, the rest of the row is checked. Lines are kept one for one.
+ */
+function withoutColumnLabels(answer: string): string {
+  const separator = (l: string) => /\|/.test(l) && /^[\s:|-]+$/.test(l.trim()) && /-/.test(l);
+  const lines = answer.split("\n");
+  return lines
+    .map((l, i) =>
+      /\|/.test(l) && !separator(l) && separator(lines[i + 1] ?? "")
+        ? l
+            .split("|")
+            .map((c) => (/^\s*(?:\p{L}?[+\-−–])?\d+\s*$/u.test(c) ? " " : c))
+            .join("|")
+        : l,
+    )
+    .join("\n");
+}
+
+/**
+ * A heading's text; its section number ("1.", "2.3", "2.3.1", "10)") orders the
+ * sections and is dropped, but "2.3 bn" or "12 %" opening it is a figure: the
+ * number goes only when the figure reader reads it bare.
+ */
+function headingText(heading: string): string {
+  const t = heading.replace(/^#{1,6}\s+/, "");
+  const n = /^(\d+(?:\.\d+)+|\d+(?=[.)]))[.)]?\s/.exec(t);
+  const first = n && extractFigures(t)[0];
+  return n && (!first || n[1]!.startsWith(first.raw)) ? t.slice(n[0].length) : t;
+}
+
 /** The line each claim starts on, moving forward through the answer. */
 function lineFinder(lines: string[]) {
   const flat = lines.map((l) =>
@@ -252,10 +284,11 @@ export interface CheckOptions {
 export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions = {}): CheckReport | { error: string } {
   const store = EvidenceStore.load(dir);
   if (!store) return { error: `${dir} holds no evidence.json — run \`ultrastock analyze\`, \`quote\` or \`history\` with --out ${dir} first` };
-  const answer = normalizeEvidenceCitations(rawAnswer);
+  const answer = withoutColumnLabels(normalizeEvidenceCitations(rawAnswer));
   const lines = answer.split(/\r?\n/);
   const lineOf = lineFinder(lines);
-  const unitOpts = { exclude: closingSourcesMask };
+  // A table's header row states what it writes like any row ("| LVMH up 45 % |").
+  const unitOpts = { exclude: closingSourcesMask, skipTableHeader: false };
   const problems: CheckProblem[] = [];
   const cited = new Set<string>();
   const now = (opts.now ?? new Date()).getTime();
@@ -286,12 +319,29 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
     return itemDates.get(item.id)!;
   };
 
-  for (const unit of extractClaimUnits(answer, unitOpts)) {
-    for (const text of unitTexts(unit)) {
+  // A heading states what it writes too ("## Buy, target 450 €"). The engine sets headings aside as structure, so each is
+  // collected as the engine meets it — outside code and the closing sources list — and tagged on the units beneath it,
+  // which keeps the answer's order.
+  const headings: string[] = [];
+  const units: Array<{ texts: string[]; heading?: boolean }> = [];
+  let nextHeading = 0;
+  const headingsTo = (n: number) => {
+    for (; nextHeading <= n; nextHeading++) units.push({ texts: [headingText(headings[nextHeading]!)], heading: true });
+  };
+  for (const unit of extractClaimUnits(answer, { ...unitOpts, sectionTag: (h) => String(headings.push(h) - 1) })) {
+    headingsTo(unit.section === undefined ? -1 : Number(unit.section));
+    units.push({ texts: unitTexts(unit) });
+  }
+  headingsTo(headings.length - 1);
+
+  for (const { texts, heading } of units) {
+    for (const text of texts) {
       const tokens = citationTokensIn(text, isEvidenceCitation);
       const figs = extractFigures(text);
       const dates = extractDates(unbracket(text.replace(/`[^`]*`/g, " ")));
       const line = lineOf(text);
+      // A heading with no figure and no [E#] is a title: a date in it ("Brief — 12 novembre") labels the section.
+      if (heading && !figs.length && !tokens.length) continue;
       if (!figs.length && !tokens.length) {
         // A date ahead is one the user acts on (results, a decision): it needs its [E#]. A past one is context (an as-of day).
         const ahead = dates.filter((d) => isAhead(d, today));
@@ -379,7 +429,8 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
   }
   if (!claims) problems.push({ kind: "empty", message: "the answer states no figure and cites no evidence — nothing to check" });
   const { inertOnly } = collectCitations(answer, isEvidenceCitation, unitOpts);
-  for (const tok of inertOnly)
+  // The engine's parse leaves headings out: an [E#] a heading cites grounds it.
+  for (const tok of inertOnly.filter((t) => !cited.has(t)))
     problems.push({ kind: "inert", message: `[${tok}] appears only in code or in a closing sources list, where it grounds no claim` });
   problems.sort((a, b) => (a.line ?? Number.MAX_SAFE_INTEGER) - (b.line ?? Number.MAX_SAFE_INTEGER));
   return { claims, figures, citations: cited.size, evidence: store.items.length, problems };
