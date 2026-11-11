@@ -14,7 +14,7 @@
 import { readFileSync } from "node:fs";
 import { request as httpsRequest } from "node:https";
 import { timingSafeEqual, X509Certificate } from "node:crypto";
-import { type AdapterOptions, BrokerError, DEFAULT_TIMEOUT_MS, notSent, parseBody, toNumber } from "./http.js";
+import { type AdapterOptions, BrokerError, DEFAULT_TIMEOUT_MS, MAX_BODY_BYTES, notSent, parseBody, ResponseTooLarge, toNumber } from "./http.js";
 import type { Balance, BrokerAdapter, Environment, HttpFn, LiveOrder, OrderResult, OrderState } from "./types.js";
 
 export const IBKR_DEFAULT_BASE = "https://localhost:5000/v1/api";
@@ -62,7 +62,18 @@ export function pinnedHttps(caPem: string, fingerprint256?: string): HttpFn {
         },
         (res) => {
           const chunks: Buffer[] = [];
-          res.on("data", (c: Buffer) => chunks.push(c));
+          let size = 0;
+          res.on("data", (c: Buffer) => {
+            size += c.length;
+            if (size > MAX_BODY_BYTES) {
+              // Rejected here, not through the request's error handler, which would word it as a network error.
+              clearTimeout(timer);
+              reject(new ResponseTooLarge());
+              r.destroy();
+              return;
+            }
+            chunks.push(c);
+          });
           res.on("end", () => {
             clearTimeout(timer);
             resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") });

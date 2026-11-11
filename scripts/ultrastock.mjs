@@ -42373,6 +42373,13 @@ import { createHmac } from "crypto";
 
 // src/trading/brokers/http.ts
 var DEFAULT_TIMEOUT_MS4 = 1e4;
+var MAX_BODY_BYTES3 = 4 * 1024 * 1024;
+var ResponseTooLarge = class extends Error {
+  constructor() {
+    super(`the response is larger than ${MAX_BODY_BYTES3} bytes: cut short, not used`);
+    this.name = "ResponseTooLarge";
+  }
+};
 var BrokerError = class extends Error {
   constructor(venue, message, status) {
     super(`${venue}: ${message}`);
@@ -42388,8 +42395,22 @@ var fetchHttp = async (req) => {
   const timer = setTimeout(() => ctrl.abort(), req.timeoutMs);
   try {
     const res = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body, signal: ctrl.signal, redirect: "error" });
-    return { status: res.status, body: await res.text() };
+    const chunks = [];
+    let size = 0;
+    const reader = res.body?.getReader();
+    while (reader) {
+      const r3 = await reader.read();
+      if (r3.done) break;
+      size += r3.value.byteLength;
+      if (size > MAX_BODY_BYTES3) {
+        await reader.cancel().catch(() => void 0);
+        throw new ResponseTooLarge();
+      }
+      chunks.push(r3.value);
+    }
+    return { status: res.status, body: Buffer.concat(chunks).toString("utf8") };
   } catch (e) {
+    if (e instanceof ResponseTooLarge) throw e;
     if (ctrl.signal.aborted) throw new Error(`timeout after ${req.timeoutMs} ms`);
     const code = e.cause?.code;
     throw new Error(`network error${code ? ` (${code})` : ""}`);
@@ -42792,7 +42813,17 @@ function pinnedHttps(caPem, fingerprint256) {
       },
       (res) => {
         const chunks = [];
-        res.on("data", (c) => chunks.push(c));
+        let size = 0;
+        res.on("data", (c) => {
+          size += c.length;
+          if (size > MAX_BODY_BYTES3) {
+            clearTimeout(timer);
+            reject(new ResponseTooLarge());
+            r3.destroy();
+            return;
+          }
+          chunks.push(c);
+        });
         res.on("end", () => {
           clearTimeout(timer);
           resolve20({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") });

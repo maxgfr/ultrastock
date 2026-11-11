@@ -8,6 +8,20 @@ import type { Credentials, Environment, HttpFn } from "./types.js";
 
 export const DEFAULT_TIMEOUT_MS = 10_000;
 
+/** The largest venue answer read. An order, a balance list or a day's orders is kilobytes: past this, it is not an answer. */
+export const MAX_BODY_BYTES = 4 * 1024 * 1024;
+
+/**
+ * An answer over the size cap. It is not read on, and what was read is not
+ * used: a body cut short would be parsed as if it were the whole answer.
+ */
+export class ResponseTooLarge extends Error {
+  constructor() {
+    super(`the response is larger than ${MAX_BODY_BYTES} bytes: cut short, not used`);
+    this.name = "ResponseTooLarge";
+  }
+}
+
 /** What every adapter factory takes; tests inject `http` and `now`. */
 export interface AdapterOptions {
   env: Environment;
@@ -36,8 +50,22 @@ export const fetchHttp: HttpFn = async (req) => {
   const timer = setTimeout(() => ctrl.abort(), req.timeoutMs);
   try {
     const res = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body, signal: ctrl.signal, redirect: "error" });
-    return { status: res.status, body: await res.text() };
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    const reader = res.body?.getReader();
+    while (reader) {
+      const r = await reader.read();
+      if (r.done) break;
+      size += r.value.byteLength;
+      if (size > MAX_BODY_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new ResponseTooLarge();
+      }
+      chunks.push(r.value);
+    }
+    return { status: res.status, body: Buffer.concat(chunks).toString("utf8") };
   } catch (e) {
+    if (e instanceof ResponseTooLarge) throw e;
     if (ctrl.signal.aborted) throw new Error(`timeout after ${req.timeoutMs} ms`);
     const code = (e as { cause?: { code?: string } }).cause?.code;
     throw new Error(`network error${code ? ` (${code})` : ""}`);

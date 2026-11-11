@@ -1,11 +1,27 @@
 import { createPublicKey, generateKeyPairSync, verify } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { binanceAdapter, binanceSign } from "../src/trading/brokers/binance.js";
 import { coinbaseAdapter, coinbaseJwt, pemFromSecret } from "../src/trading/brokers/coinbase.js";
-import { plainDecimal, scrubSecrets } from "../src/trading/brokers/http.js";
+import { fetchHttp, plainDecimal, scrubSecrets } from "../src/trading/brokers/http.js";
 import { ibkrAccountRefusal, ibkrAdapter, pinnedHttps, sameFingerprint } from "../src/trading/brokers/ibkr.js";
 import { krakenAdapter, krakenClientIdOk, krakenSign } from "../src/trading/brokers/kraken.js";
 import type { HttpFn, LiveOrder } from "../src/trading/brokers/types.js";
+
+// The IBKR gateway transport over node:https answers from memory here: no socket is opened.
+const gateway = vi.hoisted(() => ({ chunks: [] as Buffer[] }));
+vi.mock("node:https", async (importOriginal) => {
+  const { EventEmitter } = await import("node:events");
+  const { Readable } = await import("node:stream");
+  return {
+    ...(await importOriginal<typeof import("node:https")>()),
+    request: (_opts: unknown, onResponse: (res: InstanceType<typeof Readable> & { statusCode: number }) => void) =>
+      Object.assign(new EventEmitter(), {
+        write: () => true,
+        end: () => onResponse(Object.assign(Readable.from(gateway.chunks), { statusCode: 200 })),
+        destroy: () => undefined,
+      }),
+  };
+});
 
 type Req = Parameters<HttpFn>[0];
 type Answer = { status: number; body: unknown } | Error | ((req: Req) => { status: number; body: unknown });
@@ -426,6 +442,40 @@ describe("ibkr", () => {
     expect(() => pinnedHttps(TEST_CERT, fp)).not.toThrow();
     expect(() => pinnedHttps(TEST_CERT, fp.replace("03:AA", "03:AB"))).toThrow(/does not match/);
     expect(() => ibkrAdapter({ env: "test", creds })).toThrow(/certificate is required/);
+  });
+});
+
+describe("the default transports", () => {
+  // Well over any sane cap: an order, a balance list or a day's orders is kilobytes.
+  const huge = Buffer.alloc(8 * 1024 * 1024, 0x20);
+  const get = { method: "GET" as const, timeoutMs: 5000 };
+  // What a read came to, in a few words: a failed assertion must not print megabytes.
+  const outcome = (p: Promise<{ body: string }>) =>
+    p.then(
+      (r) => `read ${r.body.length} bytes`,
+      (e: Error) => e.message,
+    );
+
+  it("refuse an answer over the size cap instead of reading all of it", async () => {
+    vi.stubGlobal("fetch", async () => new Response(huge));
+    try {
+      expect(await outcome(fetchHttp({ ...get, url: "https://api.example.com/v3/order" }))).toMatch(/larger than \d+ bytes/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    gateway.chunks = [huge.subarray(0, huge.length / 2), huge.subarray(huge.length / 2)];
+    expect(await outcome(pinnedHttps(TEST_CERT)({ ...get, url: "https://localhost:5000/v1/api/iserver/account/orders" }))).toMatch(/larger than \d+ bytes/);
+  });
+
+  it("read an answer under the cap whole", async () => {
+    vi.stubGlobal("fetch", async () => new Response('{"ok":true}', { status: 201 }));
+    try {
+      await expect(fetchHttp({ ...get, url: "https://api.example.com/v3/order" })).resolves.toEqual({ status: 201, body: '{"ok":true}' });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    gateway.chunks = [Buffer.from('{"ok":'), Buffer.from("true}")];
+    await expect(pinnedHttps(TEST_CERT)({ ...get, url: "https://localhost:5000/v1/api/x" })).resolves.toEqual({ status: 200, body: '{"ok":true}' });
   });
 });
 
