@@ -44817,6 +44817,15 @@ function isConvertLeg(t) {
   if (t.type === "sell") return /^convert to [A-Z0-9]+$/.test(t.note);
   return t.type === "buy" && /^convert from [A-Z0-9]+$/.test(t.note);
 }
+function cryptoTradeKind(t) {
+  if (t.type !== "buy" && t.type !== "sell") return void 0;
+  if (isConvertLeg(t)) return "exchange";
+  const fiatBase = isFiat(splitPair(t.symbol ?? t.currency, t.currency).base);
+  const fiatQuote = isFiat(t.currency);
+  if (fiatBase && fiatQuote) return void 0;
+  if (!fiatBase && !fiatQuote) return "exchange";
+  return t.type === "buy" === fiatQuote ? "acquisition" : "disposal";
+}
 var FOREIGN_BROKERS = /ibkr|interactive|degiro|trade ?republic|revolut|etoro|xtb|freedom ?24|lightyear|scalable|saxo|trading ?212|binance|kraken|coinbase|bitpanda|bitstamp|crypto\.com|bybit|okx|kucoin|bitget|gemini|nexo|swissborg|ledger ?(live)?|metamask/i;
 var FRENCH_BROKERS = /bourso|fortuneo|bourse ?direct|cr[eé]dit ?agricole|bnp|soci[eé]t[eé] ?g[eé]n[eé]rale|\bsg\b|lcl|linxea|yomoni|bforbank|hello ?bank|caisse ?d'?[eé]pargne|banque ?populaire|cic|cr[eé]dit ?mutuel|la ?banque ?postale|axa|binck|easybourse|paymium|coinhouse|meria|deskoin|stack ?sats/i;
 function brokerIsForeign(broker) {
@@ -44869,10 +44878,13 @@ var TaxRegime = class {
   verifyChecklist() {
     return verifyChecklist2(this.id, this.rules.year);
   }
-  /** An amount in the regime's currency at the transaction's date (stablecoins at their peg, named in the notes). */
-  toBase(t, amount, input) {
+  /**
+   * An amount in the regime's currency at the transaction's date (stablecoins at their peg, named in the notes). The
+   * amount is in the row's currency unless `currency` names another (the base of a pair such as EURUSDT).
+   */
+  toBase(t, amount, input, currency = t.currency) {
     if (amount === 0) return 0;
-    let c = t.currency.toUpperCase();
+    let c = currency.toUpperCase();
     if (isStablecoin(c)) c = c.startsWith("EUR") ? "EUR" : "USD";
     if (c === this.currency) return amount;
     const rate2 = input.fx(c, day3(t.date));
@@ -49826,7 +49838,7 @@ function cryptoMoves(txs, envelopes) {
     if (t.type === "buy" || t.type === "sell") {
       const { base: base2 } = splitPair(t.symbol ?? "", cur);
       const sign2 = t.type === "buy" ? 1 : -1;
-      changes.push([base2, sign2 * q]);
+      if (!isFiat(base2)) changes.push([base2, sign2 * q]);
       if (!isFiat(cur)) changes.push([cur, -sign2 * gross2(t) - (t.fee ?? 0)]);
     } else if (t.type === "transfer-in" || t.type === "transfer-out") {
       changes.push([splitPair(t.symbol ?? cur, cur).base, (t.type === "transfer-in" ? 1 : -1) * q]);
@@ -49853,7 +49865,8 @@ async function cryptoValuer(txs, envelopes, dates, fx) {
   const assets = /* @__PURE__ */ new Set();
   for (const t of txs) {
     if (envelopeOf2(t.account, envelopes, t.symbol).type !== "CRYPTO") continue;
-    if (t.symbol) assets.add(splitPair(t.symbol, t.currency).base);
+    const base2 = t.symbol ? splitPair(t.symbol, t.currency).base : void 0;
+    if (base2 && !isFiat(base2)) assets.add(base2);
     if (!isFiat(t.currency)) assets.add(t.currency.toUpperCase());
   }
   const first = [...dates].sort()[0];
@@ -52745,7 +52758,7 @@ var FranceRegime = class extends TaxRegime {
     }
     return st;
   }
-  crypto(t, st, input, base2, fee, inYear) {
+  crypto(t, st, input, base2, rowFee, inYear) {
     const c = st.crypto;
     const { base: asset } = splitPair(t.symbol ?? t.currency, t.currency);
     if (isConvertLeg(t)) {
@@ -52759,31 +52772,28 @@ var FranceRegime = class extends TaxRegime {
         });
       return;
     }
-    if (t.type === "buy") {
-      c.holdings.set(asset, (c.holdings.get(asset) ?? 0) + (t.quantity ?? 0));
-      if (isFiat(t.currency)) c.acquisitions += this.toBase(t, gross2(t), input) + fee;
-      else if (inYear)
-        st.events.push({
-          ...base2,
-          kind: "crypto-exchange",
-          quantity: t.quantity,
-          notes: [`bought with ${t.currency}: an exchange between crypto-assets, deferred (no tax, acquisition price unchanged)`]
-        });
-      return;
-    }
-    if (t.type === "sell") {
-      c.holdings.set(asset, (c.holdings.get(asset) ?? 0) - (t.quantity ?? 0));
-      if (!isFiat(t.currency)) {
-        if (inYear)
+    if (t.type === "buy" || t.type === "sell") {
+      const fiatBase = isFiat(asset);
+      if (!fiatBase) c.holdings.set(asset, (c.holdings.get(asset) ?? 0) + (t.type === "buy" ? 1 : -1) * (t.quantity ?? 0));
+      const kind = cryptoTradeKind(t);
+      if (kind === "acquisition") {
+        c.acquisitions += fiatBase ? this.toBase(t, t.quantity ?? 0, input, asset) : this.toBase(t, gross2(t), input) + rowFee;
+        return;
+      }
+      if (kind !== "disposal") {
+        if (kind === "exchange" && inYear)
           st.events.push({
             ...base2,
             kind: "crypto-exchange",
             quantity: t.quantity,
-            notes: [`sold for ${t.currency}: an exchange between crypto-assets, deferred`]
+            notes: [
+              t.type === "buy" ? `bought with ${t.currency}: an exchange between crypto-assets, deferred (no tax, acquisition price unchanged)` : `sold for ${t.currency}: an exchange between crypto-assets, deferred`
+            ]
           });
         return;
       }
-      const price = this.toBase(t, gross2(t), input);
+      const fee = fiatBase ? 0 : rowFee;
+      const price = fiatBase ? this.toBase(t, t.quantity ?? 0, input, asset) : this.toBase(t, gross2(t), input);
       const net = price - fee;
       const value2 = input.cryptoValue?.(day3(t.date), t);
       const acquisitionNet = c.acquisitions - c.fractions;
@@ -53739,7 +53749,7 @@ async function buildInput(args, regime, year, opts = {}) {
   }
   if (regime.id === "fr") {
     const isCrypto = (t) => envelopeOf2(t.account, envelopes, t.symbol).type === "CRYPTO";
-    const dates = txs.filter((t) => isCrypto(t) && t.type === "sell" && isFiat(t.currency) && !isConvertLeg(t) && yearOf2(t.date) === year).map((t) => day3(t.date));
+    const dates = txs.filter((t) => isCrypto(t) && cryptoTradeKind(t) === "disposal" && yearOf2(t.date) === year).map((t) => day3(t.date));
     if (opts.asOf && txs.some(isCrypto)) dates.push(opts.asOf);
     if (dates.length) {
       const v = await cryptoValuer(txs, envelopes, dates, fx);

@@ -78,7 +78,8 @@ function cryptoMoves(txs: readonly Transaction[], envelopes: readonly Envelope[]
     if (t.type === "buy" || t.type === "sell") {
       const { base } = splitPair(t.symbol ?? "", cur);
       const sign = t.type === "buy" ? 1 : -1;
-      changes.push([base, sign * q]);
+      // The fiat base of a pair such as EURUSDT is money, not a crypto-asset held.
+      if (!isFiat(base)) changes.push([base, sign * q]);
       if (!isFiat(cur)) changes.push([cur, -sign * gross(t) - (t.fee ?? 0)]);
     } else if (t.type === "transfer-in" || t.type === "transfer-out") {
       changes.push([splitPair(t.symbol ?? cur, cur).base, (t.type === "transfer-in" ? 1 : -1) * q]);
@@ -118,7 +119,8 @@ export async function cryptoValuer(
   const assets = new Set<string>();
   for (const t of txs) {
     if (envelopeOf(t.account, envelopes, t.symbol).type !== "CRYPTO") continue;
-    if (t.symbol) assets.add(splitPair(t.symbol, t.currency).base);
+    const base = t.symbol ? splitPair(t.symbol, t.currency).base : undefined;
+    if (base && !isFiat(base)) assets.add(base);
     if (!isFiat(t.currency)) assets.add(t.currency.toUpperCase());
   }
   const first = [...dates].sort()[0]!;

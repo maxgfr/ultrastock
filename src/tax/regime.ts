@@ -178,6 +178,23 @@ export function isConvertLeg(t: Pick<Transaction, "type" | "note" | "origin">): 
   return t.type === "buy" && /^convert from [A-Z0-9]+$/.test(t.note);
 }
 
+/**
+ * FR: what a buy or a sell of a crypto pair is. A pair names what is traded (its base) and what it is priced in (its
+ * quote, the row's currency), and either side may be the fiat: buying BTCEUR and selling EURUSDT both pay fiat for a
+ * crypto-asset (an acquisition); selling BTCEUR and buying EURUSDT both give a crypto-asset for fiat (the taxable
+ * disposal). Neither side fiat is an exchange between crypto-assets; both sides fiat is no crypto-asset at all.
+ */
+export function cryptoTradeKind(t: Pick<Transaction, "type" | "symbol" | "currency" | "note" | "origin">): "acquisition" | "disposal" | "exchange" | undefined {
+  if (t.type !== "buy" && t.type !== "sell") return undefined;
+  if (isConvertLeg(t)) return "exchange";
+  const fiatBase = isFiat(splitPair(t.symbol ?? t.currency, t.currency).base);
+  const fiatQuote = isFiat(t.currency);
+  if (fiatBase && fiatQuote) return undefined;
+  if (!fiatBase && !fiatQuote) return "exchange";
+  // The fiat is paid by a buy quoted in fiat and by a sell of a fiat base.
+  return (t.type === "buy") === fiatQuote ? "acquisition" : "disposal";
+}
+
 /** Brokers and platforms established outside France — their accounts are declared on form 3916 / 3916-bis. */
 const FOREIGN_BROKERS =
   /ibkr|interactive|degiro|trade ?republic|revolut|etoro|xtb|freedom ?24|lightyear|scalable|saxo|trading ?212|binance|kraken|coinbase|bitpanda|bitstamp|crypto\.com|bybit|okx|kucoin|bitget|gemini|nexo|swissborg|ledger ?(live)?|metamask/i;
@@ -263,11 +280,14 @@ export abstract class TaxRegime {
     return verifyChecklist(this.id, this.rules.year);
   }
 
-  /** An amount in the regime's currency at the transaction's date (stablecoins at their peg, named in the notes). */
-  protected toBase(t: Transaction, amount: number, input: TaxInput): number {
+  /**
+   * An amount in the regime's currency at the transaction's date (stablecoins at their peg, named in the notes). The
+   * amount is in the row's currency unless `currency` names another (the base of a pair such as EURUSDT).
+   */
+  protected toBase(t: Transaction, amount: number, input: TaxInput, currency = t.currency): number {
     // Nothing needs no rate: an absent fee on a BNB or BTC-quoted row must not ask for a BNB→EUR one.
     if (amount === 0) return 0;
-    let c = t.currency.toUpperCase();
+    let c = currency.toUpperCase();
     if (isStablecoin(c)) c = c.startsWith("EUR") ? "EUR" : "USD";
     if (c === this.currency) return amount;
     const rate = input.fx(c, day(t.date));

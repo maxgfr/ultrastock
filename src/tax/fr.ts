@@ -13,7 +13,8 @@
 //   allowance, 12.8 % before; social levies at their own rate.
 // - Crypto-assets (CGI art. 150 VH bis, form 2086): only disposals for fiat
 //   (or goods) are taxable; crypto-to-crypto exchanges are deferred, a
-//   Coinbase "Convert" (imported as two legs priced in fiat) included. Gain =
+//   Coinbase "Convert" (imported as two legs priced in fiat) included; a pair
+//   whose base is the fiat (EURUSDT) is read from the fiat side. Gain =
 //   net price − total acquisition price × price / portfolio value; exempt
 //   when the year's disposals total 305 € or less. Net crypto losses offset
 //   only crypto gains of the same year.
@@ -32,6 +33,7 @@ import {
   type FormLine,
   gross,
   type HarvestCandidate,
+  cryptoTradeKind,
   isConvertLeg,
   isFiat,
   isStablecoin,
@@ -224,7 +226,7 @@ export class FranceRegime extends TaxRegime {
     return st;
   }
 
-  private crypto(t: Transaction, st: FrState, input: TaxInput, base: Omit<TaxEvent, "kind">, fee: number, inYear: boolean): void {
+  private crypto(t: Transaction, st: FrState, input: TaxInput, base: Omit<TaxEvent, "kind">, rowFee: number, inYear: boolean): void {
     const c = st.crypto;
     const { base: asset } = splitPair(t.symbol ?? t.currency, t.currency);
     if (isConvertLeg(t)) {
@@ -240,31 +242,33 @@ export class FranceRegime extends TaxRegime {
         });
       return;
     }
-    if (t.type === "buy") {
-      c.holdings.set(asset, (c.holdings.get(asset) ?? 0) + (t.quantity ?? 0));
-      if (isFiat(t.currency)) c.acquisitions += this.toBase(t, gross(t), input) + fee;
-      else if (inYear)
-        st.events.push({
-          ...base,
-          kind: "crypto-exchange",
-          quantity: t.quantity,
-          notes: [`bought with ${t.currency}: an exchange between crypto-assets, deferred (no tax, acquisition price unchanged)`],
-        });
-      return;
-    }
-    if (t.type === "sell") {
-      c.holdings.set(asset, (c.holdings.get(asset) ?? 0) - (t.quantity ?? 0));
-      if (!isFiat(t.currency)) {
-        if (inYear)
+    if (t.type === "buy" || t.type === "sell") {
+      // A pair whose base is the fiat (EURUSDT) trades the fiat itself: selling it buys the crypto-asset of the quote,
+      // buying it back cashes that crypto-asset out. The fiat that moved is the quantity, in the base currency — already
+      // net of a fee charged in it; a fee charged in the crypto-asset is not a fiat amount and is left out.
+      const fiatBase = isFiat(asset);
+      if (!fiatBase) c.holdings.set(asset, (c.holdings.get(asset) ?? 0) + (t.type === "buy" ? 1 : -1) * (t.quantity ?? 0));
+      const kind = cryptoTradeKind(t);
+      if (kind === "acquisition") {
+        c.acquisitions += fiatBase ? this.toBase(t, t.quantity ?? 0, input, asset) : this.toBase(t, gross(t), input) + rowFee;
+        return;
+      }
+      if (kind !== "disposal") {
+        if (kind === "exchange" && inYear)
           st.events.push({
             ...base,
             kind: "crypto-exchange",
             quantity: t.quantity,
-            notes: [`sold for ${t.currency}: an exchange between crypto-assets, deferred`],
+            notes: [
+              t.type === "buy"
+                ? `bought with ${t.currency}: an exchange between crypto-assets, deferred (no tax, acquisition price unchanged)`
+                : `sold for ${t.currency}: an exchange between crypto-assets, deferred`,
+            ],
           });
         return;
       }
-      const price = this.toBase(t, gross(t), input);
+      const fee = fiatBase ? 0 : rowFee;
+      const price = fiatBase ? this.toBase(t, t.quantity ?? 0, input, asset) : this.toBase(t, gross(t), input);
       const net = price - fee;
       const value = input.cryptoValue?.(day(t.date), t);
       const acquisitionNet = c.acquisitions - c.fractions;

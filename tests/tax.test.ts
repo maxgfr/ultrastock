@@ -191,6 +191,38 @@ describe("France", () => {
     expect(us.filter((e) => e.kind === "crypto-disposal")).toHaveLength(1);
   });
 
+  it("crypto: a pair whose base is the fiat (EURUSDT) is a purchase when sold and a cash-out when bought", () => {
+    const BINANCE: Envelope = { id: "binance", type: "CRYPTO", broker: "Binance", currency: "EUR" };
+    const b = (t: Partial<Transaction> & Pick<Transaction, "date" | "type" | "symbol">) => tx({ account: "binance", currency: "USDT", ...t });
+    const txs = [
+      // 9 000 € become 9 000 USDT: euros paid for a crypto-asset.
+      b({ date: "2025-01-10", type: "sell", symbol: "EURUSDT", quantity: 9_000, price: 1 }),
+      b({ date: "2025-01-11", type: "buy", symbol: "BTCUSDT", quantity: 0.1, price: 90_000 }),
+      b({ date: "2025-09-01", type: "sell", symbol: "BTCUSDT", quantity: 0.1, price: 132_000 }),
+      // 13 200 USDT become 12 000 €: a crypto-asset given for euros.
+      b({ date: "2025-09-10", type: "buy", symbol: "EURUSDT", quantity: 12_000, price: 1.1 }),
+    ];
+    const s = new FranceRegime(2025).annualSummary(input(txs, [BINANCE], { cryptoValue: (d) => (d === "2025-09-10" ? 12_000 : undefined) }));
+    const cd = s.events.filter((e) => e.kind === "crypto-disposal");
+    expect(cd).toHaveLength(1);
+    expect(cd[0]).toMatchObject({ date: "2025-09-10", proceeds: 12_000, cost: 9_000, gain: 3_000 });
+    expect(cd[0]!.lines).toMatchObject({ "213": 12_000, "220": 9_000, "223": 9_000, "224": 3_000 });
+    expect(s.events.filter((e) => e.kind === "crypto-exchange")).toHaveLength(2);
+    expect(box(s, "3AN")).toBe(3_000);
+    // The euros of the pair are not a crypto holding: the portfolio is the USDT about to be sold, and nothing after.
+    expect(Object.fromEntries(cryptoHoldings(txs, [BINANCE], txs[3]))).toEqual({ USDT: 13_200 });
+    const after = cryptoHoldings(txs, [BINANCE]);
+    expect(after.has("EUR")).toBe(false);
+    expect(after.get("USDT") ?? 0).toBeCloseTo(0, 6);
+    // Another fiat as the base is converted at its own rate: 1 000 £ at 1.2 € paid for USDT.
+    const gbp = [
+      b({ date: "2025-02-01", type: "sell", symbol: "GBPUSDT", quantity: 1_000, price: 1.25, fee: 1.25 }),
+      b({ date: "2025-03-01", type: "sell", symbol: "USDTEUR", currency: "EUR", quantity: 1_248.75, price: 1 }),
+    ];
+    const g = new FranceRegime(2025).realize(input(gbp, [BINANCE], { fx: fx({ GBP: 1.2 }), cryptoValue: () => 1_248.75 }));
+    expect(g.find((e) => e.kind === "crypto-disposal")!.lines).toMatchObject({ "220": 1_200, "224": 48.75 });
+  });
+
   it("crypto: 305 € or less of disposals in the year is exempt; an unknown portfolio value is named", () => {
     const txs = [
       tx({ date: "2025-01-10", type: "buy", account: "kraken", symbol: "ETHEUR", quantity: 1, price: 200 }),
