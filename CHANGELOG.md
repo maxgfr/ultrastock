@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.12.41](https://github.com/maxgfr/ultrastock/compare/v1.12.40...v1.12.41) (2026-11-11)
+
+
+### Bug Fixes
+
+* **sec:** count an amended Form 4 once and joint filers as one buyer ([c9678eb](https://github.com/maxgfr/ultrastock/commit/c9678eb18014516deb495501af46406fc04f0195))
+
 ## [1.12.40](https://github.com/maxgfr/ultrastock/compare/v1.12.39...v1.12.40) (2026-11-11)
 
 
