@@ -77,17 +77,59 @@ export function zScore(values: readonly number[], n = 20): Series {
   });
 }
 
+/** percentRank scans a window shorter than this: on 35 000 bars both ways take ~4 ms at 128. */
+const SCAN_BELOW = 128;
+
 /**
  * Percent rank: the share (0–100) of the `n` values before bar i that are ≤
- * the value at i (TradingView's `ta.percentrank` convention). Defined from i = n.
+ * the value at i (TradingView's `ta.percentrank` convention). Defined from i = n
+ * (a positive integer). NaN is never ≤ anything: it counts for nothing, and
+ * a NaN bar ranks 0.
+ *
+ * A window of SCAN_BELOW values or more is a Fenwick tree of counts over the
+ * values' sorted ranks: O(len · log len) whatever `n`, and the same integer
+ * count as a scan. A shorter one is scanned, which is faster there.
  */
 export function percentRank(values: readonly number[], n = 252): Series {
   const out: Series = blank(values.length);
-  for (let i = n; i < values.length; i++) {
+  if (!Number.isInteger(n) || n < 1 || values.length <= n) return out;
+  const len = values.length;
+  if (n < SCAN_BELOW) {
+    // A short window: scanning it beats sorting the whole series.
+    for (let i = n; i < len; i++) {
+      const x = values[i]!;
+      let le = 0;
+      for (let j = i - n; j < i; j++) if (values[j]! <= x) le++;
+      out[i] = (100 * le) / n;
+    }
+    return out;
+  }
+  // The distinct values, ascending (a typed-array sort puts NaN last; -0 and 0 are one value).
+  const sorted = Float64Array.from(values).sort();
+  let m = 0;
+  for (let k = 0; k < len && !Number.isNaN(sorted[k]); k++) if (m === 0 || sorted[k] !== sorted[m - 1]) sorted[m++] = sorted[k]!;
+  // Each value's 1-based rank among them (equal values share one); 0 for NaN, which no count includes.
+  const ranks = new Int32Array(len);
+  for (let i = 0; i < len; i++) {
     const x = values[i]!;
-    let le = 0;
-    for (let j = i - n; j < i; j++) if (values[j]! <= x) le++;
-    out[i] = (100 * le) / n;
+    let lo = 0;
+    let hi = Number.isNaN(x) ? 0 : m;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (sorted[mid]! <= x) lo = mid + 1;
+      else hi = mid;
+    }
+    ranks[i] = lo;
+  }
+  const tree = new Int32Array(m + 1);
+  for (let i = 0; i < len; i++) {
+    if (i >= n) {
+      let le = 0;
+      for (let r = ranks[i]!; r > 0; r -= r & -r) le += tree[r]!;
+      out[i] = (100 * le) / n;
+    }
+    for (let r = ranks[i]!; r > 0 && r <= m; r += r & -r) tree[r]!++;
+    if (i >= n) for (let r = ranks[i - n]!; r > 0 && r <= m; r += r & -r) tree[r]!--;
   }
   return out;
 }

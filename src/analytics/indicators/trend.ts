@@ -69,16 +69,44 @@ export interface AroonPoint {
 /**
  * Chande's Aroon (1995): up = 100·(n − bars since the n-period high)/n over
  * the last n + 1 bars (ties → the most recent bar); down likewise for lows.
+ * `n` is a positive integer.
+ *
+ * Two monotonic deques of indices give each window's extreme in O(len). They
+ * keep the scan's reading of NaN: a NaN never wins, and a NaN at the oldest
+ * bar of the window wins outright (nothing compares ≥ to it).
  */
 export function aroon(bars: readonly Bar[], n = 25): Rows<AroonPoint> {
   const out: Rows<AroonPoint> = blank(bars.length);
-  for (let i = n; i < bars.length; i++) {
-    let hi = i - n;
-    let lo = i - n;
-    for (let j = i - n + 1; j <= i; j++) {
-      if (bars[j]!.high >= bars[hi]!.high) hi = j;
-      if (bars[j]!.low <= bars[lo]!.low) lo = j;
+  if (!Number.isInteger(n) || n < 1) return out;
+  const extremeAt = (value: (b: Bar) => number, better: (a: number, b: number) => boolean) => {
+    const at = new Int32Array(bars.length);
+    const dq = new Int32Array(bars.length);
+    let head = 0;
+    let tail = 0;
+    for (let i = 0; i < bars.length; i++) {
+      const x = value(bars[i]!);
+      if (!Number.isNaN(x)) {
+        // Ties go to the newer bar: pop an older one that is not strictly better.
+        while (tail > head && !better(value(bars[dq[tail - 1]!]!), x)) tail--;
+        dq[tail++] = i;
+      }
+      const first = i - n;
+      while (tail > head && dq[head]! < first) head++;
+      at[i] = first >= 0 && (Number.isNaN(value(bars[first]!)) || tail === head) ? first : (dq[head] ?? first);
     }
+    return at;
+  };
+  const his = extremeAt(
+    (b) => b.high,
+    (a, b) => a > b,
+  );
+  const los = extremeAt(
+    (b) => b.low,
+    (a, b) => a < b,
+  );
+  for (let i = n; i < bars.length; i++) {
+    const hi = his[i]!;
+    const lo = los[i]!;
     const up = (100 * (n - (i - hi))) / n;
     const down = (100 * (n - (i - lo))) / n;
     out[i] = { up, down, oscillator: up - down };

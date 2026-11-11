@@ -29939,13 +29939,44 @@ function zScore(values, n2 = 20) {
     return s === 0 ? 0 : (x - m) / s;
   });
 }
+var SCAN_BELOW = 128;
 function percentRank(values, n2 = 252) {
   const out = blank(values.length);
-  for (let i = n2; i < values.length; i++) {
+  if (!Number.isInteger(n2) || n2 < 1 || values.length <= n2) return out;
+  const len = values.length;
+  if (n2 < SCAN_BELOW) {
+    for (let i = n2; i < len; i++) {
+      const x = values[i];
+      let le = 0;
+      for (let j = i - n2; j < i; j++) if (values[j] <= x) le++;
+      out[i] = 100 * le / n2;
+    }
+    return out;
+  }
+  const sorted = Float64Array.from(values).sort();
+  let m = 0;
+  for (let k = 0; k < len && !Number.isNaN(sorted[k]); k++) if (m === 0 || sorted[k] !== sorted[m - 1]) sorted[m++] = sorted[k];
+  const ranks3 = new Int32Array(len);
+  for (let i = 0; i < len; i++) {
     const x = values[i];
-    let le = 0;
-    for (let j = i - n2; j < i; j++) if (values[j] <= x) le++;
-    out[i] = 100 * le / n2;
+    let lo = 0;
+    let hi = Number.isNaN(x) ? 0 : m;
+    while (lo < hi) {
+      const mid2 = lo + hi >>> 1;
+      if (sorted[mid2] <= x) lo = mid2 + 1;
+      else hi = mid2;
+    }
+    ranks3[i] = lo;
+  }
+  const tree = new Int32Array(m + 1);
+  for (let i = 0; i < len; i++) {
+    if (i >= n2) {
+      let le = 0;
+      for (let r3 = ranks3[i]; r3 > 0; r3 -= r3 & -r3) le += tree[r3];
+      out[i] = 100 * le / n2;
+    }
+    for (let r3 = ranks3[i]; r3 > 0 && r3 <= m; r3 += r3 & -r3) tree[r3]++;
+    if (i >= n2) for (let r3 = ranks3[i - n2]; r3 > 0 && r3 <= m; r3 += r3 & -r3) tree[r3]--;
   }
   return out;
 }
@@ -30501,13 +30532,35 @@ function adx(bars, n2 = 14) {
 }
 function aroon(bars, n2 = 25) {
   const out = blank(bars.length);
-  for (let i = n2; i < bars.length; i++) {
-    let hi = i - n2;
-    let lo = i - n2;
-    for (let j = i - n2 + 1; j <= i; j++) {
-      if (bars[j].high >= bars[hi].high) hi = j;
-      if (bars[j].low <= bars[lo].low) lo = j;
+  if (!Number.isInteger(n2) || n2 < 1) return out;
+  const extremeAt = (value2, better) => {
+    const at = new Int32Array(bars.length);
+    const dq = new Int32Array(bars.length);
+    let head = 0;
+    let tail = 0;
+    for (let i = 0; i < bars.length; i++) {
+      const x = value2(bars[i]);
+      if (!Number.isNaN(x)) {
+        while (tail > head && !better(value2(bars[dq[tail - 1]]), x)) tail--;
+        dq[tail++] = i;
+      }
+      const first = i - n2;
+      while (tail > head && dq[head] < first) head++;
+      at[i] = first >= 0 && (Number.isNaN(value2(bars[first])) || tail === head) ? first : dq[head] ?? first;
     }
+    return at;
+  };
+  const his = extremeAt(
+    (b) => b.high,
+    (a, b) => a > b
+  );
+  const los = extremeAt(
+    (b) => b.low,
+    (a, b) => a < b
+  );
+  for (let i = n2; i < bars.length; i++) {
+    const hi = his[i];
+    const lo = los[i];
     const up = 100 * (n2 - (i - hi)) / n2;
     const down = 100 * (n2 - (i - lo)) / n2;
     out[i] = { up, down, oscillator: up - down };
