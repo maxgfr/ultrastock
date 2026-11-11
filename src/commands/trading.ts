@@ -74,6 +74,37 @@ export interface FlowRates {
 const isFlow = (t: Transaction) => t.type === "deposit" || t.type === "withdrawal";
 
 /**
+ * The part of each transfer that crossed the book's edge. A transfer in is
+ * matched with the transfers out of the same symbol from the user's other
+ * accounts — earlier ones, or later the same day (the two statements come in
+ * either order) — and only what no out matches came from outside; the units
+ * of a transfer out that no transfer in received went outside.
+ */
+export function transfersAcross(txs: readonly Transaction[]): {
+  in: Array<{ t: Transaction; units: number }>;
+  out: Array<{ t: Transaction; units: number }>;
+} {
+  const sorted = [...txs].sort((a, b) => a.date.localeCompare(b.date));
+  const left = sorted.map((t) => (t.type === "transfer-out" || t.type === "transfer-in" ? (t.quantity ?? 0) : 0));
+  const ins: Array<{ t: Transaction; units: number }> = [];
+  sorted.forEach((t, i) => {
+    if (t.type !== "transfer-in") return;
+    const day = t.date.slice(0, 10);
+    for (let j = 0; j < sorted.length && left[i]! > 1e-12; j++) {
+      const o = sorted[j]!;
+      if (j > i && o.date.slice(0, 10) !== day) break;
+      if (o.type !== "transfer-out" || o.symbol !== t.symbol || o.account === t.account || left[j]! <= 1e-12) continue;
+      const n = Math.min(left[i]!, left[j]!);
+      left[i] = left[i]! - n;
+      left[j] = left[j]! - n;
+    }
+    if (left[i]! > 1e-12) ins.push({ t, units: left[i]! });
+  });
+  const out = sorted.flatMap((t, j) => (t.type === "transfer-out" && left[j]! > 1e-12 ? [{ t, units: left[j]! }] : []));
+  return { in: ins, out };
+}
+
+/**
  * The ECB rate of each deposit's and withdrawal's own date (the tax engine's
  * `historicalFx`), read once for `bookPerformance`. A book funded in its base
  * currency only sends no request. Never throws: a read that fails (offline, a
@@ -81,7 +112,8 @@ const isFlow = (t: Transaction) => t.type === "deposit" || t.type === "withdrawa
  * then not computed — never computed on amounts taken as base currency.
  */
 export async function flowRates(txs: readonly Transaction[], base: string, now: Date): Promise<FlowRates> {
-  const flows = txs.filter(isFlow);
+  // Deposits, withdrawals, and transfers in with a price (one from outside counts at its value).
+  const flows = txs.filter((t) => isFlow(t) || (t.type === "transfer-in" && t.price !== undefined));
   const foreign = [...new Set(flows.map((t) => t.currency.toUpperCase()))].filter((c) => c !== base);
   if (!foreign.length) return { base, rate: () => undefined, notes: [] };
   const from = flows.map((t) => t.date.slice(0, 10)).sort()[0]!;
@@ -122,13 +154,29 @@ export function bookPerformance(
     if (rate === undefined) missing.add(`${currency} on ${date}`);
     else flows.push({ date, amount: -(t.amount ?? 0) * rate });
   }
+  // A transfer between two of the user's accounts moves nothing in or out of the book. One from outside with a price
+  // brought that value in: a contribution, like a deposit of it.
+  const across = transfersAcross(txs);
+  let unpriced = false;
+  for (const { t, units } of across.in) {
+    if (t.price === undefined) {
+      unpriced = true;
+      continue;
+    }
+    const date = t.date.slice(0, 10);
+    const currency = t.currency.toUpperCase();
+    const rate = currency === fx.base ? 1 : fx.rate(currency, date);
+    if (rate === undefined) missing.add(`${currency} on ${date}`);
+    else flows.push({ date, amount: -units * t.price * rate });
+  }
   if (missing.size)
     xirrNotes.push(`XIRR not computed: no ${fx.base} rate for ${[...missing].join(", ")} — taking those amounts as ${fx.base} would give a wrong return`);
-  // Their cost is a ledger decision still open: until it is made, a transfer moves value without a cash flow.
-  if (txs.some((t) => t.type === "transfer-in"))
-    xirrNotes.push("transfers in are not counted as contributions: the value they brought reads as return, so the XIRR overstates it");
-  if (txs.some((t) => t.type === "transfer-out"))
-    xirrNotes.push("transfers out are not counted as withdrawals: the value they took out reads as a loss, so the XIRR understates it");
+  if (unpriced)
+    xirrNotes.push(
+      "transfers in from outside without a price are not counted as contributions: the value they brought reads as return, so the XIRR overstates it (give them a price to count them)",
+    );
+  if (across.out.length)
+    xirrNotes.push("transfers out to outside are not counted as withdrawals: the value they took out reads as a loss, so the XIRR understates it");
   flows.push({ date: now.toISOString().slice(0, 10), amount: totalBase });
   const byCurrency: Record<string, { realized: number; dividends: number }> = {};
   for (const p of book.positions) {

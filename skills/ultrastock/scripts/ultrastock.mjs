@@ -50702,8 +50702,28 @@ async function markBook(book2) {
   return { profile, txs, book: b, valued: v, fxRates: fx.rates, sources, notes: [...notes, ...fx.notes, ...v.missing.map((m) => `missing ${m}`)], now };
 }
 var isFlow = (t) => t.type === "deposit" || t.type === "withdrawal";
+function transfersAcross(txs) {
+  const sorted = [...txs].sort((a, b) => a.date.localeCompare(b.date));
+  const left = sorted.map((t) => t.type === "transfer-out" || t.type === "transfer-in" ? t.quantity ?? 0 : 0);
+  const ins = [];
+  sorted.forEach((t, i) => {
+    if (t.type !== "transfer-in") return;
+    const day4 = t.date.slice(0, 10);
+    for (let j = 0; j < sorted.length && left[i] > 1e-12; j++) {
+      const o = sorted[j];
+      if (j > i && o.date.slice(0, 10) !== day4) break;
+      if (o.type !== "transfer-out" || o.symbol !== t.symbol || o.account === t.account || left[j] <= 1e-12) continue;
+      const n2 = Math.min(left[i], left[j]);
+      left[i] = left[i] - n2;
+      left[j] = left[j] - n2;
+    }
+    if (left[i] > 1e-12) ins.push({ t, units: left[i] });
+  });
+  const out = sorted.flatMap((t, j) => t.type === "transfer-out" && left[j] > 1e-12 ? [{ t, units: left[j] }] : []);
+  return { in: ins, out };
+}
 async function flowRates(txs, base2, now) {
-  const flows = txs.filter(isFlow);
+  const flows = txs.filter((t) => isFlow(t) || t.type === "transfer-in" && t.price !== void 0);
   const foreign = [...new Set(flows.map((t) => t.currency.toUpperCase()))].filter((c) => c !== base2);
   if (!foreign.length) return { base: base2, rate: () => void 0, notes: [] };
   const from = flows.map((t) => t.date.slice(0, 10)).sort()[0];
@@ -50725,12 +50745,27 @@ function bookPerformance(txs, book2, totalBase, curve, limits, now, fx) {
     if (rate2 === void 0) missing.add(`${currency} on ${date}`);
     else flows.push({ date, amount: -(t.amount ?? 0) * rate2 });
   }
+  const across = transfersAcross(txs);
+  let unpriced = false;
+  for (const { t, units } of across.in) {
+    if (t.price === void 0) {
+      unpriced = true;
+      continue;
+    }
+    const date = t.date.slice(0, 10);
+    const currency = t.currency.toUpperCase();
+    const rate2 = currency === fx.base ? 1 : fx.rate(currency, date);
+    if (rate2 === void 0) missing.add(`${currency} on ${date}`);
+    else flows.push({ date, amount: -units * t.price * rate2 });
+  }
   if (missing.size)
     xirrNotes.push(`XIRR not computed: no ${fx.base} rate for ${[...missing].join(", ")} \u2014 taking those amounts as ${fx.base} would give a wrong return`);
-  if (txs.some((t) => t.type === "transfer-in"))
-    xirrNotes.push("transfers in are not counted as contributions: the value they brought reads as return, so the XIRR overstates it");
-  if (txs.some((t) => t.type === "transfer-out"))
-    xirrNotes.push("transfers out are not counted as withdrawals: the value they took out reads as a loss, so the XIRR understates it");
+  if (unpriced)
+    xirrNotes.push(
+      "transfers in from outside without a price are not counted as contributions: the value they brought reads as return, so the XIRR overstates it (give them a price to count them)"
+    );
+  if (across.out.length)
+    xirrNotes.push("transfers out to outside are not counted as withdrawals: the value they took out reads as a loss, so the XIRR understates it");
   flows.push({ date: now.toISOString().slice(0, 10), amount: totalBase });
   const byCurrency = {};
   for (const p of book2.positions) {

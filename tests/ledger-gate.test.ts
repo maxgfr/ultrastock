@@ -143,15 +143,42 @@ describe("book performance", () => {
     expect(p.xirrNotes.join("\n")).toMatch(/not computed: no EUR rate for USD on 2026-09-01/);
   });
 
-  it("says a transfer is not counted as a contribution or a withdrawal", () => {
+  it("counts a transfer between the user's own accounts as nothing, in either order of its two rows", () => {
+    const bought = [...funded, tx({ date: "2026-09-02", type: "buy", account: "pea", symbol: "MC.PA", quantity: 2, price: 600 })];
+    const moved = [
+      ...bought,
+      // The receiving account's row first, the same day: still one move between two of the user's accounts.
+      tx({ date: "2026-10-05", type: "transfer-in", account: "cto", symbol: "MC.PA", quantity: 2 }),
+      tx({ date: "2026-10-05", type: "transfer-out", account: "pea", symbol: "MC.PA", quantity: 2 }),
+    ];
+    const p = bookPerformance(moved, buildBook(moved), 14_400, [], limits, NOW, usd);
+    expect(p.xirr).toBeCloseTo(bookPerformance(bought, buildBook(bought), 14_400, [], limits, NOW, usd).xirr!, 10);
+    expect(p.xirrNotes).toEqual([]);
+  });
+
+  it("counts a transfer in from outside with a price as a contribution at that value", () => {
+    const moved = [...funded, tx({ date: "2026-09-01", type: "transfer-in", account: "cto", symbol: "NVDA", quantity: 2, price: 150, currency: "USD" })];
+    const p = bookPerformance(moved, buildBook(moved), 14_500, [], limits, NOW, usd);
+    // 2 × 150 USD at 0.86 = 258 EUR brought in on 2026-09-01.
+    const expected = xirr([
+      { date: "2026-09-01", amount: -10_000 },
+      { date: "2026-09-01", amount: -4300 },
+      { date: "2026-09-01", amount: -258 },
+      { date: "2026-11-11", amount: 14_500 },
+    ])!;
+    expect(p.xirr).toBeCloseTo(expected, 8);
+    expect(p.xirrNotes).toEqual([]);
+  });
+
+  it("says when a transfer from or to outside cannot be counted", () => {
     const moved = [
       ...funded,
-      tx({ date: "2026-09-05", type: "transfer-in", account: "cto", symbol: "NVDA", quantity: 2, price: 150, currency: "USD" }),
+      tx({ date: "2026-09-05", type: "transfer-in", account: "cto", symbol: "NVDA", quantity: 2, currency: "USD" }),
       tx({ date: "2026-10-05", type: "transfer-out", account: "cto", symbol: "NVDA", quantity: 1, currency: "USD" }),
     ];
     const notes = bookPerformance(moved, buildBook(moved), 14_400, [], limits, NOW, usd).xirrNotes.join("\n");
-    expect(notes).toMatch(/transfers in are not counted as contributions.*overstates/);
-    expect(notes).toMatch(/transfers out are not counted as withdrawals.*understates/);
+    expect(notes).toMatch(/transfers in from outside without a price are not counted as contributions.*overstates/);
+    expect(notes).toMatch(/transfers out to outside are not counted as withdrawals.*understates/);
   });
 });
 
