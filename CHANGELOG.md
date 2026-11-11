@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.15](https://github.com/maxgfr/ultrastock/compare/v1.13.14...v1.13.15) (2026-11-11)
+
+
+### Bug Fixes
+
+* **tax:** convert a US trade quoted in a crypto-asset at that asset's daily close ([5b06b80](https://github.com/maxgfr/ultrastock/commit/5b06b807fc887454c8cdd73b5fb719b843d82ab2))
+
 ## [1.13.14](https://github.com/maxgfr/ultrastock/compare/v1.13.13...v1.13.14) (2026-11-11)
 
 
