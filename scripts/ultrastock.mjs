@@ -53850,7 +53850,20 @@ var FranceRegime = class extends TaxRegime {
       return isin ? poolOf(isin) : t.symbol ?? "";
     };
     const splitDone = /* @__PURE__ */ new Set();
-    for (const t of this.history(input)) {
+    const history = this.history(input);
+    const ordinary = (t) => !isCryptoTx(t, input.envelopes) && ORDINARY.has(envelopeOf2(t.account, input.envelopes, t.symbol).type);
+    const departs = (o, t) => o.type === "transfer-out" && o.account !== t.account && day3(o.date) === day3(t.date) && ordinary(o) && keyOf3(o) === keyOf3(t);
+    for (let i = 0; i < history.length; i++) {
+      const t = history[i];
+      if (t.type !== "transfer-in" || t.price !== void 0 || !ordinary(t)) continue;
+      if (history.slice(0, i).some((o) => departs(o, t))) continue;
+      const j = history.findIndex((o, k) => k > i && departs(o, t));
+      if (j < 0) continue;
+      history.splice(i, 1);
+      history.splice(j, 0, t);
+      i--;
+    }
+    for (const t of history) {
       const env2 = envelopeOf2(t.account, input.envelopes, t.symbol);
       if (env2.guessed && !guessed.has(t.account)) {
         guessed.add(t.account);
