@@ -178,8 +178,9 @@ export async function gateContextFor(
       const same = new Set([order.symbol, ...others.filter((_, i) => sectors[i] === sector)]);
       sectorValueBase =
         valued.positions.filter((v) => same.has(v.symbol)).reduce((t, v) => t + (v.valueBase ?? 0), 0) +
+        // Pending buys of the order's own symbol too: they are the same share, in the same sector (the ticket being re-checked is not among them).
         Object.entries(pendingBuysBase)
-          .filter(([s]) => same.has(s) && s !== order.symbol)
+          .filter(([s]) => same.has(s))
           .reduce((t, [, v]) => t + v, 0);
       if (unknown.length) notes.push(`sector unknown for ${unknown.join(", ")}: not counted in ${sector}`);
     }

@@ -1,10 +1,14 @@
 import { rmSync } from "node:fs";
 import { beforeEach, describe, expect, it } from "vitest";
 import { homeDir } from "../src/core/paths.js";
-import { defaultProfile } from "../src/core/profile.js";
+import { clockNow } from "../src/core/net.js";
+import { defaultProfile, saveProfile } from "../src/core/profile.js";
 import { setCacheMode } from "../src/engine.js";
-import { tradingviewSector } from "../src/trading/context.js";
-import { type GateContext, type Order, riskGate } from "../src/trading/riskgate.js";
+import { appendTransactions } from "../src/portfolio/ledger.js";
+import { gateContextFor, tradingviewSector } from "../src/trading/context.js";
+import { type GateContext, type Order, orderFingerprint, riskGate } from "../src/trading/riskgate.js";
+import { createTicket, recordCheck } from "../src/trading/tickets.js";
+import { withFixture } from "./helpers/fixtures.js";
 
 const mcpa = (o: Partial<Order> = {}): Order => ({
   account: "cto",
@@ -40,6 +44,27 @@ const context = (c: Partial<GateContext> = {}): GateContext => ({
 });
 
 beforeEach(() => rmSync(homeDir(), { recursive: true, force: true }));
+
+describe("the sector rule", () => {
+  it("counts the other pending buys of the order's own symbol in its sector", async () => {
+    const p = defaultProfile("FR", "EUR");
+    p.limits.maxSectorPct = 10;
+    p.limits.maxPositionPct = 100; // only the sector rule is looked at here
+    saveProfile(p);
+    await appendTransactions([{ date: "2026-10-01", type: "deposit", account: "cto", amount: 20_000, currency: "EUR", origin: "manual" }], "paper");
+    // A buy already checked and waiting: 3 × 600 = 1 800, 9 % of the book, in the same sector — it is the same share.
+    const waiting = mcpa({ quantity: 3 });
+    const t = createTicket(waiting);
+    await recordCheck(t.id, { verdict: "pass", checks: [], fingerprint: orderFingerprint(waiting), riskReducing: false, notionalBase: 1800 });
+    await withFixture("trading-paper-mcpa", async () => {
+      const next = mcpa({ quantity: 1 }); // 600 more: 12 % of one sector, over the 10 % limit
+      const { ctx } = await gateContextFor(next, { now: clockNow(), sectorOf: async () => "Consumer Durables" });
+      expect(ctx.pendingBuysBase["MC.PA"]).toBe(1800);
+      expect(ctx.sectorValueBase).toBe(1800);
+      expect(riskGate(next, ctx).checks.find((c) => c.code === "SECTOR_PCT")).toMatchObject({ status: "block" });
+    });
+  });
+});
 
 describe("a sector that cannot be looked up", () => {
   it("is not a way round the limit: `ticket check --offline` must leave a trace in the checks, not only a note", async () => {
