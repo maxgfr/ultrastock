@@ -39,13 +39,25 @@ function d1d2({ spot, strike, t, r, vol, q = 0 }: BsInput): [number, number] {
   return [d1, d1 - vol * Math.sqrt(t)];
 }
 
+/** The value at expiry: the intrinsic value, delta ±1 in the money. */
+function atExpiry(right: Right, spot: number, strike: number): Greeks {
+  const intrinsic = right === "call" ? Math.max(0, spot - strike) : Math.max(0, strike - spot);
+  const itm = right === "call" ? spot > strike : spot < strike;
+  return { price: intrinsic, delta: itm ? (right === "call" ? 1 : -1) : 0, gamma: 0, vega: 0, theta: 0, rho: 0 };
+}
+
 /** Black–Scholes–Merton price and Greeks of a European option. */
 export function blackScholes(right: Right, input: BsInput): Greeks {
   const { spot, strike, t, r, vol, q = 0 } = input;
-  if (t <= 0 || vol <= 0) {
-    const intrinsic = right === "call" ? Math.max(0, spot - strike) : Math.max(0, strike - spot);
-    const itm = right === "call" ? spot > strike : spot < strike;
-    return { price: intrinsic, delta: itm ? (right === "call" ? 1 : -1) : 0, gamma: 0, vega: 0, theta: 0, rho: 0 };
+  if (t <= 0) return atExpiry(right, spot, strike);
+  if (vol <= 0) {
+    // Nothing moves but the carry: the payoff is known today, discounted — the formula's limit as vol → 0.
+    const dq = Math.exp(-q * t);
+    const dr = Math.exp(-r * t);
+    const fwd = spot * dq - strike * dr;
+    const sign = right === "call" ? 1 : -1;
+    if (sign * fwd <= 0) return { price: 0, delta: 0, gamma: 0, vega: 0, theta: 0, rho: 0 };
+    return { price: sign * fwd, delta: sign * dq, gamma: 0, vega: 0, theta: sign * (q * spot * dq - r * strike * dr), rho: sign * strike * t * dr };
   }
   const [d1, d2] = d1d2(input);
   const dq = Math.exp(-q * t);
@@ -100,9 +112,13 @@ export function impliedVol(right: Right, price: number, input: Omit<BsInput, "vo
   return Math.abs(blackScholes(right, { ...input, vol: v }).price - price) < 1e-5 ? v : undefined;
 }
 
-/** American option by a Cox–Ross–Rubinstein binomial tree (early exercise checked at every node). */
+/** American option by a Cox–Ross–Rubinstein binomial tree (early exercise checked at every node); at expiry, its intrinsic value. */
 export function americanBinomial(right: Right, input: BsInput, steps = 400): { price: number; delta: number; earlyExercisePremium: number } {
   const { spot, strike, t, r, vol, q = 0 } = input;
+  if (t <= 0) {
+    const g = atExpiry(right, spot, strike);
+    return { price: g.price, delta: g.delta, earlyExercisePremium: 0 };
+  }
   const dt = t / steps;
   const u = Math.exp(vol * Math.sqrt(dt));
   const d = 1 / u;

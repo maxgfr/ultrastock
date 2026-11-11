@@ -42,6 +42,20 @@ describe("Black–Scholes", () => {
     expect(blackScholes("call", { ...hull, t: 0 }).price).toBe(2);
     expect(blackScholes("put", { ...hull, t: 0 }).price).toBe(0);
   });
+  it("at zero volatility before expiry, is worth the discounted forward intrinsic value — the limit of the formula", () => {
+    // Nothing moves but the carry: the call pays 42·e^(−qt) − 40·e^(−rt) for sure, not 42 − 40 = 2.
+    const c = blackScholes("call", { ...hull, vol: 0 });
+    expect(c.price).toBeCloseTo(42 - 40 * Math.exp(-0.05), 10);
+    expect(c.price).toBeCloseTo(blackScholes("call", { ...hull, vol: 1e-6 }).price, 8);
+    expect(c.delta).toBe(1);
+    expect(c.rho).toBeCloseTo(40 * 0.5 * Math.exp(-0.05), 10);
+    expect(c.theta).toBeCloseTo(blackScholes("call", { ...hull, vol: 1e-6 }).theta, 6);
+    // A put out of the money at the forward is worth nothing; in the money, the discounted strike less the spot.
+    expect(blackScholes("put", { ...hull, vol: 0 }).price).toBe(0);
+    const p = blackScholes("put", { ...hull, spot: 30, q: 0.02, vol: 0 });
+    expect(p.price).toBeCloseTo(40 * Math.exp(-0.05) - 30 * Math.exp(-0.01), 10);
+    expect(p.delta).toBeCloseTo(-Math.exp(-0.01), 10);
+  });
 });
 
 describe("implied volatility", () => {
@@ -64,6 +78,11 @@ describe("American options", () => {
     expect(c.earlyExercisePremium).toBeCloseTo(0, 2);
     const p = americanBinomial("put", { ...hull, spot: 36, r: 0.1 }, 800);
     expect(p.earlyExercisePremium).toBeGreaterThan(0.05);
+  });
+  it("is worth its intrinsic value at expiry, not NaN", () => {
+    expect(americanBinomial("call", { ...hull, t: 0 })).toEqual({ price: 2, delta: 1, earlyExercisePremium: 0 });
+    expect(americanBinomial("put", { ...hull, t: 0 })).toEqual({ price: 0, delta: 0, earlyExercisePremium: 0 });
+    expect(americanBinomial("put", { ...hull, spot: 36, t: 0 })).toEqual({ price: 4, delta: -1, earlyExercisePremium: 0 });
   });
 });
 

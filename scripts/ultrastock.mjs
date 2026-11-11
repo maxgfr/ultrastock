@@ -19981,12 +19981,21 @@ function d1d2({ spot, strike, t, r: r3, vol, q = 0 }) {
   const d1 = (Math.log(spot / strike) + (r3 - q + vol * vol / 2) * t) / (vol * Math.sqrt(t));
   return [d1, d1 - vol * Math.sqrt(t)];
 }
+function atExpiry(right, spot, strike) {
+  const intrinsic = right === "call" ? Math.max(0, spot - strike) : Math.max(0, strike - spot);
+  const itm = right === "call" ? spot > strike : spot < strike;
+  return { price: intrinsic, delta: itm ? right === "call" ? 1 : -1 : 0, gamma: 0, vega: 0, theta: 0, rho: 0 };
+}
 function blackScholes(right, input) {
   const { spot, strike, t, r: r3, vol, q = 0 } = input;
-  if (t <= 0 || vol <= 0) {
-    const intrinsic = right === "call" ? Math.max(0, spot - strike) : Math.max(0, strike - spot);
-    const itm = right === "call" ? spot > strike : spot < strike;
-    return { price: intrinsic, delta: itm ? right === "call" ? 1 : -1 : 0, gamma: 0, vega: 0, theta: 0, rho: 0 };
+  if (t <= 0) return atExpiry(right, spot, strike);
+  if (vol <= 0) {
+    const dq2 = Math.exp(-q * t);
+    const dr2 = Math.exp(-r3 * t);
+    const fwd = spot * dq2 - strike * dr2;
+    const sign2 = right === "call" ? 1 : -1;
+    if (sign2 * fwd <= 0) return { price: 0, delta: 0, gamma: 0, vega: 0, theta: 0, rho: 0 };
+    return { price: sign2 * fwd, delta: sign2 * dq2, gamma: 0, vega: 0, theta: sign2 * (q * spot * dq2 - r3 * strike * dr2), rho: sign2 * strike * t * dr2 };
   }
   const [d1, d2] = d1d2(input);
   const dq = Math.exp(-q * t);
