@@ -66,6 +66,16 @@ describe("the sector rule", () => {
   });
 });
 
+describe("the exclusion list", () => {
+  it("applies to the sector the gate looked up", () => {
+    const profile = defaultProfile("FR", "EUR");
+    profile.constraints.exclusions = ["Consumer Durables"];
+    // What gateContextFor found for MC.PA; nothing ever sets order.sector.
+    const ctx = context({ profile, sector: "Consumer Durables", sectorValueBase: 0 });
+    expect(riskGate(mcpa(), ctx).checks.find((c) => c.code === "EXCLUDED")).toMatchObject({ status: "block" });
+  });
+});
+
 describe("a sector that cannot be looked up", () => {
   it("is not a way round the limit: `ticket check --offline` must leave a trace in the checks, not only a note", async () => {
     setCacheMode({ refresh: false, offline: true });

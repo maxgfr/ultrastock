@@ -23105,8 +23105,9 @@ function riskGate(o, c) {
   if (o.side === "sell" && !riskReducing && !K.allowShort)
     add2("NO_SHORT", "block", `selling ${o.quantity} while holding ${c.heldQuantity}: short selling is not allowed`);
   const excl = K.exclusions.map((e) => e.toLowerCase());
-  if (excl.some((e) => e === o.symbol.toLowerCase() || o.sector && e === o.sector.toLowerCase()))
-    add2("EXCLUDED", "block", `${o.symbol}${o.sector ? ` (${o.sector})` : ""} is on the profile's exclusion list`);
+  const sectorOf2 = o.sector ?? c.sector;
+  if (excl.some((e) => e === o.symbol.toLowerCase() || sectorOf2 && e === sectorOf2.toLowerCase()))
+    add2("EXCLUDED", "block", `${o.symbol}${sectorOf2 ? ` (${sectorOf2})` : ""} is on the profile's exclusion list`);
   if (!riskReducing && o.side === "buy") {
     if (o.assetKind === "prediction") {
       const risk = o.quantity * o.price * c.fxToBase;

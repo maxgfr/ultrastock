@@ -156,8 +156,10 @@ export function riskGate(o: Order, c: GateContext): GateResult {
   if (o.side === "sell" && !riskReducing && !K.allowShort)
     add("NO_SHORT", "block", `selling ${o.quantity} while holding ${c.heldQuantity}: short selling is not allowed`);
   const excl = K.exclusions.map((e) => e.toLowerCase());
-  if (excl.some((e) => e === o.symbol.toLowerCase() || (o.sector && e === o.sector.toLowerCase())))
-    add("EXCLUDED", "block", `${o.symbol}${o.sector ? ` (${o.sector})` : ""} is on the profile's exclusion list`);
+  // The order's sector, else the one the gate looked up: an order rarely names it.
+  const sectorOf = o.sector ?? c.sector;
+  if (excl.some((e) => e === o.symbol.toLowerCase() || (sectorOf && e === sectorOf.toLowerCase())))
+    add("EXCLUDED", "block", `${o.symbol}${sectorOf ? ` (${sectorOf})` : ""} is on the profile's exclusion list`);
 
   if (!riskReducing && o.side === "buy") {
     // 4. Risk per trade: a buy needs a stop, and the loss to the stop is capped.
