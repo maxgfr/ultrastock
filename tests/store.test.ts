@@ -25,7 +25,7 @@ import {
   withStore,
 } from "../src/core/db.js";
 import type { CommandArgs } from "../src/engine.js";
-import { appendTransactions, buildBook, ledgerPath, readJsonlLedger, readLedger, type Transaction } from "../src/portfolio/ledger.js";
+import { appendTransactions, buildBook, ledgerPath, readJsonlLedger, readLedger, readLedgerWithoutWriting, type Transaction } from "../src/portfolio/ledger.js";
 import { exportStore, initStore, storeOff, storeStatus } from "../src/portfolio/store.js";
 import { listNews, markNewsSeen, newsId, readHistory, type SnapshotRow, storeNews, writeSnapshots } from "../src/portfolio/tracking.js";
 import { headlineName } from "../src/commands/portfolio-store.js";
@@ -153,9 +153,17 @@ describe.skipIf(!HAS_SQLITE)("SQLite store", () => {
         },
       }));
     };
-    // A store at version 0 (an empty file): migrated on the first read, once.
+    // A store at version 0 (an empty file): a process that never writes (the dashboard) refuses to migrate it …
     setLedgerBackend("sqlite");
     writeFileSync(storePath(), "");
+    readLedgerWithoutWriting();
+    try {
+      expect(() => readLedger()).toThrow(/older schema and this command never writes: run `ultrastock portfolio show`/);
+      expect(statSync(storePath()).size).toBe(0);
+    } finally {
+      readLedgerWithoutWriting(false);
+    }
+    // … and any other command migrates it on the first read, once.
     spy();
     expect(readLedger()).toEqual([]);
     expect(opened).toEqual([true, false]);

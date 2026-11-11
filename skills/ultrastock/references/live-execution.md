@@ -12,8 +12,11 @@ approve, never retry, and never work around a refusal.
 | `test` (default) | testnet | `validate=true` (nothing placed) | preview only | paper account (`DU…`) | demo exchange |
 | `live` | real | real | real | real (`U…`) | real — where the jurisdiction allows it |
 
-**Live needs** `ULTRASTOCK_LIVE=1`, which the user sets in their own shell,
-plus Node ≥ 22 and a paper record that passes `paper readiness`.
+**Live needs** two switches, both the user's: the live switch, turned on with
+an out-of-band code (`broker code live`, then `broker live on --code <code>`;
+`broker live off` needs none), and `ULTRASTOCK_LIVE=1` in their own shell —
+plus Node ≥ 22 and a paper record that passes `paper readiness`. Never set
+either switch for the user.
 
 ## One-time setup (by the user)
 

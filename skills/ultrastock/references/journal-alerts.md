@@ -14,7 +14,9 @@
   horizon is final, never re-scored. A matured horizon stays pending until the
   symbol's and the benchmark's histories hold a bar on or after its end date:
   `settle` lists it under `waiting`, with the history that falls short and its
-  last bar, and a delisted or renamed name waits for good.
+  last bar. Ten sessions after the end with no such bar (a delisted or renamed
+  name, a benchmark that never answers), it settles on the last close
+  available, marked `partial`.
   - A buy or overweight is right when the alpha is positive.
   - A sell or underweight is right when it is negative.
   - A hold is right when |alpha| stays under a band of 2 % a month.

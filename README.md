@@ -93,8 +93,9 @@ of each command: **stable**, **beta** (unofficial sources) or
   circuit breaker (daily, weekly and monthly loss), the overtrading guard,
   PRIIPs and the jurisdiction.
 - **Live orders behind every guard.**
-  - The switches: `ULTRASTOCK_LIVE=1`, set by the user, plus a ready paper
-    record.
+  - The switches: the live switch, turned on by the user with an
+    out-of-band code (`broker code live`, `broker live on --code`), and
+    `ULTRASTOCK_LIVE=1` in their shell, plus a ready paper record.
   - Venue and key: the venue must be authorised for the user's country (the
     ESMA MiCA register for crypto platforms; Binance is not, for France), and
     the key must not be able to withdraw.

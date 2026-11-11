@@ -107,14 +107,25 @@ export function transactionId(t: Omit<Transaction, "id">): string {
   return contentHash(t.ref ? `${norm}|ref:${t.ref}` : norm).slice(0, 16);
 }
 
+/**
+ * A process that must never write the user's state (the `serve` dashboard) says so here: a ledger read then
+ * refuses to migrate a store on an older schema, and asks for a command that may.
+ */
+let neverMigrate = false;
+export function readLedgerWithoutWriting(on = true): void {
+  neverMigrate = on;
+}
+
 /** The transactions of a book, in the order they were recorded (JSONL or SQLite, per store.json). */
 export function readLedger(book = "real", warn?: Warn): Transaction[] {
   ledgerPath(book);
   if (ledgerBackend() === "sqlite") {
-    // A read opens the store read-only (the dashboard writes nothing); only a store on an older schema is opened to
-    // write, to migrate it, once.
+    // A read opens the store read-only; only a store on an older schema is opened to write, to migrate it, once.
     const read = withLedgerStore((db) => (schemaVersionOf(db) === SCHEMA_VERSION ? readSqliteLedger(db, book) : undefined), { readOnly: true });
-    return read ?? withLedgerStore((db) => readSqliteLedger(db, book));
+    if (read) return read;
+    if (neverMigrate)
+      throw new Error("the local store is on an older schema and this command never writes: run `ultrastock portfolio show` once to migrate it");
+    return withLedgerStore((db) => readSqliteLedger(db, book));
   }
   return readJsonlLedger(book, warn);
 }

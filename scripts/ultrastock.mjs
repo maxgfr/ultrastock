@@ -23908,11 +23908,18 @@ function transactionId(t) {
   ].join("|");
   return contentHash(t.ref ? `${norm2}|ref:${t.ref}` : norm2).slice(0, 16);
 }
+var neverMigrate = false;
+function readLedgerWithoutWriting(on = true) {
+  neverMigrate = on;
+}
 function readLedger(book2 = "real", warn) {
   ledgerPath(book2);
   if (ledgerBackend() === "sqlite") {
     const read2 = withLedgerStore((db) => schemaVersionOf(db) === SCHEMA_VERSION ? readSqliteLedger(db, book2) : void 0, { readOnly: true });
-    return read2 ?? withLedgerStore((db) => readSqliteLedger(db, book2));
+    if (read2) return read2;
+    if (neverMigrate)
+      throw new Error("the local store is on an older schema and this command never writes: run `ultrastock portfolio show` once to migrate it");
+    return withLedgerStore((db) => readSqliteLedger(db, book2));
   }
   return readJsonlLedger(book2, warn);
 }
@@ -51357,7 +51364,8 @@ async function portfolioView(book2, now) {
   if (hint) return hint;
   const f3 = new Findings();
   const m = await loadMarkedBook(book2, f3, now, { dayChange: true });
-  const curve = m.totalBase > 0 ? [...readEquity(book2), { at: now.toISOString(), equity: m.totalBase }] : readEquity(book2);
+  const contributed = netContributed(m.txs, m.rates, m.base);
+  const curve = m.totalBase > 0 ? [...readEquity(book2), { at: now.toISOString(), equity: m.totalBase, ...contributed !== void 0 ? { contributed } : {} }] : readEquity(book2);
   const rates = await flowRates(m.txs, m.base, now);
   return {
     book: book2,
@@ -51835,6 +51843,7 @@ async function serveCommand(args) {
   const port = argInt(args, "port", { min: 0, max: 65535 });
   const book2 = argValue(args, "book");
   if (book2 !== void 0 && !BOOKS.includes(book2)) throw new UsageError("--book is real or paper");
+  readLedgerWithoutWriting();
   const d = await startDashboard({ port, token: argValue(args, "token"), book: book2 });
   process.stderr.write(
     `ultrastock dashboard (read-only) on ${d.url}
@@ -58169,7 +58178,7 @@ USAGE
   ultrastock backtest run <buy-and-hold|60-40|equal-weight|dual-momentum|risk-parity> <sym1,sym2,\u2026> [--rebalance monthly|quarterly] [--lookback 12] [--cash-rate 0] [--out <dir>] [--json]
   ultrastock backtest walkforward|sweep|montecarlo|review <strategy> <symbol> [--grid alias.param=a,b;\u2026] [--objective sharpe|sortino|cagr|calmar|profit-factor] [--train N] [--test N] [--anchored] [--trials N] [--groups 6] [--test-groups 2] [--purge 5] [--embargo N] [--paths 5000] [--seed 42] [--out <dir>] [--json]
   ultrastock backtest compare <s1,s2,\u2026> <symbol> \xB7 backtest decisions [--rating buy|\u2026] [--horizon 5|20|60] [--json]
-  ultrastock broker status|setup <venue>|balances|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr] [--env test|live] [--max-order <n>] [--max-daily <n>] [--venues a,b] [--attest a,b] [--code <code>] [--json]
+  ultrastock broker status|setup <venue>|balances|open|limits [set]|live on|off|panic [--venue binance|kraken|coinbase|ibkr] [--env test|live] [--max-order <n>] [--max-daily <n>] [--venues a,b] [--attest a,b] [--code <code>] [--json]
   ultrastock broker preview|code|submit|reconcile|cancel <ticket-id> [--venue <v>] [--env test|live] [--code <code>] [--conid <id>] [--not-placed] [--json]
   ultrastock mcp [--transport stdio|http] [--port 8765] [--token <24+ chars>]
   ultrastock serve [--port 8766] [--token <24+ chars>] [--book real|paper]
@@ -58505,8 +58514,9 @@ COMMANDS
             Wilson intervals. Writes BACKTEST.md, equity.json, trades.json.
   broker    Live venues behind every guard. --env test (default): Binance
             testnet, Kraken validate-only, Coinbase preview-only, IBKR paper
-            account; --env live: real money, only with ULTRASTOCK_LIVE=1 set by
-            the user, Node \u2265 22 and a ready paper record. A ticket goes only when
+            account; --env live: real money, only with the live switch on (broker
+            code live, then broker live on --code; broker live off) and
+            ULTRASTOCK_LIVE=1 set by the user, Node \u2265 22 and a ready paper record. A ticket goes only when
             it is checked (\u2264 15 min, unchanged), a limit order within 1 % of the
             venue's book, inside the per-order and per-day limits of the
             experience tier, on a venue switched on and authorised for the

@@ -146,7 +146,7 @@ USAGE
   ultrastock backtest run <buy-and-hold|60-40|equal-weight|dual-momentum|risk-parity> <sym1,sym2,…> [--rebalance monthly|quarterly] [--lookback 12] [--cash-rate 0] [--out <dir>] [--json]
   ultrastock backtest walkforward|sweep|montecarlo|review <strategy> <symbol> [--grid alias.param=a,b;…] [--objective sharpe|sortino|cagr|calmar|profit-factor] [--train N] [--test N] [--anchored] [--trials N] [--groups 6] [--test-groups 2] [--purge 5] [--embargo N] [--paths 5000] [--seed 42] [--out <dir>] [--json]
   ultrastock backtest compare <s1,s2,…> <symbol> · backtest decisions [--rating buy|…] [--horizon 5|20|60] [--json]
-  ultrastock broker status|setup <venue>|balances|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr] [--env test|live] [--max-order <n>] [--max-daily <n>] [--venues a,b] [--attest a,b] [--code <code>] [--json]
+  ultrastock broker status|setup <venue>|balances|open|limits [set]|live on|off|panic [--venue binance|kraken|coinbase|ibkr] [--env test|live] [--max-order <n>] [--max-daily <n>] [--venues a,b] [--attest a,b] [--code <code>] [--json]
   ultrastock broker preview|code|submit|reconcile|cancel <ticket-id> [--venue <v>] [--env test|live] [--code <code>] [--conid <id>] [--not-placed] [--json]
   ultrastock mcp [--transport stdio|http] [--port 8765] [--token <24+ chars>]
   ultrastock serve [--port 8766] [--token <24+ chars>] [--book real|paper]
@@ -482,8 +482,9 @@ COMMANDS
             Wilson intervals. Writes BACKTEST.md, equity.json, trades.json.
   broker    Live venues behind every guard. --env test (default): Binance
             testnet, Kraken validate-only, Coinbase preview-only, IBKR paper
-            account; --env live: real money, only with ULTRASTOCK_LIVE=1 set by
-            the user, Node ≥ 22 and a ready paper record. A ticket goes only when
+            account; --env live: real money, only with the live switch on (broker
+            code live, then broker live on --code; broker live off) and
+            ULTRASTOCK_LIVE=1 set by the user, Node ≥ 22 and a ready paper record. A ticket goes only when
             it is checked (≤ 15 min, unchanged), a limit order within 1 % of the
             venue's book, inside the per-order and per-day limits of the
             experience tier, on a venue switched on and authorised for the

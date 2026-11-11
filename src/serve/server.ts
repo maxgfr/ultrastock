@@ -18,6 +18,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import * as http from "node:http";
 import type { AddressInfo } from "node:net";
 import { clockNow } from "../core/net.js";
+import { readLedgerWithoutWriting } from "../portfolio/ledger.js";
 import { argInt, argValue, type CommandArgs, EXIT_OK, jsonLine, UsageError } from "../engine.js";
 import {
   analysisPage,
@@ -290,6 +291,8 @@ export async function serveCommand(args: CommandArgs): Promise<void> {
   const port = argInt(args, "port", { min: 0, max: 65_535 });
   const book = argValue(args, "book");
   if (book !== undefined && !(BOOKS as readonly string[]).includes(book)) throw new UsageError("--book is real or paper");
+  // Read-only, strictly: not even a schema migration of the local store.
+  readLedgerWithoutWriting();
   const d = await startDashboard({ port, token: argValue(args, "token"), book: book as BookName | undefined });
   process.stderr.write(
     `ultrastock dashboard (read-only) on ${d.url}\n  open it in a browser — the token is traded for a cookie on the first visit; Ctrl-C stops it\n`,

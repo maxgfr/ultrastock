@@ -20,7 +20,7 @@ import { hitRates, readDecisions, readSettlements } from "../journal/settle.js";
 import { buildBook, readLedger, type Transaction } from "../portfolio/ledger.js";
 import { readHistory } from "../portfolio/tracking.js";
 import { loadWatchlist } from "../portfolio/watchlist.js";
-import { readEquity } from "../trading/breaker.js";
+import { netContributed, readEquity } from "../trading/breaker.js";
 import { listTickets, readAudit } from "../trading/tickets.js";
 
 export const BOOKS = ["real", "paper"] as const;
@@ -173,7 +173,13 @@ export async function portfolioView(book: BookName, now: Date): Promise<Portfoli
   const m = await loadMarkedBook(book, f, now, { dayChange: true });
   // The breaker reads the equity curve as `perf` would see it right after marking — the recorded curve plus
   // today's value — without appending that value to the file.
-  const curve = m.totalBase > 0 ? [...readEquity(book), { at: now.toISOString(), equity: m.totalBase }] : readEquity(book);
+  // Today's point carries the money paid in so far, as a recorded point does: the breaker measures losses net of
+  // deposits and withdrawals, and a point without it would read a deposit as a gain and a withdrawal as a loss.
+  const contributed = netContributed(m.txs, m.rates, m.base);
+  const curve =
+    m.totalBase > 0
+      ? [...readEquity(book), { at: now.toISOString(), equity: m.totalBase, ...(contributed !== undefined ? { contributed } : {}) }]
+      : readEquity(book);
   // Each deposit's rate on its own date: read here, so that bookPerformance stays pure; a failed read leaves the XIRR n/a, with why.
   const rates = await flowRates(m.txs, m.base, now);
   return {
