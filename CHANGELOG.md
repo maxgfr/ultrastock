@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.18](https://github.com/maxgfr/ultrastock/compare/v1.13.17...v1.13.18) (2026-11-11)
+
+
+### Bug Fixes
+
+* **tax:** state the French 305 EUR crypto exemption on prices net of fees ([089caf2](https://github.com/maxgfr/ultrastock/commit/089caf2b0c884ee44d58bdc89b496174693e29ea))
+
 ## [1.13.17](https://github.com/maxgfr/ultrastock/compare/v1.13.16...v1.13.17) (2026-11-11)
 
 
