@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.13](https://github.com/maxgfr/ultrastock/compare/v1.13.12...v1.13.13) (2026-11-11)
+
+
+### Bug Fixes
+
+* **tax:** keep basis and holding period across a US transfer between own accounts ([be8b3d6](https://github.com/maxgfr/ultrastock/commit/be8b3d6d92ebd6de7b67620be95d81b8997a489e))
+
 ## [1.13.12](https://github.com/maxgfr/ultrastock/compare/v1.13.11...v1.13.12) (2026-11-11)
 
 
