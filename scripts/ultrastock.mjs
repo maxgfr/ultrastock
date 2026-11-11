@@ -52820,6 +52820,23 @@ async function markBook(book2) {
   if (v.totalBase > 0) recordEquity(book2, v.totalBase, now);
   return { profile, txs, book: b, valued: v, fxRates: fx.rates, sources, notes: [...notes, ...fx.notes, ...v.missing.map((m) => `missing ${m}`)], now };
 }
+function bookPerformance(txs, book2, totalBase, curve, limits, now) {
+  const flows = txs.filter((t) => t.type === "deposit" || t.type === "withdrawal").map((t) => ({ date: t.date.slice(0, 10), amount: -(t.amount ?? 0) }));
+  flows.push({ date: now.toISOString().slice(0, 10), amount: totalBase });
+  const byCurrency = {};
+  for (const p of book2.positions) {
+    const c = byCurrency[p.currency] ??= { realized: 0, dividends: 0 };
+    c.realized += p.realizedPmp;
+    c.dividends += p.dividends;
+  }
+  return {
+    xirr: xirr(flows),
+    realized: book2.positions.reduce((s, p) => s + p.realizedPmp, 0),
+    dividends: book2.positions.reduce((s, p) => s + p.dividends, 0),
+    byCurrency,
+    breaker: breakerState(curve, closedTradeResults(txs), limits, now)
+  };
+}
 async function portfolioCommand(args, asJson) {
   const [sub = "show", ...rest] = args.positional;
   const book2 = bookOf2(args);
@@ -52939,12 +52956,7 @@ async function portfolioCommand(args, asJson) {
   }
   if (sub === "perf") {
     const m = await markBook(book2);
-    const flows = m.txs.filter((t) => t.type === "deposit" || t.type === "withdrawal").map((t) => ({ date: t.date.slice(0, 10), amount: -(t.amount ?? 0) }));
-    flows.push({ date: m.now.toISOString().slice(0, 10), amount: m.valued.totalBase });
-    const irr = xirr(flows);
-    const realized = m.book.positions.reduce((s, p) => s + p.realizedPmp, 0);
-    const dividends = m.book.positions.reduce((s, p) => s + p.dividends, 0);
-    const br = breakerState(readEquity(book2), closedTradeResults(m.txs), m.profile.limits, m.now);
+    const { xirr: irr, realized, dividends, breaker: br } = bookPerformance(m.txs, m.book, m.valued.totalBase, readEquity(book2), m.profile.limits, m.now);
     return printResult(
       asJson,
       { book: book2, xirr: irr, realized, dividends, breaker: br, total: m.valued.totalBase },

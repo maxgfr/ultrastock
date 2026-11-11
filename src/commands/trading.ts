@@ -6,12 +6,12 @@ import { PORTFOLIO_STORE_ACTIONS, portfolioStoreCommand } from "./portfolio-stor
 import { resolve } from "node:path";
 import { EvidenceStore } from "../core/evidence.js";
 import { clockNow } from "../core/net.js";
-import { loadProfile } from "../core/profile.js";
+import { type Limits, loadProfile } from "../core/profile.js";
 import { argList, argValue, type CommandArgs, mapLimit, UsageError } from "../engine.js";
 import { printResult as out } from "./emit.js";
-import { appendTransactions, buildBook, readLedger, type TxType, valueBook, xirr } from "../portfolio/ledger.js";
+import { appendTransactions, type Book, buildBook, readLedger, type Transaction, type TxType, valueBook, xirr } from "../portfolio/ledger.js";
 import { getQuote, resolveSymbol } from "../providers/router.js";
-import { breakerState, closedTradeResults, readEquity, recordEquity } from "../trading/breaker.js";
+import { breakerState, closedTradeResults, type EquityPoint, readEquity, recordEquity } from "../trading/breaker.js";
 import { fxToBase, gateContextFor } from "../trading/context.js";
 import { paperSubmit, paperSweep, readiness } from "../trading/paper.js";
 import { planTrade, tradeContextMarkdown } from "../trading/plan.js";
@@ -59,6 +59,31 @@ export async function markBook(book: string) {
   const v = valueBook(b, prices, fx.rates, profile.baseCurrency);
   if (v.totalBase > 0) recordEquity(book, v.totalBase, now);
   return { profile, txs, book: b, valued: v, fxRates: fx.rates, sources, notes: [...notes, ...fx.notes, ...v.missing.map((m) => `missing ${m}`)], now };
+}
+
+/**
+ * The `perf` figures of a book valued at `totalBase` now: the money-weighted
+ * return (XIRR) on its deposits and withdrawals, the realised P&L (average
+ * cost) and the dividends — summed across currencies, as `perf` prints them,
+ * and per currency — and the circuit breaker read on `curve`. Pure: the
+ * caller decides which equity curve it reads, and nothing is written here.
+ */
+export function bookPerformance(txs: readonly Transaction[], book: Book, totalBase: number, curve: readonly EquityPoint[], limits: Limits, now: Date) {
+  const flows = txs.filter((t) => t.type === "deposit" || t.type === "withdrawal").map((t) => ({ date: t.date.slice(0, 10), amount: -(t.amount ?? 0) }));
+  flows.push({ date: now.toISOString().slice(0, 10), amount: totalBase });
+  const byCurrency: Record<string, { realized: number; dividends: number }> = {};
+  for (const p of book.positions) {
+    const c = (byCurrency[p.currency] ??= { realized: 0, dividends: 0 });
+    c.realized += p.realizedPmp;
+    c.dividends += p.dividends;
+  }
+  return {
+    xirr: xirr(flows),
+    realized: book.positions.reduce((s, p) => s + p.realizedPmp, 0),
+    dividends: book.positions.reduce((s, p) => s + p.dividends, 0),
+    byCurrency,
+    breaker: breakerState(curve, closedTradeResults(txs), limits, now),
+  };
 }
 
 export async function portfolioCommand(args: CommandArgs, asJson: boolean): Promise<void> {
@@ -182,12 +207,7 @@ export async function portfolioCommand(args: CommandArgs, asJson: boolean): Prom
   }
   if (sub === "perf") {
     const m = await markBook(book);
-    const flows = m.txs.filter((t) => t.type === "deposit" || t.type === "withdrawal").map((t) => ({ date: t.date.slice(0, 10), amount: -(t.amount ?? 0) }));
-    flows.push({ date: m.now.toISOString().slice(0, 10), amount: m.valued.totalBase });
-    const irr = xirr(flows);
-    const realized = m.book.positions.reduce((s, p) => s + p.realizedPmp, 0);
-    const dividends = m.book.positions.reduce((s, p) => s + p.dividends, 0);
-    const br = breakerState(readEquity(book), closedTradeResults(m.txs), m.profile.limits, m.now);
+    const { xirr: irr, realized, dividends, breaker: br } = bookPerformance(m.txs, m.book, m.valued.totalBase, readEquity(book), m.profile.limits, m.now);
     return out(
       asJson,
       { book, xirr: irr, realized, dividends, breaker: br, total: m.valued.totalBase },
