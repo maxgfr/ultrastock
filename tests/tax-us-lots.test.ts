@@ -126,6 +126,25 @@ describe("US: a trade quoted in a crypto-asset", () => {
       ["ETH", 10, 50_100],
     ]);
   });
+
+  it("`tax harvest` compares a lot quoted in BTC with its dollar basis in dollars", async () => {
+    // 1 ETH bought for 0.03 BTC when BTC closed at 100 000 $ → basis 3 000 $. On 2025-10-01 ETHBTC trades at 0.04 and
+    // BTC closes at 120 000 $: the lot is worth 4 800 $, an unrealised GAIN of 1 800 $ — not a harvest candidate.
+    const CB: Envelope = { id: "cb", type: "CRYPTO", broker: "Coinbase", currency: "USD" };
+    const closes = async () =>
+      new Map<string, number>([
+        ["2025-02-01", 100_000],
+        ["2025-10-01", 120_000],
+      ]);
+    const quoted = await withCryptoQuotes((c) => (c === "USD" ? 1 : undefined), ["BTC"], "2023-01-01", "2025-12-31", closes);
+    const txs = [tx({ date: "2025-02-01", type: "buy", account: "cb", symbol: "ETHBTC", currency: "BTC", quantity: 1, price: 0.03 })];
+    const us = new UsRegime(2025);
+    expect(us.harvestCandidates(input(txs, { envelopes: [CB], fx: quoted.fx }), { ETHBTC: 0.04 }, "2025-10-01")).toEqual([]);
+    // At 0.02 BTC (2 400 $) the lot is 600 $ under water, priced in dollars.
+    const [c] = us.harvestCandidates(input(txs, { envelopes: [CB], fx: quoted.fx }), { ETHBTC: 0.02 }, "2025-10-01");
+    expect([c?.price, c?.cost, c?.unrealized]).toEqual([2400, 3000, -600]);
+    expect(c?.notes.join(" ")).toMatch(/0\.02 BTC/);
+  });
 });
 
 describe("US: wash sale against a replacement lot partly sold before the loss sale", () => {

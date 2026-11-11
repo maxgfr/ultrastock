@@ -48,6 +48,8 @@ interface UsLot {
   symbol: string;
   /** What is held: the symbol of a security, the base asset of a crypto pair (BTCUSD and BTCUSDT both hold BTC). */
   asset: string;
+  /** The currency `symbol` is quoted in (USD, EUR, BTC for ETHBTC): what a market price of it is in. */
+  currency: string;
   /** Acquisition date for the holding period (moved back by a wash sale). */
   acquired: string;
   /** The real purchase date (wash-sale window). */
@@ -129,6 +131,7 @@ export class UsRegime extends TaxRegime {
           account: t.account,
           symbol: quote,
           asset: quote,
+          currency: "USD",
           acquired: day(t.date),
           bought: day(t.date),
           quantity: q,
@@ -151,6 +154,7 @@ export class UsRegime extends TaxRegime {
         account: t.account,
         symbol: (t.symbol ?? "").toUpperCase(),
         asset: assetOf(t, crypto),
+        currency: t.currency.toUpperCase(),
         acquired: day(t.date),
         bought: day(t.date),
         quantity: q,
@@ -271,6 +275,7 @@ export class UsRegime extends TaxRegime {
             account: t.account,
             symbol: sym,
             asset,
+            currency: t.currency.toUpperCase(),
             acquired: day(t.date),
             bought: day(t.date),
             quantity: left,
@@ -630,8 +635,14 @@ export class UsRegime extends TaxRegime {
     const out: HarvestCandidate[] = [];
     for (const l of r.open) {
       if (l.sheltered) continue;
-      const px = prices[l.symbol];
-      if (px === undefined) continue;
+      const quoted = prices[l.symbol];
+      if (quoted === undefined) continue;
+      // The price is in the symbol's quote (BTC for ETHBTC, EUR for a Paris listing), the basis in dollars: compared in
+      // dollars at the day's rate, else not at all.
+      const c = isStablecoin(l.currency) ? (l.currency.startsWith("EUR") ? "EUR" : "USD") : l.currency;
+      const toUsd = c === "USD" ? 1 : input.fx(c, asOf);
+      if (toUsd === undefined) continue;
+      const px = quoted * toUsd;
       const unrealized = (px - l.basis) * l.remaining;
       if (unrealized >= 0) continue;
       const term = isLongTerm(l.acquired, asOf) ? "long" : "short";
@@ -642,7 +653,7 @@ export class UsRegime extends TaxRegime {
         account: l.account,
         symbol: l.symbol,
         quantity: l.remaining,
-        price: px,
+        price: round2(px),
         cost: round2(l.basis * l.remaining),
         unrealized: round2(unrealized),
         term,
@@ -650,6 +661,7 @@ export class UsRegime extends TaxRegime {
         formula: `min(${round2(-unrealized)}, gains ${round2(Math.max(0, realized))} + ${this.param("capitalLoss.ordinaryLimit")}) × ${rate}${input.marginalRate === undefined ? " (assumed rate: pass --marginal-rate)" : ""}`,
         notes: [
           `lot bought ${l.bought}${l.acquired !== l.bought ? ` (holding period from ${l.acquired})` : ""}`,
+          c !== "USD" ? `priced ${quoted} ${l.currency} = ${round2(px)} $ at the ${asOf} rate` : "",
           recent.length
             ? `WASH-SALE RISK: ${l.symbol} was bought on ${recent.map((x) => `${x.bought} (${x.account})`).join(", ")} within the last ${window} days`
             : "",

@@ -53555,6 +53555,7 @@ var UsRegime = class extends TaxRegime {
           account: t.account,
           symbol: quote2,
           asset: quote2,
+          currency: "USD",
           acquired: day3(t.date),
           bought: day3(t.date),
           quantity: q2,
@@ -53577,6 +53578,7 @@ var UsRegime = class extends TaxRegime {
         account: t.account,
         symbol: (t.symbol ?? "").toUpperCase(),
         asset: assetOf(t, crypto),
+        currency: t.currency.toUpperCase(),
         acquired: day3(t.date),
         bought: day3(t.date),
         quantity: q,
@@ -53683,6 +53685,7 @@ var UsRegime = class extends TaxRegime {
             account: t.account,
             symbol: sym3,
             asset,
+            currency: t.currency.toUpperCase(),
             acquired: day3(t.date),
             bought: day3(t.date),
             quantity: left,
@@ -54014,8 +54017,12 @@ var UsRegime = class extends TaxRegime {
     const out = [];
     for (const l of r3.open) {
       if (l.sheltered) continue;
-      const px = prices[l.symbol];
-      if (px === void 0) continue;
+      const quoted = prices[l.symbol];
+      if (quoted === void 0) continue;
+      const c = isStablecoin(l.currency) ? l.currency.startsWith("EUR") ? "EUR" : "USD" : l.currency;
+      const toUsd = c === "USD" ? 1 : input.fx(c, asOf);
+      if (toUsd === void 0) continue;
+      const px = quoted * toUsd;
       const unrealized = (px - l.basis) * l.remaining;
       if (unrealized >= 0) continue;
       const term = isLongTerm(l.acquired, asOf) ? "long" : "short";
@@ -54026,7 +54033,7 @@ var UsRegime = class extends TaxRegime {
         account: l.account,
         symbol: l.symbol,
         quantity: l.remaining,
-        price: px,
+        price: round22(px),
         cost: round22(l.basis * l.remaining),
         unrealized: round22(unrealized),
         term,
@@ -54034,6 +54041,7 @@ var UsRegime = class extends TaxRegime {
         formula: `min(${round22(-unrealized)}, gains ${round22(Math.max(0, realized))} + ${this.param("capitalLoss.ordinaryLimit")}) \xD7 ${rate2}${input.marginalRate === void 0 ? " (assumed rate: pass --marginal-rate)" : ""}`,
         notes: [
           `lot bought ${l.bought}${l.acquired !== l.bought ? ` (holding period from ${l.acquired})` : ""}`,
+          c !== "USD" ? `priced ${quoted} ${l.currency} = ${round22(px)} $ at the ${asOf} rate` : "",
           recent.length ? `WASH-SALE RISK: ${l.symbol} was bought on ${recent.map((x) => `${x.bought} (${x.account})`).join(", ")} within the last ${window} days` : "",
           l.crypto ? "crypto: no wash-sale rule applied (verify the year's law)" : `do not buy ${l.symbol} or a substantially identical security (in any account, IRA included) before ${addDays2(asOf, window + 1)}`
         ].filter(Boolean)
