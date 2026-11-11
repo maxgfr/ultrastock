@@ -7,7 +7,8 @@ import { join } from "node:path";
 import { EvidenceStore, formatNumber } from "../core/evidence.js";
 import type { Bar } from "../providers/types.js";
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+/** HTML-escape text for an element or a quoted attribute (either quote). */
+export const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 /** Inline markdown: code, bold, italic, links (http/https only), [E#] citations. */
 function inline(text: string): string {
@@ -97,8 +98,8 @@ export function markdownToHtml(md: string): string {
   return out.join("\n");
 }
 
-/** A closing-price line chart as inline SVG, with the first/last dates and the range. */
-export function priceSvg(bars: readonly Bar[], width = 720, height = 220): string {
+/** A closing-price line chart as inline SVG, with the first/last dates and the range. `what` names the series for screen readers. */
+export function priceSvg(bars: ReadonlyArray<Pick<Bar, "date" | "close">>, width = 720, height = 220, what = "Closing price"): string {
   if (bars.length < 2) return "";
   const closes = bars.map((b) => b.close);
   const lo = Math.min(...closes);
@@ -107,7 +108,7 @@ export function priceSvg(bars: readonly Bar[], width = 720, height = 220): strin
   const x = (i: number) => pad + (i / (bars.length - 1)) * (width - 2 * pad);
   const y = (v: number) => height - pad - ((v - lo) / (hi - lo || 1)) * (height - 2 * pad);
   const d = closes.map((c, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(c).toFixed(1)}`).join(" ");
-  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Closing price from ${esc(bars[0]!.date)} to ${esc(bars[bars.length - 1]!.date)}">
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(what)} from ${esc(bars[0]!.date)} to ${esc(bars[bars.length - 1]!.date)}">
 <path d="${d}" fill="none" stroke="var(--line)" stroke-width="1.6"/>
 <text x="${pad}" y="${height - 6}" class="axis">${esc(bars[0]!.date.slice(0, 10))}</text>
 <text x="${width - pad}" y="${height - 6}" class="axis" text-anchor="end">${esc(bars[bars.length - 1]!.date.slice(0, 10))}</text>
@@ -115,7 +116,7 @@ export function priceSvg(bars: readonly Bar[], width = 720, height = 220): strin
 </svg>`;
 }
 
-const CSS = `:root{--bg:#fbfaf7;--fg:#1d1d1b;--muted:#6b6a65;--line:#2f5d8a;--rule:#e2dfd7;--card:#fff}
+export const CSS = `:root{--bg:#fbfaf7;--fg:#1d1d1b;--muted:#6b6a65;--line:#2f5d8a;--rule:#e2dfd7;--card:#fff}
 @media (prefers-color-scheme:dark){:root{--bg:#141413;--fg:#ecebe6;--muted:#a3a29c;--line:#7fb0e0;--rule:#33322f;--card:#1c1c1a}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:860px;margin:0 auto;padding:32px 16px}h1{font-size:1.7rem;line-height:1.2}h2{margin-top:2rem;border-bottom:1px solid var(--rule);padding-bottom:.3rem}

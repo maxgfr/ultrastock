@@ -73,6 +73,7 @@ export const MATURITY: Record<string, Maturity> = {
   strategy: "stable",
   broker: "experimental",
   mcp: "beta",
+  serve: "beta",
   doctor: "stable",
 };
 

@@ -31,6 +31,7 @@ import { cryptoCommand, fundCommand, optionsCommand, predictCommand, snapshotCom
 import { backtestCommand, strategyCommand } from "./commands/backtest.js";
 import { brokerCommand } from "./commands/broker.js";
 import { serveMcp } from "./mcp.js";
+import { serveCommand } from "./serve/server.js";
 import { decideCommand, journalCommand, knowledgeCommand, watchCommand, watchlistCommand } from "./commands/journal.js";
 import { morningCommand } from "./commands/morning.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
@@ -148,6 +149,7 @@ USAGE
   ultrastock broker status|setup <venue>|balances|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr] [--env test|live] [--max-order <n>] [--max-daily <n>] [--venues a,b] [--attest a,b] [--code <code>] [--json]
   ultrastock broker preview|code|submit|reconcile|cancel <ticket-id> [--venue <v>] [--env test|live] [--code <code>] [--conid <id>] [--not-placed] [--json]
   ultrastock mcp [--transport stdio|http] [--port 8765] [--token <24+ chars>]
+  ultrastock serve [--port 8766] [--token <24+ chars>] [--book real|paper]
   ultrastock strategy list | show <name|file.json> | validate <name|file.json> | new <name> [--like <strategy>] [--json]
   ultrastock watch list|add <symbol> <condition>|add 8k <symbol>|add stops|add events [--days 14] [--min-weight 2]|rm <id>|run [--notify] [--message <text>] [--json]
   ultrastock watchlist list|add <symbol> [<symbol> …] [--note <text>]|rm <symbol> [--json]
@@ -497,6 +499,13 @@ COMMANDS
             mandatory bearer token): read-only tools plus ticket creation
             through plan. No tool submits an order, edits the profile or the
             ledger, stores a key or moves a limit.
+  serve     A local, read-only dashboard in the browser: the book marked to
+            market (positions, cash, P&L vs average cost, XIRR, breaker, value
+            over time from the store), its risk, stress, income, location and
+            look-through figures, the ledger, the journal, the watchlist and
+            alert rules, the tickets and the audit trail (and /api/… as JSON).
+            Binds 127.0.0.1 only; the URL it prints carries a token (--token or
+            ULTRASTOCK_SERVE_TOKEN, else a random one). Writes nothing.
   strategy  The strategies: 26 ported from ai-strategy-backtester plus sma-cross,
             and the user's own in <home>/strategies/ — list, show, validate (each
             error with its path), new (from a template or --like another).
@@ -821,6 +830,7 @@ export const COMMANDS = [
   "strategy",
   "broker",
   "mcp",
+  "serve",
   "doctor",
 ];
 
@@ -1000,6 +1010,7 @@ const SPEC: CliSpec = {
     ],
     strategy: ["like", "json"],
     mcp: ["transport", "port", "token"],
+    serve: ["port", "token", "book"],
     broker: ["venue", "env", "code", "conid", "max-order", "max-daily", "venues", "attest", "not-placed", "json"],
     journal: ["book", "symbol", "thesis", "invalidation", "catalysts", "review-by", "note", "outcome", "ticket-id", "tags", "tag", "out", ...NET],
     knowledge: ["title", "json"],
@@ -1030,7 +1041,15 @@ function usage(msg: string): never {
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 function arity(args: CommandArgs): number {
-  if (args.command === "doctor" || args.command === "version" || args.command === "value" || args.command === "events" || args.command === "morning") return 0;
+  if (
+    args.command === "doctor" ||
+    args.command === "serve" ||
+    args.command === "version" ||
+    args.command === "value" ||
+    args.command === "events" ||
+    args.command === "morning"
+  )
+    return 0;
   if (args.command === "check" || args.command === "calc") return 2;
   if (args.command === "profile") return 3;
   if (args.command === "crypto" || args.command === "calendar" || args.command === "macro" || args.command === "crypto-analysis") return 2;
@@ -1247,6 +1266,7 @@ async function run(args: CommandArgs): Promise<void> {
     const port = argValue(args, "port");
     return serveMcp({ transport: argValue(args, "transport"), port: port ? Number(port) : undefined, token: argValue(args, "token") });
   }
+  if (cmd === "serve") return serveCommand(args);
   if (cmd === "plan") return planCommand(args, asJson);
   if (cmd === "ticket") return ticketCommand(args, asJson);
   if (cmd === "paper") return paperCommand(args, asJson);
