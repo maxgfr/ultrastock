@@ -277,6 +277,19 @@ async function bookFill(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date): 
 /** Apply a venue answer to the ticket (status, record, ledger). */
 async function applyResult(t: Ticket, r: OrderResult, rec: LiveRecord, now: Date): Promise<Ticket> {
   const next: LiveRecord = { ...rec, state: r.state, venueOrderId: r.venueOrderId ?? rec.venueOrderId, at: now.toISOString(), message: r.message };
+  // A dry run the venue accepted placed nothing: the ticket is over, not waiting on an order that will never exist.
+  if (r.validatedOnly && r.state === "accepted") {
+    const done: LiveRecord = { ...next, state: "cancelled", message: r.message ?? "validated only" };
+    return transition(
+      t.id,
+      "cancelled",
+      `${rec.venue} ${rec.env}: validated only — nothing was placed`,
+      (x) => {
+        (x as Ticket & { live?: LiveRecord }).live = done;
+      },
+      now,
+    );
+  }
   const status = r.state === "filled" ? "filled" : r.state === "cancelled" ? "cancelled" : r.state === "rejected" ? "blocked" : "submitted";
   const updated = await transition(
     t.id,

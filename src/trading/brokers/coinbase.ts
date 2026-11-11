@@ -242,7 +242,13 @@ export function coinbaseAdapter(opts: AdapterOptions): BrokerAdapter {
         const errs = (r.body as { errs?: string[] })?.errs ?? [];
         const ok = r.status === 200 && !errs.length;
         const why = ok ? "" : `: ${errs.length ? errs.join("; ") : venueError(r.status, r.body)}`;
-        return { state: ok ? "accepted" : "rejected", clientOrderId: o.clientOrderId, message: `preview only${why}`, raw: r.body };
+        return {
+          state: ok ? "accepted" : "rejected",
+          clientOrderId: o.clientOrderId,
+          message: `preview only${why}`,
+          ...(ok ? { validatedOnly: true } : {}),
+          raw: r.body,
+        };
       }
       const b = r.body as { success?: boolean; success_response?: { order_id?: string } };
       if (r.status === 200 && b?.success === true) {

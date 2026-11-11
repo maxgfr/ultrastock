@@ -220,7 +220,7 @@ export function krakenAdapter(opts: AdapterOptions): BrokerAdapter {
       }
       if (r.status === 200 && !r.errors.length) {
         const txid = (r.result as { txid?: string[] } | undefined)?.txid?.[0];
-        if (validateOnly) return { state: "accepted", clientOrderId: o.clientOrderId, message: "validated only", raw: r.raw };
+        if (validateOnly) return { state: "accepted", clientOrderId: o.clientOrderId, message: "validated only", validatedOnly: true, raw: r.raw };
         return { state: "accepted", clientOrderId: o.clientOrderId, venueOrderId: txid, raw: r.raw };
       }
       const unknown = r.status >= 500 || r.errors.some((e) => UNKNOWN_ERRORS.test(e));

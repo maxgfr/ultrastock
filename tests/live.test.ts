@@ -327,6 +327,19 @@ describe("live preconditions and the single submission", () => {
     expect(loadTicket(t.id).status).toBe("submitted");
   });
 
+  it("ends a ticket the venue only validated (Kraken validate, Coinbase preview): nothing is left to follow", async () => {
+    switchOn();
+    const t = await checkedTicket(order());
+    await issueCode(t.id, orderBinding(t.order, "kraken", "test", "SOLEUR"), "order", [["capture", capture]]);
+    const v = fakeVenue({ submit: (o) => ({ state: "accepted", clientOrderId: o.clientOrderId, message: "validated only", validatedOnly: true }) });
+    await liveSubmit({ ticket: t, venue: "kraken", env: "test", adapter: v.a, venueSym: "SOLEUR", code: codeFrom(), micaAuthorised: true });
+    // It used to stay "submitted": every later send refused as PENDING, reconcile finding nothing for ever.
+    expect(loadTicket(t.id).status).toBe("cancelled");
+    expect((loadTicket(t.id) as unknown as { live: { state: string } }).live.state).toBe("cancelled");
+    await expect(liveCancel(t.id, v.a)).rejects.toThrow(/already cancelled/);
+    expect(v.calls.cancel).toBe(0);
+  });
+
   it("keeps a ticket pending when the venue refuses the cancel", async () => {
     const t = await acceptedTicket();
     const v = fakeVenue({ cancel: { state: "rejected", clientOrderId: clientOrderIdFor(t.id, 1), message: "HTTP 503" } });

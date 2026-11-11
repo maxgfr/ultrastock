@@ -50,6 +50,11 @@ export interface OrderResult {
   feeCurrency?: string;
   /** The venue's own words on a rejection or an error (credentials removed). */
   message?: string;
+  /**
+   * The venue checked the order and placed nothing (Kraken validate=true,
+   * Coinbase /orders/preview): there is no order to follow, query or cancel.
+   */
+  validatedOnly?: boolean;
   raw?: unknown;
 }
 

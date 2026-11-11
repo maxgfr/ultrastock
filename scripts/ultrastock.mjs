@@ -42823,7 +42823,13 @@ function coinbaseAdapter(opts) {
         const errs = r3.body?.errs ?? [];
         const ok = r3.status === 200 && !errs.length;
         const why2 = ok ? "" : `: ${errs.length ? errs.join("; ") : venueError(r3.status, r3.body)}`;
-        return { state: ok ? "accepted" : "rejected", clientOrderId: o.clientOrderId, message: `preview only${why2}`, raw: r3.body };
+        return {
+          state: ok ? "accepted" : "rejected",
+          clientOrderId: o.clientOrderId,
+          message: `preview only${why2}`,
+          ...ok ? { validatedOnly: true } : {},
+          raw: r3.body
+        };
       }
       const b = r3.body;
       if (r3.status === 200 && b?.success === true) {
@@ -43392,7 +43398,7 @@ function krakenAdapter(opts) {
       }
       if (r3.status === 200 && !r3.errors.length) {
         const txid = r3.result?.txid?.[0];
-        if (validateOnly) return { state: "accepted", clientOrderId: o.clientOrderId, message: "validated only", raw: r3.raw };
+        if (validateOnly) return { state: "accepted", clientOrderId: o.clientOrderId, message: "validated only", validatedOnly: true, raw: r3.raw };
         return { state: "accepted", clientOrderId: o.clientOrderId, venueOrderId: txid, raw: r3.raw };
       }
       const unknown2 = r3.status >= 500 || r3.errors.some((e) => UNKNOWN_ERRORS.test(e));
@@ -44331,6 +44337,18 @@ async function bookFill(t, r3, rec, now) {
 }
 async function applyResult(t, r3, rec, now) {
   const next2 = { ...rec, state: r3.state, venueOrderId: r3.venueOrderId ?? rec.venueOrderId, at: now.toISOString(), message: r3.message };
+  if (r3.validatedOnly && r3.state === "accepted") {
+    const done = { ...next2, state: "cancelled", message: r3.message ?? "validated only" };
+    return transition(
+      t.id,
+      "cancelled",
+      `${rec.venue} ${rec.env}: validated only \u2014 nothing was placed`,
+      (x) => {
+        x.live = done;
+      },
+      now
+    );
+  }
   const status = r3.state === "filled" ? "filled" : r3.state === "cancelled" ? "cancelled" : r3.state === "rejected" ? "blocked" : "submitted";
   const updated = await transition(
     t.id,
