@@ -49,6 +49,7 @@ interface UsLot {
   acquired: string;
   /** The real purchase date (wash-sale window). */
   bought: string;
+  /** Units of the lot (less those split off into a replacement piece of their own). */
   quantity: number;
   remaining: number;
   /** Basis per unit, USD, adjustments included. */
@@ -60,6 +61,8 @@ interface UsLot {
    * between the user's own accounts (or out of an IRA, a gift…), never a purchase, whatever order the statement lists it in.
    */
   purchase: boolean;
+  /** A lot carried from another account: the purchase whose shares it holds (§1223(1): same basis, same holding period). */
+  origin?: UsLot;
   sheltered: boolean;
   crypto: boolean;
 }
@@ -138,6 +141,9 @@ export class UsRegime extends TaxRegime {
     // its lots waits here for a transfer-in (without a price) of the same symbol into another account.
     const inTransit: Array<{ account: string; symbol: string; lot: UsLot; qty: number }> = [];
     let unmatched: UsLot[] = [];
+    /** The lots in other accounts that hold shares of a purchase, by purchase: a wash adjustment follows them there. */
+    const carriedOf = new Map<UsLot, UsLot[]>();
+    const holds = (purchase: UsLot, l: UsLot) => carriedOf.set(purchase, [...(carriedOf.get(purchase) ?? []), l]);
     const carry = (into: UsLot): boolean => {
       let need = into.quantity;
       const pieces: Array<{ from: UsLot; qty: number }> = [];
@@ -152,11 +158,22 @@ export class UsRegime extends TaxRegime {
       if (!pieces.length) return false;
       const rest = need > 1e-12 ? { ...into, quantity: need, remaining: need } : undefined;
       pieces.forEach(({ from, qty }, i) => {
-        // A carried lot is not a new purchase: it is never taken again as a wash-sale replacement.
+        // The same shares, not a new purchase (never a replacement themselves): they keep the basis, the holding period
+        // and whether they already are replacement shares, and a wash sale matched to their purchase later lands here.
         const piece = i === 0 ? into : { ...into, id: lots.length };
-        Object.assign(piece, { quantity: qty, remaining: qty, basis: from.basis, acquired: from.acquired, bought: from.bought, replaced: qty });
+        const origin = from.origin ?? from;
+        Object.assign(piece, {
+          quantity: qty,
+          remaining: qty,
+          basis: from.basis,
+          acquired: from.acquired,
+          bought: from.bought,
+          replaced: from.replaced >= from.quantity - 1e-12 ? qty : 0,
+          origin,
+        });
         if (i > 0) lots.push(piece);
         active.add(piece);
+        holds(origin, piece);
       });
       if (rest) {
         rest.id = lots.length;
@@ -252,36 +269,63 @@ export class UsRegime extends TaxRegime {
             const to = addDays(day(t.date), window);
             const soldIds = new Set(consumed.map((c) => c.lot.id));
             let need = qty;
+            const lossPerShare = -gain / qty;
+            const held = Date.parse(`${day(t.date)}T00:00:00Z`) - Date.parse(`${l.acquired}T00:00:00Z`);
+            // `q` replacement shares of `h` split off into a lot of their own, used up as a replacement; the rest of `h`
+            // keeps its basis and date.
+            const take = (h: UsLot, q: number): UsLot => {
+              if (q >= h.quantity - 1e-12) {
+                h.replaced = h.quantity;
+                return h;
+              }
+              const w: UsLot = { ...h, id: lots.length, quantity: q, remaining: Math.min(q, h.remaining), replaced: q };
+              h.quantity -= q;
+              h.remaining -= w.remaining;
+              lots.push(w);
+              if (active.has(h)) active.add(w);
+              else pieces.set(h, [...(pieces.get(h) ?? []), w]);
+              if (w.origin) holds(w.origin, w);
+              return w;
+            };
             for (const r of lots) {
               if (need <= 1e-12) break;
               if (!r.purchase || r.symbol !== sym || soldIds.has(r.id) || r.bought < from || r.bought > to || r.id === l.id) continue;
               const avail = r.quantity - r.replaced;
               if (avail <= 1e-12) continue;
               const q = Math.min(need, avail);
-              const loss = (-gain * q) / qty;
+              const loss = lossPerShare * q;
               disallowed += loss;
-              r.replaced += q;
               need -= q;
-              if (r.sheltered)
+              if (r.sheltered) {
+                r.replaced += q;
                 notes.push(`wash sale against a purchase in ${r.account} (${r.bought}): the ${round2(loss)} $ loss is lost for good (IRA replacement)`);
-              else {
-                // Only the q replacement shares take the loss in their basis and the sold shares' holding time before
-                // their own purchase date: they split off the lot into one of their own, used up as a replacement. The
-                // rest of the lot keeps its basis and date.
-                let w = r;
-                if (q < r.quantity - 1e-12) {
-                  w = { ...r, id: lots.length, quantity: q, remaining: Math.min(q, r.remaining), replaced: q };
-                  r.quantity -= q;
-                  r.remaining -= w.remaining;
-                  r.replaced -= q;
-                  lots.push(w);
-                  if (active.has(r)) active.add(w);
-                  else pieces.set(r, [...(pieces.get(r) ?? []), w]);
-                }
-                w.basis += loss / q;
-                const held = Date.parse(`${day(t.date)}T00:00:00Z`) - Date.parse(`${l.acquired}T00:00:00Z`);
+                continue;
+              }
+              // §1091(d) and §1223(3): the q replacement shares take the loss in their basis and the sold shares' holding
+              // time before their own purchase date — wherever they now are: still in the purchase's account, or moved
+              // to another of the user's accounts (the lots carried from it).
+              const holders: Array<[UsLot, number]> = [];
+              let left = q;
+              const here = Math.min(left, active.has(r) ? r.remaining : r.quantity);
+              if (here > 1e-12) holders.push([r, here]);
+              left -= here;
+              for (const c of carriedOf.get(r) ?? []) {
+                if (left <= 1e-12) break;
+                if (!active.has(c) || c.replaced >= c.quantity - 1e-12 || c.remaining <= 1e-12) continue;
+                const n = Math.min(left, c.remaining);
+                holders.push([c, n]);
+                left -= n;
+              }
+              if (left > 1e-12) holders.push([r, left]);
+              for (const [h, n] of holders) {
+                const w = take(h, n);
+                // Shares carried from r count as r's: r has that many fewer left to be a replacement.
+                if (h !== r) r.quantity -= n;
+                w.basis += lossPerShare;
                 w.acquired = new Date(Date.parse(`${w.bought}T00:00:00Z`) - held).toISOString().slice(0, 10);
-                notes.push(`wash sale: ${round2(loss)} $ added to the basis of ${round2(q)} share(s) bought ${r.bought} in ${r.account}`);
+                notes.push(
+                  `wash sale: ${round2(lossPerShare * n)} $ added to the basis of ${round2(n)} share(s) bought ${r.bought} in ${r.account}${h.account !== r.account ? `, now in ${h.account}` : ""}`,
+                );
               }
             }
             gain += disallowed;

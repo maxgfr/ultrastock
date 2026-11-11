@@ -43,4 +43,44 @@ describe("US: a transfer between own accounts and the wash-sale rule", () => {
     const swapped = [txs[0]!, txs[1]!, txs[2]!, txs[4]!, txs[3]!, txs[5]!];
     expect(total(disposals(swapped))).toBe(200);
   });
+
+  it("replacement shares moved to another account before the loss sale still take the disallowed loss", () => {
+    // 10 X bought 2025-02-20 @ 90 in a (the replacement purchase, 9 days before the loss sale), moved to b on 02-25.
+    //   2025-03-01 sell 10 @ 80 in c, bought 2024-01-02 @ 100 → loss 200, disallowed (W).
+    //   §1091(d): the 200 $ go into the basis of the replacement shares → 90 + 20 = 110 a share;
+    //   §1223(3): their holding period includes the 424 days of the shares sold → 2025-02-20 − 424 d = 2023-12-24.
+    //   2025-11-01 sell the 10 shares from b @ 95 → 950 − 1 100 = −150, long-term.
+    const txs = [
+      tx({ date: "2024-01-02", type: "buy", account: "c", symbol: "X", quantity: 10, price: 100 }),
+      tx({ date: "2025-02-20", type: "buy", account: "a", symbol: "X", quantity: 10, price: 90 }),
+      tx({ date: "2025-02-25", type: "transfer-out", account: "a", symbol: "X", quantity: 10 }),
+      tx({ date: "2025-02-25", type: "transfer-in", account: "b", symbol: "X", quantity: 10 }),
+      tx({ date: "2025-03-01", type: "sell", account: "c", symbol: "X", quantity: 10, price: 80 }),
+      tx({ date: "2025-11-01", type: "sell", account: "b", symbol: "X", quantity: 10, price: 95 }),
+    ];
+    const ev = disposals(txs);
+    expect(ev[0]).toMatchObject({ date: "2025-03-01", gain: 0, washSaleDisallowed: 200 });
+    expect(ev[1]).toMatchObject({ date: "2025-11-01", account: "b", cost: 1100, gain: -150, term: "long", acquired: "2023-12-24" });
+    // 800 + 950 of proceeds for 1 000 + 900 of cost: −150 over the year, the deferred loss included.
+    expect(total(ev)).toBe(-150);
+  });
+
+  it("the adjustment follows each replacement share where it now is, half moved and half left behind", () => {
+    // Same purchase, only 5 of the 10 shares moved to b: the 200 $ split 100 / 100 between a and b, both at 110 a share.
+    const txs = [
+      tx({ date: "2024-01-02", type: "buy", account: "c", symbol: "X", quantity: 10, price: 100 }),
+      tx({ date: "2025-02-20", type: "buy", account: "a", symbol: "X", quantity: 10, price: 90 }),
+      tx({ date: "2025-02-25", type: "transfer-out", account: "a", symbol: "X", quantity: 5 }),
+      tx({ date: "2025-02-25", type: "transfer-in", account: "b", symbol: "X", quantity: 5 }),
+      tx({ date: "2025-03-01", type: "sell", account: "c", symbol: "X", quantity: 10, price: 80 }),
+      tx({ date: "2025-11-01", type: "sell", account: "a", symbol: "X", quantity: 5, price: 95 }),
+      tx({ date: "2025-11-02", type: "sell", account: "b", symbol: "X", quantity: 5, price: 95 }),
+    ];
+    const ev = disposals(txs);
+    expect(ev.slice(1).map((e) => [e.account, e.cost, e.term, e.acquired])).toEqual([
+      ["a", 550, "long", "2023-12-24"],
+      ["b", 550, "long", "2023-12-24"],
+    ]);
+    expect(total(ev)).toBe(-150);
+  });
 });

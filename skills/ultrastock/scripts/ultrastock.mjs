@@ -53574,6 +53574,8 @@ var UsRegime = class extends TaxRegime {
     let stableNoted = false;
     const inTransit = [];
     let unmatched = [];
+    const carriedOf = /* @__PURE__ */ new Map();
+    const holds2 = (purchase, l) => carriedOf.set(purchase, [...carriedOf.get(purchase) ?? [], l]);
     const carry = (into) => {
       let need = into.quantity;
       const pieces2 = [];
@@ -53589,9 +53591,19 @@ var UsRegime = class extends TaxRegime {
       const rest = need > 1e-12 ? { ...into, quantity: need, remaining: need } : void 0;
       pieces2.forEach(({ from, qty }, i) => {
         const piece = i === 0 ? into : { ...into, id: lots.length };
-        Object.assign(piece, { quantity: qty, remaining: qty, basis: from.basis, acquired: from.acquired, bought: from.bought, replaced: qty });
+        const origin = from.origin ?? from;
+        Object.assign(piece, {
+          quantity: qty,
+          remaining: qty,
+          basis: from.basis,
+          acquired: from.acquired,
+          bought: from.bought,
+          replaced: from.replaced >= from.quantity - 1e-12 ? qty : 0,
+          origin
+        });
         if (i > 0) lots.push(piece);
         active2.add(piece);
+        holds2(origin, piece);
       });
       if (rest) {
         rest.id = lots.length;
@@ -53683,33 +53695,57 @@ var UsRegime = class extends TaxRegime {
             const to = addDays2(day3(t.date), window);
             const soldIds = new Set(consumed.map((c) => c.lot.id));
             let need = qty;
+            const lossPerShare = -gain / qty;
+            const held = Date.parse(`${day3(t.date)}T00:00:00Z`) - Date.parse(`${l.acquired}T00:00:00Z`);
+            const take = (h, q) => {
+              if (q >= h.quantity - 1e-12) {
+                h.replaced = h.quantity;
+                return h;
+              }
+              const w = { ...h, id: lots.length, quantity: q, remaining: Math.min(q, h.remaining), replaced: q };
+              h.quantity -= q;
+              h.remaining -= w.remaining;
+              lots.push(w);
+              if (active2.has(h)) active2.add(w);
+              else pieces.set(h, [...pieces.get(h) ?? [], w]);
+              if (w.origin) holds2(w.origin, w);
+              return w;
+            };
             for (const r3 of lots) {
               if (need <= 1e-12) break;
               if (!r3.purchase || r3.symbol !== sym3 || soldIds.has(r3.id) || r3.bought < from || r3.bought > to || r3.id === l.id) continue;
               const avail = r3.quantity - r3.replaced;
               if (avail <= 1e-12) continue;
               const q = Math.min(need, avail);
-              const loss = -gain * q / qty;
+              const loss = lossPerShare * q;
               disallowed += loss;
-              r3.replaced += q;
               need -= q;
-              if (r3.sheltered)
+              if (r3.sheltered) {
+                r3.replaced += q;
                 notes.push(`wash sale against a purchase in ${r3.account} (${r3.bought}): the ${round22(loss)} $ loss is lost for good (IRA replacement)`);
-              else {
-                let w = r3;
-                if (q < r3.quantity - 1e-12) {
-                  w = { ...r3, id: lots.length, quantity: q, remaining: Math.min(q, r3.remaining), replaced: q };
-                  r3.quantity -= q;
-                  r3.remaining -= w.remaining;
-                  r3.replaced -= q;
-                  lots.push(w);
-                  if (active2.has(r3)) active2.add(w);
-                  else pieces.set(r3, [...pieces.get(r3) ?? [], w]);
-                }
-                w.basis += loss / q;
-                const held = Date.parse(`${day3(t.date)}T00:00:00Z`) - Date.parse(`${l.acquired}T00:00:00Z`);
+                continue;
+              }
+              const holders = [];
+              let left2 = q;
+              const here = Math.min(left2, active2.has(r3) ? r3.remaining : r3.quantity);
+              if (here > 1e-12) holders.push([r3, here]);
+              left2 -= here;
+              for (const c of carriedOf.get(r3) ?? []) {
+                if (left2 <= 1e-12) break;
+                if (!active2.has(c) || c.replaced >= c.quantity - 1e-12 || c.remaining <= 1e-12) continue;
+                const n2 = Math.min(left2, c.remaining);
+                holders.push([c, n2]);
+                left2 -= n2;
+              }
+              if (left2 > 1e-12) holders.push([r3, left2]);
+              for (const [h, n2] of holders) {
+                const w = take(h, n2);
+                if (h !== r3) r3.quantity -= n2;
+                w.basis += lossPerShare;
                 w.acquired = new Date(Date.parse(`${w.bought}T00:00:00Z`) - held).toISOString().slice(0, 10);
-                notes.push(`wash sale: ${round22(loss)} $ added to the basis of ${round22(q)} share(s) bought ${r3.bought} in ${r3.account}`);
+                notes.push(
+                  `wash sale: ${round22(lossPerShare * n2)} $ added to the basis of ${round22(n2)} share(s) bought ${r3.bought} in ${r3.account}${h.account !== r3.account ? `, now in ${h.account}` : ""}`
+                );
               }
             }
             gain += disallowed;
