@@ -13229,7 +13229,7 @@ async function binanceQuote(instrument, notes = []) {
 }
 
 // src/core/cache.ts
-import { existsSync as existsSync9, mkdirSync as mkdirSync6, readFileSync as readFileSync13 } from "fs";
+import { closeSync as closeSync3, existsSync as existsSync9, mkdirSync as mkdirSync6, openSync as openSync3, readdirSync as readdirSync4, readFileSync as readFileSync13, readSync, rmSync as rmSync7, statSync as statSync7, utimesSync, writeFileSync as writeFileSync7 } from "fs";
 import { join as join12 } from "path";
 
 // src/core/paths.ts
@@ -13256,8 +13256,68 @@ var TTL = {
   reference: 7 * 24 * 36e5,
   immutable: 365 * 24 * 36e5
 };
+var EVICT_TTL_FACTOR = 2;
+var EVICT_FLOOR_MS = 7 * 24 * 36e5;
+var MAX_TOTAL_BYTES3 = 512 * 1024 * 1024;
+var SWEEP_INTERVAL_MS = 10 * 6e4;
+var SWEEP_MARKER = ".swept";
+function datasetsDir() {
+  return join12(dataCacheDir(), "datasets");
+}
 function pathFor(key) {
-  return join12(dataCacheDir(), "datasets", `${contentHash(key).slice(0, 24)}.json`);
+  return join12(datasetsDir(), `${contentHash(key).slice(0, 24)}.json`);
+}
+function storedTtl(path2) {
+  let fd;
+  try {
+    fd = openSync3(path2, "r");
+    const head = Buffer.alloc(96);
+    const n2 = readSync(fd, head, 0, head.length, 0);
+    const m = /"ttlMs":(\d+)/.exec(head.subarray(0, n2).toString("utf8"));
+    return m ? Number(m[1]) : TTL.reference;
+  } catch {
+    return TTL.reference;
+  } finally {
+    if (fd !== void 0) closeSync3(fd);
+  }
+}
+function sweepDatasetCache(opts = {}) {
+  const dir2 = datasetsDir();
+  const now = Date.now();
+  try {
+    mkdirSync6(dir2, { recursive: true });
+    const marker = join12(dir2, SWEEP_MARKER);
+    if (existsSync9(marker)) utimesSync(marker, now / 1e3, now / 1e3);
+    else writeFileSync7(marker, "");
+    const kept = [];
+    for (const name of readdirSync4(dir2)) {
+      if (!name.endsWith(".json")) continue;
+      const path2 = join12(dir2, name);
+      try {
+        const st = statSync7(path2);
+        if (now - st.mtimeMs > Math.max(EVICT_FLOOR_MS, EVICT_TTL_FACTOR * storedTtl(path2))) rmSync7(path2, { force: true });
+        else kept.push({ path: path2, at: st.mtimeMs, size: st.size });
+      } catch {
+      }
+    }
+    let total = kept.reduce((s, e) => s + e.size, 0);
+    const maxBytes = opts.maxBytes ?? MAX_TOTAL_BYTES3;
+    if (total <= maxBytes) return;
+    kept.sort((a, b) => a.at - b.at);
+    for (const e of kept) {
+      if (total <= maxBytes) break;
+      rmSync7(e.path, { force: true });
+      total -= e.size;
+    }
+  } catch {
+  }
+}
+function sweepIfDue() {
+  try {
+    if (Date.now() - statSync7(join12(datasetsDir(), SWEEP_MARKER)).mtimeMs < SWEEP_INTERVAL_MS) return;
+  } catch {
+  }
+  sweepDatasetCache();
 }
 function peekCache(key) {
   const path2 = pathFor(key);
@@ -13279,8 +13339,9 @@ async function cachedJson(key, ttlMs, produce) {
   if (mode3.offline) return void 0;
   const value2 = await produce();
   if (value2 !== void 0) {
-    mkdirSync6(join12(dataCacheDir(), "datasets"), { recursive: true });
-    writeFileAtomic(pathFor(key), JSON.stringify({ storedAt: Date.now(), key, value: value2 }));
+    mkdirSync6(datasetsDir(), { recursive: true });
+    writeFileAtomic(pathFor(key), JSON.stringify({ storedAt: Date.now(), ttlMs, key, value: value2 }));
+    sweepIfDue();
   }
   return value2;
 }
@@ -21412,7 +21473,7 @@ function followUpAngles(s, under, opts = {}) {
 }
 
 // src/research/delegate.ts
-import { mkdtempSync as mkdtempSync3, readFileSync as readFileSync19, rmSync as rmSync7, writeFileSync as writeFileSync7 } from "fs";
+import { mkdtempSync as mkdtempSync3, readFileSync as readFileSync19, rmSync as rmSync8, writeFileSync as writeFileSync8 } from "fs";
 import { tmpdir as tmpdir4 } from "os";
 import { join as join20 } from "path";
 var SEARCH_DELEGATES = ["claude", "codex", "ccs"];
@@ -21528,7 +21589,7 @@ async function runBatch(who, batch, model) {
   try {
     const schemaFile = join20(work, "schema.json");
     const outFile = join20(work, "answer.json");
-    writeFileSync7(schemaFile, JSON.stringify(SCHEMA));
+    writeFileSync8(schemaFile, JSON.stringify(SCHEMA));
     const { cmd, args } = delegateCommand(who, delegatePrompt(batch.map((q) => q.query)), { model, schemaFile, outFile });
     const r3 = await shAsync(cmd, args, { cwd: work, timeoutMs: CALL_TIMEOUT_MS });
     if (!r3.ok) throw new Error(`${who} exited with an error: ${(r3.stderr || r3.stdout).trim().split("\n").slice(-2).join(" ").slice(0, 240)}`);
@@ -21540,7 +21601,7 @@ async function runBatch(who, batch, model) {
     }
     return parseDelegateAnswer(who, r3.stdout, last2);
   } finally {
-    rmSync7(work, { recursive: true, force: true });
+    rmSync8(work, { recursive: true, force: true });
   }
 }
 async function delegatedSearch(who, queries, opts = {}) {
@@ -21581,7 +21642,7 @@ async function delegatedSearch(who, queries, opts = {}) {
 }
 
 // src/research/dossier.ts
-import { existsSync as existsSync16, mkdirSync as mkdirSync12, readdirSync as readdirSync4, readFileSync as readFileSync20 } from "fs";
+import { existsSync as existsSync16, mkdirSync as mkdirSync12, readdirSync as readdirSync6, readFileSync as readFileSync20 } from "fs";
 import { join as join21 } from "path";
 
 // src/core/dates.ts
@@ -21950,7 +22011,7 @@ function researchFiles(tag) {
 var researchTag = (symbolOrName) => symbolOrName.replace(/[^A-Za-z0-9.-]+/g, "_");
 function researchTags(dir2) {
   if (!existsSync16(dir2)) return [];
-  return readdirSync4(dir2).map((f3) => /^RESEARCH\.(.+)\.todo\.json$/.exec(f3)?.[1]).filter((t) => !!t).sort();
+  return readdirSync6(dir2).map((f3) => /^RESEARCH\.(.+)\.todo\.json$/.exec(f3)?.[1]).filter((t) => !!t).sort();
 }
 function readTodo(dir2, tag) {
   const path2 = join21(dir2, researchFiles(tag).todo);
@@ -22756,7 +22817,7 @@ async function researchRound(dir2, todo, notes, opts = {}) {
 }
 
 // src/journal/journal.ts
-import { appendFileSync as appendFileSync3, existsSync as existsSync21, mkdirSync as mkdirSync15, readdirSync as readdirSync7, readFileSync as readFileSync24 } from "fs";
+import { appendFileSync as appendFileSync3, existsSync as existsSync21, mkdirSync as mkdirSync15, readdirSync as readdirSync9, readFileSync as readFileSync24 } from "fs";
 import { join as join26 } from "path";
 
 // src/analyze/decision.ts
@@ -22840,7 +22901,7 @@ function pastDecisions(symbol, limit = 5) {
 }
 
 // src/trading/tickets.ts
-import { closeSync as closeSync3, existsSync as existsSync20, fsyncSync as fsyncSync2, mkdirSync as mkdirSync14, openSync as openSync3, readdirSync as readdirSync6, readFileSync as readFileSync23, writeSync as writeSync3 } from "fs";
+import { closeSync as closeSync4, existsSync as existsSync20, fsyncSync as fsyncSync2, mkdirSync as mkdirSync14, openSync as openSync4, readdirSync as readdirSync7, readFileSync as readFileSync23, writeSync as writeSync3 } from "fs";
 import { join as join25 } from "path";
 
 // src/trading/riskgate.ts
@@ -22973,13 +23034,13 @@ var ticketPath = (id) => {
 function audit(event) {
   const dir2 = join25(homeDir(), "audit");
   mkdirSync14(dir2, { recursive: true });
-  const fd = openSync3(join25(dir2, "orders.jsonl"), "a", 384);
+  const fd = openSync4(join25(dir2, "orders.jsonl"), "a", 384);
   try {
     writeSync3(fd, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), ...event })}
 `);
     fsyncSync2(fd);
   } finally {
-    closeSync3(fd);
+    closeSync4(fd);
   }
 }
 function readAudit() {
@@ -22999,7 +23060,7 @@ function save(t) {
 }
 function listTickets(filter) {
   if (!existsSync20(ticketsDir())) return [];
-  return readdirSync6(ticketsDir()).filter((f3) => f3.endsWith(".json")).map((f3) => JSON.parse(readFileSync23(join25(ticketsDir(), f3), "utf8"))).filter((t) => !filter || filter(t)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return readdirSync7(ticketsDir()).filter((f3) => f3.endsWith(".json")).map((f3) => JSON.parse(readFileSync23(join25(ticketsDir(), f3), "utf8"))).filter((t) => !filter || filter(t)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 async function transition(id, to, why2, mutate, now = /* @__PURE__ */ new Date()) {
   return withFileLock(`${ticketPath(id)}.lock`, () => {
@@ -23090,7 +23151,7 @@ function loadThesis(id) {
 }
 function listTheses() {
   if (!existsSync21(thesesDir())) return [];
-  return readdirSync7(thesesDir()).filter((f3) => f3.endsWith(".json")).map((f3) => JSON.parse(readFileSync24(join26(thesesDir(), f3), "utf8"))).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return readdirSync9(thesesDir()).filter((f3) => f3.endsWith(".json")).map((f3) => JSON.parse(readFileSync24(join26(thesesDir(), f3), "utf8"))).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 function addThesis(input, now = /* @__PURE__ */ new Date()) {
   if (input.thesis.trim().length < 20) throw new Error("a thesis says why, in a sentence or more");
@@ -23263,7 +23324,7 @@ import { appendFileSync as appendFileSync4, existsSync as existsSync23, mkdirSyn
 import { join as join28 } from "path";
 
 // src/core/db.ts
-import { chmodSync as chmodSync2, closeSync as closeSync4, existsSync as existsSync22, mkdirSync as mkdirSync16, openSync as openSync4, readFileSync as readFileSync25 } from "fs";
+import { chmodSync as chmodSync2, closeSync as closeSync5, existsSync as existsSync22, mkdirSync as mkdirSync16, openSync as openSync5, readFileSync as readFileSync25 } from "fs";
 import { createRequire } from "module";
 import { join as join27 } from "path";
 var SQLITE_UNAVAILABLE = "the SQLite store needs Node \u2265 22.5 (unflagged from 22.13) with node:sqlite \u2014 the JSONL ledger keeps working; upgrade Node to use `portfolio db`";
@@ -23397,7 +23458,7 @@ function openStore(opts = {}) {
   if (!existsSync22(path2)) {
     if (!opts.create || opts.readOnly) throw new Error(`no local store at ${path2}: run \`ultrastock portfolio db init\` first`);
     mkdirSync16(homeDir(), { recursive: true });
-    closeSync4(openSync4(path2, "a", 384));
+    closeSync5(openSync5(path2, "a", 384));
   }
   const db = new DatabaseSync(path2, opts.readOnly ? { readOnly: true } : {});
   try {
@@ -34682,11 +34743,11 @@ function promoted(store, dir2, docId, written, opts) {
 }
 
 // src/commands/report.ts
-import { existsSync as existsSync26, readFileSync as readFileSync29, writeFileSync as writeFileSync8 } from "fs";
+import { existsSync as existsSync26, readFileSync as readFileSync29, writeFileSync as writeFileSync9 } from "fs";
 import { join as join34, resolve as resolve7 } from "path";
 
 // src/report/html.ts
-import { existsSync as existsSync25, readdirSync as readdirSync9, readFileSync as readFileSync28 } from "fs";
+import { existsSync as existsSync25, readdirSync as readdirSync10, readFileSync as readFileSync28 } from "fs";
 import { join as join33 } from "path";
 var esc2 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 function inline(text2) {
@@ -34807,7 +34868,7 @@ function notesHtml(runDir2) {
   const dir2 = join33(runDir2, "notes");
   if (!existsSync25(dir2)) return "";
   const order = ["market", "fundamentals", "news", "bull", "bear", "judge", "trader", "risk"];
-  const files = readdirSync9(dir2).filter((f3) => f3.endsWith(".md")).sort((a, b) => (order.indexOf(a.replace(/\.md$/, "")) + 1 || 99) - (order.indexOf(b.replace(/\.md$/, "")) + 1 || 99) || a.localeCompare(b));
+  const files = readdirSync10(dir2).filter((f3) => f3.endsWith(".md")).sort((a, b) => (order.indexOf(a.replace(/\.md$/, "")) + 1 || 99) - (order.indexOf(b.replace(/\.md$/, "")) + 1 || 99) || a.localeCompare(b));
   if (!files.length) return "";
   return `<h2>The debate</h2>${files.map((f3) => `<details><summary>${esc2(f3.replace(/\.md$/, ""))}</summary>${markdownToHtml(readFileSync28(join33(dir2, f3), "utf8"))}</details>`).join("\n")}`;
 }
@@ -34858,7 +34919,7 @@ async function reportCommand(args, asJson) {
     return;
   }
   const file = join34(dir2, "report.html");
-  writeFileSync8(file, renderReport(dir2, answer, { generatedAt: clockNow().toISOString().slice(0, 16).replace("T", " ") }), { mode: 384 });
+  writeFileSync9(file, renderReport(dir2, answer, { generatedAt: clockNow().toISOString().slice(0, 16).replace("T", " ") }), { mode: 384 });
   process.stdout.write(asJson ? jsonLine({ ok: true, file }) : `report written: ${file}
 `);
 }
@@ -38741,7 +38802,7 @@ async function predictOrder(args, asJson) {
 }
 
 // src/commands/backtest.ts
-import { existsSync as existsSync31, mkdirSync as mkdirSync23, readFileSync as readFileSync36, writeFileSync as writeFileSync9 } from "fs";
+import { existsSync as existsSync31, mkdirSync as mkdirSync23, readFileSync as readFileSync36, writeFileSync as writeFileSync10 } from "fs";
 import { join as join44, resolve as resolve11 } from "path";
 
 // src/analytics/portfolio.ts
@@ -39079,7 +39140,7 @@ function allocationBacktest(kind, bars, dates, opts) {
 }
 
 // src/backtest/catalog.ts
-import { existsSync as existsSync29, readdirSync as readdirSync10, readFileSync as readFileSync33 } from "fs";
+import { existsSync as existsSync29, readdirSync as readdirSync11, readFileSync as readFileSync33 } from "fs";
 import { join as join40 } from "path";
 
 // assets/strategies/adaptive-momentum-reversal.json
@@ -41213,7 +41274,7 @@ function listStrategies() {
   }
   const dir2 = userStrategyDir();
   if (existsSync29(dir2))
-    for (const f3 of readdirSync10(dir2).filter((x) => x.endsWith(".json"))) {
+    for (const f3 of readdirSync11(dir2).filter((x) => x.endsWith(".json"))) {
       const path2 = join40(dir2, f3);
       try {
         const raw = JSON.parse(readFileSync33(path2, "utf8"));
@@ -41327,7 +41388,7 @@ import { mkdirSync as mkdirSync21 } from "fs";
 import { join as join42 } from "path";
 
 // src/providers/external/binance-historical.ts
-import { mkdtempSync as mkdtempSync4, readdirSync as readdirSync11, readFileSync as readFileSync34, rmSync as rmSync8 } from "fs";
+import { mkdtempSync as mkdtempSync4, readdirSync as readdirSync12, readFileSync as readFileSync34, rmSync as rmSync9 } from "fs";
 import { tmpdir as tmpdir5 } from "os";
 import { join as join41 } from "path";
 var SOURCE34 = "binance-historical";
@@ -41392,7 +41453,7 @@ async function bulkKlines(req) {
       const e = res?.error;
       throw new ProviderError(SOURCE34, `${req.pair}: ${e?.code ?? "FAILED"} ${e?.message ?? ""}`.trim(), e?.httpStatus ?? 0);
     }
-    const file = res.outputPath ?? join41(out, readdirSync11(out).find((f3) => f3.endsWith(".jsonl")) ?? "");
+    const file = res.outputPath ?? join41(out, readdirSync12(out).find((f3) => f3.endsWith(".jsonl")) ?? "");
     const bars = readFileSync34(file, "utf8").split("\n").filter(Boolean).map((line) => {
       const k = JSON.parse(line);
       const iso4 = new Date(k.openTime).toISOString();
@@ -41408,7 +41469,7 @@ async function bulkKlines(req) {
     });
     return { bars, report: report2 };
   } finally {
-    rmSync8(out, { recursive: true, force: true });
+    rmSync9(out, { recursive: true, force: true });
   }
 }
 
@@ -43553,7 +43614,7 @@ ${v.warnings.map((w) => `warning: ${w}
       const path2 = join44(dir2, `${ref}.json`);
       if (existsSync31(path2)) throw new UsageError(`${path2} already exists \u2014 edit it, or pick another name`);
       mkdirSync23(dir2, { recursive: true });
-      writeFileSync9(path2, `${JSON.stringify(def2, null, 2)}
+      writeFileSync10(path2, `${JSON.stringify(def2, null, 2)}
 `);
       if (asJson) process.stdout.write(jsonLine({ path: path2, strategy: def2 }));
       else process.stdout.write(`wrote ${path2}
@@ -43567,7 +43628,7 @@ edit it, then: ultrastock strategy validate ${ref} && ultrastock backtest run ${
 }
 
 // src/commands/broker.ts
-import { existsSync as existsSync35, mkdirSync as mkdirSync26, writeFileSync as writeFileSync10 } from "fs";
+import { existsSync as existsSync35, mkdirSync as mkdirSync26, writeFileSync as writeFileSync11 } from "fs";
 import { dirname as dirname6 } from "path";
 
 // src/trading/brokers/binance.ts
@@ -45052,7 +45113,7 @@ function chronological(txs) {
 // src/trading/otp.ts
 import { execFileSync } from "child_process";
 import { randomBytes as randomBytes3, randomInt, scryptSync, timingSafeEqual as timingSafeEqual3 } from "crypto";
-import { closeSync as closeSync5, existsSync as existsSync33, mkdirSync as mkdirSync25, openSync as openSync5, readFileSync as readFileSync39, rmSync as rmSync9, writeSync as writeSync4 } from "fs";
+import { closeSync as closeSync6, existsSync as existsSync33, mkdirSync as mkdirSync25, openSync as openSync6, readFileSync as readFileSync39, rmSync as rmSync10, writeSync as writeSync4 } from "fs";
 import { join as join46 } from "path";
 var CODE_TTL_MS = 12e4;
 var MAX_TRIES = 3;
@@ -45083,13 +45144,13 @@ var desktopChannel = (message) => {
 };
 var ttyChannel = (message) => {
   try {
-    const fd = openSync5("/dev/tty", "w");
+    const fd = openSync6("/dev/tty", "w");
     try {
       writeSync4(fd, `
 ${message}
 `);
     } finally {
-      closeSync5(fd);
+      closeSync6(fd);
     }
     return true;
   } catch {
@@ -45145,23 +45206,23 @@ function verifyLocked(f3, binding, code, now) {
   if (!existsSync33(f3)) return { ok: false, reason: "no code was issued for this \u2014 run the code step first" };
   const p = JSON.parse(readFileSync39(f3, "utf8"));
   if (now.getTime() > Date.parse(p.expiresAt)) {
-    rmSync9(f3, { force: true });
+    rmSync10(f3, { force: true });
     return { ok: false, reason: "the code expired (2 minutes): issue a new one" };
   }
   if (!code || !/^\d{6}$/.test(code)) return { ok: false, reason: "the code is six digits" };
   if (p.binding !== binding) {
-    rmSync9(f3, { force: true });
+    rmSync10(f3, { force: true });
     return { ok: false, reason: "the code was issued for a different order or change \u2014 it is void; issue a new one" };
   }
   const a = Buffer.from(digest2(code, binding, p.salt), "hex");
   const b = Buffer.from(p.hash, "hex");
   if (a.length === b.length && timingSafeEqual3(a, b)) {
-    rmSync9(f3, { force: true });
+    rmSync10(f3, { force: true });
     return { ok: true };
   }
   p.tries++;
   if (p.tries >= MAX_TRIES) {
-    rmSync9(f3, { force: true });
+    rmSync10(f3, { force: true });
     return { ok: false, reason: `wrong code ${MAX_TRIES} times: void, issue a new one` };
   }
   writeFileAtomic(f3, `${JSON.stringify(p)}
@@ -45914,7 +45975,7 @@ async function brokerCommand(args, asJson) {
   }
   if (sub === "panic") {
     mkdirSync26(dirname6(killSwitchPath()), { recursive: true });
-    if (!existsSync35(killSwitchPath())) writeFileSync10(killSwitchPath(), `kill switch set by \`broker panic\` at ${now.toISOString()}
+    if (!existsSync35(killSwitchPath())) writeFileSync11(killSwitchPath(), `kill switch set by \`broker panic\` at ${now.toISOString()}
 `);
     audit({ event: "panic" });
     const results = [];
@@ -46047,7 +46108,7 @@ function pendingLive() {
 // src/mcp.ts
 import { execFile } from "child_process";
 import { randomBytes as randomBytes4 } from "crypto";
-import { mkdtempSync as mkdtempSync5, realpathSync as realpathSync4, rmSync as rmSync10, writeFileSync as writeFileSync11 } from "fs";
+import { mkdtempSync as mkdtempSync5, realpathSync as realpathSync4, rmSync as rmSync11, writeFileSync as writeFileSync12 } from "fs";
 import { tmpdir as tmpdir6 } from "os";
 import { basename as basename3, dirname as dirname7, isAbsolute as isAbsolute4, join as join49, relative as relative3, resolve as resolve12 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
@@ -46557,10 +46618,10 @@ function mcpAdapter(run3 = runBundle) {
       const dir2 = mkdtempSync5(join49(tmpdir6(), "ultrastock-hits-"));
       try {
         const file = join49(dir2, "websearch.json");
-        writeFileSync11(file, JSON.stringify(hits));
+        writeFileSync12(file, JSON.stringify(hits));
         return { text: await run3([...argvFor(t, given).filter((a) => a !== "--json"), `--web-results=${file}`, "--json"], ctx?.signal) };
       } finally {
-        rmSync10(dir2, { recursive: true, force: true });
+        rmSync11(dir2, { recursive: true, force: true });
       }
     }
   };
@@ -49397,12 +49458,12 @@ async function portfolioAnalyticsCommand(args, asJson) {
 import { resolve as resolve14 } from "path";
 
 // src/portfolio/store.ts
-import { existsSync as existsSync39, mkdirSync as mkdirSync28, readdirSync as readdirSync12, statSync as statSync7 } from "fs";
+import { existsSync as existsSync39, mkdirSync as mkdirSync28, readdirSync as readdirSync13, statSync as statSync10 } from "fs";
 import { join as join51 } from "path";
 function jsonlBooks() {
   const dir2 = join51(homeDir(), "ledger");
   if (!existsSync39(dir2)) return [];
-  return readdirSync12(dir2).filter((f3) => /^[a-z0-9-]{1,40}\.jsonl$/.test(f3)).map((f3) => f3.replace(/\.jsonl$/, "")).sort();
+  return readdirSync13(dir2).filter((f3) => /^[a-z0-9-]{1,40}\.jsonl$/.test(f3)).map((f3) => f3.replace(/\.jsonl$/, "")).sort();
 }
 function storeBooks() {
   return withStore(
@@ -49457,11 +49518,11 @@ function storeStatus() {
   return withStore(
     (db) => {
       const schemaVersion = schemaVersionOf(db);
-      if (schemaVersion < 1) return { ...base2, bytes: statSync7(path2).size, schemaVersion };
+      if (schemaVersion < 1) return { ...base2, bytes: statSync10(path2).size, schemaVersion };
       const count = (t) => Number(db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get()?.n ?? 0);
       return {
         ...base2,
-        bytes: statSync7(path2).size,
+        bytes: statSync10(path2).size,
         schemaVersion,
         counts: { transactions: count("transactions"), snapshots: count("snapshots"), news_items: count("news_items"), events_seen: count("events_seen") },
         books: db.prepare("SELECT book, COUNT(*) AS n FROM transactions GROUP BY book ORDER BY book").all().map((r3) => ({ book: String(r3.book), transactions: Number(r3.n) }))
@@ -52772,7 +52833,7 @@ ${checklist.map((c) => `- ${c.rule} (verified ${c.verifiedAt}): "${c.query}" \u2
 }
 
 // src/commands/tax.ts
-import { mkdirSync as mkdirSync30, writeFileSync as writeFileSync12 } from "fs";
+import { mkdirSync as mkdirSync30, writeFileSync as writeFileSync13 } from "fs";
 import { join as join55, resolve as resolve18 } from "path";
 
 // src/tax/export.ts
@@ -54351,7 +54412,7 @@ ${pn.join("\n")}` : ""}`
     if (!out) return void process.stdout.write(csv);
     mkdirSync30(resolve18(out), { recursive: true });
     const file = join55(resolve18(out), `tax-${regime.id}-${year}-${format}.csv`);
-    writeFileSync12(file, csv, { mode: 384 });
+    writeFileSync13(file, csv, { mode: 384 });
     return printResult(asJson, { file, rows: csv.split("\r\n").length - 2 }, `written ${file}`);
   }
   throw new UsageError(USAGE4);
