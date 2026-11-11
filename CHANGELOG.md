@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.53](https://github.com/maxgfr/ultrastock/compare/v1.13.52...v1.13.53) (2026-11-11)
+
+
+### Bug Fixes
+
+* **mcp:** declare that plan appends the equity reading on every call ([9af14e1](https://github.com/maxgfr/ultrastock/commit/9af14e141b021006022b1239b9c4a1985b92096f))
+
 ## [1.13.52](https://github.com/maxgfr/ultrastock/compare/v1.13.51...v1.13.52) (2026-11-11)
 
 
