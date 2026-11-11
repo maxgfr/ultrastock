@@ -43,6 +43,25 @@ describe("brackets", () => {
   });
 });
 
+describe("figures behind markup and other code points", () => {
+  it("reads a figure in emphasis, in full-width digits, as entities, as a vulgar fraction, as 'pc' or in superscript", () => {
+    expect(refused("Close 383 € [E1]. Target _450_ and up _45 %_.\n")).toBe(true);
+    expect(refused("Close 383 € [E1]. Target __450__.\n")).toBe(true);
+    expect(refused("Close 383 € [E1], up ４５ %.\n")).toBe(true);
+    expect(refused("Close 383 € [E1], up &#x34;&#x35; %.\n")).toBe(true);
+    expect(refused("Close 383 € [E1], up &#52;&#53;&nbsp;%.\n")).toBe(true);
+    expect(refused("Close 383 € [E1], up 4**5** %.\n")).toBe(true);
+    expect(refused("Close 383 € [E1], up 4½ %.\n")).toBe(true);
+    expect(refused("Close 383 € [E1], up 45pc.\n")).toBe(true);
+    expect(refused("Close 383 € [E1], up ⁴⁵ %.\n")).toBe(true);
+  });
+  it("matches the evidence once the markup is read", () => {
+    expect(kinds("Close **383 €** [E1], down _37.7 %_ [E2].\n")).toEqual([]);
+    expect(kinds("Close ３８３ € [E1], down 37.7pc [E2], P/E 21½ [E3].\n")).toEqual([]);
+    expect(kinds("Revenue 84.7 bn² [E4].\n")).toEqual([]);
+  });
+});
+
 describe("month words", () => {
   it("reads the figure next to 'may', 'March', 'mars', 'mai' used as words", () => {
     // E1 is 383 EUR: neither 85 nor 45 % is in it.

@@ -21875,6 +21875,59 @@ var INDEX_NAMES = [
 ].join("|");
 var NOT_A_VALUE = "(?![\\p{N}]|[.,]\\d|\\s?(?:%|[$\u20AC\xA3]|pts?\\b|bps\\b))";
 var INDICATOR_NAMES = "SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA|VWAP|OBV|Stoch|Stochastic|Bollinger|Ichimoku|Supertrend";
+var ENTITIES3 = {
+  nbsp: " ",
+  thinsp: " ",
+  ensp: " ",
+  emsp: " ",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  euro: "\u20AC",
+  pound: "\xA3",
+  dollar: "$",
+  percnt: "%",
+  minus: "\u2212",
+  ndash: "\u2013",
+  mdash: "\u2014",
+  times: "\xD7",
+  frac12: "\xBD",
+  frac14: "\xBC",
+  frac34: "\xBE"
+};
+var VULGAR = {
+  "\xBC": ".25",
+  "\xBD": ".5",
+  "\xBE": ".75",
+  "\u215B": ".125",
+  "\u215C": ".375",
+  "\u215D": ".625",
+  "\u215E": ".875",
+  "\u2153": ".33",
+  "\u2154": ".67",
+  "\u2155": ".2",
+  "\u2156": ".4",
+  "\u2157": ".6",
+  "\u2158": ".8",
+  "\u2159": ".17",
+  "\u215A": ".83"
+};
+var isWordChar = (c) => /[\p{L}\p{N}]/u.test(c);
+var isDigit = (c) => /\d/.test(c);
+var isLetter = (c) => new RegExp("\\p{L}", "u").test(c);
+function plainText(text2) {
+  return text2.replace(/&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|([a-zA-Z]\w{1,7}));/g, (m, dec, hex, name) => {
+    const cp = dec !== void 0 ? Number(dec) : hex !== void 0 ? Number.parseInt(hex, 16) : void 0;
+    if (cp !== void 0) return cp > 0 && cp <= 1114111 ? String.fromCodePoint(cp) : m;
+    return ENTITIES3[name] ?? m;
+  }).replace(/(?<=[\p{L}\p{Nd}%$€£)\]])[⁰¹²³⁴-⁹]+/gu, " ").replace(/(\d?)([¼½¾⅓-⅞])/gu, (m, whole2, f3) => VULGAR[f3] ? `${whole2 || "0"}${VULGAR[f3]}` : m).normalize("NFKC").replace(/\*+|~~|_+/g, (m, at, s) => {
+    const [a, b] = [s[at - 1] ?? " ", s[at + m.length] ?? " "];
+    if (m[0] === "_" && isWordChar(a) && isWordChar(b) && !(isDigit(a) && isDigit(b))) return m;
+    return isLetter(a) && isDigit(b) || isDigit(a) && isLetter(b) ? " " : "";
+  });
+}
 function blankDates(text2) {
   let out = "";
   let from = 0;
@@ -21886,10 +21939,10 @@ function blankDates(text2) {
 }
 function stripNonFigures(text2) {
   return blankDates(
-    unbracket(text2.replace(/`[^`]*`/g, " ")).replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ").replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ")
+    unbracket(plainText(text2.replace(/`[^`]*`/g, " "))).replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ").replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ")
   ).replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ").replace(new RegExp(`\\b\\d{1,2}[mhdwM]\\s?(?=(?:${INDICATOR_NAMES})(?![A-Za-z]))`, "gi"), " ").replace(/\b[A-Za-z]{2,}\(\s*\d+(?:[.,]\d+)?(?:\s*,\s*\d+(?:[.,]\d+)?)*\s*\)/g, " ").replace(new RegExp(`\\b(?:${AVERAGE_NAMES})\\s?(?:${AVERAGE_PERIODS})\\b${NOT_A_VALUE}`, "giu"), " ").replace(new RegExp(`(?:${INDEX_NAMES})${NOT_A_VALUE}`, "gu"), " ").replace(/(?<![\p{L}\p{N}])(?:10-[KQ]|20-F|40-F|8-K|6-K)(?:\/A|405|T)?(?![\p{L}\p{N}])/giu, " ").replace(/\b(?:weeks?|wk|semaines?|sem\.)\s?\d{1,2}\b(?![.,]\d|\s?[%$€£])/gi, " ").replace(/(?<![\p{N}.,/])\d{1,3}(?:\/\d{1,3})+(?![\p{N}/]|[.,]\d)/gu, (m) => m.split("/").reduce((a, b) => a + Number(b), 0) === 100 ? " " : m);
 }
-var FIGURE_RE = /(?<![\p{L}\p{N}_.,])([+\-−–]?)\s?([$€£]\s?)?(\d{1,3}(?:[ ,.  ']\d{3})+(?!\d)(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(\s?(?:%|pts?|bps|x|×)|\s?(?:k|K|M|m|mn|Mn|mio|Md|Mds|md|mds|bn|Bn|B|T|tn|million|millions|milliard|milliards|billion|billions|trillion|trillions|mille)\b)?(\s?(?:[$€£]|EUR|USD|USDT|USDC|GBP|CHF|NOK|BTC|ETH)\b|\s?[$€£])?/gu;
+var FIGURE_RE = /(?<![\p{L}\p{N}_.,])([+\-−–]?)\s?([$€£]\s?)?(\d{1,3}(?:[ ,.  ']\d{3})+(?!\d)(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(\s?(?:%|pts?|bps|x|×)|\s?(?:k|K|M|m|mn|Mn|mio|Md|Mds|md|mds|bn|Bn|B|T|tn|million|millions|milliard|milliards|billion|billions|trillion|trillions|mille|pc|pct|percent|per\s?cent|pour\s?cent)\b)?(\s?(?:[$€£]|EUR|USD|USDT|USDC|GBP|CHF|NOK|BTC|ETH)\b|\s?[$€£])?/gu;
 var PARAMETER_AFTER = /^[-\s]?(?:days?|d|jours?|j|weeks?|wks?|w|semaines?|months?|mo|mois|years?|yrs?|y|ans?|années?|bars?|séances?|sessions?|hours?|h|heures?|min|minutes?|périodes?|periods?|ème|e|er|re|st|nd|rd|th)\b/iu;
 function extractFigures(text2) {
   const src2 = stripNonFigures(text2);
@@ -21901,7 +21954,7 @@ function extractFigures(text2) {
     if (!suffix && !curPre && !curPost && PARAMETER_AFTER.test(after)) continue;
     if (!suffix && /^[\p{L}]/u.test(after)) continue;
     const { value: value2, decimals } = parseDigits(digits);
-    const percent = suffix === "%" || /^pts?$/.test(suffix);
+    const percent = /^(?:%|pts?|pc|pct|percent|per\s?cent|pour\s?cent)$/.test(suffix);
     const scale = SCALES.find(([re]) => re.test(suffix))?.[1] ?? (suffix === "bps" ? 0.01 : 1);
     const plain3 = !suffix && !curPre && !curPost && decimals === 0;
     if (plain3 && Math.abs(value2) < 10) continue;
@@ -22044,7 +22097,7 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
     for (const text2 of texts) {
       const tokens = citationTokensIn(text2, isEvidenceCitation);
       const figs = extractFigures(text2);
-      const dates = extractDates(unbracket(text2.replace(/`[^`]*`/g, " ")));
+      const dates = extractDates(unbracket(plainText(text2.replace(/`[^`]*`/g, " "))));
       const line = lineOf(text2);
       if (heading && !figs.length && !tokens.length) continue;
       if (!figs.length && !tokens.length) {

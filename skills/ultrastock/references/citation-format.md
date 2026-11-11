@@ -25,7 +25,10 @@ holding only a whole number (horizons and years heading columns: `+5`, `20`,
 for dates ahead.
 
 A **figure** is any number written as a quantity: `383,00 €`, `−1.24 %`,
-`$1.6 trillion`, `188,6 Md€`, `31.4x`, `12 bps`, `39,539,690 shares`. These are
+`$1.6 trillion`, `188,6 Md€`, `31.4x`, `12 bps`, `39,539,690 shares` — markup
+included: `_450_`, `4**5** %`, `&#52;&#53; %`, full-width `４５ %`, `⁴⁵ %`,
+`4½ %` (4.5 %), `45pc`. A superscript after a word or a figure is a footnote
+mark (`84.7 bn²`). These are
 not figures: dates (`2026-10-23`, `23/10/2026`, `Oct 23, 2026`), times, years
 on their own, indicator settings (`RSI(14)`, `MACD(12,26,9)`, `MM50`, and a
 moving average at a usual period: `SMA 200`, `EMA 50`), a chart timeframe

@@ -143,6 +143,77 @@ const NOT_A_VALUE = "(?![\\p{N}]|[.,]\\d|\\s?(?:%|[$€£]|pts?\\b|bps\\b))";
 
 const INDICATOR_NAMES = "SMA|EMA|WMA|HMA|MA|MM|RSI|ATR|ADX|MACD|BB|ROC|CCI|MFI|DMA|VWAP|OBV|Stoch|Stochastic|Bollinger|Ichimoku|Supertrend";
 
+/** Named entities a page or a model writes around figures; any numeric one is decoded too. */
+const ENTITIES: Record<string, string> = {
+  nbsp: " ",
+  thinsp: " ",
+  ensp: " ",
+  emsp: " ",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  euro: "€",
+  pound: "£",
+  dollar: "$",
+  percnt: "%",
+  minus: "−",
+  ndash: "–",
+  mdash: "—",
+  times: "×",
+  frac12: "½",
+  frac14: "¼",
+  frac34: "¾",
+};
+/** A vulgar fraction after its whole part: "4½" is 4.5. */
+const VULGAR: Record<string, string> = {
+  "¼": ".25",
+  "½": ".5",
+  "¾": ".75",
+  "⅛": ".125",
+  "⅜": ".375",
+  "⅝": ".625",
+  "⅞": ".875",
+  "⅓": ".33",
+  "⅔": ".67",
+  "⅕": ".2",
+  "⅖": ".4",
+  "⅗": ".6",
+  "⅘": ".8",
+  "⅙": ".17",
+  "⅚": ".83",
+};
+const isWordChar = (c: string) => /[\p{L}\p{N}]/u.test(c);
+const isDigit = (c: string) => /\d/.test(c);
+const isLetter = (c: string) => /\p{L}/u.test(c);
+
+/**
+ * The text a reader sees: entities decoded ("&#x34;&#x35; %"), a vulgar
+ * fraction as a decimal ("4½"), a superscript after a word or a figure taken
+ * as the footnote mark it is ("84.7 bn²"), every other code point folded by
+ * NFKC (full-width "４５ %", superscript "⁴⁵ %"), and emphasis markers out
+ * ("_450_", "4**5** %") — a figure in markup is still a figure.
+ */
+export function plainText(text: string): string {
+  return text
+    .replace(/&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|([a-zA-Z]\w{1,7}));/g, (m, dec?: string, hex?: string, name?: string) => {
+      const cp = dec !== undefined ? Number(dec) : hex !== undefined ? Number.parseInt(hex, 16) : undefined;
+      if (cp !== undefined) return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
+      return ENTITIES[name!] ?? m;
+    })
+    .replace(/(?<=[\p{L}\p{Nd}%$€£)\]])[⁰¹²³⁴-⁹]+/gu, " ")
+    .replace(/(\d?)([¼½¾⅓-⅞])/gu, (m, whole: string, f: string) => (VULGAR[f] ? `${whole || "0"}${VULGAR[f]}` : m))
+    .normalize("NFKC")
+    .replace(/\*+|~~|_+/g, (m, at: number, s: string) => {
+      const [a, b] = [s[at - 1] ?? " ", s[at + m.length] ?? " "];
+      // An underscore inside a name ("t_close", "note_1") is part of it; between two digits it is emphasis ("4_5_ %").
+      if (m[0] === "_" && isWordChar(a) && isWordChar(b) && !(isDigit(a) && isDigit(b))) return m;
+      // Between a word and a figure a marker parts them: "up**45 %**" is "up 45 %", not "up45".
+      return (isLetter(a) && isDigit(b)) || (isDigit(a) && isLetter(b)) ? " " : "";
+    });
+}
+
 /**
  * A date the date reader accepts is no figure: "17 novembre", "Oct 23, 2026", "17.11.26". Only a valid one: "85 may
  * fall", "In May 45 %" and "en mars 12 % du CA" keep their figure.
@@ -161,7 +232,7 @@ function blankDates(text: string): string {
 function stripNonFigures(text: string): string {
   return (
     blankDates(
-      unbracket(text.replace(/`[^`]*`/g, " "))
+      unbracket(plainText(text.replace(/`[^`]*`/g, " ")))
         .replace(/\b\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?\b/g, " ")
         .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " "),
     )
@@ -183,7 +254,7 @@ function stripNonFigures(text: string): string {
 
 // A thousands group is exactly three digits: "0.775886" and "5,8741" are decimals, not "0.775" or "5,874" cut short.
 const FIGURE_RE =
-  /(?<![\p{L}\p{N}_.,])([+\-−–]?)\s?([$€£]\s?)?(\d{1,3}(?:[ ,.  ']\d{3})+(?!\d)(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(\s?(?:%|pts?|bps|x|×)|\s?(?:k|K|M|m|mn|Mn|mio|Md|Mds|md|mds|bn|Bn|B|T|tn|million|millions|milliard|milliards|billion|billions|trillion|trillions|mille)\b)?(\s?(?:[$€£]|EUR|USD|USDT|USDC|GBP|CHF|NOK|BTC|ETH)\b|\s?[$€£])?/gu;
+  /(?<![\p{L}\p{N}_.,])([+\-−–]?)\s?([$€£]\s?)?(\d{1,3}(?:[ ,.  ']\d{3})+(?!\d)(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(\s?(?:%|pts?|bps|x|×)|\s?(?:k|K|M|m|mn|Mn|mio|Md|Mds|md|mds|bn|Bn|B|T|tn|million|millions|milliard|milliards|billion|billions|trillion|trillions|mille|pc|pct|percent|per\s?cent|pour\s?cent)\b)?(\s?(?:[$€£]|EUR|USD|USDT|USDC|GBP|CHF|NOK|BTC|ETH)\b|\s?[$€£])?/gu;
 const PARAMETER_AFTER =
   /^[-\s]?(?:days?|d|jours?|j|weeks?|wks?|w|semaines?|months?|mo|mois|years?|yrs?|y|ans?|années?|bars?|séances?|sessions?|hours?|h|heures?|min|minutes?|périodes?|periods?|ème|e|er|re|st|nd|rd|th)\b/iu;
 
@@ -198,7 +269,7 @@ export function extractFigures(text: string): Figure[] {
     if (!suffix && !curPre && !curPost && PARAMETER_AFTER.test(after)) continue; // "5-day", "52 weeks", "3e"
     if (!suffix && /^[\p{L}]/u.test(after)) continue; // glued to a word: an identifier
     const { value, decimals } = parseDigits(digits!);
-    const percent = suffix === "%" || /^pts?$/.test(suffix);
+    const percent = /^(?:%|pts?|pc|pct|percent|per\s?cent|pour\s?cent)$/.test(suffix);
     const scale = SCALES.find(([re]) => re.test(suffix))?.[1] ?? (suffix === "bps" ? 0.01 : 1);
     const plain = !suffix && !curPre && !curPost && decimals === 0;
     if (plain && Math.abs(value) < 10) continue; // "3 positions": too weak to check anything with
@@ -438,7 +509,7 @@ export function checkAnswer(dir: string, rawAnswer: string, opts: CheckOptions =
     for (const text of texts) {
       const tokens = citationTokensIn(text, isEvidenceCitation);
       const figs = extractFigures(text);
-      const dates = extractDates(unbracket(text.replace(/`[^`]*`/g, " ")));
+      const dates = extractDates(unbracket(plainText(text.replace(/`[^`]*`/g, " "))));
       const line = lineOf(text);
       // A heading with no figure and no [E#] is a title: a date in it ("Brief — 12 novembre") labels the section.
       if (heading && !figs.length && !tokens.length) continue;
