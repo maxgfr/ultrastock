@@ -4,7 +4,7 @@ import { bookPerformance } from "../src/commands/trading.js";
 import { defaultProfile } from "../src/core/profile.js";
 import { appendTransactions, buildBook, readLedger, type Transaction, transactionId, valueBook, xirr } from "../src/portfolio/ledger.js";
 import { chronological } from "../src/tax/regime.js";
-import { breakerState, closedTradeResults } from "../src/trading/breaker.js";
+import { breakerState, closedTradeResults, netContributed } from "../src/trading/breaker.js";
 import { pendingBuys } from "../src/trading/context.js";
 import type { Ticket } from "../src/trading/tickets.js";
 import { type GateContext, killSwitchPath, type Order, orderFingerprint, riskGate } from "../src/trading/riskgate.js";
@@ -246,6 +246,38 @@ describe("circuit breaker", () => {
     expect(s.tripped).toBe(true);
     expect(s.reason).toMatch(/daily limit/);
     expect(s.until).toBe("2026-10-25T00:00:00.000Z");
+  });
+  it("measures a period's change net of the deposits and withdrawals booked in it", () => {
+    const now = new Date("2026-10-24T13:00:00Z");
+    // A withdrawal of 20 % is not a loss: neither the daily limit nor the drawdown trips on it.
+    const withdrawn = [
+      { at: "2026-10-23T20:00:00Z", equity: 100_000, contributed: 100_000 },
+      { at: "2026-10-24T12:00:00Z", equity: 80_000, contributed: 80_000 },
+    ];
+    const w = breakerState(withdrawn, [], limits, now);
+    expect(w.tripped).toBe(false);
+    expect(w.dailyPct).toBeCloseTo(0, 10);
+    expect(w.drawdownPct).toBeCloseTo(0, 10);
+    expect(w.sizeMultiplier).toBe(1);
+    // A deposit does not hide a loss: 600 lost on the 15 000 now at stake.
+    const deposited = [
+      { at: "2026-10-23T20:00:00Z", equity: 10_000, contributed: 10_000 },
+      { at: "2026-10-24T12:00:00Z", equity: 14_400, contributed: 15_000 },
+    ];
+    const d = breakerState(deposited, [], limits, now);
+    expect(d.dailyPct).toBeCloseTo(-4, 10);
+    expect(d.tripped).toBe(true);
+    expect(d.reason).toMatch(/daily limit/);
+  });
+  it("records with each equity point what the ledger's deposits and withdrawals add up to, in the base currency", () => {
+    const txs = [
+      tx({ date: "2026-01-02", type: "deposit", account: "a", amount: 1000 }),
+      tx({ date: "2026-01-03", type: "deposit", account: "b", amount: 500, currency: "USD" }),
+      tx({ date: "2026-01-04", type: "withdrawal", account: "a", amount: -200 }),
+      tx({ date: "2026-01-05", type: "dividend", account: "a", symbol: "X", amount: 7 }),
+    ];
+    expect(netContributed(txs, { EUR: 1, USD: 0.9 }, "EUR")).toBeCloseTo(1250, 10);
+    expect(netContributed(txs, { EUR: 1 }, "EUR")).toBeUndefined();
   });
   it("cuts sizes in a drawdown, stops new risk past 20 %, and cools off after two losses", () => {
     const curve = [

@@ -8,6 +8,10 @@
 //   monthly loss ≥ maxMonthlyLossPct  → until the next month
 //   2 losing trades in a row          → a 24-hour cooling-off
 //   drawdown from the equity peak: 10 % → sizes × 0.5, 15 % → × 0.25, 20 % → no new risk
+//
+// Losses and drawdowns are net of the deposits and withdrawals booked between
+// two points (each point carries what they added up to): taking money out is
+// not a loss, putting money in does not hide one.
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { withFileLockSync } from "../core/lock.js";
@@ -19,6 +23,28 @@ import type { Transaction } from "../portfolio/ledger.js";
 export interface EquityPoint {
   at: string;
   equity: number;
+  /**
+   * The deposits less the withdrawals the ledger held when the point was taken,
+   * in the base currency: between two points, the part of the change that is
+   * money moved in or out, not a gain or a loss.
+   */
+  contributed?: number;
+}
+
+/**
+ * What the ledger's deposits and withdrawals add up to, in the base currency at
+ * `rates` (units of base per unit of each currency, as the book is valued).
+ * Undefined when a currency has no rate: a point is then recorded without it.
+ */
+export function netContributed(txs: readonly Transaction[], rates: Record<string, number>, base: string): number | undefined {
+  let sum = 0;
+  for (const t of txs) {
+    if (t.type !== "deposit" && t.type !== "withdrawal") continue;
+    const rate = t.currency === base ? 1 : rates[t.currency];
+    if (rate === undefined) return undefined;
+    sum += (t.amount ?? 0) * rate;
+  }
+  return sum;
 }
 
 export function equityPath(book: string): string {
@@ -31,12 +57,13 @@ export function readEquity(book: string, warn?: Warn): EquityPoint[] {
 }
 
 /** Append a point, under the curve's lock: a point a crashed append cut short is moved aside first. */
-export function recordEquity(book: string, equity: number, at: Date): void {
+export function recordEquity(book: string, equity: number, at: Date, contributed?: number): void {
   const path = equityPath(book);
   mkdirSync(join(homeDir(), "state"), { recursive: true });
+  const point: EquityPoint = { at: at.toISOString(), equity, ...(contributed !== undefined ? { contributed } : {}) };
   withFileLockSync(`${path}.lock`, () => {
     sealJsonlTail(path);
-    appendFileSync(path, `${JSON.stringify({ at: at.toISOString(), equity })}\n`, { mode: 0o600 });
+    appendFileSync(path, `${JSON.stringify(point)}\n`, { mode: 0o600 });
   });
 }
 
@@ -66,13 +93,13 @@ const next = (d: Date, unit: "day" | "week" | "month") => {
 };
 
 /** The last equity reading at or before `t` — the reference a period's loss is measured from. */
-function equityAt(curve: readonly EquityPoint[], t: Date): number | undefined {
-  let v: number | undefined;
+function equityAt(curve: readonly EquityPoint[], t: Date): EquityPoint | undefined {
+  let v: EquityPoint | undefined;
   for (const p of curve) {
-    if (Date.parse(p.at) <= t.getTime()) v = p.equity;
+    if (Date.parse(p.at) <= t.getTime()) v = p;
     else break;
   }
-  return v ?? curve[0]?.equity;
+  return v ?? curve[0];
 }
 
 /**
@@ -162,16 +189,21 @@ export function breakerState(curve: readonly EquityPoint[], trades: ReadonlyArra
   const lastLoss = streak ? trades[trades.length - 1]!.date : undefined;
   const st: BreakerState = { tripped: false, sizeMultiplier: 1, losingStreak: streak };
   if (curve.length) {
-    const nowEq = curve[curve.length - 1]!.equity;
+    const last = curve[curve.length - 1]!;
+    const nowEq = last.equity;
+    // A point as it would read with the money the book holds now put in: what came in since is added, what went out
+    // taken away. A point recorded before contributions were (legacy) reads as it was.
+    const asNow = (p: EquityPoint) =>
+      p.contributed !== undefined && last.contributed !== undefined ? p.equity + (last.contributed - p.contributed) : p.equity;
     const change = (unit: "day" | "week" | "month") => {
       const ref = equityAt(curve, new Date(startOf(now, unit).getTime() - 1));
-      return ref ? (nowEq / ref - 1) * 100 : undefined;
+      return ref?.equity ? (nowEq / asNow(ref) - 1) * 100 : undefined;
     };
     st.dailyPct = change("day");
     st.weeklyPct = change("week");
     st.monthlyPct = change("month");
-    const peak = Math.max(...curve.map((p) => p.equity));
-    st.drawdownPct = (nowEq / peak - 1) * 100;
+    const peak = Math.max(...curve.map(asNow));
+    st.drawdownPct = peak > 0 ? (nowEq / peak - 1) * 100 : 0;
     const trip = (reason: string, until: Date) => {
       if (!st.tripped) {
         st.tripped = true;

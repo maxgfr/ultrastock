@@ -38572,18 +38572,29 @@ async function simulatePredictionFill(o, now) {
 // src/trading/breaker.ts
 import { appendFileSync as appendFileSync6, mkdirSync as mkdirSync20 } from "fs";
 import { join as join39 } from "path";
+function netContributed(txs, rates, base2) {
+  let sum = 0;
+  for (const t of txs) {
+    if (t.type !== "deposit" && t.type !== "withdrawal") continue;
+    const rate2 = t.currency === base2 ? 1 : rates[t.currency];
+    if (rate2 === void 0) return void 0;
+    sum += (t.amount ?? 0) * rate2;
+  }
+  return sum;
+}
 function equityPath(book2) {
   return join39(homeDir(), "state", `equity-${book2}.jsonl`);
 }
 function readEquity(book2, warn) {
   return readJsonl(equityPath(book2), warn).sort((a, b) => a.at.localeCompare(b.at));
 }
-function recordEquity(book2, equity, at) {
+function recordEquity(book2, equity, at, contributed) {
   const path2 = equityPath(book2);
   mkdirSync20(join39(homeDir(), "state"), { recursive: true });
+  const point = { at: at.toISOString(), equity, ...contributed !== void 0 ? { contributed } : {} };
   withFileLockSync(`${path2}.lock`, () => {
     sealJsonlTail(path2);
-    appendFileSync6(path2, `${JSON.stringify({ at: at.toISOString(), equity })}
+    appendFileSync6(path2, `${JSON.stringify(point)}
 `, { mode: 384 });
   });
 }
@@ -38602,10 +38613,10 @@ var next = (d, unit) => {
 function equityAt(curve, t) {
   let v;
   for (const p of curve) {
-    if (Date.parse(p.at) <= t.getTime()) v = p.equity;
+    if (Date.parse(p.at) <= t.getTime()) v = p;
     else break;
   }
-  return v ?? curve[0]?.equity;
+  return v ?? curve[0];
 }
 function ledgerInstant(date) {
   return Date.parse(/T\d{2}:\d{2}/.test(date) && !/(?:Z|[+-]\d{2}:?\d{2})$/.test(date) ? `${date}Z` : date);
@@ -38674,16 +38685,18 @@ function breakerState(curve, trades2, limits, now) {
   const lastLoss = streak ? trades2[trades2.length - 1].date : void 0;
   const st = { tripped: false, sizeMultiplier: 1, losingStreak: streak };
   if (curve.length) {
-    const nowEq = curve[curve.length - 1].equity;
+    const last2 = curve[curve.length - 1];
+    const nowEq = last2.equity;
+    const asNow = (p) => p.contributed !== void 0 && last2.contributed !== void 0 ? p.equity + (last2.contributed - p.contributed) : p.equity;
     const change = (unit) => {
       const ref = equityAt(curve, new Date(startOf(now, unit).getTime() - 1));
-      return ref ? (nowEq / ref - 1) * 100 : void 0;
+      return ref?.equity ? (nowEq / asNow(ref) - 1) * 100 : void 0;
     };
     st.dailyPct = change("day");
     st.weeklyPct = change("week");
     st.monthlyPct = change("month");
-    const peak = Math.max(...curve.map((p) => p.equity));
-    st.drawdownPct = (nowEq / peak - 1) * 100;
+    const peak = Math.max(...curve.map(asNow));
+    st.drawdownPct = peak > 0 ? (nowEq / peak - 1) * 100 : 0;
     const trip = (reason, until) => {
       if (!st.tripped) {
         st.tripped = true;
@@ -38780,7 +38793,7 @@ async function gateContextFor(order, opts = {}) {
   notes.push(...valued2.missing.map((m) => `missing ${m}: the portfolio total is understated`));
   if (!(valued2.totalBase > 0))
     throw new Error(`the ${bookName} book is empty \u2014 record a deposit first (\`ultrastock portfolio deposit <account> <amount> --book ${bookName}\`)`);
-  if (netMode().kind === "live") recordEquity(bookName, valued2.totalBase, now);
+  if (netMode().kind === "live") recordEquity(bookName, valued2.totalBase, now, netContributed(txs, fx.rates, profile.baseCurrency));
   else notes.push("replaying a fixture: the equity curve is not written");
   const rate2 = fx.rates[order.currency] ?? (order.currency === profile.baseCurrency ? 1 : Number.NaN);
   if (!Number.isFinite(rate2)) throw new Error(`no ${order.currency}\u2192${profile.baseCurrency} rate: cannot size the order`);
@@ -50503,7 +50516,7 @@ async function markBook(book2) {
   });
   const fx = await fxToBase([...held.map((p) => p.currency), ...b.cash.map((c) => c.currency)], profile.baseCurrency);
   const v = valueBook(b, prices, fx.rates, profile.baseCurrency);
-  if (v.totalBase > 0) recordEquity(book2, v.totalBase, now);
+  if (v.totalBase > 0) recordEquity(book2, v.totalBase, now, netContributed(txs, fx.rates, profile.baseCurrency));
   return { profile, txs, book: b, valued: v, fxRates: fx.rates, sources, notes: [...notes, ...fx.notes, ...v.missing.map((m) => `missing ${m}`)], now };
 }
 var isFlow = (t) => t.type === "deposit" || t.type === "withdrawal";

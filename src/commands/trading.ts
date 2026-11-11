@@ -11,7 +11,7 @@ import { argList, argValue, type CommandArgs, mapLimit, UsageError } from "../en
 import { printResult as out } from "./emit.js";
 import { appendTransactions, type Book, buildBook, readLedger, type Transaction, type TxType, valueBook, xirr } from "../portfolio/ledger.js";
 import { getQuote, resolveSymbol } from "../providers/router.js";
-import { breakerState, closedTradeResults, type EquityPoint, readEquity, recordEquity } from "../trading/breaker.js";
+import { breakerState, closedTradeResults, type EquityPoint, netContributed, readEquity, recordEquity } from "../trading/breaker.js";
 import { fxToBase, gateContextFor } from "../trading/context.js";
 import { paperSubmit, paperSweep, readiness } from "../trading/paper.js";
 import { planTrade, tradeContextMarkdown } from "../trading/plan.js";
@@ -58,7 +58,7 @@ export async function markBook(book: string) {
   });
   const fx = await fxToBase([...held.map((p) => p.currency), ...b.cash.map((c) => c.currency)], profile.baseCurrency);
   const v = valueBook(b, prices, fx.rates, profile.baseCurrency);
-  if (v.totalBase > 0) recordEquity(book, v.totalBase, now);
+  if (v.totalBase > 0) recordEquity(book, v.totalBase, now, netContributed(txs, fx.rates, profile.baseCurrency));
   return { profile, txs, book: b, valued: v, fxRates: fx.rates, sources, notes: [...notes, ...fx.notes, ...v.missing.map((m) => `missing ${m}`)], now };
 }
 
