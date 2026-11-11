@@ -12748,7 +12748,8 @@ var EvidenceStore = class _EvidenceStore {
       unit,
       source: "ultrastock",
       fetchedAt: oldest?.fetchedAt ?? (/* @__PURE__ */ new Date()).toISOString(),
-      asOf: asOfs[asOfs.length - 1],
+      // A derived figure is as old as its oldest input: a P/E on today's price and last year's EPS is as of last year.
+      asOf: asOfs[0],
       official: src2.length > 0 && src2.every((i) => i.official),
       derivedFrom: src2.map((i) => i.id),
       formula

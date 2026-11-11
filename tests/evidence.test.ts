@@ -22,6 +22,13 @@ describe("EvidenceStore", () => {
     expect(back.subject).toBe("MC.PA");
     expect(() => s.add({ ...base, key: "n", label: "N", value: Number.NaN })).toThrow();
   });
+  it("dates a derived figure as its stalest input: as of its oldest as-of day, read when its oldest input was", () => {
+    const s = EvidenceStore.open(mkdtempSync(join(tmpdir(), "us-ev-")));
+    const price = s.add({ ...base, key: "px", label: "price", value: 383, asOf: "2026-10-23", fetchedAt: "2026-10-23T18:00:00Z" });
+    const eps = s.add({ ...base, key: "eps", label: "EPS FY2025", value: 25, asOf: "2025-12-31", fetchedAt: "2026-10-24T08:00:00Z", official: false });
+    const id = s.addDerived("pe", "P/E", 15.32, "x", [price, eps], "px / eps");
+    expect(s.get(id)).toMatchObject({ asOf: "2025-12-31", fetchedAt: "2026-10-23T18:00:00Z", official: false, derivedFrom: [price, eps] });
+  });
   it("formats an item with its provenance", () => {
     expect(formatEvidence({ ...base, id: "E1", key: "k", label: "LVMH close", value: 383, unit: "EUR", asOf: "2026-10-23", delay: "eod" })).toBe(
       "[E1] LVMH close = 383 EUR (euronext, as of 2026-10-23, eod)",
