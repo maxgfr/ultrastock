@@ -84,7 +84,7 @@ either switch for the user.
 | `KILL_SWITCH`, `BREAKER` | `<home>/KILL` exists, or a loss limit tripped |
 | `TICKET` | not checked, older than 15 minutes, or changed since the check |
 | `MARKET_ORDER`, `ASSET`, `NO_SHORT` | live orders are limit orders only, on spot shares, ETFs, crypto or Kalshi contracts; no selling what is not held |
-| `ORDER_LIMIT`, `DAILY_LIMIT` | the per-order or per-day limit of the experience tier: 250 / 500 at first, then 1 000 / 2 500 after 20 live fills, 5 000 / 10 000 after 100 |
+| `ORDER_LIMIT`, `DAILY_LIMIT` | the per-order or per-day limit of the experience tier: 250 / 500 at first, then 1 000 / 2 500 after 20 live fills, 5 000 / 10 000 after 100. The day counts every live order sent, but one the venue refused, one never sent and one the user declared never placed |
 | `WITHDRAW_RIGHT`, `ATTEST`, `TRADE_RIGHT` | the key can withdraw, or no attestation was given for a venue that cannot be asked, or the key cannot trade |
 | `PRICE_BAND` | the limit is more than 1 % beyond the venue's best price right now |
 | `CODE` | no code, an expired code, a wrong code, or a code issued for a different order |

@@ -33,7 +33,7 @@ import { appendTransactions, readLedger } from "../portfolio/ledger.js";
 import { splitPair } from "../tax/regime.js";
 import { breakerState, closedTradeResults, readEquity } from "./breaker.js";
 import type { BrokerAdapter, Environment, LiveOrder, OrderResult, Venue } from "./brokers/types.js";
-import { fxToBase } from "./context.js";
+import { attemptKey, fxToBase, unplacedAttempts } from "./context.js";
 import { effectiveLimits } from "./limits.js";
 import { verifyCode } from "./otp.js";
 import { readiness } from "./paper.js";
@@ -137,14 +137,20 @@ export function liveOffReason(): string | undefined {
   return missing.length ? `live trading is off: ${missing.join("; and ")}` : undefined;
 }
 
-/** Live fills so far (the experience tier) and today's live notional. */
+/**
+ * Live fills so far (the experience tier) and today's live notional: every live attempt of the day, but those that
+ * placed nothing (refused by the venue, never sent, declared never placed).
+ */
 export function liveActivity(now = new Date()): { fills: number; todayNotional: number } {
   const day = now.toISOString().slice(0, 10);
+  const trail = readAudit();
+  const unplaced = unplacedAttempts(trail);
   let fills = 0;
   let todayNotional = 0;
-  for (const e of readAudit()) {
+  for (const e of trail) {
     if (e.event === "live-result" && e.env === "live" && (e.state === "filled" || e.state === "partially-filled")) fills++;
-    if (e.event === "live-intent" && e.env === "live" && String(e.at).slice(0, 10) === day) todayNotional += Number(e.notional ?? 0);
+    if (e.event === "live-intent" && e.env === "live" && String(e.at).slice(0, 10) === day && !unplaced.has(attemptKey(e)))
+      todayNotional += Number(e.notional ?? 0);
   }
   return { fills, todayNotional };
 }
@@ -511,6 +517,8 @@ async function submitLocked(p: PreconditionInput, now: Date): Promise<{ ticket: 
       undefined,
       ["submitted"],
     );
+    // The intent is on the trail: say this attempt placed nothing (it uses up no daily limit).
+    audit({ event: "live-not-sent", ticket: t.id, venue: p.venue, env: p.env, clientOrderId: order.clientOrderId, reason: "kill switch" });
     return killed()!;
   }
   let result: OrderResult;

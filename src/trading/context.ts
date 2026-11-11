@@ -59,23 +59,44 @@ export function pendingBuys(tickets: readonly Ticket[], book: string, ticketId?:
   );
 }
 
+type Trail = ReadonlyArray<Record<string, unknown> & { at: string }>;
+
+/** The key of one attempt to send a ticket to a venue: the ticket and the client order id of that attempt. */
+export const attemptKey = (e: Record<string, unknown>): string => `${String(e.ticket)}|${String(e.clientOrderId)}`;
+
+/**
+ * The attempts that placed no order, from the audit trail: refused by the
+ * venue, stopped by the kill switch between the intent and the send, or
+ * declared never placed by the user. They moved no money. An attempt whose
+ * answer was lost (unknown) is not among them: it may be working at the venue.
+ */
+export function unplacedAttempts(trail: Trail): Set<string> {
+  const out = new Set<string>();
+  for (const e of trail)
+    if (((e.event === "live-result" || e.event === "live-reconcile") && e.state === "rejected") || e.event === "live-not-sent" || e.event === "live-not-placed")
+      out.add(attemptKey(e));
+  return out;
+}
+
 /**
  * The orders placed in `book` today (UTC), from the audit trail. An order sent
  * to a venue counts once per attempt, by the environment of that attempt: a
  * ticket tried on a testnet (or a validate-only endpoint, which moves no money)
- * and then sent for real is one real order. A paper order counts once per
+ * and then sent for real is one real order, and an attempt that placed nothing
+ * (refused by the venue, never sent) is none. A paper order counts once per
  * ticket that reached working or filled today: it moves several times and is
  * still one order. An order in another book does not count.
  */
-export function ordersToday(trail: ReadonlyArray<Record<string, unknown> & { at: string }>, book: string, now: Date): number {
+export function ordersToday(trail: Trail, book: string, now: Date): number {
   const today = now.toISOString().slice(0, 10);
   const sentToVenue = new Set(trail.filter((e) => e.event === "live-intent").map((e) => String(e.ticket)));
+  const unplaced = unplacedAttempts(trail);
   const attempts = new Set<string>();
   const ids = new Set<string>();
   for (const e of trail) {
     if (!e.at.startsWith(today)) continue;
     if (e.event === "live-intent") {
-      if (e.env !== "test" && bookOf(String(e.venue)) === book) attempts.add(`${String(e.ticket)}|${String(e.clientOrderId)}`);
+      if (e.env !== "test" && bookOf(String(e.venue)) === book && !unplaced.has(attemptKey(e))) attempts.add(attemptKey(e));
       continue;
     }
     if (e.event !== "ticket" || !(e.to === "filled" || e.to === "submitted" || e.to === "working")) continue;

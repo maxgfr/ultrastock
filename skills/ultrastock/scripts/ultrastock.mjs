@@ -39174,15 +39174,24 @@ function pendingBuys(tickets, book2, ticketId) {
     (t) => t.id !== ticketId && t.order.side === "buy" && bookOf(t.order.venue) === book2 && (t.status === "working" || t.status === "checked" || t.status === "submitted" && t.live?.env !== "test")
   );
 }
+var attemptKey = (e) => `${String(e.ticket)}|${String(e.clientOrderId)}`;
+function unplacedAttempts(trail) {
+  const out = /* @__PURE__ */ new Set();
+  for (const e of trail)
+    if ((e.event === "live-result" || e.event === "live-reconcile") && e.state === "rejected" || e.event === "live-not-sent" || e.event === "live-not-placed")
+      out.add(attemptKey(e));
+  return out;
+}
 function ordersToday(trail, book2, now) {
   const today = now.toISOString().slice(0, 10);
   const sentToVenue = new Set(trail.filter((e) => e.event === "live-intent").map((e) => String(e.ticket)));
+  const unplaced = unplacedAttempts(trail);
   const attempts = /* @__PURE__ */ new Set();
   const ids = /* @__PURE__ */ new Set();
   for (const e of trail) {
     if (!e.at.startsWith(today)) continue;
     if (e.event === "live-intent") {
-      if (e.env !== "test" && bookOf(String(e.venue)) === book2) attempts.add(`${String(e.ticket)}|${String(e.clientOrderId)}`);
+      if (e.env !== "test" && bookOf(String(e.venue)) === book2 && !unplaced.has(attemptKey(e))) attempts.add(attemptKey(e));
       continue;
     }
     if (e.event !== "ticket" || !(e.to === "filled" || e.to === "submitted" || e.to === "working")) continue;
@@ -46273,11 +46282,14 @@ function liveOffReason() {
 }
 function liveActivity(now = /* @__PURE__ */ new Date()) {
   const day4 = now.toISOString().slice(0, 10);
+  const trail = readAudit();
+  const unplaced = unplacedAttempts(trail);
   let fills = 0;
   let todayNotional = 0;
-  for (const e of readAudit()) {
+  for (const e of trail) {
     if (e.event === "live-result" && e.env === "live" && (e.state === "filled" || e.state === "partially-filled")) fills++;
-    if (e.event === "live-intent" && e.env === "live" && String(e.at).slice(0, 10) === day4) todayNotional += Number(e.notional ?? 0);
+    if (e.event === "live-intent" && e.env === "live" && String(e.at).slice(0, 10) === day4 && !unplaced.has(attemptKey(e)))
+      todayNotional += Number(e.notional ?? 0);
   }
   return { fills, todayNotional };
 }
@@ -46536,6 +46548,7 @@ async function submitLocked(p, now) {
       void 0,
       ["submitted"]
     );
+    audit({ event: "live-not-sent", ticket: t.id, venue: p.venue, env: p.env, clientOrderId: order.clientOrderId, reason: "kill switch" });
     return killed();
   }
   let result;
