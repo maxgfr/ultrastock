@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.13.16](https://github.com/maxgfr/ultrastock/compare/v1.13.15...v1.13.16) (2026-11-11)
+
+
+### Bug Fixes
+
+* **tax:** apply the crypto rules to crypto held at a stockbroker ([49dd58f](https://github.com/maxgfr/ultrastock/commit/49dd58f518956ec65f4ef691e1fb29518e7ffa15))
+
 ## [1.13.15](https://github.com/maxgfr/ultrastock/compare/v1.13.14...v1.13.15) (2026-11-11)
 
 
