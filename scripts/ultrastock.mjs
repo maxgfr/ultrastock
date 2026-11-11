@@ -38153,18 +38153,57 @@ function ledgerInstant(date) {
 }
 function closedTradeResults(txs) {
   const avg = /* @__PURE__ */ new Map();
+  const moving = /* @__PURE__ */ new Map();
   const out = [];
   for (const t of [...txs].sort((a, b) => a.date.localeCompare(b.date))) {
     if (!t.symbol) continue;
     const k = `${t.account}|${t.symbol}`;
-    const p = avg.get(k) ?? { q: 0, cost: 0 };
-    if (t.type === "buy") {
-      const before = Math.max(p.q, 0);
-      p.cost = (p.cost * before + t.quantity * t.price + (t.fee ?? 0)) / (before + t.quantity);
-      p.q = before + t.quantity;
-    } else if (t.type === "sell") {
-      out.push({ date: t.date, pnl: (t.price - p.cost) * t.quantity - (t.fee ?? 0) });
-      p.q -= t.quantity;
+    const p = avg.get(k) ?? { q: 0, cost: 0, unknown: 0 };
+    const q = t.quantity ?? 0;
+    const add2 = (units, cost) => {
+      p.cost = p.q + units > 0 ? (p.cost * p.q + cost * units) / (p.q + units) : 0;
+      p.q += units;
+    };
+    const take = (units) => {
+      const held = p.q + p.unknown;
+      const known = held > 0 ? Math.min(units, held) * (p.q / held) : 0;
+      const unknown2 = held > 0 ? Math.min(units, held) - known : 0;
+      p.q = Math.max(0, p.q - known);
+      p.unknown = Math.max(0, p.unknown - unknown2);
+      return { known, short: Math.max(0, units - held) };
+    };
+    if (t.type === "buy") add2(q, (q * t.price + (t.fee ?? 0)) / q);
+    else if (t.type === "sell") {
+      const cost = p.cost;
+      const { known } = take(q);
+      if (known > 0) out.push({ date: t.date, pnl: (t.price - cost) * known - (t.fee ?? 0) * (known / q) });
+    } else if (t.type === "transfer-out") {
+      const cost = p.cost;
+      const { known } = take(q);
+      const list = moving.get(t.symbol) ?? [];
+      list.push({ q: known, cost, account: t.account });
+      if (q - known > 0) list.push({ q: q - known, cost: Number.NaN, account: t.account });
+      moving.set(t.symbol, list);
+    } else if (t.type === "transfer-in") {
+      if (t.price !== void 0) add2(q, t.price);
+      else {
+        let left = q;
+        const list = moving.get(t.symbol) ?? [];
+        for (const m of list) {
+          if (left <= 0) break;
+          if (m.account === t.account || m.q <= 0) continue;
+          const n2 = Math.min(left, m.q);
+          if (Number.isNaN(m.cost)) p.unknown += n2;
+          else add2(n2, m.cost);
+          m.q -= n2;
+          left -= n2;
+        }
+        p.unknown += left;
+      }
+    } else if (t.type === "split" && q > 0) {
+      p.q *= q;
+      p.unknown *= q;
+      p.cost /= q;
     }
     avg.set(k, p);
   }

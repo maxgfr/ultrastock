@@ -82,23 +82,72 @@ export function ledgerInstant(date: string): number {
   return Date.parse(/T\d{2}:\d{2}/.test(date) && !/(?:Z|[+-]\d{2}:?\d{2})$/.test(date) ? `${date}Z` : date);
 }
 
-/** Realised results of closed (sell) trades by average cost, in date order. */
+/**
+ * Realised results of closed (sell) trades by average cost, in date order.
+ *
+ * Units moved between the user's own accounts keep their cost (a transfer out
+ * hands it to the transfer in of the same symbol; a transfer in with a price
+ * takes that price), and a split divides it. Units whose cost the ledger never
+ * says (a transfer in from outside, with no price) are left out of the result:
+ * selling them is neither a win nor a loss the breaker can count — counting
+ * the whole proceeds as profit broke losing streaks and flattered the paper
+ * record.
+ */
 export function closedTradeResults(txs: readonly Transaction[]): Array<{ date: string; pnl: number }> {
-  const avg = new Map<string, { q: number; cost: number }>();
+  const avg = new Map<string, { q: number; cost: number; unknown: number }>();
+  const moving = new Map<string, Array<{ q: number; cost: number; account: string }>>();
   const out: Array<{ date: string; pnl: number }> = [];
   for (const t of [...txs].sort((a, b) => a.date.localeCompare(b.date))) {
     if (!t.symbol) continue;
     const k = `${t.account}|${t.symbol}`;
-    const p = avg.get(k) ?? { q: 0, cost: 0 };
-    if (t.type === "buy") {
-      // Units sold that this replay never saw bought (a transfer in) leave a negative count: the average restarts
-      // from this buy, instead of dividing by a quantity that nets to zero.
-      const before = Math.max(p.q, 0);
-      p.cost = (p.cost * before + t.quantity! * t.price! + (t.fee ?? 0)) / (before + t.quantity!);
-      p.q = before + t.quantity!;
-    } else if (t.type === "sell") {
-      out.push({ date: t.date, pnl: (t.price! - p.cost) * t.quantity! - (t.fee ?? 0) });
-      p.q -= t.quantity!;
+    const p = avg.get(k) ?? { q: 0, cost: 0, unknown: 0 };
+    const q = t.quantity ?? 0;
+    const add = (units: number, cost: number) => {
+      p.cost = p.q + units > 0 ? (p.cost * p.q + cost * units) / (p.q + units) : 0;
+      p.q += units;
+    };
+    // Units leave in proportion: known-cost and unknown-cost alike.
+    const take = (units: number) => {
+      const held = p.q + p.unknown;
+      const known = held > 0 ? Math.min(units, held) * (p.q / held) : 0;
+      const unknown = held > 0 ? Math.min(units, held) - known : 0;
+      p.q = Math.max(0, p.q - known);
+      p.unknown = Math.max(0, p.unknown - unknown);
+      return { known, short: Math.max(0, units - held) };
+    };
+    if (t.type === "buy") add(q, (q * t.price! + (t.fee ?? 0)) / q);
+    else if (t.type === "sell") {
+      const cost = p.cost;
+      const { known } = take(q);
+      // Only the units whose cost is known make a result; the fee is shared in proportion.
+      if (known > 0) out.push({ date: t.date, pnl: (t.price! - cost) * known - (t.fee ?? 0) * (known / q) });
+    } else if (t.type === "transfer-out") {
+      const cost = p.cost;
+      const { known } = take(q);
+      const list = moving.get(t.symbol) ?? [];
+      list.push({ q: known, cost, account: t.account });
+      if (q - known > 0) list.push({ q: q - known, cost: Number.NaN, account: t.account });
+      moving.set(t.symbol, list);
+    } else if (t.type === "transfer-in") {
+      if (t.price !== undefined) add(q, t.price);
+      else {
+        let left = q;
+        const list = moving.get(t.symbol) ?? [];
+        for (const m of list) {
+          if (left <= 0) break;
+          if (m.account === t.account || m.q <= 0) continue;
+          const n = Math.min(left, m.q);
+          if (Number.isNaN(m.cost)) p.unknown += n;
+          else add(n, m.cost);
+          m.q -= n;
+          left -= n;
+        }
+        p.unknown += left;
+      }
+    } else if (t.type === "split" && q > 0) {
+      p.q *= q;
+      p.unknown *= q;
+      p.cost /= q;
     }
     avg.set(k, p);
   }

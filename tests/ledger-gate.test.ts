@@ -203,6 +203,25 @@ describe("circuit breaker", () => {
       else process.env.TZ = tz;
     }
   });
+  it("carries cost across own accounts and splits, and counts no result on units of unknown cost", () => {
+    const r = closedTradeResults([
+      tx({ date: "2026-01-02", type: "buy", account: "a", symbol: "X", quantity: 10, price: 100 }),
+      // Moved to another account of the user's: the cost goes with the shares.
+      tx({ date: "2026-02-01", type: "transfer-out", account: "a", symbol: "X", quantity: 10 }),
+      tx({ date: "2026-02-01", type: "transfer-in", account: "b", symbol: "X", quantity: 10 }),
+      // 2-for-1: 20 shares at 50.
+      tx({ date: "2026-03-01", type: "split", account: "b", symbol: "X", quantity: 2 }),
+      tx({ date: "2026-04-01", type: "sell", account: "b", symbol: "X", quantity: 20, price: 45 }),
+      // Shares from outside with no price: selling them is no result at all, not a 1 000 profit.
+      tx({ date: "2026-05-01", type: "transfer-in", account: "b", symbol: "Y", quantity: 10 }),
+      tx({ date: "2026-06-01", type: "sell", account: "b", symbol: "Y", quantity: 10, price: 100 }),
+      // A transfer in with a price takes that price.
+      tx({ date: "2026-07-01", type: "transfer-in", account: "b", symbol: "Z", quantity: 5, price: 20 }),
+      tx({ date: "2026-08-01", type: "sell", account: "b", symbol: "Z", quantity: 5, price: 18 }),
+    ]);
+    // Before: the sale after the transfer had no cost (+900, a win), the split went unseen.
+    expect(r.map((x) => x.pnl)).toEqual([-100, -10]);
+  });
   it("keeps realised results finite when a buy follows units sold without a recorded buy", () => {
     const results = closedTradeResults([
       tx({ date: "2026-10-01", type: "transfer-in", account: "a", symbol: "X", quantity: 10 }),
