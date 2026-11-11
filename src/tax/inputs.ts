@@ -1,6 +1,7 @@
 // What the tax engine needs from the network, fetched once per report: ECB
 // reference rates for every currency of the ledger over its whole history
-// (the rate of each transaction's date, the last fixing before a weekend),
+// (the rate of each transaction's date, the last fixing before a weekend)
+// and, for a crypto-asset a trade is quoted in (BTC in ETHBTC), its daily close,
 // the crypto portfolio's value at each taxable disposal (holdings replayed
 // from the ledger, priced at that day's close on Binance), and today's
 // prices for the harvest scan.
@@ -50,6 +51,59 @@ export async function historicalFx(base: string, currencies: readonly string[], 
     return list[lo]![1];
   };
   return { fx, notes };
+}
+
+/** Daily closes of a crypto-asset's USDT pair by day, over `from`–`to` with a few days of margin before. */
+export type DailyCloses = (asset: string, from: string, to: string) => Promise<Map<string, number>>;
+
+const dailyCloses: DailyCloses = async (asset, from, to) => {
+  const series = await getHistory(await resolveSymbol(`${asset}USDT`), {
+    from: new Date(Date.parse(`${from}T00:00:00Z`) - 5 * 86_400_000),
+    to: new Date(Date.parse(`${to}T00:00:00Z`) + 86_400_000),
+  });
+  return new Map(series.bars.map((b) => [b.date.slice(0, 10), b.close]));
+};
+
+/** The close on `date`, else the last one of the five days before (a missing bar). */
+function closeAt(closes: ReadonlyMap<string, number>, date: string): number | undefined {
+  for (let i = 0; i < 6; i++) {
+    const px = closes.get(new Date(Date.parse(`${date}T00:00:00Z`) - i * 86_400_000).toISOString().slice(0, 10));
+    if (px !== undefined) return px;
+  }
+  return undefined;
+}
+
+/**
+ * `fx` extended to the crypto-assets among `currencies` (BTC in an ETHBTC trade): no central bank fixes them, so an
+ * amount in one is converted at the asset's daily close (USDT pair) × the day's USD rate — as the crypto valuer does.
+ * Fiat and stablecoins stay with `fx`. `closes` is the price source (injected by tests).
+ */
+export async function withCryptoQuotes(
+  fx: Fx,
+  currencies: readonly string[],
+  from: string,
+  to: string,
+  closes: DailyCloses = dailyCloses,
+): Promise<{ fx: Fx; notes: string[] }> {
+  const assets = [...new Set(currencies.map((c) => c.toUpperCase()))].filter((c) => !isFiat(c) && !isStablecoin(c));
+  const table = new Map<string, ReadonlyMap<string, number>>();
+  const notes: string[] = [];
+  for (const a of assets) {
+    try {
+      table.set(a, await closes(a, from, to));
+    } catch (e) {
+      notes.push(`${a}: no USDT price history (${(e as Error).message}) — amounts in ${a} cannot be converted`);
+    }
+  }
+  if (table.size) notes.push(`amounts in ${[...table.keys()].join(", ")} converted at the asset's daily close (USDT pair) × the USD rate of the day`);
+  const extended: Fx = (currency, date) => {
+    const m = table.get(currency.toUpperCase());
+    if (!m) return fx(currency, date);
+    const px = closeAt(m, date);
+    const usd = fx("USD", date);
+    return px === undefined || usd === undefined ? undefined : px * usd;
+  };
+  return { fx: extended, notes };
 }
 
 /** What one ledger row does to the crypto holdings: the assets it moves, in the order they are booked. */
@@ -129,11 +183,7 @@ export async function cryptoValuer(
   for (const a of assets) {
     if (isStablecoin(a)) continue;
     try {
-      const series = await getHistory(await resolveSymbol(`${a}USDT`), {
-        from: new Date(Date.parse(`${first}T00:00:00Z`) - 5 * 86_400_000),
-        to: new Date(Date.parse(`${last}T00:00:00Z`) + 86_400_000),
-      });
-      closes.set(a, new Map(series.bars.map((b) => [b.date.slice(0, 10), b.close])));
+      closes.set(a, await dailyCloses(a, first, last));
     } catch (e) {
       notes.push(`${a}: no USDT price history (${(e as Error).message}) — the portfolio value omits it`);
     }
@@ -154,8 +204,7 @@ export async function cryptoValuer(
       }
       const m = closes.get(a);
       if (!m) return undefined;
-      let px: number | undefined;
-      for (let i = 0; i < 6 && px === undefined; i++) px = m.get(new Date(Date.parse(`${date}T00:00:00Z`) - i * 86_400_000).toISOString().slice(0, 10));
+      const px = closeAt(m, date);
       if (px === undefined) return undefined;
       total += q * px * usd;
     }

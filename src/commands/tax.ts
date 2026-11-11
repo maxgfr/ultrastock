@@ -9,7 +9,7 @@ import { argList, argValue, type CommandArgs, UsageError } from "../engine.js";
 import { buildBook, readLedger, type Transaction } from "../portfolio/ledger.js";
 import { EXPORT_FORMATS, type ExportFormat, export2074, export2086, export8949, exportKoinly } from "../tax/export.js";
 import { regimeFor } from "../tax/index.js";
-import { cryptoValuer, currentPrices, historicalFx } from "../tax/inputs.js";
+import { cryptoValuer, currentPrices, historicalFx, withCryptoQuotes } from "../tax/inputs.js";
 import { cryptoTradeKind, day, envelopeOf, type TaxInput, type TaxRegime, type TaxSummary, yearOf } from "../tax/regime.js";
 import { emitDatasets, printResult as print } from "./emit.js";
 
@@ -43,13 +43,16 @@ async function buildInput(args: CommandArgs, regime: TaxRegime, year: number, op
   const first = txs.map((t) => day(t.date)).sort()[0] ?? end;
   // biome-ignore lint/complexity/useMathMinMax: ISO date strings, not numbers
   const from = first < end ? first : end;
-  const { fx, notes: fxNotes } = await historicalFx(
-    regime.currency,
-    [...new Set(txs.map((t) => t.currency)), "USD"].filter((c) => c !== regime.currency),
-    from,
-    end,
-  );
-  notes.push(...fxNotes);
+  const currencies = [...new Set(txs.map((t) => t.currency)), "USD"].filter((c) => c !== regime.currency);
+  const ecb = await historicalFx(regime.currency, currencies, from, end);
+  notes.push(...ecb.notes);
+  let fx = ecb.fx;
+  // The US taxes a trade quoted in a crypto-asset (ETHBTC) at its dollar value; France defers it and needs no rate.
+  if (regime.id === "us") {
+    const quoted = await withCryptoQuotes(fx, currencies, from, end);
+    fx = quoted.fx;
+    notes.push(...quoted.notes);
+  }
   const input: TaxInput = { year, transactions: txs, envelopes, fx };
   const tmi = rate(argValue(args, "tmi") ?? argValue(args, "marginal-rate"));
   if (tmi !== undefined) input.marginalRate = tmi;

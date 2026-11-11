@@ -26740,9 +26740,9 @@ function observed(d) {
 function holidays(market, year) {
   const out = [];
   const closed = (d, name) => out.push({ date: fmt3(d), name, kind: "closed" });
-  const early = (d, name, closeAt) => {
+  const early = (d, name, closeAt2) => {
     const w = d.getUTCDay();
-    if (w !== 0 && w !== 6) out.push({ date: fmt3(d), name, kind: "early-close", closeAt });
+    if (w !== 0 && w !== 6) out.push({ date: fmt3(d), name, kind: "early-close", closeAt: closeAt2 });
   };
   const easter = easterSunday(year);
   if (market === "XNYS") {
@@ -49825,6 +49825,41 @@ async function historicalFx(base2, currencies, from, to) {
   };
   return { fx, notes };
 }
+var dailyCloses = async (asset, from, to) => {
+  const series = await getHistory(await resolveSymbol(`${asset}USDT`), {
+    from: new Date(Date.parse(`${from}T00:00:00Z`) - 5 * 864e5),
+    to: new Date(Date.parse(`${to}T00:00:00Z`) + 864e5)
+  });
+  return new Map(series.bars.map((b) => [b.date.slice(0, 10), b.close]));
+};
+function closeAt(closes, date) {
+  for (let i = 0; i < 6; i++) {
+    const px = closes.get(new Date(Date.parse(`${date}T00:00:00Z`) - i * 864e5).toISOString().slice(0, 10));
+    if (px !== void 0) return px;
+  }
+  return void 0;
+}
+async function withCryptoQuotes(fx, currencies, from, to, closes = dailyCloses) {
+  const assets = [...new Set(currencies.map((c) => c.toUpperCase()))].filter((c) => !isFiat(c) && !isStablecoin(c));
+  const table2 = /* @__PURE__ */ new Map();
+  const notes = [];
+  for (const a of assets) {
+    try {
+      table2.set(a, await closes(a, from, to));
+    } catch (e) {
+      notes.push(`${a}: no USDT price history (${e.message}) \u2014 amounts in ${a} cannot be converted`);
+    }
+  }
+  if (table2.size) notes.push(`amounts in ${[...table2.keys()].join(", ")} converted at the asset's daily close (USDT pair) \xD7 the USD rate of the day`);
+  const extended = (currency, date) => {
+    const m = table2.get(currency.toUpperCase());
+    if (!m) return fx(currency, date);
+    const px = closeAt(m, date);
+    const usd = fx("USD", date);
+    return px === void 0 || usd === void 0 ? void 0 : px * usd;
+  };
+  return { fx: extended, notes };
+}
 var CRYPTO_MOVES = /* @__PURE__ */ new WeakMap();
 function cryptoMoves(txs, envelopes) {
   const held = CRYPTO_MOVES.get(txs);
@@ -49875,11 +49910,7 @@ async function cryptoValuer(txs, envelopes, dates, fx) {
   for (const a of assets) {
     if (isStablecoin(a)) continue;
     try {
-      const series = await getHistory(await resolveSymbol(`${a}USDT`), {
-        from: new Date(Date.parse(`${first}T00:00:00Z`) - 5 * 864e5),
-        to: new Date(Date.parse(`${last2}T00:00:00Z`) + 864e5)
-      });
-      closes.set(a, new Map(series.bars.map((b) => [b.date.slice(0, 10), b.close])));
+      closes.set(a, await dailyCloses(a, first, last2));
     } catch (e) {
       notes.push(`${a}: no USDT price history (${e.message}) \u2014 the portfolio value omits it`);
     }
@@ -49900,8 +49931,7 @@ async function cryptoValuer(txs, envelopes, dates, fx) {
       }
       const m = closes.get(a);
       if (!m) return void 0;
-      let px;
-      for (let i = 0; i < 6 && px === void 0; i++) px = m.get(new Date(Date.parse(`${date}T00:00:00Z`) - i * 864e5).toISOString().slice(0, 10));
+      const px = closeAt(m, date);
       if (px === void 0) return void 0;
       total += q * px * usd;
     }
@@ -53748,13 +53778,15 @@ async function buildInput(args, regime, year, opts = {}) {
   const end = opts.asOf ?? (`${year}-12-31` < today ? `${year}-12-31` : today);
   const first = txs.map((t) => day3(t.date)).sort()[0] ?? end;
   const from = first < end ? first : end;
-  const { fx, notes: fxNotes } = await historicalFx(
-    regime.currency,
-    [...new Set(txs.map((t) => t.currency)), "USD"].filter((c) => c !== regime.currency),
-    from,
-    end
-  );
-  notes.push(...fxNotes);
+  const currencies = [...new Set(txs.map((t) => t.currency)), "USD"].filter((c) => c !== regime.currency);
+  const ecb = await historicalFx(regime.currency, currencies, from, end);
+  notes.push(...ecb.notes);
+  let fx = ecb.fx;
+  if (regime.id === "us") {
+    const quoted = await withCryptoQuotes(fx, currencies, from, end);
+    fx = quoted.fx;
+    notes.push(...quoted.notes);
+  }
   const input = { year, transactions: txs, envelopes, fx };
   const tmi = rate(argValue(args, "tmi") ?? argValue(args, "marginal-rate"));
   if (tmi !== void 0) input.marginalRate = tmi;

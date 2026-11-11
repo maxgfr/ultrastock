@@ -6,7 +6,7 @@ import { appendTransactions, transactionId, type Transaction } from "../src/port
 import { export2086, export8949, exportKoinly } from "../src/tax/export.js";
 import { FranceRegime } from "../src/tax/fr.js";
 import { regimeFor } from "../src/tax/index.js";
-import { cryptoHoldings } from "../src/tax/inputs.js";
+import { cryptoHoldings, withCryptoQuotes } from "../src/tax/inputs.js";
 import { brokerIsForeign, envelopeOf, splitPair, type TaxInput, yearsBetween } from "../src/tax/regime.js";
 import { param, rulesFor, verifyChecklist } from "../src/tax/rules.js";
 import { isLongTerm, UsRegime } from "../src/tax/us.js";
@@ -493,6 +493,39 @@ describe("United States", () => {
     const n = us26.annualSummary({ ...usIn(gain), year: 2026, ordinaryIncome: 250_000, marginalRate: 0.35 });
     expect(fig(n, "niit")).toBe(760);
     expect(fig(n, "total.estimate")).toBeDefined();
+  });
+
+  it("a trade quoted in a crypto-asset (ETHBTC) is converted at that asset's daily close", async () => {
+    const CB: Envelope = { id: "cb", type: "CRYPTO", broker: "Coinbase", currency: "USD" };
+    const c = (t: Partial<Transaction> & Pick<Transaction, "date" | "type">) => tx({ account: "cb", symbol: "ETHBTC", currency: "BTC", ...t });
+    const txs = [
+      c({ date: "2025-02-01", type: "buy", quantity: 1, price: 0.03 }),
+      // A Sunday: the close of the Saturday before is the last known.
+      c({ date: "2025-06-01", type: "sell", quantity: 1, price: 0.035 }),
+    ];
+    const us = new UsRegime(2025);
+    expect(() => us.realize(input(txs, [CB]))).toThrow(/no BTC→USD rate/);
+    const closes = vi.fn(
+      async (asset: string) =>
+        new Map<string, number>(
+          asset === "BTC"
+            ? [
+                ["2025-02-01", 100_000],
+                ["2025-05-31", 80_000],
+              ]
+            : [],
+        ),
+    );
+    const quoted = await withCryptoQuotes(fx(), ["USD", "BTC", "USDT"], "2025-01-01", "2025-12-31", closes);
+    expect(closes).toHaveBeenCalledTimes(1);
+    expect(quoted.notes.join(" ")).toMatch(/BTC.*daily close/);
+    const ev = us.realize(input(txs, [CB], { fx: quoted.fx }));
+    expect(ev.map((e) => [e.kind, e.proceeds, e.cost, e.gain])).toEqual([["crypto-disposal", 2800, 3000, -200]]);
+    // In euros, the close is converted at the day's USD rate.
+    const eur = await withCryptoQuotes(fx({ USD: 0.9 }), ["BTC"], "2025-01-01", "2025-12-31", closes);
+    expect(eur.fx("BTC", "2025-02-01")).toBeCloseTo(90_000, 6);
+    expect(eur.fx("BTC", "2025-01-10")).toBeUndefined();
+    expect(eur.fx("USD", "2025-01-10")).toBe(0.9);
   });
 
   it("harvest flags a recent purchase as a wash-sale risk", () => {
