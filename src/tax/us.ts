@@ -128,7 +128,7 @@ export class UsRegime extends TaxRegime {
     const byTx = new Map<Transaction, UsLot>();
     const received = new Map<Transaction, UsLot>();
     for (const t of history) {
-      const env = envelopeOf(t.account, input.envelopes, t.symbol);
+      const env = envelopeOf(t.account, input.envelopes, t.symbol, t.isin);
       const crypto = isCryptoTx(t, input.envelopes);
       const quote = t.type === "sell" ? cryptoQuote(t, crypto) : undefined;
       if (quote) {
@@ -266,7 +266,7 @@ export class UsRegime extends TaxRegime {
      * (or the crypto-asset given in a trade) books each lot's part on Form 8949 with `proceedsTotal` (USD) pro rata.
      */
     const dispose = (t: Transaction, asset: string, sym: string, qty: number, proceedsTotal: number, crypto: boolean, extra: string[] = []): void => {
-      const env = envelopeOf(t.account, input.envelopes, t.symbol);
+      const env = envelopeOf(t.account, input.envelopes, t.symbol, t.isin);
       const base = {
         date: day(t.date),
         account: t.account,
@@ -421,7 +421,7 @@ export class UsRegime extends TaxRegime {
       }
     };
     for (const t of history) {
-      const env = envelopeOf(t.account, input.envelopes, t.symbol);
+      const env = envelopeOf(t.account, input.envelopes, t.symbol, t.isin);
       const sym = (t.symbol ?? "").toUpperCase();
       const crypto = isCryptoTx(t, input.envelopes);
       const base = { date: day(t.date), account: t.account, envelope: env.type, symbol: t.symbol, notes: [] as string[] };

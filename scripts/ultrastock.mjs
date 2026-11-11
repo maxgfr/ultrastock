@@ -45566,7 +45566,7 @@ function brokerIsForeign(broker) {
   if (FOREIGN_BROKERS.test(broker)) return true;
   return void 0;
 }
-function envelopeOf2(account, envelopes, symbol) {
+function envelopeOf2(account, envelopes, symbol, isin) {
   const e = envelopes.find((x) => x.id === account);
   if (e) return { type: e.type, envelope: e, guessed: false };
   const a = account.toLowerCase();
@@ -45578,7 +45578,7 @@ function envelopeOf2(account, envelopes, symbol) {
   if (/ira/.test(a)) return { type: "IRA", guessed: true };
   if (/401k/.test(a)) return { type: "401K", guessed: true };
   if (/binance|kraken|coinbase|bitstamp|bitpanda|ledger|wallet|crypto/.test(a)) return { type: "CRYPTO", guessed: true };
-  if (symbol && !symbol.includes(".") && splitPair(symbol).quote && /USDT|USDC|BTC|ETH|FDUSD/.test(splitPair(symbol).quote))
+  if (symbol && !isin && !symbol.includes(".") && splitPair(symbol).quote && /USDT|USDC|BTC|ETH|FDUSD/.test(splitPair(symbol).quote))
     return { type: "CRYPTO", guessed: true };
   return { type: "CTO", guessed: true };
 }
@@ -45603,7 +45603,7 @@ var KNOWN_COINS = /* @__PURE__ */ new Set([
   "ETC"
 ]);
 function isCryptoTx(t, envelopes) {
-  if (t.assetClass === "crypto" || envelopeOf2(t.account, envelopes, t.symbol).type === "CRYPTO") return true;
+  if (t.assetClass === "crypto" || envelopeOf2(t.account, envelopes, t.symbol, t.isin).type === "CRYPTO") return true;
   if (!t.symbol || t.isin || t.symbol.includes(".")) return false;
   const { base: base2, quote: quote2 } = splitPair(t.symbol, t.currency);
   if (!quote2) return false;
@@ -53851,7 +53851,7 @@ var FranceRegime = class extends TaxRegime {
     };
     const splitDone = /* @__PURE__ */ new Set();
     const history = this.history(input);
-    const ordinary = (t) => !isCryptoTx(t, input.envelopes) && ORDINARY.has(envelopeOf2(t.account, input.envelopes, t.symbol).type);
+    const ordinary = (t) => !isCryptoTx(t, input.envelopes) && ORDINARY.has(envelopeOf2(t.account, input.envelopes, t.symbol, t.isin).type);
     const departs = (o, t) => o.type === "transfer-out" && o.account !== t.account && day3(o.date) === day3(t.date) && ordinary(o) && keyOf3(o) === keyOf3(t);
     for (let i = 0; i < history.length; i++) {
       const t = history[i];
@@ -53864,7 +53864,7 @@ var FranceRegime = class extends TaxRegime {
       i--;
     }
     for (const t of history) {
-      const env2 = envelopeOf2(t.account, input.envelopes, t.symbol);
+      const env2 = envelopeOf2(t.account, input.envelopes, t.symbol, t.isin);
       if (env2.guessed && !guessed.has(t.account)) {
         guessed.add(t.account);
         st.warnings.push(
@@ -54519,7 +54519,7 @@ var UsRegime = class extends TaxRegime {
     const byTx = /* @__PURE__ */ new Map();
     const received = /* @__PURE__ */ new Map();
     for (const t of history) {
-      const env2 = envelopeOf2(t.account, input.envelopes, t.symbol);
+      const env2 = envelopeOf2(t.account, input.envelopes, t.symbol, t.isin);
       const crypto = isCryptoTx(t, input.envelopes);
       const quote2 = t.type === "sell" ? cryptoQuote(t, crypto) : void 0;
       if (quote2) {
@@ -54637,7 +54637,7 @@ var UsRegime = class extends TaxRegime {
       return true;
     };
     const dispose = (t, asset, sym3, qty, proceedsTotal, crypto, extra = []) => {
-      const env2 = envelopeOf2(t.account, input.envelopes, t.symbol);
+      const env2 = envelopeOf2(t.account, input.envelopes, t.symbol, t.isin);
       const base2 = {
         date: day3(t.date),
         account: t.account,
@@ -54778,7 +54778,7 @@ var UsRegime = class extends TaxRegime {
       }
     };
     for (const t of history) {
-      const env2 = envelopeOf2(t.account, input.envelopes, t.symbol);
+      const env2 = envelopeOf2(t.account, input.envelopes, t.symbol, t.isin);
       const sym3 = (t.symbol ?? "").toUpperCase();
       const crypto = isCryptoTx(t, input.envelopes);
       const base2 = { date: day3(t.date), account: t.account, envelope: env2.type, symbol: t.symbol, notes: [] };

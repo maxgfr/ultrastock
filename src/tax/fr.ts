@@ -121,7 +121,7 @@ export class FranceRegime extends TaxRegime {
     // transfer-in without a price of an ordinary account is replayed right after the same day's transfer-out of that
     // security from another ordinary account, so it takes the cost that left — as the ledger's book and the US engine do.
     const history = this.history(input);
-    const ordinary = (t: Transaction) => !isCryptoTx(t, input.envelopes) && ORDINARY.has(envelopeOf(t.account, input.envelopes, t.symbol).type);
+    const ordinary = (t: Transaction) => !isCryptoTx(t, input.envelopes) && ORDINARY.has(envelopeOf(t.account, input.envelopes, t.symbol, t.isin).type);
     const departs = (o: Transaction, t: Transaction) =>
       o.type === "transfer-out" && o.account !== t.account && day(o.date) === day(t.date) && ordinary(o) && keyOf(o) === keyOf(t);
     for (let i = 0; i < history.length; i++) {
@@ -135,7 +135,7 @@ export class FranceRegime extends TaxRegime {
       i--;
     }
     for (const t of history) {
-      const env = envelopeOf(t.account, input.envelopes, t.symbol);
+      const env = envelopeOf(t.account, input.envelopes, t.symbol, t.isin);
       if (env.guessed && !guessed.has(t.account)) {
         guessed.add(t.account);
         st.warnings.push(

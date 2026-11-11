@@ -209,8 +209,17 @@ export function brokerIsForeign(broker?: string): boolean | undefined {
   return undefined;
 }
 
-/** The envelope of an account: the profile's, else a guess from the account id and symbol (named in the warnings). */
-export function envelopeOf(account: string, envelopes: readonly Envelope[], symbol?: string): { type: EnvelopeType; envelope?: Envelope; guessed: boolean } {
+/**
+ * The envelope of an account: the profile's, else a guess from the account id and symbol (named in the warnings). A
+ * listed security — a row with an ISIN or an exchange suffix (GBTC, BTCE.DE) — never makes its account a crypto one,
+ * whatever its ticker ends with.
+ */
+export function envelopeOf(
+  account: string,
+  envelopes: readonly Envelope[],
+  symbol?: string,
+  isin?: string,
+): { type: EnvelopeType; envelope?: Envelope; guessed: boolean } {
   const e = envelopes.find((x) => x.id === account);
   if (e) return { type: e.type, envelope: e, guessed: false };
   const a = account.toLowerCase();
@@ -222,7 +231,7 @@ export function envelopeOf(account: string, envelopes: readonly Envelope[], symb
   if (/ira/.test(a)) return { type: "IRA", guessed: true };
   if (/401k/.test(a)) return { type: "401K", guessed: true };
   if (/binance|kraken|coinbase|bitstamp|bitpanda|ledger|wallet|crypto/.test(a)) return { type: "CRYPTO", guessed: true };
-  if (symbol && !symbol.includes(".") && splitPair(symbol).quote && /USDT|USDC|BTC|ETH|FDUSD/.test(splitPair(symbol).quote!))
+  if (symbol && !isin && !symbol.includes(".") && splitPair(symbol).quote && /USDT|USDC|BTC|ETH|FDUSD/.test(splitPair(symbol).quote!))
     return { type: "CRYPTO", guessed: true };
   return { type: "CTO", guessed: true };
 }
@@ -257,7 +266,7 @@ const KNOWN_COINS = new Set([
  * stablecoin (SOLUSDT). A listed product (an ETP has an ISIN or a suffix: BTCE.DE) stays a security.
  */
 export function isCryptoTx(t: Pick<Transaction, "account" | "symbol" | "currency" | "isin" | "assetClass">, envelopes: readonly Envelope[]): boolean {
-  if (t.assetClass === "crypto" || envelopeOf(t.account, envelopes, t.symbol).type === "CRYPTO") return true;
+  if (t.assetClass === "crypto" || envelopeOf(t.account, envelopes, t.symbol, t.isin).type === "CRYPTO") return true;
   if (!t.symbol || t.isin || t.symbol.includes(".")) return false;
   const { base, quote } = splitPair(t.symbol, t.currency);
   if (!quote) return false;
