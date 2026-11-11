@@ -7,10 +7,12 @@
 // the same `fetchedAt`, which is what makes the offline evals deterministic.
 // A replay that misses throws: silently going live, or returning nothing, would
 // turn a broken gate into a green one.
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { awaitHostSlot, contentHash, httpGet, httpJson, writeFileAtomic } from "../engine.js";
+import { awaitHostSlot, contentHash, httpGet, httpJson, sleep, writeFileAtomic } from "../engine.js";
 import { VERSION } from "../version.js";
+import { withFileLockSync } from "./lock.js";
+import { dataCacheDir } from "./paths.js";
 
 export const CONTACT_URL = "https://github.com/maxgfr/ultrastock";
 export const BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
@@ -183,9 +185,58 @@ export async function fetchText(url: string, opts: FetchOptions = {}): Promise<N
   }
 }
 
+// A host's published pace (GDELT one call per 5 s, the SEC ten a second) is a
+// pace per caller, and two MCP tool calls are two processes. The engine spaces
+// calls within this process and holds them after a 429; across processes each
+// call also reserves the host's next free instant in <cache>/hosts/<host>.next,
+// read and moved on under a lock held for the read and the write only, then
+// sleeps outside it until its instant comes.
+
+/** A reservation further ahead than this many intervals is a clock moved back or a garbled file, not a queue. */
+const MAX_QUEUED_INTERVALS = 200;
+
+function reserveSharedSlot(url: string, intervalMs: number): number {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return 0;
+  }
+  if (!host) return 0;
+  const path = join(dataCacheDir(), "hosts", `${host.replace(/[^a-z0-9.-]/g, "_")}.next`);
+  try {
+    return withFileLockSync(
+      `${path}.lock`,
+      () => {
+        const now = Date.now();
+        let next = 0;
+        try {
+          next = Number(readFileSync(path, "utf8")) || 0;
+        } catch {
+          // the first call to this host
+        }
+        if (next - now > MAX_QUEUED_INTERVALS * intervalMs) next = 0;
+        const at = Math.max(now, next);
+        writeFileSync(path, String(at + intervalMs));
+        return at - now;
+      },
+      2_000,
+    );
+  } catch {
+    return 0; // a cache directory that cannot be written leaves the in-process pacing alone
+  }
+}
+
+/** Wait for a slot to a host that publishes a pace: in this process, after the host's back-off, and across processes. */
+export async function awaitPace(url: string, intervalMs: number): Promise<void> {
+  await awaitHostSlot(url, intervalMs);
+  const wait = reserveSharedSlot(url, intervalMs);
+  if (wait > 0) await sleep(wait);
+}
+
 /** The request itself: paced, sent, and recorded when recording. */
 async function requestText(url: string, opts: FetchOptions, shown: string, key: string): Promise<NetResponse> {
-  if (opts.hostIntervalMs) await awaitHostSlot(url, opts.hostIntervalMs);
+  if (opts.hostIntervalMs) await awaitPace(url, opts.hostIntervalMs);
   const userAgent = !opts.userAgent || opts.userAgent === "browser" ? BROWSER_UA : opts.userAgent;
   const fetchedAt = new Date().toISOString();
   let res: NetResponse;
@@ -259,7 +310,7 @@ export async function fetchBytes(url: string, opts: FetchOptions = {}): Promise<
     const { bodyBase64, contentType, ...response } = rec.response;
     return { ...response, bytes: Buffer.from(bodyBase64 ?? "", "base64"), contentType: contentType ?? "", replayed: true };
   }
-  if (opts.hostIntervalMs) await awaitHostSlot(url, opts.hostIntervalMs);
+  if (opts.hostIntervalMs) await awaitPace(url, opts.hostIntervalMs);
   const userAgent = !opts.userAgent || opts.userAgent === "browser" ? BROWSER_UA : opts.userAgent;
   const fetchedAt = new Date().toISOString();
   const r = await httpGet(url, {

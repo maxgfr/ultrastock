@@ -12850,8 +12850,25 @@ function readDocText(dir2, item) {
 }
 
 // src/core/net.ts
-import { existsSync as existsSync8, mkdirSync as mkdirSync5, readFileSync as readFileSync11 } from "fs";
-import { join as join6 } from "path";
+import { existsSync as existsSync8, mkdirSync as mkdirSync5, readFileSync as readFileSync11, writeFileSync as writeFileSync7 } from "fs";
+import { join as join7 } from "path";
+
+// src/core/paths.ts
+import { homedir as homedir3 } from "os";
+import { join as join6, resolve as resolve2 } from "path";
+function homeDir() {
+  const configured = env("HOME");
+  return configured ? resolve2(configured) : join6(homedir3(), ".ultrastock");
+}
+function runDirFor(out, name) {
+  return out ? resolve2(out) : join6(homeDir(), "runs", name);
+}
+function dataCacheDir() {
+  const configured = env("CACHE_DIR");
+  return configured ? resolve2(configured) : join6(homeDir(), "cache");
+}
+
+// src/core/net.ts
 var CONTACT_URL = "https://github.com/maxgfr/ultrastock";
 var BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 function politeUa(contact) {
@@ -12879,14 +12896,14 @@ function setNetMode(next2) {
   memo.clear();
   if (next2.kind === "record") {
     mkdirSync5(next2.dir, { recursive: true });
-    const meta2 = join6(next2.dir, "fixture.json");
+    const meta2 = join7(next2.dir, "fixture.json");
     if (!existsSync8(meta2)) writeFileAtomic(meta2, `${JSON.stringify({ recordedAt: (/* @__PURE__ */ new Date()).toISOString(), tool: `ultrastock ${VERSION}` }, null, 2)}
 `);
   }
 }
 function clockNow() {
   if (mode2.kind !== "live") {
-    const meta2 = join6(mode2.dir, "fixture.json");
+    const meta2 = join7(mode2.dir, "fixture.json");
     if (existsSync8(meta2)) {
       const at = JSON.parse(readFileSync11(meta2, "utf8")).recordedAt;
       if (at && !Number.isNaN(Date.parse(at))) return new Date(at);
@@ -12909,7 +12926,7 @@ function whole(r3, maxBytes = MAX_BYTES) {
   return r3.ok && r3.truncated ? { ok: false, error: `the response is larger than ${maxBytes} bytes: cut short, not used` } : { ok: r3.ok, error: r3.error };
 }
 function fixturePath(dir2, key) {
-  return join6(dir2, "http", `${key}.json`);
+  return join7(dir2, "http", `${key}.json`);
 }
 async function fetchText(url, opts = {}) {
   const shown = opts.recordAs ?? url;
@@ -12938,8 +12955,44 @@ async function fetchText(url, opts = {}) {
     throw e;
   }
 }
+var MAX_QUEUED_INTERVALS = 200;
+function reserveSharedSlot(url, intervalMs) {
+  let host;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return 0;
+  }
+  if (!host) return 0;
+  const path2 = join7(dataCacheDir(), "hosts", `${host.replace(/[^a-z0-9.-]/g, "_")}.next`);
+  try {
+    return withFileLockSync(
+      `${path2}.lock`,
+      () => {
+        const now = Date.now();
+        let next2 = 0;
+        try {
+          next2 = Number(readFileSync11(path2, "utf8")) || 0;
+        } catch {
+        }
+        if (next2 - now > MAX_QUEUED_INTERVALS * intervalMs) next2 = 0;
+        const at = Math.max(now, next2);
+        writeFileSync7(path2, String(at + intervalMs));
+        return at - now;
+      },
+      2e3
+    );
+  } catch {
+    return 0;
+  }
+}
+async function awaitPace(url, intervalMs) {
+  await awaitHostSlot(url, intervalMs);
+  const wait = reserveSharedSlot(url, intervalMs);
+  if (wait > 0) await sleep(wait);
+}
 async function requestText(url, opts, shown, key) {
-  if (opts.hostIntervalMs) await awaitHostSlot(url, opts.hostIntervalMs);
+  if (opts.hostIntervalMs) await awaitPace(url, opts.hostIntervalMs);
   const userAgent = !opts.userAgent || opts.userAgent === "browser" ? BROWSER_UA : opts.userAgent;
   const fetchedAt = (/* @__PURE__ */ new Date()).toISOString();
   let res;
@@ -12966,7 +13019,7 @@ async function requestText(url, opts, shown, key) {
     res = { ok: r3.ok, status: r3.status, body: r3.data === void 0 ? "" : JSON.stringify(r3.data), url, fetchedAt, error: r3.error };
   }
   if (mode2.kind === "record" && res.ok) {
-    mkdirSync5(join6(mode2.dir, "http"), { recursive: true });
+    mkdirSync5(join7(mode2.dir, "http"), { recursive: true });
     writeFileAtomic(
       fixturePath(mode2.dir, key),
       `${JSON.stringify(
@@ -13000,7 +13053,7 @@ async function fetchBytes(url, opts = {}) {
     const { bodyBase64, contentType, ...response } = rec.response;
     return { ...response, bytes: Buffer.from(bodyBase64 ?? "", "base64"), contentType: contentType ?? "", replayed: true };
   }
-  if (opts.hostIntervalMs) await awaitHostSlot(url, opts.hostIntervalMs);
+  if (opts.hostIntervalMs) await awaitPace(url, opts.hostIntervalMs);
   const userAgent = !opts.userAgent || opts.userAgent === "browser" ? BROWSER_UA : opts.userAgent;
   const fetchedAt = (/* @__PURE__ */ new Date()).toISOString();
   const r3 = await httpGet(url, {
@@ -13025,7 +13078,7 @@ async function fetchBytes(url, opts = {}) {
     contentType: r3.contentType ?? ""
   };
   if (mode2.kind === "record" && res.ok) {
-    mkdirSync5(join6(mode2.dir, "http"), { recursive: true });
+    mkdirSync5(join7(mode2.dir, "http"), { recursive: true });
     const { bytes: _bytes, ...rest } = res;
     writeFileAtomic(
       fixturePath(mode2.dir, key),
@@ -13038,15 +13091,15 @@ async function fetchBytes(url, opts = {}) {
 async function recordedCall(kind, call2, live, keep = () => true) {
   const key = contentHash(JSON.stringify(call2)).slice(0, 20);
   if (mode2.kind === "fixture") {
-    const path2 = join6(mode2.dir, kind, `${key}.json`);
+    const path2 = join7(mode2.dir, kind, `${key}.json`);
     if (!existsSync8(path2))
       throw new FixtureMiss(`fixture ${mode2.dir} has no recorded ${kind} call ${JSON.stringify(call2).slice(0, 160)} \u2014 re-record it with --record`);
     return JSON.parse(readFileSync11(path2, "utf8")).value;
   }
   const value2 = await live();
   if (mode2.kind === "record" && keep(value2)) {
-    mkdirSync5(join6(mode2.dir, kind), { recursive: true });
-    writeFileAtomic(join6(mode2.dir, kind, `${key}.json`), `${JSON.stringify({ call: call2, value: value2 }, null, 1)}
+    mkdirSync5(join7(mode2.dir, kind), { recursive: true });
+    writeFileAtomic(join7(mode2.dir, kind, `${key}.json`), `${JSON.stringify({ call: call2, value: value2 }, null, 1)}
 `);
   }
   return value2;
@@ -13229,25 +13282,8 @@ async function binanceQuote(instrument, notes = []) {
 }
 
 // src/core/cache.ts
-import { closeSync as closeSync3, existsSync as existsSync9, mkdirSync as mkdirSync6, openSync as openSync3, readdirSync as readdirSync4, readFileSync as readFileSync13, readSync, rmSync as rmSync7, statSync as statSync7, utimesSync, writeFileSync as writeFileSync7 } from "fs";
+import { closeSync as closeSync3, existsSync as existsSync9, mkdirSync as mkdirSync6, openSync as openSync3, readdirSync as readdirSync4, readFileSync as readFileSync13, readSync, rmSync as rmSync7, statSync as statSync7, utimesSync, writeFileSync as writeFileSync8 } from "fs";
 import { join as join12 } from "path";
-
-// src/core/paths.ts
-import { homedir as homedir3 } from "os";
-import { join as join7, resolve as resolve2 } from "path";
-function homeDir() {
-  const configured = env("HOME");
-  return configured ? resolve2(configured) : join7(homedir3(), ".ultrastock");
-}
-function runDirFor(out, name) {
-  return out ? resolve2(out) : join7(homeDir(), "runs", name);
-}
-function dataCacheDir() {
-  const configured = env("CACHE_DIR");
-  return configured ? resolve2(configured) : join7(homeDir(), "cache");
-}
-
-// src/core/cache.ts
 var TTL = {
   quote: 6e4,
   intraday: 5 * 6e4,
@@ -13288,7 +13324,7 @@ function sweepDatasetCache(opts = {}) {
     mkdirSync6(dir2, { recursive: true });
     const marker = join12(dir2, SWEEP_MARKER);
     if (existsSync9(marker)) utimesSync(marker, now / 1e3, now / 1e3);
-    else writeFileSync7(marker, "");
+    else writeFileSync8(marker, "");
     const kept = [];
     for (const name of readdirSync4(dir2)) {
       if (!name.endsWith(".json")) continue;
@@ -14918,7 +14954,7 @@ async function fetchBinary(url, opts = {}) {
       replayed: true
     };
   }
-  if (opts.hostIntervalMs) await awaitHostSlot(url, opts.hostIntervalMs);
+  if (opts.hostIntervalMs) await awaitPace(url, opts.hostIntervalMs);
   const fetchedAt = (/* @__PURE__ */ new Date()).toISOString();
   const r3 = await httpGet(url, {
     binary: true,
@@ -21473,7 +21509,7 @@ function followUpAngles(s, under, opts = {}) {
 }
 
 // src/research/delegate.ts
-import { mkdtempSync as mkdtempSync3, readFileSync as readFileSync19, rmSync as rmSync8, writeFileSync as writeFileSync8 } from "fs";
+import { mkdtempSync as mkdtempSync3, readFileSync as readFileSync19, rmSync as rmSync8, writeFileSync as writeFileSync9 } from "fs";
 import { tmpdir as tmpdir4 } from "os";
 import { join as join20 } from "path";
 var SEARCH_DELEGATES = ["claude", "codex", "ccs"];
@@ -21589,7 +21625,7 @@ async function runBatch(who, batch, model) {
   try {
     const schemaFile = join20(work, "schema.json");
     const outFile = join20(work, "answer.json");
-    writeFileSync8(schemaFile, JSON.stringify(SCHEMA));
+    writeFileSync9(schemaFile, JSON.stringify(SCHEMA));
     const { cmd, args } = delegateCommand(who, delegatePrompt(batch.map((q) => q.query)), { model, schemaFile, outFile });
     const r3 = await shAsync(cmd, args, { cwd: work, timeoutMs: CALL_TIMEOUT_MS });
     if (!r3.ok) throw new Error(`${who} exited with an error: ${(r3.stderr || r3.stdout).trim().split("\n").slice(-2).join(" ").slice(0, 240)}`);
@@ -34747,7 +34783,7 @@ function promoted(store, dir2, docId, written, opts) {
 }
 
 // src/commands/report.ts
-import { existsSync as existsSync26, readFileSync as readFileSync29, writeFileSync as writeFileSync9 } from "fs";
+import { existsSync as existsSync26, readFileSync as readFileSync29, writeFileSync as writeFileSync10 } from "fs";
 import { join as join34, resolve as resolve7 } from "path";
 
 // src/report/html.ts
@@ -34923,7 +34959,7 @@ async function reportCommand(args, asJson) {
     return;
   }
   const file = join34(dir2, "report.html");
-  writeFileSync9(file, renderReport(dir2, answer, { generatedAt: clockNow().toISOString().slice(0, 16).replace("T", " ") }), { mode: 384 });
+  writeFileSync10(file, renderReport(dir2, answer, { generatedAt: clockNow().toISOString().slice(0, 16).replace("T", " ") }), { mode: 384 });
   process.stdout.write(asJson ? jsonLine({ ok: true, file }) : `report written: ${file}
 `);
 }
@@ -38806,7 +38842,7 @@ async function predictOrder(args, asJson) {
 }
 
 // src/commands/backtest.ts
-import { existsSync as existsSync31, mkdirSync as mkdirSync23, readFileSync as readFileSync36, writeFileSync as writeFileSync10 } from "fs";
+import { existsSync as existsSync31, mkdirSync as mkdirSync23, readFileSync as readFileSync36, writeFileSync as writeFileSync11 } from "fs";
 import { join as join44, resolve as resolve11 } from "path";
 
 // src/analytics/portfolio.ts
@@ -43618,7 +43654,7 @@ ${v.warnings.map((w) => `warning: ${w}
       const path2 = join44(dir2, `${ref}.json`);
       if (existsSync31(path2)) throw new UsageError(`${path2} already exists \u2014 edit it, or pick another name`);
       mkdirSync23(dir2, { recursive: true });
-      writeFileSync10(path2, `${JSON.stringify(def2, null, 2)}
+      writeFileSync11(path2, `${JSON.stringify(def2, null, 2)}
 `);
       if (asJson) process.stdout.write(jsonLine({ path: path2, strategy: def2 }));
       else process.stdout.write(`wrote ${path2}
@@ -43632,7 +43668,7 @@ edit it, then: ultrastock strategy validate ${ref} && ultrastock backtest run ${
 }
 
 // src/commands/broker.ts
-import { existsSync as existsSync35, mkdirSync as mkdirSync26, writeFileSync as writeFileSync11 } from "fs";
+import { existsSync as existsSync35, mkdirSync as mkdirSync26, writeFileSync as writeFileSync12 } from "fs";
 import { dirname as dirname6 } from "path";
 
 // src/trading/brokers/binance.ts
@@ -45979,7 +46015,7 @@ async function brokerCommand(args, asJson) {
   }
   if (sub === "panic") {
     mkdirSync26(dirname6(killSwitchPath()), { recursive: true });
-    if (!existsSync35(killSwitchPath())) writeFileSync11(killSwitchPath(), `kill switch set by \`broker panic\` at ${now.toISOString()}
+    if (!existsSync35(killSwitchPath())) writeFileSync12(killSwitchPath(), `kill switch set by \`broker panic\` at ${now.toISOString()}
 `);
     audit({ event: "panic" });
     const results = [];
@@ -46112,7 +46148,7 @@ function pendingLive() {
 // src/mcp.ts
 import { execFile } from "child_process";
 import { randomBytes as randomBytes4 } from "crypto";
-import { mkdtempSync as mkdtempSync5, realpathSync as realpathSync4, rmSync as rmSync11, writeFileSync as writeFileSync12 } from "fs";
+import { mkdtempSync as mkdtempSync5, realpathSync as realpathSync4, rmSync as rmSync11, writeFileSync as writeFileSync13 } from "fs";
 import { tmpdir as tmpdir6 } from "os";
 import { basename as basename3, dirname as dirname7, isAbsolute as isAbsolute4, join as join49, relative as relative3, resolve as resolve12 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
@@ -46622,7 +46658,7 @@ function mcpAdapter(run3 = runBundle) {
       const dir2 = mkdtempSync5(join49(tmpdir6(), "ultrastock-hits-"));
       try {
         const file = join49(dir2, "websearch.json");
-        writeFileSync12(file, JSON.stringify(hits));
+        writeFileSync13(file, JSON.stringify(hits));
         return { text: await run3([...argvFor(t, given).filter((a) => a !== "--json"), `--web-results=${file}`, "--json"], ctx?.signal) };
       } finally {
         rmSync11(dir2, { recursive: true, force: true });
@@ -52837,7 +52873,7 @@ ${checklist.map((c) => `- ${c.rule} (verified ${c.verifiedAt}): "${c.query}" \u2
 }
 
 // src/commands/tax.ts
-import { mkdirSync as mkdirSync30, writeFileSync as writeFileSync13 } from "fs";
+import { mkdirSync as mkdirSync30, writeFileSync as writeFileSync14 } from "fs";
 import { join as join55, resolve as resolve18 } from "path";
 
 // src/tax/export.ts
@@ -54416,7 +54452,7 @@ ${pn.join("\n")}` : ""}`
     if (!out) return void process.stdout.write(csv);
     mkdirSync30(resolve18(out), { recursive: true });
     const file = join55(resolve18(out), `tax-${regime.id}-${year}-${format}.csv`);
-    writeFileSync13(file, csv, { mode: 384 });
+    writeFileSync14(file, csv, { mode: 384 });
     return printResult(asJson, { file, rows: csv.split("\r\n").length - 2 }, `written ${file}`);
   }
   throw new UsageError(USAGE4);

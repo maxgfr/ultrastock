@@ -8,8 +8,8 @@
 // a text request for the same URL. Replay never goes live; a miss throws.
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { awaitHostSlot, contentHash, httpGet, writeFileAtomic } from "../../engine.js";
-import { BROWSER_UA, FixtureMiss, netMode } from "../../core/net.js";
+import { contentHash, httpGet, writeFileAtomic } from "../../engine.js";
+import { awaitPace, BROWSER_UA, FixtureMiss, netMode } from "../../core/net.js";
 
 export interface BinaryResponse {
   ok: boolean;
@@ -60,7 +60,7 @@ export async function fetchBinary(url: string, opts: BinaryOptions = {}): Promis
       replayed: true,
     };
   }
-  if (opts.hostIntervalMs) await awaitHostSlot(url, opts.hostIntervalMs);
+  if (opts.hostIntervalMs) await awaitPace(url, opts.hostIntervalMs);
   const fetchedAt = new Date().toISOString();
   const r = await httpGet(url, {
     binary: true,
