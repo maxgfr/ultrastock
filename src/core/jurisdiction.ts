@@ -1,8 +1,9 @@
 // What the investor's country allows. Rules change — a regulator blacklists a
 // platform, a transitional period ends — so each rule carries its sources and
 // the date it was last verified, `jurisdiction verify` re-checks what can be
-// checked from public registers (ESMA's MiCA registers, the DNS block the ANJ
-// imposes on Polymarket) and lists what must be checked by a web search.
+// checked from public registers (ESMA's MiCA registers — their CSV links
+// discovered on ESMA's page —, the DNS block the ANJ imposes on Polymarket)
+// and lists what must be checked by a web search.
 //
 // Fail-closed: a venue or an asset whose status is unknown in a jurisdiction is
 // readable and paper-tradable, never live-tradable.
@@ -155,11 +156,17 @@ export async function checkDnsBlock(host: string): Promise<DnsBlockCheck> {
   }
 }
 
-const ESMA_CASPS = "https://www.esma.europa.eu/sites/default/files/2024-12/CASPS.csv";
-const ESMA_NCASP = "https://www.esma.europa.eu/sites/default/files/2024-12/NCASP.csv";
+/** ESMA's page that links the interim MiCA register's CSV files. */
+export const ESMA_MICA_PAGE = "https://www.esma.europa.eu/esmas-activities/digital-finance-and-innovation/markets-crypto-assets-regulation-mica";
+/** The last-resort copies, at the dated path they were first published under: used only when the page lists none, and said so. */
+const ESMA_FALLBACK = {
+  casps: "https://www.esma.europa.eu/sites/default/files/2024-12/CASPS.csv",
+  ncasp: "https://www.esma.europa.eu/sites/default/files/2024-12/NCASP.csv",
+};
 
 export interface CaspEntry {
   name: string;
+  lei: string;
   commercialName: string;
   homeState: string;
   authority: string;
@@ -172,9 +179,48 @@ export interface MicaCheck {
   venue: string;
   authorised: CaspEntry[];
   /** Entries in ESMA's register of non-compliant entities. */
-  warnings: Array<{ name: string; authority: string; reason: string; decidedOn: string }>;
+  warnings: Array<{ name: string; lei: string; authority: string; reason: string; decidedOn: string }>;
   url: string;
   fetchedAt: string;
+  /** How the register was found and matched: a fallback copy, name matches set aside. */
+  notes: string[];
+}
+
+/** The CSV links ESMA's page carries, newest dated folder first; undefined when the page lists none. */
+export function esmaRegisterLinks(html: string, base = ESMA_MICA_PAGE): { casps: string; ncasp: string } | undefined {
+  const links = [...html.matchAll(/href\s*=\s*["']([^"']+\.csv(?:\?[^"']*)?)["']/gi)].map((m) => {
+    try {
+      return new URL(m[1]!.replace(/&amp;/g, "&"), base).toString();
+    } catch {
+      return "";
+    }
+  });
+  const dated = (u: string) => /\/(\d{4})-(\d{2})\//.exec(u)?.slice(1).join("") ?? "";
+  const pick = (name: RegExp) => links.filter((u) => name.test(u.split("?")[0]!.split("/").pop() ?? "")).sort((a, b) => dated(b).localeCompare(dated(a)))[0];
+  const casps = pick(/^CASPS?\.csv$/i);
+  const ncasp = pick(/^NCASPS?\.csv$/i);
+  return casps && ncasp ? { casps, ncasp } : undefined;
+}
+
+/** Where the register's CSV files are now: from ESMA's page, else the dated fallback (reported). Cached for a day. */
+async function esmaLinks(): Promise<{ casps: string; ncasp: string; note?: string }> {
+  let why = "";
+  try {
+    const found = await cachedJson("esma:mica-links", TTL.fundamentals, async () => {
+      const res = await fetchText(ESMA_MICA_PAGE, { accept: "text/html,*/*" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const l = esmaRegisterLinks(res.body, res.url || ESMA_MICA_PAGE);
+      if (!l) throw new Error("the page lists no CASPS.csv / NCASP.csv link");
+      return l;
+    });
+    if (found) return found;
+  } catch (e) {
+    why = (e as Error).message.split("\n")[0]!.slice(0, 120);
+  }
+  return {
+    ...ESMA_FALLBACK,
+    note: `ESMA's MiCA page did not give the register's current links (${why || "no answer"}): read the copy at its first dated path ${ESMA_FALLBACK.casps}, which may be out of date`,
+  };
 }
 
 /** The registers' rows, cached for a day (ESMA updates them weekly). */
@@ -189,35 +235,59 @@ async function esmaRegister(url: string): Promise<{ rows: Record<string, string>
   return r!;
 }
 
-/** Is a crypto venue (Binance, Kraken, Coinbase…) an authorised MiCA CASP able to serve `country`? */
-export async function checkMica(venue: string, country = "FR"): Promise<MicaCheck> {
+/** Names a venue is registered under besides its own (Kraken's EU entity is Payward). Matching hints, not rules. */
+const VENUE_ALIASES: Record<string, string[]> = { kraken: ["kraken", "payward"] };
+
+/**
+ * Is a crypto venue (Binance, Kraken, Coinbase…) an authorised MiCA CASP able to serve `country`? An entry serves its
+ * home state, and the states it notified a passport for — an entry with no passport list serves its home state only.
+ * With the venue's LEI, the register is matched on it; without, on the name, then on the LEIs of the entries it found.
+ */
+export async function checkMica(venue: string, country = "FR", opts: { lei?: string } = {}): Promise<MicaCheck> {
+  const c = country.toUpperCase();
   const needle = venue.toLowerCase();
-  const aliases = needle === "kraken" ? ["kraken", "payward"] : [needle];
-  const hit = (r: Record<string, string>) =>
+  const aliases = VENUE_ALIASES[needle] ?? [needle];
+  const lei = opts.lei?.trim().toUpperCase();
+  const named = (r: Record<string, string>) =>
     aliases.some((a) => `${r.ae_lei_name ?? ""} ${r.ae_commercial_name ?? ""} ${r.ae_website ?? ""}`.toLowerCase().includes(a));
-  const [casps, ncasp] = await Promise.all([esmaRegister(ESMA_CASPS), esmaRegister(ESMA_NCASP)]);
+  const notes: string[] = [];
+  const links = await esmaLinks();
+  if (links.note) notes.push(links.note);
+  const [casps, ncasp] = await Promise.all([esmaRegister(links.casps), esmaRegister(links.ncasp)]);
+  const leiOf = (r: Record<string, string>) => (r.ae_lei ?? "").trim().toUpperCase();
+  let hit: (r: Record<string, string>) => boolean;
+  if (lei) {
+    hit = (r) => leiOf(r) === lei || (!leiOf(r) && named(r));
+    const others = [...new Set(casps.rows.filter((r) => named(r) && leiOf(r) && leiOf(r) !== lei).map(leiOf))];
+    if (others.length) notes.push(`entries named like ${venue} under another LEI (${others.join(", ")}) are not counted: matched on LEI ${lei}`);
+  } else {
+    const leis = new Set(casps.rows.filter(named).map(leiOf).filter(Boolean));
+    hit = (r) => named(r) || (!!leiOf(r) && leis.has(leiOf(r)));
+  }
   const authorised = casps.rows
     .filter(hit)
     .map((r) => ({
       name: r.ae_lei_name ?? "",
+      lei: leiOf(r),
       commercialName: r.ae_commercial_name ?? "",
-      homeState: r.ae_homeMemberState ?? "",
+      homeState: (r.ae_homeMemberState ?? "").toUpperCase(),
       authority: r.ae_competentAuthority ?? "",
       authorisedOn: r.ac_authorisationNotificationDate ?? "",
       passportedTo: (r.ac_serviceCode_cou ?? "")
         .split("|")
-        .map((s) => s.trim())
+        .map((s) => s.trim().toUpperCase())
         .filter(Boolean),
       website: r.ae_website ?? "",
     }))
-    .filter((e) => e.homeState === country || e.passportedTo.includes(country) || e.passportedTo.length === 0);
+    .filter((e) => e.homeState === c || e.passportedTo.includes(c));
   const warnings = ncasp.rows.filter(hit).map((r) => ({
     name: r.ae_lei_name || r.ae_commercial_name || "",
+    lei: leiOf(r),
     authority: r.ae_competentAuthority ?? "",
     reason: r.ae_reason ?? "",
     decidedOn: r.ae_decision_date ?? "",
   }));
-  return { venue, authorised, warnings, url: ESMA_CASPS, fetchedAt: casps.fetchedAt };
+  return { venue, authorised, warnings, url: links.casps, fetchedAt: casps.fetchedAt, notes };
 }
 
 /** What a web search must confirm, rule by rule, because no register answers it. */

@@ -17551,8 +17551,44 @@ async function checkDnsBlock(host) {
     return { host, blocked: false, detail: `does not resolve (${e.message})` };
   }
 }
-var ESMA_CASPS = "https://www.esma.europa.eu/sites/default/files/2024-12/CASPS.csv";
-var ESMA_NCASP = "https://www.esma.europa.eu/sites/default/files/2024-12/NCASP.csv";
+var ESMA_MICA_PAGE = "https://www.esma.europa.eu/esmas-activities/digital-finance-and-innovation/markets-crypto-assets-regulation-mica";
+var ESMA_FALLBACK = {
+  casps: "https://www.esma.europa.eu/sites/default/files/2024-12/CASPS.csv",
+  ncasp: "https://www.esma.europa.eu/sites/default/files/2024-12/NCASP.csv"
+};
+function esmaRegisterLinks(html, base2 = ESMA_MICA_PAGE) {
+  const links = [...html.matchAll(/href\s*=\s*["']([^"']+\.csv(?:\?[^"']*)?)["']/gi)].map((m) => {
+    try {
+      return new URL(m[1].replace(/&amp;/g, "&"), base2).toString();
+    } catch {
+      return "";
+    }
+  });
+  const dated = (u) => /\/(\d{4})-(\d{2})\//.exec(u)?.slice(1).join("") ?? "";
+  const pick3 = (name) => links.filter((u) => name.test(u.split("?")[0].split("/").pop() ?? "")).sort((a, b) => dated(b).localeCompare(dated(a)))[0];
+  const casps = pick3(/^CASPS?\.csv$/i);
+  const ncasp = pick3(/^NCASPS?\.csv$/i);
+  return casps && ncasp ? { casps, ncasp } : void 0;
+}
+async function esmaLinks() {
+  let why2 = "";
+  try {
+    const found = await cachedJson("esma:mica-links", TTL.fundamentals, async () => {
+      const res = await fetchText(ESMA_MICA_PAGE, { accept: "text/html,*/*" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const l = esmaRegisterLinks(res.body, res.url || ESMA_MICA_PAGE);
+      if (!l) throw new Error("the page lists no CASPS.csv / NCASP.csv link");
+      return l;
+    });
+    if (found) return found;
+  } catch (e) {
+    why2 = e.message.split("\n")[0].slice(0, 120);
+  }
+  return {
+    ...ESMA_FALLBACK,
+    note: `ESMA's MiCA page did not give the register's current links (${why2 || "no answer"}): read the copy at its first dated path ${ESMA_FALLBACK.casps}, which may be out of date`
+  };
+}
 async function esmaRegister(url) {
   const r3 = await cachedJson(`esma:${url}`, TTL.fundamentals, async () => {
     const res = await fetchText(url, { accept: "text/csv,*/*" });
@@ -17563,27 +17599,45 @@ async function esmaRegister(url) {
   });
   return r3;
 }
-async function checkMica(venue, country2 = "FR") {
+var VENUE_ALIASES = { kraken: ["kraken", "payward"] };
+async function checkMica(venue, country2 = "FR", opts = {}) {
+  const c = country2.toUpperCase();
   const needle = venue.toLowerCase();
-  const aliases = needle === "kraken" ? ["kraken", "payward"] : [needle];
-  const hit = (r3) => aliases.some((a) => `${r3.ae_lei_name ?? ""} ${r3.ae_commercial_name ?? ""} ${r3.ae_website ?? ""}`.toLowerCase().includes(a));
-  const [casps, ncasp] = await Promise.all([esmaRegister(ESMA_CASPS), esmaRegister(ESMA_NCASP)]);
+  const aliases = VENUE_ALIASES[needle] ?? [needle];
+  const lei = opts.lei?.trim().toUpperCase();
+  const named = (r3) => aliases.some((a) => `${r3.ae_lei_name ?? ""} ${r3.ae_commercial_name ?? ""} ${r3.ae_website ?? ""}`.toLowerCase().includes(a));
+  const notes = [];
+  const links = await esmaLinks();
+  if (links.note) notes.push(links.note);
+  const [casps, ncasp] = await Promise.all([esmaRegister(links.casps), esmaRegister(links.ncasp)]);
+  const leiOf = (r3) => (r3.ae_lei ?? "").trim().toUpperCase();
+  let hit;
+  if (lei) {
+    hit = (r3) => leiOf(r3) === lei || !leiOf(r3) && named(r3);
+    const others = [...new Set(casps.rows.filter((r3) => named(r3) && leiOf(r3) && leiOf(r3) !== lei).map(leiOf))];
+    if (others.length) notes.push(`entries named like ${venue} under another LEI (${others.join(", ")}) are not counted: matched on LEI ${lei}`);
+  } else {
+    const leis = new Set(casps.rows.filter(named).map(leiOf).filter(Boolean));
+    hit = (r3) => named(r3) || !!leiOf(r3) && leis.has(leiOf(r3));
+  }
   const authorised = casps.rows.filter(hit).map((r3) => ({
     name: r3.ae_lei_name ?? "",
+    lei: leiOf(r3),
     commercialName: r3.ae_commercial_name ?? "",
-    homeState: r3.ae_homeMemberState ?? "",
+    homeState: (r3.ae_homeMemberState ?? "").toUpperCase(),
     authority: r3.ae_competentAuthority ?? "",
     authorisedOn: r3.ac_authorisationNotificationDate ?? "",
-    passportedTo: (r3.ac_serviceCode_cou ?? "").split("|").map((s) => s.trim()).filter(Boolean),
+    passportedTo: (r3.ac_serviceCode_cou ?? "").split("|").map((s) => s.trim().toUpperCase()).filter(Boolean),
     website: r3.ae_website ?? ""
-  })).filter((e) => e.homeState === country2 || e.passportedTo.includes(country2) || e.passportedTo.length === 0);
+  })).filter((e) => e.homeState === c || e.passportedTo.includes(c));
   const warnings = ncasp.rows.filter(hit).map((r3) => ({
     name: r3.ae_lei_name || r3.ae_commercial_name || "",
+    lei: leiOf(r3),
     authority: r3.ae_competentAuthority ?? "",
     reason: r3.ae_reason ?? "",
     decidedOn: r3.ae_decision_date ?? ""
   }));
-  return { venue, authorised, warnings, url: ESMA_CASPS, fetchedAt: casps.fetchedAt };
+  return { venue, authorised, warnings, url: links.casps, fetchedAt: casps.fetchedAt, notes };
 }
 function verifyChecklist(code) {
   return rulesFor(code).rules.map((r3) => ({
