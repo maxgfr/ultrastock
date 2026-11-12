@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { checkMica, cryptoVenueGate, ESMA_MICA_PAGE, JURISDICTION } from "../src/core/jurisdiction.js";
+import { checkMica, cryptoVenueGate, ESMA_MICA_PAGE, JURISDICTION, rulesFor } from "../src/core/jurisdiction.js";
 import { clockNow, setNetMode } from "../src/core/net.js";
 import { homeDir } from "../src/core/paths.js";
 import { saveFacts } from "../src/core/researched.js";
@@ -176,5 +176,22 @@ describe("the register writes Greece both ways", () => {
     // A home state written EL serves a resident of GR, and a country given as EL reads the same rows.
     expect((await checkMica("athens", "GR")).authorised.map((e) => e.homeState)).toEqual(["GR"]);
     expect((await checkMica("coinbase", "EL")).authorised).toHaveLength(1);
+  });
+});
+
+describe("what `jurisdiction show` says of a researched register", () => {
+  it("does not report a researched crypto-register (esma-mica) as UNKNOWN", () => {
+    installJurisdictionTestFacts({ FR: FR_ESMA });
+    const r = rulesFor("FR").rules.find((x) => x.id === "crypto-register")!;
+    expect(r.researched).toBe(true);
+    expect(r.status).not.toBe("unknown");
+    expect(r.status).toBe("esma-mica");
+  });
+
+  it("shows a researched LEI as the LEI, and a status rule as its status", () => {
+    installJurisdictionTestFacts({ FR: { ...FR_ESMA, "cryptoVenue.kraken.lei": "9845003D98SCC2851458" } });
+    const rules = rulesFor("FR").rules;
+    expect(rules.find((x) => x.id === "cryptoVenue.kraken.lei")).toMatchObject({ status: "9845003D98SCC2851458", researched: true });
+    expect(rules.find((x) => x.id === "crypto-casp")?.status).toBe("restricted");
   });
 });

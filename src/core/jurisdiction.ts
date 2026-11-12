@@ -39,7 +39,8 @@ export const STATUSES: readonly Status[] = ["allowed", "restricted", "blocked", 
 
 export interface Rule {
   id: string;
-  status: Status;
+  /** A status rule's status; a value rule's researched value (crypto-register "esma-mica", an LEI); "unknown" when none. */
+  status: Status | (string & {});
   summary: string;
   sources: Array<{ label: string; url: string }>;
   verifiedAt: string;
@@ -277,6 +278,13 @@ export function ruleWhy(r: RuleReading, code: string): string {
   return `${r.note}${r.verifiedAt ? ` (researched ${r.verifiedAt}${r.sources[0] ? `, ${r.sources[0]}` : ""})` : ""}`;
 }
 
+/** What a reading shows: a key that holds a value rather than a status (crypto-register, a venue's LEI) shows the value it was researched as. */
+function shownStatus(code: string, r: RuleReading): string {
+  if (r.unresearched) return r.status;
+  const v = factReading(code, r.id).value;
+  return typeof v === "string" && v.trim() && !(STATUSES as readonly string[]).includes(v) ? v.trim() : r.status;
+}
+
 /** Every rule for a country, researched or not: a key with no current fact is listed as unknown with the command to research it. */
 export function rulesFor(code: string): JurisdictionRules {
   const c = code.toUpperCase();
@@ -290,7 +298,7 @@ export function rulesFor(code: string): JurisdictionRules {
       const r = ruleFact(c, id);
       return {
         id,
-        status: r.status,
+        status: shownStatus(c, r),
         summary: r.unresearched ? `${r.unresearched} — \`${r.research}\`` : r.note,
         sources: r.sources.map((url) => ({ label: hostOf(url), url })),
         verifiedAt: r.verifiedAt ?? "",
@@ -317,7 +325,7 @@ export function verifyChecklist(
     const r = ruleFact(c, s.key);
     return {
       rule: s.key,
-      current: `${r.status}: ${r.unresearched ?? r.note}`,
+      current: `${shownStatus(c, r)}: ${r.unresearched ?? r.note}`,
       verifiedAt: r.verifiedAt ?? "",
       query: s.query,
       sources: r.sources,

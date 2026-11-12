@@ -17989,6 +17989,11 @@ function ruleWhy(r3, code) {
   if (r3.status === "unknown") return `the ${code.toUpperCase()} research concluded unknown (${r3.note}) \u2014 research it again: \`${r3.research}\``;
   return `${r3.note}${r3.verifiedAt ? ` (researched ${r3.verifiedAt}${r3.sources[0] ? `, ${r3.sources[0]}` : ""})` : ""}`;
 }
+function shownStatus(code, r3) {
+  if (r3.unresearched) return r3.status;
+  const v = factReading(code, r3.id).value;
+  return typeof v === "string" && v.trim() && !STATUSES.includes(v) ? v.trim() : r3.status;
+}
 function rulesFor(code) {
   const c = code.toUpperCase();
   const keys = /^[A-Z]{2}$/.test(c) ? jurisdictionKeys(c).map((s) => s.key) : [];
@@ -18003,7 +18008,7 @@ function rulesFor(code) {
       const r3 = ruleFact(c, id);
       return {
         id,
-        status: r3.status,
+        status: shownStatus(c, r3),
         summary: r3.unresearched ? `${r3.unresearched} \u2014 \`${r3.research}\`` : r3.note,
         sources: r3.sources.map((url) => ({ label: hostOf3(url), url })),
         verifiedAt: r3.verifiedAt ?? "",
@@ -18025,7 +18030,7 @@ function verifyChecklist(code) {
     const r3 = ruleFact(c, s.key);
     return {
       rule: s.key,
-      current: `${r3.status}: ${r3.unresearched ?? r3.note}`,
+      current: `${shownStatus(c, r3)}: ${r3.unresearched ?? r3.note}`,
       verifiedAt: r3.verifiedAt ?? "",
       query: s.query,
       sources: r3.sources,
