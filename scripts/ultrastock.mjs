@@ -60020,8 +60020,10 @@ async function etfPropose(dir2, o) {
   const jurisdiction = profile?.jurisdiction ?? "FR";
   const usEtf = ruleFact(jurisdiction, "us-domiciled-etf");
   const priips = usEtf.status !== "allowed";
-  const pficRule = jurisdictionKeys(jurisdiction).some((k) => k.key === "pfic") ? ruleFact(jurisdiction, "pfic") : void 0;
+  const taxResidence = (profile?.taxResidence || jurisdiction).toUpperCase();
+  const pficRule = jurisdictionKeys(taxResidence).some((k) => k.key === "pfic") ? ruleFact(taxResidence, "pfic") : void 0;
   const pfic = !!pficRule && pficRule.status !== "allowed";
+  const taxWhere = taxResidence === jurisdiction.toUpperCase() ? taxResidence : `${taxResidence} (tax residence)`;
   const currency = (o.currency ?? profile?.baseCurrency ?? "EUR").toUpperCase();
   const goalSplit = ETF_GOAL_SPLITS[o.goal];
   const distribution = o.distribution ?? goalSplit.distribution;
@@ -60029,7 +60031,12 @@ async function etfPropose(dir2, o) {
   const impossible = [];
   if (!profile) notes.push(noProfileNote(o.envelope, o.currency === void 0));
   if (priips) notes.push(`US-domiciled funds left out: retail access is ${usEtf.status} for ${jurisdiction} \u2014 ${ruleWhy(usEtf, jurisdiction)}`);
-  if (pfic && pficRule) notes.push(`non-US funds left out: the PFIC rule is ${pficRule.status} for ${jurisdiction} \u2014 ${ruleWhy(pficRule, jurisdiction)}`);
+  if (pfic && pficRule) notes.push(`non-US funds left out: the PFIC rule is ${pficRule.status} for ${taxWhere} \u2014 ${ruleWhy(pficRule, taxResidence)}`);
+  const noFundAnywhere = priips && pfic;
+  if (noFundAnywhere)
+    notes.push(
+      `no fund can be proposed: US-domiciled funds are left out for ${jurisdiction} (retail access) and non-US funds for ${taxWhere} (PFIC) \u2014 the lines below stay unfilled; settle the rules with \`ultrastock jurisdiction show\``
+    );
   if (o.envelope === "pea" && jurisdiction !== "FR") notes.push(`a PEA is a French envelope; the profile's jurisdiction is ${jurisdiction}`);
   if (o.envelope === "av")
     notes.push(
@@ -60136,6 +60143,10 @@ async function etfPropose(dir2, o) {
   for (const w of work) screen(w);
   for (const w of work) {
     if (w.scored.length || !isPea(w)) continue;
+    if (noFundAnywhere) {
+      impossible.push(`${w.line.bucket.label} (${w.line.weightPct} %) \u2014 no fund on any domicile passes both the retail-access and the PFIC rules`);
+      continue;
+    }
     const head = work.find((x) => x !== w && x.inside && x.line.bucket.sleeve === "equity" && x.scored.length);
     const why2 = `no PEA-eligible fund on its indexes passes the filters (issuer flag or name hint, UCITS, AUM \u2265 ${ETF_MIN_AUM / 1e6} M, ${ETF_MIN_YEARS} year)`;
     if (w.line.bucket.sleeve === "equity" && head) {
@@ -60407,6 +60418,7 @@ async function etfPropose(dir2, o) {
       usEtfStatus: usEtf.status,
       pfic,
       jurisdiction,
+      taxResidence,
       amount: o.amount,
       hedged: !!o.hedged,
       work: lines,
@@ -60430,7 +60442,7 @@ function etfProposalMarkdown(r3, store, c) {
     "",
     `- Risk score ${show(by("ETF.propose.riskScore"))} (${r3.riskSource === "profile" ? "from the profile's suitability questionnaire" : "as given with --risk"}) \u2192 equity share ${show(by("ETF.propose.equityShare"))}.`,
     ...c.amount !== void 0 ? [`- Amount ${show(by("ETF.propose.amount"))}.`] : [],
-    `- Listings in ${c.currency}${c.distribution ? `, ${c.distribution === "acc" ? "accumulating" : "distributing"} share classes` : ""}${c.hedged ? ", hedged share classes allowed" : ", no currency-hedged share class"}; ${c.priips ? `UCITS only, US-domiciled funds left out (the researched ${c.jurisdiction} rule on retail access to them reads ${c.usEtfStatus}: \`ultrastock jurisdiction show\`)` : `the researched ${c.jurisdiction} rule allows US-domiciled funds`}${c.pfic ? `; non-US funds left out (the researched ${c.jurisdiction} PFIC rule is not "allowed")` : ""}.`,
+    `- Listings in ${c.currency}${c.distribution ? `, ${c.distribution === "acc" ? "accumulating" : "distributing"} share classes` : ""}${c.hedged ? ", hedged share classes allowed" : ", no currency-hedged share class"}; ${c.priips ? `UCITS only, US-domiciled funds left out (the researched ${c.jurisdiction} rule on retail access to them reads ${c.usEtfStatus}: \`ultrastock jurisdiction show\`)` : `the researched ${c.jurisdiction} rule allows US-domiciled funds`}${c.pfic ? `; non-US funds left out (the researched ${c.taxResidence} PFIC rule is not "allowed"${c.taxResidence !== c.jurisdiction ? ": read for the tax residence" : ""})` : ""}.`,
     "",
     "## Allocation",
     "",

@@ -619,8 +619,12 @@ export async function etfPropose(dir: string, o: EtfProposeOptions): Promise<Etf
   // The researched rules of the investor's country (core/jurisdiction.ts): anything but "allowed" leaves the funds out.
   const usEtf = ruleFact(jurisdiction, "us-domiciled-etf");
   const priips = usEtf.status !== "allowed";
-  const pficRule = jurisdictionKeys(jurisdiction).some((k) => k.key === "pfic") ? ruleFact(jurisdiction, "pfic") : undefined;
+  // Access rules (PRIIPs) follow the country of residence; a TAX rule — PFIC, on "a US person" — follows the profile's
+  // tax residence, which may differ (a US citizen living in France), falling back to the residence.
+  const taxResidence = (profile?.taxResidence || jurisdiction).toUpperCase();
+  const pficRule = jurisdictionKeys(taxResidence).some((k) => k.key === "pfic") ? ruleFact(taxResidence, "pfic") : undefined;
   const pfic = !!pficRule && pficRule.status !== "allowed";
+  const taxWhere = taxResidence === jurisdiction.toUpperCase() ? taxResidence : `${taxResidence} (tax residence)`;
   const currency = (o.currency ?? profile?.baseCurrency ?? "EUR").toUpperCase();
   const goalSplit = ETF_GOAL_SPLITS[o.goal];
   const distribution = o.distribution ?? goalSplit.distribution;
@@ -628,7 +632,13 @@ export async function etfPropose(dir: string, o: EtfProposeOptions): Promise<Etf
   const impossible: string[] = [];
   if (!profile) notes.push(noProfileNote(o.envelope, o.currency === undefined));
   if (priips) notes.push(`US-domiciled funds left out: retail access is ${usEtf.status} for ${jurisdiction} — ${ruleWhy(usEtf, jurisdiction)}`);
-  if (pfic && pficRule) notes.push(`non-US funds left out: the PFIC rule is ${pficRule.status} for ${jurisdiction} — ${ruleWhy(pficRule, jurisdiction)}`);
+  if (pfic && pficRule) notes.push(`non-US funds left out: the PFIC rule is ${pficRule.status} for ${taxWhere} — ${ruleWhy(pficRule, taxResidence)}`);
+  // Both rules together leave no domicile at all: no fund can be proposed, inside an envelope or out of it.
+  const noFundAnywhere = priips && pfic;
+  if (noFundAnywhere)
+    notes.push(
+      `no fund can be proposed: US-domiciled funds are left out for ${jurisdiction} (retail access) and non-US funds for ${taxWhere} (PFIC) — the lines below stay unfilled; settle the rules with \`ultrastock jurisdiction show\``,
+    );
   if (o.envelope === "pea" && jurisdiction !== "FR") notes.push(`a PEA is a French envelope; the profile's jurisdiction is ${jurisdiction}`);
   if (o.envelope === "av")
     notes.push(
@@ -758,6 +768,11 @@ export async function etfPropose(dir: string, o: EtfProposeOptions): Promise<Etf
   // A line a PEA cannot fill: an equity bucket folds into the PEA's world line; anything else goes outside.
   for (const w of work) {
     if (w.scored.length || !isPea(w)) continue;
+    // Outside the PEA the same two rules apply: there is nothing to move the line to.
+    if (noFundAnywhere) {
+      impossible.push(`${w.line.bucket.label} (${w.line.weightPct} %) — no fund on any domicile passes both the retail-access and the PFIC rules`);
+      continue;
+    }
     const head = work.find((x) => x !== w && x.inside && x.line.bucket.sleeve === "equity" && x.scored.length);
     const why = `no PEA-eligible fund on its indexes passes the filters (issuer flag or name hint, UCITS, AUM ≥ ${ETF_MIN_AUM / 1e6} M, ${ETF_MIN_YEARS} year)`;
     if (w.line.bucket.sleeve === "equity" && head) {
@@ -1045,6 +1060,7 @@ export async function etfPropose(dir: string, o: EtfProposeOptions): Promise<Etf
       usEtfStatus: usEtf.status,
       pfic,
       jurisdiction,
+      taxResidence,
       amount: o.amount,
       hedged: !!o.hedged,
       work: lines,
@@ -1066,6 +1082,8 @@ function etfProposalMarkdown(
     usEtfStatus: string;
     pfic: boolean;
     jurisdiction: string;
+    /** The country the tax rules (PFIC) were read for. */
+    taxResidence: string;
     amount?: number;
     hedged: boolean;
     work: Array<{ line: EtfAllocationLine; inside: boolean; scored: EtfScored[] }>;
@@ -1086,7 +1104,7 @@ function etfProposalMarkdown(
     "",
     `- Risk score ${show(by("ETF.propose.riskScore"))} (${r.riskSource === "profile" ? "from the profile's suitability questionnaire" : "as given with --risk"}) → equity share ${show(by("ETF.propose.equityShare"))}.`,
     ...(c.amount !== undefined ? [`- Amount ${show(by("ETF.propose.amount"))}.`] : []),
-    `- Listings in ${c.currency}${c.distribution ? `, ${c.distribution === "acc" ? "accumulating" : "distributing"} share classes` : ""}${c.hedged ? ", hedged share classes allowed" : ", no currency-hedged share class"}; ${c.priips ? `UCITS only, US-domiciled funds left out (the researched ${c.jurisdiction} rule on retail access to them reads ${c.usEtfStatus}: \`ultrastock jurisdiction show\`)` : `the researched ${c.jurisdiction} rule allows US-domiciled funds`}${c.pfic ? `; non-US funds left out (the researched ${c.jurisdiction} PFIC rule is not "allowed")` : ""}.`,
+    `- Listings in ${c.currency}${c.distribution ? `, ${c.distribution === "acc" ? "accumulating" : "distributing"} share classes` : ""}${c.hedged ? ", hedged share classes allowed" : ", no currency-hedged share class"}; ${c.priips ? `UCITS only, US-domiciled funds left out (the researched ${c.jurisdiction} rule on retail access to them reads ${c.usEtfStatus}: \`ultrastock jurisdiction show\`)` : `the researched ${c.jurisdiction} rule allows US-domiciled funds`}${c.pfic ? `; non-US funds left out (the researched ${c.taxResidence} PFIC rule is not "allowed"${c.taxResidence !== c.jurisdiction ? ": read for the tax residence" : ""})` : ""}.`,
     "",
     "## Allocation",
     "",
