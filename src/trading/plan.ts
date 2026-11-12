@@ -100,6 +100,14 @@ async function planGrid(venue: string, inst: { symbol: string; currency: string 
   try {
     const rules = await publicInstrumentRules(venue, sym, { now, http });
     if (!rules) return { checked: false, note: `${venue}: the price grid is read through the user's session at \`broker preview\`, not in the plan` };
+    // An answer missing its tick or its step is not a grid read: what it lacks is said, and the plan carries a GRID condition.
+    const missing = [...(rules.ticks.length ? [] : ["no price tick"]), ...(rules.step !== undefined && rules.step > 0 ? [] : ["no quantity step"])];
+    if (missing.length)
+      return {
+        checked: false,
+        rules,
+        note: `${venue} ${sym}: the venue's answer gives ${missing.join(" and ")} (${rules.source})${rules.step !== undefined && rules.step > 0 ? "" : " — the quantity is sized on the paper lot convention, not the venue's"}`,
+      };
     return { checked: true, rules, note: `${venue} ${sym} grid read live (${rules.source})` };
   } catch (e) {
     return { checked: false, note: `${venue} ${sym}: the venue's price and quantity rules could not be read (${(e as Error).message})` };

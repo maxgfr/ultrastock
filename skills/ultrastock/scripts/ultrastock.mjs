@@ -45795,7 +45795,9 @@ function gridRefusals(r3, o) {
       code: "GRID_PRICE",
       reason: `the limit ${o.price} is not on ${at}'s price grid (tick ${plainDecimal(tick)}): ${snap(o.price, tick, "down")} or ${snap(o.price, tick, "up")} \u2014 plan it again`
     });
-  if (r3.step !== void 0 && r3.step > 0 && !onGrid(o.quantity, r3.step))
+  if (r3.step === void 0 || !(r3.step > 0))
+    out.push({ code: "GRID_UNKNOWN", reason: `${r3.source} gives no quantity step for ${at}: the quantity cannot be checked against the grid` });
+  else if (!onGrid(o.quantity, r3.step))
     out.push({
       code: "GRID_QUANTITY",
       reason: `the quantity ${o.quantity} is not a multiple of ${at}'s step ${plainDecimal(r3.step)} (${snap(o.quantity, r3.step, "down")} fits) \u2014 plan it again`
@@ -53238,6 +53240,13 @@ async function planGrid(venue, inst, now, http3) {
   try {
     const rules = await publicInstrumentRules(venue, sym3, { now, http: http3 });
     if (!rules) return { checked: false, note: `${venue}: the price grid is read through the user's session at \`broker preview\`, not in the plan` };
+    const missing = [...rules.ticks.length ? [] : ["no price tick"], ...rules.step !== void 0 && rules.step > 0 ? [] : ["no quantity step"]];
+    if (missing.length)
+      return {
+        checked: false,
+        rules,
+        note: `${venue} ${sym3}: the venue's answer gives ${missing.join(" and ")} (${rules.source})${rules.step !== void 0 && rules.step > 0 ? "" : " \u2014 the quantity is sized on the paper lot convention, not the venue's"}`
+      };
     return { checked: true, rules, note: `${venue} ${sym3} grid read live (${rules.source})` };
   } catch (e) {
     return { checked: false, note: `${venue} ${sym3}: the venue's price and quantity rules could not be read (${e.message})` };

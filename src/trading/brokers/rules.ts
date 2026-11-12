@@ -17,7 +17,8 @@
 //
 // `broker preview` and `broker submit` refuse an order off the grid or under a
 // minimum with a named code (`gridRefusals`): ultrastock does not round an order
-// the user approved — it is the planned numbers or nothing.
+// the user approved — it is the planned numbers or nothing. An answer that
+// gives no price tick, or no quantity step, is refused as GRID_UNKNOWN.
 import { fetchText } from "../../core/net.js";
 import { plainDecimal } from "./http.js";
 import type { HttpFn } from "./types.js";
@@ -86,7 +87,10 @@ export function gridRefusals(r: InstrumentRules, o: { price: number; quantity: n
       code: "GRID_PRICE",
       reason: `the limit ${o.price} is not on ${at}'s price grid (tick ${plainDecimal(tick)}): ${snap(o.price, tick, "down")} or ${snap(o.price, tick, "up")} — plan it again`,
     });
-  if (r.step !== undefined && r.step > 0 && !onGrid(o.quantity, r.step))
+  // No step read is no grid to check the quantity against: refused by name, as a missing tick is — never sent unchecked.
+  if (r.step === undefined || !(r.step > 0))
+    out.push({ code: "GRID_UNKNOWN", reason: `${r.source} gives no quantity step for ${at}: the quantity cannot be checked against the grid` });
+  else if (!onGrid(o.quantity, r.step))
     out.push({
       code: "GRID_QUANTITY",
       reason: `the quantity ${o.quantity} is not a multiple of ${at}'s step ${plainDecimal(r.step)} (${snap(o.quantity, r.step, "down")} fits) — plan it again`,

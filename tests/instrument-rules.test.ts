@@ -75,7 +75,8 @@ describe("the grid, read from each venue", () => {
     });
     const o = await binanceAdapter({ env: "live", creds, http: old }).instrumentRules("ETHBTC");
     expect(o).toMatchObject({ minNotional: 0.0001, tradable: false, status: "BREAK" });
-    expect(gridRefusals(o, { price: 0.05, quantity: 1 }).map((g) => g.code)).toEqual(["NOT_TRADING"]);
+    // This answer carries no LOT_SIZE either: no quantity step read is refused by name too.
+    expect(gridRefusals(o, { price: 0.05, quantity: 1 }).map((g) => g.code)).toEqual(["NOT_TRADING", "GRID_UNKNOWN"]);
   });
 
   it("Kraken AssetPairs: tick_size, lot_decimals, ordermin, costmin — keyed by Kraken's own pair name", async () => {
