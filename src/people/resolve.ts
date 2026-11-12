@@ -5,13 +5,13 @@
 import { clockNow } from "../core/net.js";
 import { houseIndex, houseMembersMatching } from "../providers/fundamentals/house.js";
 import { ogeFilings } from "../providers/fundamentals/oge.js";
-import { type SecSubmissions, searchEdgarEntities, secSubmissions } from "../providers/fundamentals/sec.js";
+import { findEdgarFilers, type SecSubmissions, secSubmissions } from "../providers/fundamentals/sec.js";
 import { senateStatus } from "../providers/fundamentals/senate.js";
 import type { PersonRef, PersonSource, SecRole } from "./types.js";
 import { parseRefString } from "./types.js";
 
 /** How many of EDGAR's name matches are looked at (each costs one request). */
-const SEC_DEPTH = 6;
+const SEC_DEPTH = 8;
 
 const SEC_ROLE_NAMES: Record<SecRole, string> = { "13f": "13F filer", form4: "Form 4 reporting owner", "13dg": "13D/13G holder" };
 
@@ -53,7 +53,7 @@ async function ogeCandidates(query: string): Promise<PersonRef[]> {
 
 async function secCandidates(query: string): Promise<PersonRef[]> {
   const out: PersonRef[] = [];
-  for (const e of (await searchEdgarEntities(query)).slice(0, SEC_DEPTH)) {
+  for (const e of (await findEdgarFilers(query, { form: "13F-HR" })).slice(0, SEC_DEPTH)) {
     const sub = await secSubmissions(e.cik);
     const roles = secRolesOf(sub);
     if (roles.length) out.push({ source: "sec", id: String(e.cik), name: sub.name || e.name, role: secRoleText(roles), roles });

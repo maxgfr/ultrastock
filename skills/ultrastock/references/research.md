@@ -26,7 +26,7 @@ cheap?", "what did Anthropic report this year?").
      feed holds AGM dates). `morning` writes one per flagged results date, and
      `morning --confirm` reads them back (see [morning](morning.md)).
    - `--ask "<question>"`: angles built from one precise question.
-   - `--kind equity|etf|crypto|company` overrides the detection; `--name` the
+   - `--kind equity|etf|crypto|company|person` overrides the detection; `--name` the
      name searched with.
 2. **Search** — run every query with your web search, one query per call. Save the
    result lists to one JSON file, one entry per query:

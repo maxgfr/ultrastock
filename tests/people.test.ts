@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { webName } from "../src/commands/people.js";
 import { formatDatasets, registerDatasets } from "../src/core/datasets.js";
 import { setNetMode } from "../src/core/net.js";
 import { personActivity } from "../src/people/activity.js";
@@ -6,7 +7,8 @@ import { activityDataset, filingAlertMessage, personSubject, positionsDataset } 
 import { secRolesOf } from "../src/people/resolve.js";
 import { type PersonActivity, parseRefString, refString } from "../src/people/types.js";
 import { ogeAmount, ogeDate, ogeFilings, ogeType, parse278tText, parseOgeIndex } from "../src/providers/fundamentals/oge.js";
-import { issuerNameKey, parseEntitySearch, type SecCompany, tickerByTitle } from "../src/providers/fundamentals/sec.js";
+import { findEdgarFilers, issuerNameKey, parseCompanyList, parseEntitySearch, type SecCompany, tickerByTitle } from "../src/providers/fundamentals/sec.js";
+import { researchAngles } from "../src/research/angles.js";
 import { managerFor } from "../src/providers/fundamentals/sec-13f.js";
 import { parseSchedule13 } from "../src/providers/fundamentals/sec-13dg.js";
 import { withFixture } from "./helpers/fixtures.js";
@@ -122,14 +124,14 @@ describe("SEC filers found by name", () => {
       parseEntitySearch({
         hits: {
           hits: [
-            { _id: "1067983", _source: { entity: "BERKSHIRE HATHAWAY INC (BRK-B, BRK-A)", tickers: "BRK-B, BRK-A" } },
+            { _id: "1067983", _source: { entity: "BERKSHIRE HATHAWAY INC (BRK-B, BRK-A)", tickers: "BRK-B, BRK-A", rank: 62984948 } },
             { _id: "1188729", _source: { entity: "BERKSHIRE ALAN G" } },
             { _id: "x", _source: { entity: "no CIK" } },
           ],
         },
       }),
     ).toEqual([
-      { cik: 1067983, name: "BERKSHIRE HATHAWAY INC", tickers: ["BRK-B", "BRK-A"] },
+      { cik: 1067983, name: "BERKSHIRE HATHAWAY INC", tickers: ["BRK-B", "BRK-A"], rank: 62984948 },
       { cik: 1188729, name: "BERKSHIRE ALAN G", tickers: [] },
     ]);
   });
@@ -155,6 +157,50 @@ describe("SEC filers found by name", () => {
     expect(tickerByTitle(map, "ATMUS FILTRATION TECHNOL")).toBe("ATMU");
     expect(tickerByTitle(map, "ALPHABET INC CL A")).toBe("GOOGL");
     expect(tickerByTitle(map, "BLACK BELT ENERGY GAS DIST")).toBeUndefined();
+  });
+
+  it("reads EDGAR's company list: several filers in a table, or one company's own page", () => {
+    const row = (cik: string, name: string) =>
+      `<tr><td valign="top" scope="row"><a href="/cgi-bin/browse-edgar?action=getcompany&amp;CIK=${cik}&amp;owner=include&type=13F-HR">${cik}</a></td>\n<td scope="row">${name}</td>\n<td>CT</td></tr>`;
+    expect(parseCompanyList(`<table>${row("0001600319", "Bridgewater Advisors Inc.")}${row("0001350694", "Bridgewater Associates, LP")}</table>`)).toEqual([
+      { cik: 1600319, name: "Bridgewater Advisors Inc." },
+      { cik: 1350694, name: "Bridgewater Associates, LP" },
+    ]);
+    expect(
+      parseCompanyList(
+        `<span class="companyName">Pershing Square Capital Management, L.P. <acronym title="Central Index Key">CIK</acronym>#: <a href="/x">0001336528</a>`,
+      ),
+    ).toEqual([{ cik: 1336528, name: "Pershing Square Capital Management, L.P." }]);
+    expect(parseCompanyList("<p>No matching companies.</p>")).toEqual([]);
+  });
+
+  it("finds the fund a name means among its namesakes, by EDGAR's own rank, in both of its indexes", async () => {
+    // The name search returns ten namesakes, not the manager; the list of 13F filers has it, and its rank puts it first.
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = decodeURIComponent(String(input instanceof Request ? input.url : input));
+      if (url.includes("keysTyped=bridgewater"))
+        return Response.json({ hits: { hits: [{ _id: "1341317", _source: { entity: "Bridgewater Bancshares Inc", rank: 900_000 } }] } });
+      if (url.includes("keysTyped=BRIDGEWATER ASSOCIATES"))
+        return Response.json({ hits: { hits: [{ _id: "1350694", _source: { entity: "Bridgewater Associates, LP", rank: 2_616_987 } }] } });
+      if (url.includes("keysTyped=")) return Response.json({ hits: { hits: [] } });
+      if (url.includes("browse-edgar"))
+        return new Response(
+          `<table><tr><td><a href="/x?CIK=0001600319&amp;type=13F-HR">0001600319</a></td><td scope="row">Bridgewater Advisors Inc.</td></tr>
+           <tr><td><a href="/x?CIK=0001350694&amp;type=13F-HR">0001350694</a></td><td scope="row">Bridgewater Associates, LP</td></tr></table>`,
+        );
+      return new Response("", { status: 404 });
+    });
+    setNetMode({ kind: "live" });
+    try {
+      const found = await findEdgarFilers("bridgewater", { form: "13F-HR" });
+      expect(found.map((e) => [e.cik, e.rank])).toEqual([
+        [1350694, 2_616_987],
+        [1341317, 900_000],
+        [1600319, undefined],
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("finds a 13F filer by name among EDGAR's matches, and keeps the others to list", async () => {
@@ -227,6 +273,16 @@ describe("SEC filers found by name", () => {
 
 describe("people", () => {
   afterEach(() => setNetMode({ kind: "live" }));
+
+  it("searches the web for a filer by the name the press uses, along a person's angles", () => {
+    expect(webName({ source: "house", name: "Hon. Nancy Pelosi" })).toBe("Nancy Pelosi");
+    expect(webName({ source: "oge", name: "Trump, Donald J" })).toBe("Donald Trump");
+    expect(webName({ source: "sec", name: "Pelosi Paul Francis Jr", roles: ["form4"] })).toBe("Paul Pelosi");
+    expect(webName({ source: "sec", name: "Bridgewater Associates, LP", roles: ["13f"] })).toBe("Bridgewater Associates");
+    const angles = researchAngles({ subject: "x", name: "Bridgewater Associates", kind: "person", focus: "general", year: 2026 });
+    expect(angles.map((a) => a.id)).toEqual(["official-filings", "trades", "holdings", "new-positions", "strategy", "conflicts"]);
+    expect(angles.every((a) => a.queries.length === 2 && a.queries.every((q) => q.startsWith("Bridgewater Associates")))).toBe(true);
+  });
 
   it("refers to a person by source and id", () => {
     expect(parseRefString("sec:CIK0001067983")).toEqual({ source: "sec", id: "1067983" });

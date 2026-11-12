@@ -2,18 +2,49 @@
 // members (Clerk PTRs), the executive branch (OGE 278-T), and SEC filers (13F,
 // Form 4 as owner, Schedules 13D/13G) — found by name at each source, live,
 // and followed through the alert engine (a "person" rule per follow).
+// `people research` adds the web: the official figures go into a run beside a
+// research worklist (kind "person") that the agent's own web search — or a
+// delegated one — runs, and webindex reads back into cited documents. That is
+// how a fund no US regulator indexes, or a senator, is still researched.
 import { addRule, loadRules, notify, removeRule, runAlerts } from "../alerts/alerts.js";
-import { sanitizeExternalText } from "../core/untrusted.js";
+import { registerDatasets } from "../core/datasets.js";
 import { clockNow } from "../core/net.js";
-import { argInt, argValue, type CommandArgs, UsageError } from "../engine.js";
+import { sanitizeExternalText } from "../core/untrusted.js";
+import { argBool, argInt, argValue, type CommandArgs, jsonLine, UsageError } from "../engine.js";
 import { personActivity } from "../people/activity.js";
 import { activityDataset, positionsDataset } from "../people/datasets.js";
 import { AmbiguousPerson, pickPerson, searchPeople } from "../people/resolve.js";
 import { type PersonRef, type PersonSource, refString } from "../people/types.js";
+import { SEARCH_DELEGATES } from "../research/delegate.js";
+import { researchFiles } from "../research/dossier.js";
+import { researchRound, searchName, startResearch } from "../research/run.js";
 import { emitDatasets, printResult as out } from "./emit.js";
+import { formatRound, printTodo } from "./research.js";
 
 const USAGE =
-  'usage: ultrastock people search "<name>" [--source house|oge|sec] | show "<name|source:id>" [--since <date>] [--filings <n>] [--limit <n>] [--positions] | follow "<name|source:id>" [--message <text>] | unfollow <alert-id|source:id> | list | check [--notify]';
+  'usage: ultrastock people search "<name>" [--source house|oge|sec] | show "<name|source:id>" [--since <date>] [--filings <n>] [--limit <n>] [--positions] | research "<name|source:id>" [--out <run>] [--search-with claude|codex|ccs] [--engine-search] | follow "<name|source:id>" [--message <text>] | unfollow <alert-id|source:id> | list | check [--notify]';
+
+/**
+ * The name a web search finds a filer by: "Hon. Nancy Pelosi" → "Nancy Pelosi",
+ * "Trump, Donald J" → "Donald Trump", "Pelosi Paul Francis Jr" (EDGAR writes a
+ * person last name first) → "Paul Pelosi", "Bridgewater Associates, LP" →
+ * "Bridgewater Associates".
+ */
+export function webName(ref: Pick<PersonRef, "source" | "name" | "roles">): string {
+  const name = ref.name.replace(/\s+/g, " ").trim();
+  if (ref.source === "house") return name.replace(/^(?:Hon\.?|Mr\.?|Mrs\.?|Ms\.?|Dr\.?)\s+/i, "");
+  const initials = (s: string) => s.split(" ").filter((w) => w.replace(/\./g, "").length > 1);
+  if (ref.source === "oge") {
+    const [last, first = ""] = name.split(/,\s*/);
+    return [...initials(first).slice(0, 1), last].join(" ").trim() || name;
+  }
+  const person = ref.roles?.length === 1 && ref.roles[0] === "form4" && !/\b(?:LLC|L\.?P\.?|INC|CORP|FUND|TRUST|LTD|CAPITAL|PARTNERS|MANAGEMENT)\b/i.test(name);
+  if (person) {
+    const [last, first] = name.split(" ");
+    return first ? `${first} ${last}` : name;
+  }
+  return searchName(name);
+}
 
 const SOURCES: readonly PersonSource[] = ["house", "oge", "sec"];
 
@@ -40,7 +71,10 @@ async function person(args: CommandArgs, query: string): Promise<PersonRef> {
   } catch (e) {
     if (!(e instanceof AmbiguousPerson)) throw e;
     const list = e.candidates.slice(0, 15).map((c) => `  ${line(c)}`);
-    throw new UsageError([e.message, ...list, ...(e.candidates.length ? [`then: ultrastock people show "${refString(e.candidates[0]!)}"`] : [])].join("\n"));
+    const next = e.candidates.length
+      ? `then: ultrastock people show "${refString(e.candidates[0]!)}"`
+      : `a fund or a person no US regulator indexes (a European fund, a senator) is researched on the web: ultrastock people research "${query}"`;
+    throw new UsageError([e.message, ...list, next].join("\n"));
   }
 }
 
@@ -67,6 +101,50 @@ export async function peopleCommand(args: CommandArgs, asJson: boolean): Promise
     const ds = [activityDataset(act, { limit: argInt(args, "limit", { min: 1, max: 500 }) ?? 30 })];
     if (args.bools.has("positions")) ds.push(await positionsDataset(act, { top: argInt(args, "limit", { min: 1, max: 100 }) ?? 15 }));
     return emitDatasets(args, ds, asJson);
+  }
+  if (sub === "research") {
+    if (!query) throw new UsageError(USAGE);
+    const searchWith = argValue(args, "search-with");
+    if (searchWith !== undefined && !(SEARCH_DELEGATES as readonly string[]).includes(searchWith))
+      throw new UsageError(`--search-with is one of ${SEARCH_DELEGATES.join(", ")}`);
+    const engines = argBool(args, "engine-search");
+    const notes: string[] = [];
+    // An official filer when one matches; the web alone when none does — never a guess between several.
+    let ref: PersonRef | undefined;
+    try {
+      ref = await pickPerson(query, { source: sourceArg(args) });
+    } catch (e) {
+      if (!(e instanceof AmbiguousPerson) || e.candidates.length) {
+        if (e instanceof AmbiguousPerson) await person(args, query);
+        throw e;
+      }
+      notes.push(`no official filer matches "${query}" at the House Clerk, OGE or EDGAR: researched on the web only`);
+    }
+    const name = ref ? webName(ref) : query;
+    const started = await startResearch(name, { kind: "person", name, out: argValue(args, "out") });
+    notes.push(...started.notes);
+    const { dir, todo } = started;
+    let official = "";
+    if (ref) {
+      const act = await personActivity(ref, { since: sinceArg(args), limit: argInt(args, "filings", { min: 1, max: 50 }) });
+      const ds = [activityDataset(act, { limit: argInt(args, "limit", { min: 1, max: 500 }) ?? 30 }), await positionsDataset(act)];
+      const reg = registerDatasets(dir, ds);
+      const ids = reg.flatMap((r) => r.ids);
+      official = `official filings of ${refString(ref)}: ${act.filings.length} filing(s), ${ids.length} figure(s) registered as evidence${ids.length ? ` (${ids[0]}…${ids[ids.length - 1]})` : ""}`;
+    }
+    if (!searchWith && !engines) {
+      if (asJson) return void process.stdout.write(jsonLine({ dir, ...(ref ? { person: ref } : {}), todo: researchFiles(todo.tag).todo, ...todo, notes }));
+      return void process.stdout.write(`${official ? `${official}\n\n` : ""}${printTodo(todo, dir, notes)}`);
+    }
+    const round = await researchRound(dir, todo, notes, {
+      searchWith: searchWith as (typeof SEARCH_DELEGATES)[number] | undefined,
+      model: argValue(args, "search-model"),
+      engines,
+      limit: argInt(args, "limit", { min: 1 }) ?? 15,
+      read: { wayback: true, browser: false },
+    });
+    if (asJson) return void process.stdout.write(jsonLine({ ...(ref ? { person: ref } : {}), ...round }));
+    return void process.stdout.write(`${official ? `${official}\n` : ""}${formatRound(round, researchFiles(todo.tag).todo)}`);
   }
   if (sub === "follow") {
     if (!query) throw new UsageError(USAGE);

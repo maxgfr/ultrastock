@@ -69,7 +69,7 @@ async function subjectOf(
 ): Promise<{ s: Omit<ResearchSubject, "focus" | "year" | "ask">; notes: string[] }> {
   const notes: string[] = [];
   const symbolLike = /^[A-Za-z0-9.:\-^=]{1,15}$/.test(raw.trim());
-  if (kind !== "company" && symbolLike) {
+  if (kind !== "company" && kind !== "person" && symbolLike) {
     try {
       const r = await resolveSymbol(raw);
       const inst = r.instrument;

@@ -93,7 +93,7 @@ USAGE
   ultrastock fx [USD,GBP,…] [--out <dir>] [--json]
   ultrastock cot <market> [--report legacy|tff] [--out <dir>] [--json]
   ultrastock sentiment [all|cnn|crypto|vix|putcall] [--out <dir>] [--json]
-  ultrastock research <symbol|name> [--kind equity|etf|crypto|company] [--focus results|calendar] [--ask "<question>"] [--name <search name>] [--for <tag>] --out <run> [--json]
+  ultrastock research <symbol|name> [--kind equity|etf|crypto|company|person] [--focus results|calendar] [--ask "<question>"] [--name <search name>] [--for <tag>] --out <run> [--json]
   ultrastock research --out <run> [--for <tag>] --web-results <websearch.json|-> | --urls <a,b> | --search-with claude|codex|ccs | --engine-search [--browser] [--no-wayback] [--limit <n>] [--json]
   ultrastock research <symbol|name> --search-with claude|codex|ccs [--search-model <m>] --out <run> [--json]   (worklist, search and ingestion in one call)
   ultrastock events [--days 60] [--since 7] [--country BR,US] [--all] [--book real|paper] [--limit <n>] [--out <dir>] [--json]
@@ -125,6 +125,7 @@ USAGE
   ultrastock congress [--member <name>] [--doc <DocID>] [--year <yyyy>] [--limit <n>] [--out <dir>] [--json]
   ultrastock people search "<name>" [--source house|oge|sec] [--json]
   ultrastock people show "<name|source:id>" [--source house|oge|sec] [--since <date>] [--filings <n>] [--limit <n>] [--positions] [--out <dir>] [--json]
+  ultrastock people research "<name|source:id>" [--source house|oge|sec] [--search-with claude|codex|ccs] [--search-model <model>] [--engine-search] [--out <run>] [--json]
   ultrastock people follow "<name|source:id>" [--source house|oge|sec] [--message <text>] | unfollow <alert-id|source:id> | list | check [--notify] [--json]
   ultrastock portfolio show|perf [--book real|paper] [--out <dir>] [--json]
   ultrastock portfolio risk|stress|optimize|location|lookthrough|income [--book real|paper] [--benchmark <sym>] [--universe a,b,c] [--max-weight <%>] [--out <dir>] [--json]
@@ -408,7 +409,11 @@ COMMANDS
             official source, live: House members (Clerk PTRs), the President and
             Senate-confirmed officials (OGE 278-T), and SEC filers — funds (13F),
             holders above 5% (13D/13G), insiders (Form 4 as owner, every issuer).
-            follow adds an alert that fires on each new filing; check runs them.
+            research puts those figures in a run beside a web worklist (FR + EN
+            queries on trades, holdings, filings, conflicts) that your web
+            search runs and webindex reads back into cited sources — also for a
+            fund or a person no US regulator indexes. follow adds an alert that
+            fires on each new filing; check runs them.
   portfolio The user's holdings: an append-only ledger per book ("real" for what
             they hold, "paper" for simulation) — positions, cash, average cost
             (PMP) and FIFO lots recomputed from the transactions, marked to market
@@ -970,7 +975,7 @@ const SPEC: CliSpec = {
     short: ["out", ...NET],
     dividends: ["limit", "out", ...NET],
     congress: ["member", "doc", "year", "limit", "out", ...NET],
-    people: ["source", "since", "filings", "limit", "positions", "message", "notify", "out", ...NET],
+    people: ["source", "since", "filings", "limit", "positions", "message", "notify", "search-with", "search-model", "engine-search", "out", ...NET],
     portfolio: [
       "book",
       "account",

@@ -9,12 +9,17 @@
 // KID, holdings, replication, PEA, tracking difference), a crypto-asset
 // (tokenomics, incidents, regulation) or a company with no listing, whose
 // figures exist only in what it publishes and what the press reports.
+// A public figure or an investment fund (a politician, an official, a fund
+// manager, an insider) is searched for what they bought and sold, what they
+// hold, the filings behind it and the questions it raises — the web holds what
+// the regulators' indexes do not reach (a non-US fund's reports, the Senate's
+// PTRs, the press that read a 278-T).
 // `--focus results` narrows to the latest publication, `--focus calendar` to
 // the dates the issuer announces ahead; `--ask` turns one
 // precise question into its own angles.
 import { rankedKeywords } from "../engine.js";
 
-export const RESEARCH_KINDS = ["equity", "etf", "crypto", "company"] as const;
+export const RESEARCH_KINDS = ["equity", "etf", "crypto", "company", "person"] as const;
 export type ResearchKind = (typeof RESEARCH_KINDS)[number];
 export const RESEARCH_FOCUSES = ["general", "results", "calendar"] as const;
 export type ResearchFocus = (typeof RESEARCH_FOCUSES)[number];
@@ -87,6 +92,26 @@ const COMPANY: Template[] = [
   ["risks", "Risks and controversies", "{n} risques controverse litige", "{n} risks controversy lawsuit"],
 ];
 
+// A public figure or a fund: their trades and holdings, as filed and as reported.
+const PERSON: Template[] = [
+  [
+    "official-filings",
+    "The filings themselves",
+    "{n} déclaration de transactions formulaire officiel {y} pdf",
+    "{n} {y} periodic transaction report OR 13F OR Form 4 OR 13D filing",
+  ],
+  ["trades", "What they bought and sold", "{n} achat vente actions {y}", "{n} stock trades bought sold {y}"],
+  ["holdings", "What they hold", "{n} portefeuille principales positions {y}", "{n} portfolio top holdings {y}"],
+  ["new-positions", "New and exited positions", "{n} nouvelle position participation cédée", "{n} new stake position exited sold out"],
+  ["strategy", "Strategy and track record", "{n} stratégie d'investissement performance", "{n} investment strategy performance returns"],
+  [
+    "conflicts",
+    "Conflicts of interest and investigations",
+    "{n} conflit d'intérêts délit d'initié enquête",
+    "{n} conflict of interest insider trading investigation",
+  ],
+];
+
 // The latest publication, whatever the kind: the release, the deck, the filing, the call.
 const RESULTS: Template[] = [
   [
@@ -155,6 +180,7 @@ export function researchAngles(s: ResearchSubject): ResearchAngle[] {
   }
   if (s.focus === "results") return (s.kind === "company" ? COMPANY_RESULTS : RESULTS).map((t) => angle(t, s));
   if (s.focus === "calendar") return CALENDAR.map((t) => angle(t, s));
+  if (s.kind === "person") return PERSON.map((t) => angle(t, s));
   const table = s.kind === "etf" ? ETF : s.kind === "crypto" ? CRYPTO : s.kind === "company" ? COMPANY : EQUITY;
   return table.map((t) => angle(t, s));
 }

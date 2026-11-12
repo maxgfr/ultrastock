@@ -20,6 +20,7 @@
 import { cachedJson, TTL } from "../../core/cache.js";
 import type { Dataset, Point } from "../../core/datasets.js";
 import { clockNow, fetchJson, fetchText, type NetResponse } from "../../core/net.js";
+import { decodeEntities } from "../../engine.js";
 import { VERSION } from "../../version.js";
 import { ProviderError } from "../types.js";
 import { daysBetween, isoDayOf, shiftIsoDay } from "./util.js";
@@ -144,9 +145,11 @@ export interface EdgarEntity {
   /** As EDGAR records it — external text. */
   name: string;
   tickers: string[];
+  /** EDGAR's own weight of the entity in its name search (higher: more looked up and filed); undefined when not known. */
+  rank?: number;
 }
 
-type EntitySearchJson = { hits?: { hits?: Array<{ _id?: string; _source?: { entity?: string; tickers?: string } }> } };
+type EntitySearchJson = { hits?: { hits?: Array<{ _id?: string; _source?: { entity?: string; tickers?: string; rank?: number } }> } };
 
 /** The answer of EDGAR's name search (the suggestion box of sec.gov/edgar/search) → entities, best match first. */
 export function parseEntitySearch(json: EntitySearchJson): EdgarEntity[] {
@@ -160,7 +163,8 @@ export function parseEntitySearch(json: EntitySearchJson): EdgarEntity[] {
       .filter(Boolean);
     // "BERKSHIRE HATHAWAY INC (BRK-B, BRK-A)": the tickers are repeated in the name.
     const name = tickers.length ? raw.replace(/\s*\([^)]*\)\s*$/, "") : raw;
-    return [{ cik, name, tickers }];
+    const rank = h._source?.rank;
+    return [{ cik, name, tickers, ...(typeof rank === "number" && Number.isFinite(rank) ? { rank } : {}) }];
   });
 }
 
@@ -170,6 +174,63 @@ export async function searchEdgarEntities(query: string): Promise<EdgarEntity[]>
   if (!q) return [];
   const res = await secJson<EntitySearchJson>(`https://efts.sec.gov/LATEST/search-index?keysTyped=${encodeURIComponent(q)}`);
   return parseEntitySearch(res.data);
+}
+
+/**
+ * EDGAR's company search page (www.sec.gov/cgi-bin/browse-edgar?action=getcompany)
+ * → the filers it lists: a table of CIK and name when several match, or the
+ * one company's own page when a single one does.
+ */
+export function parseCompanyList(html: string): Array<{ cik: number; name: string }> {
+  const out: Array<{ cik: number; name: string }> = [];
+  const row = /<td[^>]*>\s*<a [^>]*CIK=(\d{10})[^>]*>\d{10}<\/a>\s*<\/td>\s*<td[^>]*>([^<]+)<\/td>/g;
+  for (const m of html.matchAll(row)) out.push({ cik: Number(m[1]), name: decodeEntities(m[2]!).trim() });
+  if (out.length) return out;
+  const one = /<span class="companyName">([^<]+)<acronym[^>]*>CIK<\/acronym>#:\s*<a [^>]*>(\d{10})/.exec(html);
+  return one ? [{ cik: Number(one[2]), name: decodeEntities(one[1]!).trim() }] : [];
+}
+
+/** Filers whose name starts with `query` and that have filed `form` (EDGAR's company search, the regulator's own). */
+export async function searchFilersOfForm(query: string, form: string): Promise<EdgarEntity[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const url = `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${encodeURIComponent(q)}&type=${encodeURIComponent(form)}&dateb=&owner=include&count=40`;
+  const res = await secText(url);
+  return parseCompanyList(res.body).map((c) => ({ ...c, tickers: [] }));
+}
+
+/** How many names of a form's filers list get their EDGAR rank looked up (one request each). */
+const RANK_LOOKUPS = 8;
+
+/**
+ * Filers a name may mean, from both of EDGAR's indexes: its name search (any
+ * filer, ten at most) and, for `form`, the filers of that form whose name
+ * starts with the query — the name search alone misses "Bridgewater
+ * Associates" among the other Bridgewaters. Ordered by EDGAR's own rank, so
+ * the manager everyone looks up comes before its namesakes.
+ */
+export async function findEdgarFilers(query: string, opts: { form?: string } = {}): Promise<EdgarEntity[]> {
+  const byCik = new Map<number, EdgarEntity>();
+  for (const e of await searchEdgarEntities(query)) byCik.set(e.cik, e);
+  if (opts.form) {
+    const listed = await searchFilersOfForm(query, opts.form).catch((e) => {
+      if (e instanceof ProviderError && !e.transient) return [];
+      throw e;
+    });
+    for (const c of listed.filter((x) => !byCik.has(x.cik)).slice(0, RANK_LOOKUPS)) {
+      // The name reduced to its words: "Pershing Square Capital Management, L.P." as filed finds nothing.
+      const hit = (
+        await searchEdgarEntities(
+          issuerNameKey(c.name)
+            .replace(/\b[A-Z0-9]\b/g, " ")
+            .replace(/\s+/g, " ")
+            .trim() || c.name,
+        ).catch(() => [])
+      ).find((e) => e.cik === c.cik);
+      byCik.set(c.cik, hit ?? c);
+    }
+  }
+  return [...byCik.values()].sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0));
 }
 
 // ─── XBRL company facts ────────────────────────────────────────────────────

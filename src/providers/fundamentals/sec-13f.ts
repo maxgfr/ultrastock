@@ -16,7 +16,7 @@ import type { Dataset, Point } from "../../core/datasets.js";
 import { clockNow } from "../../core/net.js";
 import { ProviderError } from "../types.js";
 import { openfigiMap, preferredFigi } from "./openfigi.js";
-import { archiveBase, SEC_SOURCE, type SecFiling, type SecSubmissions, searchEdgarEntities, secJson, secSubmissions, secText } from "./sec.js";
+import { archiveBase, SEC_SOURCE, type SecFiling, type SecSubmissions, findEdgarFilers, secJson, secSubmissions, secText } from "./sec.js";
 import { daysBetween, isoDayOf } from "./util.js";
 import { xmlBlocks, xmlNumber, xmlValue } from "./xml.js";
 
@@ -96,7 +96,7 @@ export interface Manager13f {
 }
 
 /** How many of EDGAR's name matches are read to find the ones that file 13F reports. */
-const SEARCH_DEPTH = 6;
+const SEARCH_DEPTH = 8;
 
 /**
  * A 13F filer by CIK, or by name through EDGAR's own name search: of the
@@ -112,7 +112,7 @@ export async function managerFor(manager: string | number): Promise<Manager13f> 
   }
   const query = s.replace(/[-_]+/g, " ");
   const found: Array<Omit<Manager13f, "others">> = [];
-  for (const e of (await searchEdgarEntities(query)).slice(0, SEARCH_DEPTH)) {
+  for (const e of (await findEdgarFilers(query, { form: "13F-HR" })).slice(0, SEARCH_DEPTH)) {
     const sub = await secSubmissions(e.cik);
     if (sub.filings.some((f) => f.form === "13F-HR")) found.push({ cik: e.cik, name: sub.name || e.name, sub });
   }

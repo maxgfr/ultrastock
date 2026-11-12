@@ -16378,7 +16378,8 @@ function parseEntitySearch(json3) {
     if (!Number.isInteger(cik) || cik <= 0 || !raw) return [];
     const tickers = (h._source?.tickers ?? "").split(",").map((t) => t.trim()).filter(Boolean);
     const name = tickers.length ? raw.replace(/\s*\([^)]*\)\s*$/, "") : raw;
-    return [{ cik, name, tickers }];
+    const rank2 = h._source?.rank;
+    return [{ cik, name, tickers, ...typeof rank2 === "number" && Number.isFinite(rank2) ? { rank: rank2 } : {} }];
   });
 }
 async function searchEdgarEntities(query2) {
@@ -16386,6 +16387,39 @@ async function searchEdgarEntities(query2) {
   if (!q) return [];
   const res = await secJson(`https://efts.sec.gov/LATEST/search-index?keysTyped=${encodeURIComponent(q)}`);
   return parseEntitySearch(res.data);
+}
+function parseCompanyList(html) {
+  const out = [];
+  const row = /<td[^>]*>\s*<a [^>]*CIK=(\d{10})[^>]*>\d{10}<\/a>\s*<\/td>\s*<td[^>]*>([^<]+)<\/td>/g;
+  for (const m of html.matchAll(row)) out.push({ cik: Number(m[1]), name: decodeEntities(m[2]).trim() });
+  if (out.length) return out;
+  const one = /<span class="companyName">([^<]+)<acronym[^>]*>CIK<\/acronym>#:\s*<a [^>]*>(\d{10})/.exec(html);
+  return one ? [{ cik: Number(one[2]), name: decodeEntities(one[1]).trim() }] : [];
+}
+async function searchFilersOfForm(query2, form) {
+  const q = query2.trim();
+  if (!q) return [];
+  const url = `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${encodeURIComponent(q)}&type=${encodeURIComponent(form)}&dateb=&owner=include&count=40`;
+  const res = await secText(url);
+  return parseCompanyList(res.body).map((c) => ({ ...c, tickers: [] }));
+}
+var RANK_LOOKUPS = 8;
+async function findEdgarFilers(query2, opts = {}) {
+  const byCik = /* @__PURE__ */ new Map();
+  for (const e of await searchEdgarEntities(query2)) byCik.set(e.cik, e);
+  if (opts.form) {
+    const listed = await searchFilersOfForm(query2, opts.form).catch((e) => {
+      if (e instanceof ProviderError && !e.transient) return [];
+      throw e;
+    });
+    for (const c of listed.filter((x) => !byCik.has(x.cik)).slice(0, RANK_LOOKUPS)) {
+      const hit = (await searchEdgarEntities(
+        issuerNameKey(c.name).replace(/\b[A-Z0-9]\b/g, " ").replace(/\s+/g, " ").trim() || c.name
+      ).catch(() => [])).find((e) => e.cik === c.cik);
+      byCik.set(c.cik, hit ?? c);
+    }
+  }
+  return [...byCik.values()].sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0));
 }
 var SEC_METRICS = [
   {
@@ -16948,7 +16982,7 @@ function diff13f(current2, previous) {
     if (!now.has(keyOf2(p))) out.push({ holding: { ...p, value: 0, shares: 0 }, change: "sold", sharesChange: -p.shares, previousShares: p.shares });
   return out;
 }
-var SEARCH_DEPTH = 6;
+var SEARCH_DEPTH = 8;
 async function managerFor(manager) {
   const s = String(manager).trim().replace(/^cik/i, "");
   if (/^\d{1,10}$/.test(s)) {
@@ -16957,7 +16991,7 @@ async function managerFor(manager) {
   }
   const query2 = s.replace(/[-_]+/g, " ");
   const found = [];
-  for (const e of (await searchEdgarEntities(query2)).slice(0, SEARCH_DEPTH)) {
+  for (const e of (await findEdgarFilers(query2, { form: "13F-HR" })).slice(0, SEARCH_DEPTH)) {
     const sub = await secSubmissions(e.cik);
     if (sub.filings.some((f3) => f3.form === "13F-HR")) found.push({ cik: e.cik, name: sub.name || e.name, sub });
   }
@@ -23047,7 +23081,7 @@ import { existsSync as existsSync19, readFileSync as readFileSync22 } from "fs";
 import { join as join23 } from "path";
 
 // src/research/angles.ts
-var RESEARCH_KINDS = ["equity", "etf", "crypto", "company"];
+var RESEARCH_KINDS = ["equity", "etf", "crypto", "company", "person"];
 var RESEARCH_FOCUSES = ["general", "results", "calendar"];
 var EQUITY = [
   ["business-model", "Business model and moat", "{n} mod\xE8le \xE9conomique avantage concurrentiel", "{n} business model competitive moat"],
@@ -23085,6 +23119,24 @@ var COMPANY = [
   ["management", "Leadership", "{n} dirigeants fondateurs", "{n} founders leadership executives"],
   ["competition", "Competition", "{n} concurrents part de march\xE9", "{n} competitors market share"],
   ["risks", "Risks and controversies", "{n} risques controverse litige", "{n} risks controversy lawsuit"]
+];
+var PERSON = [
+  [
+    "official-filings",
+    "The filings themselves",
+    "{n} d\xE9claration de transactions formulaire officiel {y} pdf",
+    "{n} {y} periodic transaction report OR 13F OR Form 4 OR 13D filing"
+  ],
+  ["trades", "What they bought and sold", "{n} achat vente actions {y}", "{n} stock trades bought sold {y}"],
+  ["holdings", "What they hold", "{n} portefeuille principales positions {y}", "{n} portfolio top holdings {y}"],
+  ["new-positions", "New and exited positions", "{n} nouvelle position participation c\xE9d\xE9e", "{n} new stake position exited sold out"],
+  ["strategy", "Strategy and track record", "{n} strat\xE9gie d'investissement performance", "{n} investment strategy performance returns"],
+  [
+    "conflicts",
+    "Conflicts of interest and investigations",
+    "{n} conflit d'int\xE9r\xEAts d\xE9lit d'initi\xE9 enqu\xEAte",
+    "{n} conflict of interest insider trading investigation"
+  ]
 ];
 var RESULTS = [
   [
@@ -23138,6 +23190,7 @@ function researchAngles(s) {
   }
   if (s.focus === "results") return (s.kind === "company" ? COMPANY_RESULTS : RESULTS).map((t) => angle(t, s));
   if (s.focus === "calendar") return CALENDAR2.map((t) => angle(t, s));
+  if (s.kind === "person") return PERSON.map((t) => angle(t, s));
   const table2 = s.kind === "etf" ? ETF : s.kind === "crypto" ? CRYPTO : s.kind === "company" ? COMPANY : EQUITY;
   return table2.map((t) => angle(t, s));
 }
@@ -24551,7 +24604,7 @@ function searchName(name) {
 async function subjectOf(raw, kind, name) {
   const notes = [];
   const symbolLike = /^[A-Za-z0-9.:\-^=]{1,15}$/.test(raw.trim());
-  if (kind !== "company" && symbolLike) {
+  if (kind !== "company" && kind !== "person" && symbolLike) {
     try {
       const r3 = await resolveSymbol(raw);
       const inst = r3.instrument;
@@ -49654,7 +49707,11 @@ var TOOLS = [
     command: ["research"],
     params: {
       subject: { kind: "string", description: "a symbol, an ISIN or a company name (omit when ingesting)", positional: 0 },
-      kind: { kind: "string", description: "equity, etf, crypto or company (a name with no listing)", enum: ["equity", "etf", "crypto", "company"] },
+      kind: {
+        kind: "string",
+        description: "equity, etf, crypto, company (a name with no listing) or person (a public figure or an investment fund: trades, holdings, filings)",
+        enum: ["equity", "etf", "crypto", "company", "person"]
+      },
       focus: {
         kind: "string",
         description: "general (default), results (the latest publication) or calendar (the issuer's financial calendar: next results, general meeting)",
@@ -51183,7 +51240,7 @@ function parseRefString(s) {
 }
 
 // src/people/resolve.ts
-var SEC_DEPTH = 6;
+var SEC_DEPTH = 8;
 var SEC_ROLE_NAMES = { "13f": "13F filer", form4: "Form 4 reporting owner", "13dg": "13D/13G holder" };
 function secRolesOf(sub) {
   const forms = new Set(sub.filings.map((f3) => f3.form));
@@ -51218,7 +51275,7 @@ async function ogeCandidates(query2) {
 }
 async function secCandidates(query2) {
   const out = [];
-  for (const e of (await searchEdgarEntities(query2)).slice(0, SEC_DEPTH)) {
+  for (const e of (await findEdgarFilers(query2, { form: "13F-HR" })).slice(0, SEC_DEPTH)) {
     const sub = await secSubmissions(e.cik);
     const roles = secRolesOf(sub);
     if (roles.length) out.push({ source: "sec", id: String(e.cik), name: sub.name || e.name, role: secRoleText(roles), roles });
@@ -56982,7 +57039,22 @@ async function morningCommand(args, asJson) {
 }
 
 // src/commands/people.ts
-var USAGE4 = 'usage: ultrastock people search "<name>" [--source house|oge|sec] | show "<name|source:id>" [--since <date>] [--filings <n>] [--limit <n>] [--positions] | follow "<name|source:id>" [--message <text>] | unfollow <alert-id|source:id> | list | check [--notify]';
+var USAGE4 = 'usage: ultrastock people search "<name>" [--source house|oge|sec] | show "<name|source:id>" [--since <date>] [--filings <n>] [--limit <n>] [--positions] | research "<name|source:id>" [--out <run>] [--search-with claude|codex|ccs] [--engine-search] | follow "<name|source:id>" [--message <text>] | unfollow <alert-id|source:id> | list | check [--notify]';
+function webName(ref) {
+  const name = ref.name.replace(/\s+/g, " ").trim();
+  if (ref.source === "house") return name.replace(/^(?:Hon\.?|Mr\.?|Mrs\.?|Ms\.?|Dr\.?)\s+/i, "");
+  const initials = (s) => s.split(" ").filter((w) => w.replace(/\./g, "").length > 1);
+  if (ref.source === "oge") {
+    const [last2, first = ""] = name.split(/,\s*/);
+    return [...initials(first).slice(0, 1), last2].join(" ").trim() || name;
+  }
+  const person2 = ref.roles?.length === 1 && ref.roles[0] === "form4" && !/\b(?:LLC|L\.?P\.?|INC|CORP|FUND|TRUST|LTD|CAPITAL|PARTNERS|MANAGEMENT)\b/i.test(name);
+  if (person2) {
+    const [last2, first] = name.split(" ");
+    return first ? `${first} ${last2}` : name;
+  }
+  return searchName(name);
+}
 var SOURCES2 = ["house", "oge", "sec"];
 function sourceArg(args) {
   const s = argValue(args, "source")?.toLowerCase();
@@ -57003,7 +57075,8 @@ async function person(args, query2) {
   } catch (e) {
     if (!(e instanceof AmbiguousPerson)) throw e;
     const list = e.candidates.slice(0, 15).map((c) => `  ${line(c)}`);
-    throw new UsageError([e.message, ...list, ...e.candidates.length ? [`then: ultrastock people show "${refString(e.candidates[0])}"`] : []].join("\n"));
+    const next2 = e.candidates.length ? `then: ultrastock people show "${refString(e.candidates[0])}"` : `a fund or a person no US regulator indexes (a European fund, a senator) is researched on the web: ultrastock people research "${query2}"`;
+    throw new UsageError([e.message, ...list, next2].join("\n"));
   }
 }
 async function peopleCommand(args, asJson) {
@@ -57029,6 +57102,52 @@ async function peopleCommand(args, asJson) {
     const ds = [activityDataset(act, { limit: argInt(args, "limit", { min: 1, max: 500 }) ?? 30 })];
     if (args.bools.has("positions")) ds.push(await positionsDataset(act, { top: argInt(args, "limit", { min: 1, max: 100 }) ?? 15 }));
     return emitDatasets(args, ds, asJson);
+  }
+  if (sub === "research") {
+    if (!query2) throw new UsageError(USAGE4);
+    const searchWith = argValue(args, "search-with");
+    if (searchWith !== void 0 && !SEARCH_DELEGATES.includes(searchWith))
+      throw new UsageError(`--search-with is one of ${SEARCH_DELEGATES.join(", ")}`);
+    const engines = argBool(args, "engine-search");
+    const notes = [];
+    let ref;
+    try {
+      ref = await pickPerson(query2, { source: sourceArg(args) });
+    } catch (e) {
+      if (!(e instanceof AmbiguousPerson) || e.candidates.length) {
+        if (e instanceof AmbiguousPerson) await person(args, query2);
+        throw e;
+      }
+      notes.push(`no official filer matches "${query2}" at the House Clerk, OGE or EDGAR: researched on the web only`);
+    }
+    const name = ref ? webName(ref) : query2;
+    const started = await startResearch(name, { kind: "person", name, out: argValue(args, "out") });
+    notes.push(...started.notes);
+    const { dir: dir2, todo } = started;
+    let official = "";
+    if (ref) {
+      const act = await personActivity(ref, { since: sinceArg(args), limit: argInt(args, "filings", { min: 1, max: 50 }) });
+      const ds = [activityDataset(act, { limit: argInt(args, "limit", { min: 1, max: 500 }) ?? 30 }), await positionsDataset(act)];
+      const reg = registerDatasets(dir2, ds);
+      const ids = reg.flatMap((r3) => r3.ids);
+      official = `official filings of ${refString(ref)}: ${act.filings.length} filing(s), ${ids.length} figure(s) registered as evidence${ids.length ? ` (${ids[0]}\u2026${ids[ids.length - 1]})` : ""}`;
+    }
+    if (!searchWith && !engines) {
+      if (asJson) return void process.stdout.write(jsonLine({ dir: dir2, ...ref ? { person: ref } : {}, todo: researchFiles(todo.tag).todo, ...todo, notes }));
+      return void process.stdout.write(`${official ? `${official}
+
+` : ""}${printTodo(todo, dir2, notes)}`);
+    }
+    const round5 = await researchRound(dir2, todo, notes, {
+      searchWith,
+      model: argValue(args, "search-model"),
+      engines,
+      limit: argInt(args, "limit", { min: 1 }) ?? 15,
+      read: { wayback: true, browser: false }
+    });
+    if (asJson) return void process.stdout.write(jsonLine({ ...ref ? { person: ref } : {}, ...round5 }));
+    return void process.stdout.write(`${official ? `${official}
+` : ""}${formatRound(round5, researchFiles(todo.tag).todo)}`);
   }
   if (sub === "follow") {
     if (!query2) throw new UsageError(USAGE4);
@@ -63292,7 +63411,7 @@ USAGE
   ultrastock fx [USD,GBP,\u2026] [--out <dir>] [--json]
   ultrastock cot <market> [--report legacy|tff] [--out <dir>] [--json]
   ultrastock sentiment [all|cnn|crypto|vix|putcall] [--out <dir>] [--json]
-  ultrastock research <symbol|name> [--kind equity|etf|crypto|company] [--focus results|calendar] [--ask "<question>"] [--name <search name>] [--for <tag>] --out <run> [--json]
+  ultrastock research <symbol|name> [--kind equity|etf|crypto|company|person] [--focus results|calendar] [--ask "<question>"] [--name <search name>] [--for <tag>] --out <run> [--json]
   ultrastock research --out <run> [--for <tag>] --web-results <websearch.json|-> | --urls <a,b> | --search-with claude|codex|ccs | --engine-search [--browser] [--no-wayback] [--limit <n>] [--json]
   ultrastock research <symbol|name> --search-with claude|codex|ccs [--search-model <m>] --out <run> [--json]   (worklist, search and ingestion in one call)
   ultrastock events [--days 60] [--since 7] [--country BR,US] [--all] [--book real|paper] [--limit <n>] [--out <dir>] [--json]
@@ -63324,6 +63443,7 @@ USAGE
   ultrastock congress [--member <name>] [--doc <DocID>] [--year <yyyy>] [--limit <n>] [--out <dir>] [--json]
   ultrastock people search "<name>" [--source house|oge|sec] [--json]
   ultrastock people show "<name|source:id>" [--source house|oge|sec] [--since <date>] [--filings <n>] [--limit <n>] [--positions] [--out <dir>] [--json]
+  ultrastock people research "<name|source:id>" [--source house|oge|sec] [--search-with claude|codex|ccs] [--search-model <model>] [--engine-search] [--out <run>] [--json]
   ultrastock people follow "<name|source:id>" [--source house|oge|sec] [--message <text>] | unfollow <alert-id|source:id> | list | check [--notify] [--json]
   ultrastock portfolio show|perf [--book real|paper] [--out <dir>] [--json]
   ultrastock portfolio risk|stress|optimize|location|lookthrough|income [--book real|paper] [--benchmark <sym>] [--universe a,b,c] [--max-weight <%>] [--out <dir>] [--json]
@@ -63607,7 +63727,11 @@ COMMANDS
             official source, live: House members (Clerk PTRs), the President and
             Senate-confirmed officials (OGE 278-T), and SEC filers \u2014 funds (13F),
             holders above 5% (13D/13G), insiders (Form 4 as owner, every issuer).
-            follow adds an alert that fires on each new filing; check runs them.
+            research puts those figures in a run beside a web worklist (FR + EN
+            queries on trades, holdings, filings, conflicts) that your web
+            search runs and webindex reads back into cited sources \u2014 also for a
+            fund or a person no US regulator indexes. follow adds an alert that
+            fires on each new filing; check runs them.
   portfolio The user's holdings: an append-only ledger per book ("real" for what
             they hold, "paper" for simulation) \u2014 positions, cash, average cost
             (PMP) and FIFO lots recomputed from the transactions, marked to market
@@ -64167,7 +64291,7 @@ var SPEC = {
     short: ["out", ...NET],
     dividends: ["limit", "out", ...NET],
     congress: ["member", "doc", "year", "limit", "out", ...NET],
-    people: ["source", "since", "filings", "limit", "positions", "message", "notify", "out", ...NET],
+    people: ["source", "since", "filings", "limit", "positions", "message", "notify", "search-with", "search-model", "engine-search", "out", ...NET],
     portfolio: [
       "book",
       "account",

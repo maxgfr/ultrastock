@@ -32,7 +32,8 @@
   AMF declarations of managers' transactions (pledges, gifts and sales are
   classified from the declared nature).
 - `holdings <manager>`: an institution's latest 13F (a name, found through
-  EDGAR's own name search among the filers that file 13Fs, or a CIK) with its
+  EDGAR's name search and its list of 13F filers, ranked by EDGAR's own
+  weight, so "bridgewater" is Bridgewater Associates; or a CIK) with its
   changes since the previous quarter. 13Fs are filed up to 45 days after the
   quarter: old news by design.
 - `congress`: US House periodic transaction reports (amounts are ranges).
@@ -80,6 +81,18 @@ time; nothing is kept as a list of people.
   senators' trades. It refuses automated clients (HTTP 403 since October 2026)
   and needs a terms-accepted session. ultrastock says so and does not work
   around it; no unofficial copy is substituted. Search a senator by hand.
+- **The web on top — `people research "<ref or name>" --out <run>`:** the
+  official figures are registered in the run, beside a research worklist
+  (kind `person`; FR + EN queries on the filings themselves, trades, holdings,
+  new and exited positions, strategy, conflicts of interest). Run the queries
+  with your own web search and ingest them:
+  `research --out <run> --web-results <file>`. webindex fetches, cleans and
+  ranks the pages and PDFs, and each source becomes a document `[E#]` in
+  DOSSIER.md. `--search-with claude|codex|ccs` or `--engine-search` runs the
+  search in the same call. A name no official source knows — a European fund
+  (its reports are on its site), a senator (eFD pages the press links) — is
+  researched on the web alone. Web sources are context: a figure a filing
+  gives is cited from the filing.
 - **Follow:** `people follow "<ref>"` adds an alert that fires once per new
   filing (the filings already out are the starting point). `people check` runs
   those alerts, as does `watch run` (see journal-alerts).

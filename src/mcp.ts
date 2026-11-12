@@ -252,7 +252,11 @@ export const TOOLS: Tool[] = [
     command: ["research"],
     params: {
       subject: { kind: "string", description: "a symbol, an ISIN or a company name (omit when ingesting)", positional: 0 },
-      kind: { kind: "string", description: "equity, etf, crypto or company (a name with no listing)", enum: ["equity", "etf", "crypto", "company"] },
+      kind: {
+        kind: "string",
+        description: "equity, etf, crypto, company (a name with no listing) or person (a public figure or an investment fund: trades, holdings, filings)",
+        enum: ["equity", "etf", "crypto", "company", "person"],
+      },
       focus: {
         kind: "string",
         description: "general (default), results (the latest publication) or calendar (the issuer's financial calendar: next results, general meeting)",
