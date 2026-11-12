@@ -51341,9 +51341,13 @@ function parseGeneric(text2, opts) {
     throw new UsageError(
       `the file writes ${mixed.map((t) => `${t} rows`).join(" and ")} with both signs: whether a negative amount is a charge and a positive one a refund, or the reverse, is the file's convention, not something to guess \u2014 pass --fee-sign charge-negative (a negative amount is paid, a positive one refunded) or --fee-sign charge-positive (a positive amount is paid, a negative one refunded)`
     );
-  const charge = (amount) => {
-    if (opts.feeSign === "charge-negative") return amount;
-    if (opts.feeSign === "charge-positive") return -amount;
+  if (opts.feeSign && !mixed.length)
+    res.warnings.push(
+      `--fee-sign ${opts.feeSign} is not used: no fee or tax type of the file is written with both signs (one sign throughout a type: those rows are charges)`
+    );
+  const charge = (amount, type) => {
+    if (mixed.includes(type) && opts.feeSign === "charge-negative") return amount;
+    if (mixed.includes(type) && opts.feeSign === "charge-positive") return -amount;
     return -Math.abs(amount);
   };
   for (const r3 of rows.slice(h + 1)) {
@@ -51383,7 +51387,7 @@ function parseGeneric(text2, opts) {
     const cashType = type === "deposit" || type === "withdrawal" || type === "dividend" || type === "interest" || type === "fee" || type === "tax";
     if (cashType && amount === void 0 && quantity !== void 0 && price !== void 0) amount = round3(quantity * price);
     if (cashType && amount !== void 0)
-      amount = type === "deposit" || type === "dividend" || type === "interest" ? Math.abs(amount) : type === "fee" || type === "tax" ? charge(amount) : -Math.abs(amount);
+      amount = type === "deposit" || type === "dividend" || type === "interest" ? Math.abs(amount) : type === "fee" || type === "tax" ? charge(amount, type) : -Math.abs(amount);
     accept(
       res,
       r3.line,

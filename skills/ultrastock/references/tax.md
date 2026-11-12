@@ -105,4 +105,6 @@ date before which not to rebuy. Selling is the user's decision, through
 
 A generic CSV whose fee or tax rows carry both signs is refused until
 `portfolio import … --fee-sign charge-negative|charge-positive` says which
-sign is a charge: it is the file's convention, never guessed.
+sign is a charge: it is the file's convention, never guessed. The flag reads
+only the type written with both signs; a type written with one sign
+throughout is charges.

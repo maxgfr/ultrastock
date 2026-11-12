@@ -222,10 +222,17 @@ export function parseGeneric(text: string, opts: ImportOptions & { map: ColumnMa
     throw new UsageError(
       `the file writes ${mixed.map((t) => `${t} rows`).join(" and ")} with both signs: whether a negative amount is a charge and a positive one a refund, or the reverse, is the file's convention, not something to guess — pass --fee-sign charge-negative (a negative amount is paid, a positive one refunded) or --fee-sign charge-positive (a positive amount is paid, a negative one refunded)`,
     );
-  /** A fee or tax amount as the cash it moved: negative when paid, positive when refunded. */
-  const charge = (amount: number): number => {
-    if (opts.feeSign === "charge-negative") return amount;
-    if (opts.feeSign === "charge-positive") return -amount;
+  if (opts.feeSign && !mixed.length)
+    res.warnings.push(
+      `--fee-sign ${opts.feeSign} is not used: no fee or tax type of the file is written with both signs (one sign throughout a type: those rows are charges)`,
+    );
+  /**
+   * A fee or tax amount as the cash it moved: negative when paid, positive when refunded. `--fee-sign` reads only the
+   * type(s) written with both signs; a type written with one sign throughout is charges, whatever the flag.
+   */
+  const charge = (amount: number, type: TxType): number => {
+    if (mixed.includes(type) && opts.feeSign === "charge-negative") return amount;
+    if (mixed.includes(type) && opts.feeSign === "charge-positive") return -amount;
     return -Math.abs(amount);
   };
   for (const r of rows.slice(h + 1)) {
@@ -270,7 +277,7 @@ export function parseGeneric(text: string, opts: ImportOptions & { map: ColumnMa
         type === "deposit" || type === "dividend" || type === "interest"
           ? Math.abs(amount)
           : type === "fee" || type === "tax"
-            ? charge(amount)
+            ? charge(amount, type)
             : -Math.abs(amount);
     accept(
       res,
