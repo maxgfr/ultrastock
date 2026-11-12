@@ -38463,6 +38463,11 @@ async function inseeSeries(idbankOrPreset, n2 = 13) {
 
 // src/providers/macro/universe.ts
 var SOURCE30 = "wikipedia";
+function memberCountNote(parsed, expected) {
+  const tolerance = Math.max(3, Math.round(expected * 0.05));
+  if (Math.abs(parsed - expected) <= tolerance) return void 0;
+  return `parsed ${parsed} members where about ${expected} were expected (a sanity check, \xB1${tolerance}) \u2014 the page may have changed; the list is used as parsed`;
+}
 var INDICES = {
   SPX: {
     name: "S&P 500",
@@ -38648,8 +38653,8 @@ async function fetchConstituents(index) {
     ];
     if (spec.tickerNote) notes.push(`Tickers: ${spec.tickerNote}.`);
     if (spec.shape !== "table") notes.push("This page lists names only, no tickers: resolve each name before quoting it.");
-    if (Math.abs(constituents.length - spec.expected) > Math.max(3, spec.expected * 0.05))
-      notes.push(`parsed ${constituents.length} members where about ${spec.expected} were expected \u2014 the page may have changed`);
+    const count = memberCountNote(constituents.length, spec.expected);
+    if (count) notes.push(count);
     return {
       index: id,
       name: spec.name,

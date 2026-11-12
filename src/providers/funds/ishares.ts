@@ -18,7 +18,12 @@ import type { FundComposition, FundLine } from "./common.js";
 
 export const ISHARES_SOURCE = "ishares";
 
-/** ISIN → iShares UK product id (one id per fund; other share classes of the same fund hold the same lines). */
+/**
+ * ISIN → iShares UK product id (one id per fund; other share classes of the same fund hold the same lines). PROTOCOL
+ * DATA, not a market fact: the id is how iShares addresses a fund's page, and it does not change while the fund
+ * exists. It is a table only because no keyless lookup answers — the product screener JSON and the site search both
+ * answered 404 when checked again on 2026-11-12. A fund missing here is reported unavailable, never guessed.
+ */
 export const ISHARES_PRODUCTS: Record<string, { id: string; name: string }> = {
   IE00B4L5Y983: { id: "251882", name: "iShares Core MSCI World UCITS ETF (SWDA/IWDA)" },
   IE00B5BMR087: { id: "253743", name: "iShares Core S&P 500 UCITS ETF (CSPX)" },

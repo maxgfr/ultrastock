@@ -30,10 +30,21 @@ export interface IndexSpec {
   section?: number;
   /** "table" (ticker + name [+ sector]), "names-table" (a grid of names), "names-list" (a # list). */
   shape: "table" | "names-table" | "names-list";
-  /** The expected member count, to flag a parse that went wrong. */
+  /**
+   * About how many members the index has — a SANITY CHECK of the parse, not a fact the analyses use: the members are
+   * the page's own list, and a count off by more than max(3, 5 %) only adds a note that the page may have changed
+   * (an index's membership moves at each review, and some count share classes: S&P 500 ≈ 503, Nasdaq-100 ≈ 101).
+   */
   expected: number;
   /** How the table's tickers are written. */
   tickerNote?: string;
+}
+
+/** The parse's sanity check: a note when the count is off the expected one by more than max(3, 5 %), else nothing. */
+export function memberCountNote(parsed: number, expected: number): string | undefined {
+  const tolerance = Math.max(3, Math.round(expected * 0.05));
+  if (Math.abs(parsed - expected) <= tolerance) return undefined;
+  return `parsed ${parsed} members where about ${expected} were expected (a sanity check, ±${tolerance}) — the page may have changed; the list is used as parsed`;
 }
 
 export const INDICES: Record<string, IndexSpec> = {
@@ -270,8 +281,8 @@ export async function fetchConstituents(index: string): Promise<ConstituentList>
     ];
     if (spec.tickerNote) notes.push(`Tickers: ${spec.tickerNote}.`);
     if (spec.shape !== "table") notes.push("This page lists names only, no tickers: resolve each name before quoting it.");
-    if (Math.abs(constituents.length - spec.expected) > Math.max(3, spec.expected * 0.05))
-      notes.push(`parsed ${constituents.length} members where about ${spec.expected} were expected — the page may have changed`);
+    const count = memberCountNote(constituents.length, spec.expected);
+    if (count) notes.push(count);
     return {
       index: id,
       name: spec.name,
