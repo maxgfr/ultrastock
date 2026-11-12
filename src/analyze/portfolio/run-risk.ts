@@ -14,13 +14,14 @@ import { alignReturns, closesOf, dailyHistory, windowCloses } from "./history.js
 import { concentration, diversificationRatio, isinCountry, keySlug, knownSector, limitChecks, pairwiseCorrelations, portfolioReturns } from "./risk.js";
 import { baseHistories } from "./series.js";
 import { looksLikeBondFund, parametricShocks, replay, SCENARIOS, SHOCKS, type StressLine } from "./stress.js";
+import { benchmarkNote, bookConvention, chooseBenchmark } from "../benchmark.js";
 
 const DAY = 86_400_000;
 const pct = (x: number) => Number((x * 100).toFixed(6));
 const money = (x: number) => Number(x.toFixed(2));
 
-/** The benchmark of a EUR investor: Amundi MSCI World (CW8.PA); of a USD one, SPY. */
-export const benchmarkFor = (base: string) => (base === "EUR" ? "CW8.PA" : "SPY");
+/** The benchmark of a book: the profile's, else the convention — CW8.PA (Amundi MSCI World) for a EUR book, SPY otherwise. */
+export const benchmarkFor = (base: string) => chooseBenchmark(bookConvention(base))!.symbol;
 
 /** The TradingView ticker of a holding: the Yahoo-style mapping, or EXCHANGE:TICKER from a US listing's exchange. */
 export function tvTicker(h: Pick<Holding, "instrument" | "symbol">): string | undefined {
@@ -198,7 +199,9 @@ export async function riskAnalysis(m: MarkedBook, f: Findings, opts: { benchmark
   const result: RiskResult = { byClass, byCurrency, bySector, byCountry, concentration: conc, breaches: [] };
 
   // One year of daily returns of today's weights, in EUR.
-  const bench = opts.benchmark ?? benchmarkFor(m.base);
+  const choice = opts.benchmark ? undefined : chooseBenchmark(bookConvention(m.base));
+  const bench = opts.benchmark ?? choice!.symbol;
+  f.note(choice ? benchmarkNote(choice) : `benchmark ${bench}: --benchmark`);
   let benchResolved: Resolved | undefined;
   try {
     benchResolved = await resolveSymbol(bench);
@@ -370,7 +373,10 @@ export async function riskAnalysis(m: MarkedBook, f: Findings, opts: { benchmark
 
 // ─── stress ────────────────────────────────────────────────────────────────
 
-/** Equity proxies in order of preference (a EUR world tracker, then the S&P 500 in USD); bonds: the US aggregate; crypto: bitcoin. */
+/**
+ * Stress-replay proxies, a stated convention (not the benchmark): equities by a EUR world tracker, then the S&P 500
+ * in USD; bonds by the US aggregate; crypto by bitcoin. The stress notes name the proxy each line was replayed with.
+ */
 const PROXIES = { equity: ["CW8.PA", "SPY"], bond: ["AGG"], crypto: ["BTCUSDT"] } as const;
 /** Binance's first BTCUSDT day; no crypto window starts before it. */
 const CRYPTO_START = "2017-08-17";

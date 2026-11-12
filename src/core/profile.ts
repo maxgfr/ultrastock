@@ -76,6 +76,8 @@ export interface Profile {
     exclusions: string[];
   };
   limits: Limits;
+  /** The symbol the user measures analyses and the book against; unset, each analysis states its convention (analyze/benchmark.ts). */
+  benchmark?: string;
   /** Loosenings approved by code and waiting out their 24 hours. */
   pending?: PendingChange[];
   history: Array<{ at: string; path: string; from: unknown; to: unknown }>;
@@ -152,6 +154,13 @@ const SETTERS: Record<string, (raw: string) => unknown> = {
   baseCurrency: (v) => {
     if (!/^[A-Z]{3}$/i.test(v)) throw new Error(`a currency is three letters (EUR, USD), not "${v}"`);
     return v.toUpperCase();
+  },
+  // "default" clears it: the analyses go back to their stated conventions.
+  benchmark: (v) => {
+    if (/^(default|none)$/i.test(v.trim())) return undefined;
+    if (!/^[A-Za-z0-9^][A-Za-z0-9.^=:_-]{0,31}$/.test(v.trim()))
+      throw new Error(`a benchmark is a symbol such as CW8.PA, SPY or ^GSPC (or "default"), not "${v}"`);
+    return v.trim().toUpperCase();
   },
   horizonYears: (v) => num(v, 0, 80),
   lossTolerancePct: (v) => num(v, 0, 100),

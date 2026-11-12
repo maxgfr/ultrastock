@@ -29,6 +29,10 @@ const M = (iso: string, name: string, index: string, indexName: string, currency
   ...(usEtf ? { usEtf } : {}),
 });
 
+/**
+ * A country's market as `events` reads it — a stated convention, not a fact: its usual headline index, its currency
+ * and a US-listed country ETF with options. Outputs name the index and the ETF they used.
+ */
 export const COUNTRY_MARKETS: Record<string, CountryMarket> = Object.fromEntries(
   [
     M("US", "United States", "^GSPC", "S&P 500", "USD", "SPY"),

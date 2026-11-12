@@ -20,6 +20,7 @@ import { classifySymbol, getHistory, resolveSymbol } from "../../providers/route
 import { type Bar, type PriceSeries, ProviderError } from "../../providers/types.js";
 import { closedBars } from "../regime/common.js";
 import { applyUniverseRanks, type TechnicalId, technicalVerdict, type Verdict } from "./technical.js";
+import { profileBenchmark } from "../benchmark.js";
 
 export const BUILTIN_MAX_SYMBOLS = 120;
 const CONCURRENCY = 4;
@@ -34,8 +35,15 @@ export interface Benchmark {
 const US_INDICES = new Set(["SPX", "NDX", "DJI"]);
 const FR_INDICES = new Set(["CAC40", "SBF120"]);
 
-/** The benchmark for a universe: SPY for US, the CAC 40 for French, CW8.PA otherwise. */
-export function benchmarkFor(universe: string | undefined, symbols: readonly string[]): Benchmark {
+/** The benchmark for a universe: the profile's when set, else the convention — SPY for US, the CAC 40 for French, CW8.PA otherwise. */
+export function benchmarkFor(universe: string | undefined, symbols: readonly string[]): Benchmark & { why: string } {
+  const own = profileBenchmark();
+  if (own) return { symbol: own, name: own, why: "the profile's benchmark (`profile set benchmark`)" };
+  const c = conventionFor(universe, symbols);
+  return { ...c, why: `convention for this universe (${c.name}) — \`profile set benchmark <symbol>\` to use your own` };
+}
+
+function conventionFor(universe: string | undefined, symbols: readonly string[]): Benchmark {
   const id = universe ? indexId(universe) : undefined;
   const all = (pred: (s: string) => boolean) => symbols.length > 0 && symbols.every(pred);
   if ((id && US_INDICES.has(id)) || (!id && all((s) => classifySymbol(s) === "us"))) return { symbol: "SPY", name: "SPY (S&P 500 ETF)" };
@@ -148,7 +156,7 @@ export async function builtinScreen(id: TechnicalId, opts: BuiltinOptions): Prom
 
   notes.push(
     `${matches} of ${rows.length} symbols pass ${id}${rows.length < symbols.length ? ` (${symbols.length - rows.length} could not be read)` : ""}`,
-    `computed by ultrastock on closed daily bars (today's once its market's session is final) up to ${today}; benchmark ${bench.name}`,
+    `computed by ultrastock on closed daily bars (today's once its market's session is final) up to ${today}; benchmark ${bench.name}${needsBench ? `: ${bench.why}` : ""}`,
   );
   if (shown.length < rows.length) notes.push(`showing ${shown.length} of ${rows.length} (matches first) — raise --limit to see the rest`);
   for (const f of failures) notes.push(`unavailable — ${f}`);

@@ -16,6 +16,7 @@ import { clockNow } from "../core/net.js";
 import { writeArtifact } from "../engine.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
 import type { Bar, Interval, PriceSeries } from "../providers/types.js";
+import { type BenchmarkChoice, benchmarkNote, chooseBenchmark, listingConvention } from "./benchmark.js";
 
 export interface TechnicalsOptions {
   interval?: Interval;
@@ -27,11 +28,12 @@ export interface TechnicalsOptions {
 
 const r6 = (x: number) => Number(x.toPrecision(10));
 
-/** The benchmark a listing is measured against. */
+/** The benchmark a listing is measured against, with why: the profile's, else the convention (analyze/benchmark.ts). */
+export const benchmarkChoice = (market: string, mic?: string): BenchmarkChoice | undefined => chooseBenchmark(listingConvention(market, mic));
+
+/** The benchmark a listing is measured against (see `benchmarkChoice`). */
 export function defaultBenchmark(market: string, mic?: string): string | undefined {
-  if (market === "crypto") return undefined;
-  if (market === "us") return "SPY";
-  return mic === "XPAR" || mic === "ETFP" ? "FR0003500008" : "CW8.PA";
+  return benchmarkChoice(market, mic)?.symbol;
 }
 
 /** "rsi:period=7;source=hl2" → name and params. */
@@ -251,7 +253,9 @@ export async function technicalsRun(raw: string, dir: string, opts: TechnicalsOp
   }
 
   // Relative strength against a benchmark.
-  const benchSym = opts.benchmark ?? defaultBenchmark(inst.market, inst.mic);
+  const choice = opts.benchmark ? undefined : benchmarkChoice(inst.market, inst.mic);
+  const benchSym = opts.benchmark ?? choice?.symbol;
+  if (choice && interval === "1d") notes.push(benchmarkNote(choice));
   let bench: PriceSeries | undefined;
   if (benchSym && interval === "1d") {
     try {

@@ -22,6 +22,7 @@ import { ecbYieldCurve } from "../providers/macro/ecb.js";
 import { treasuryCurve } from "../providers/macro/treasury.js";
 import { referenceRates } from "./portfolio/book.js";
 import { getHistory, getQuote, resolveSymbol } from "../providers/router.js";
+import { benchmarkNote, chooseBenchmark, listingConvention } from "./benchmark.js";
 
 export interface ValuationOptions {
   /** Equity risk premium for CAPM (default 5 %). */
@@ -221,7 +222,10 @@ export async function valuationRun(raw: string, dir: string, opts: ValuationOpti
     notes.push(`risk-free rate unavailable (${(e as Error).message}) — 3 % assumed`);
   }
   rf ??= 0.03;
-  const benchSym = inst.market === "us" ? "SPY" : inst.mic === "XPAR" ? "FR0003500008" : "CW8.PA";
+  // The beta's benchmark: the profile's, else the convention — SPY for a US listing, the CAC 40 for Paris (XPAR), CW8.PA otherwise.
+  const benchChoice = chooseBenchmark(listingConvention(inst.market === "us" ? "us" : "other", inst.mic === "XPAR" ? "XPAR" : undefined))!;
+  const benchSym = benchChoice.symbol;
+  notes.push(`${benchmarkNote(benchChoice)} (for the beta)`);
   let beta = 1;
   let betaId: string | undefined;
   try {

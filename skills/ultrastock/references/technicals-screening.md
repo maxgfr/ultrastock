@@ -12,9 +12,11 @@ One run gives the whole technical picture, each reading an `[E#]`, and writes
   the chandelier exit.
 - **Volume**: MFI and Chaikin money flow.
 - **Relative strength** against a benchmark (`--benchmark`): the 6-month
-  relative return and Mansfield RS. The default is SPY for US listings, the
-  CAC 40 for Paris and CW8 (MSCI World) elsewhere in Europe; coins have no
-  default.
+  relative return and Mansfield RS. Without `--benchmark` it is the profile's
+  (`profile set benchmark <symbol>`), else a stated convention: SPY for US
+  listings, the CAC 40 for Paris and CW8 (MSCI World) elsewhere; coins have
+  none. The notes say which was used and why — so does `portfolio risk`
+  (CW8.PA for a EUR book, SPY otherwise), the DCF's beta and the screens.
 - **Structure**: the 52-week range, Minervini's trend template (eight
   conditions, each one an `[E#]`), the VCP (contractions and the pivot),
   support and resistance from pivots, recent gaps, candlesticks.

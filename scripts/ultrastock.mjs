@@ -18180,6 +18180,13 @@ var SETTERS = {
     if (!/^[A-Z]{3}$/i.test(v)) throw new Error(`a currency is three letters (EUR, USD), not "${v}"`);
     return v.toUpperCase();
   },
+  // "default" clears it: the analyses go back to their stated conventions.
+  benchmark: (v) => {
+    if (/^(default|none)$/i.test(v.trim())) return void 0;
+    if (!/^[A-Za-z0-9^][A-Za-z0-9.^=:_-]{0,31}$/.test(v.trim()))
+      throw new Error(`a benchmark is a symbol such as CW8.PA, SPY or ^GSPC (or "default"), not "${v}"`);
+    return v.trim().toUpperCase();
+  },
   horizonYears: (v) => num3(v, 0, 80),
   lossTolerancePct: (v) => num3(v, 0, 100),
   emergencyFundMonths: (v) => num3(v, 0, 120),
@@ -33710,12 +33717,36 @@ function breakouts(bars, opts = {}) {
   return out;
 }
 
+// src/analyze/benchmark.ts
+function profileBenchmark() {
+  try {
+    return loadProfile()?.benchmark;
+  } catch {
+    return void 0;
+  }
+}
+function chooseBenchmark(convention) {
+  if (!convention) return void 0;
+  const own = profileBenchmark();
+  if (own) return { symbol: own, why: "the profile's benchmark (`profile set benchmark`)", source: "profile" };
+  return { ...convention, source: "convention" };
+}
+function listingConvention(market, mic) {
+  if (market === "crypto") return void 0;
+  if (market === "us") return { symbol: "SPY", why: "convention: a US listing is measured against SPY (S&P 500)" };
+  if (mic === "XPAR" || mic === "ETFP") return { symbol: "FR0003500008", why: "convention: a Paris listing is measured against the CAC 40" };
+  return { symbol: "CW8.PA", why: "convention: a listing outside the US and Paris is measured against CW8.PA (MSCI World, EUR)" };
+}
+function bookConvention(base2) {
+  return base2 === "EUR" ? { symbol: "CW8.PA", why: "convention: a EUR book is measured against CW8.PA (MSCI World, EUR)" } : { symbol: "SPY", why: `convention: a ${base2} book is measured against SPY (S&P 500, USD)` };
+}
+var benchmarkNote = (c) => `benchmark ${c.symbol}: ${c.why}${c.source === "convention" ? " \u2014 `profile set benchmark <symbol>` to measure against your own" : ""}`;
+
 // src/analyze/technicals.ts
 var r6 = (x) => Number(x.toPrecision(10));
+var benchmarkChoice = (market, mic) => chooseBenchmark(listingConvention(market, mic));
 function defaultBenchmark(market, mic) {
-  if (market === "crypto") return void 0;
-  if (market === "us") return "SPY";
-  return mic === "XPAR" || mic === "ETFP" ? "FR0003500008" : "CW8.PA";
+  return benchmarkChoice(market, mic)?.symbol;
 }
 function parseIndicatorSpec(spec) {
   const [name, rest] = spec.split(":");
@@ -33894,7 +33925,9 @@ async function technicalsRun(raw, dir2, opts = {}) {
         });
     }
   }
-  const benchSym = opts.benchmark ?? defaultBenchmark(inst.market, inst.mic);
+  const choice = opts.benchmark ? void 0 : benchmarkChoice(inst.market, inst.mic);
+  const benchSym = opts.benchmark ?? choice?.symbol;
+  if (choice && interval === "1d") notes.push(benchmarkNote(choice));
   let bench;
   if (benchSym && interval === "1d") {
     try {
@@ -35266,7 +35299,9 @@ async function valuationRun(raw, dir2, opts = {}) {
     notes.push(`risk-free rate unavailable (${e.message}) \u2014 3 % assumed`);
   }
   rf ??= 0.03;
-  const benchSym = inst.market === "us" ? "SPY" : inst.mic === "XPAR" ? "FR0003500008" : "CW8.PA";
+  const benchChoice = chooseBenchmark(listingConvention(inst.market === "us" ? "us" : "other", inst.mic === "XPAR" ? "XPAR" : void 0));
+  const benchSym = benchChoice.symbol;
+  notes.push(`${benchmarkNote(benchChoice)} (for the beta)`);
   let beta = 1;
   let betaId;
   try {
@@ -39597,7 +39632,6 @@ function parametricShocks(items) {
 var DAY8 = 864e5;
 var pct7 = (x) => Number((x * 100).toFixed(6));
 var money2 = (x) => Number(x.toFixed(2));
-var benchmarkFor = (base2) => base2 === "EUR" ? "CW8.PA" : "SPY";
 function tvTicker(h) {
   const i = h.instrument;
   if (!i) return void 0;
@@ -39726,7 +39760,9 @@ async function riskAnalysis(m, f3, opts = {}) {
     "\u03A3 of the 5 largest w\u1D62 (cash excluded) \xD7 100"
   );
   const result = { byClass, byCurrency, bySector, byCountry, concentration: conc, breaches: [] };
-  const bench = opts.benchmark ?? benchmarkFor(m.base);
+  const choice = opts.benchmark ? void 0 : chooseBenchmark(bookConvention(m.base));
+  const bench = opts.benchmark ?? choice.symbol;
+  f3.note(choice ? benchmarkNote(choice) : `benchmark ${bench}: --benchmark`);
   let benchResolved;
   try {
     benchResolved = await resolveSymbol(bench);
@@ -58880,7 +58916,13 @@ var CONCURRENCY = 4;
 var HISTORY_DAYS = 420;
 var US_INDICES = /* @__PURE__ */ new Set(["SPX", "NDX", "DJI"]);
 var FR_INDICES = /* @__PURE__ */ new Set(["CAC40", "SBF120"]);
-function benchmarkFor2(universe, symbols) {
+function benchmarkFor(universe, symbols) {
+  const own = profileBenchmark();
+  if (own) return { symbol: own, name: own, why: "the profile's benchmark (`profile set benchmark`)" };
+  const c = conventionFor(universe, symbols);
+  return { ...c, why: `convention for this universe (${c.name}) \u2014 \`profile set benchmark <symbol>\` to use your own` };
+}
+function conventionFor(universe, symbols) {
   const id = universe ? indexId(universe) : void 0;
   const all = (pred) => symbols.length > 0 && symbols.every(pred);
   if (id && US_INDICES.has(id) || !id && all((s) => classifySymbol(s) === "us")) return { symbol: "SPY", name: "SPY (S&P 500 ETF)" };
@@ -58929,7 +58971,7 @@ async function builtinScreen(id, opts) {
     symbols = symbols.slice(0, BUILTIN_MAX_SYMBOLS);
   }
   if (!symbols.length) throw new ProviderError("screen", "the universe is empty", 400);
-  const bench = benchmarkFor2(opts.universe, symbols);
+  const bench = benchmarkFor(opts.universe, symbols);
   const fetchBars2 = async (sym3) => {
     const series = await getHistory(await resolveSymbol(sym3), { from, to: now, interval: "1d" });
     return { ...series, bars: closedBars(series.bars, series.instrument.market, now) };
@@ -58966,7 +59008,7 @@ async function builtinScreen(id, opts) {
   const shown = rows.slice(0, opts.limit ?? rows.length);
   notes.push(
     `${matches} of ${rows.length} symbols pass ${id}${rows.length < symbols.length ? ` (${symbols.length - rows.length} could not be read)` : ""}`,
-    `computed by ultrastock on closed daily bars (today's once its market's session is final) up to ${today2}; benchmark ${bench.name}`
+    `computed by ultrastock on closed daily bars (today's once its market's session is final) up to ${today2}; benchmark ${bench.name}${needsBench ? `: ${bench.why}` : ""}`
   );
   if (shown.length < rows.length) notes.push(`showing ${shown.length} of ${rows.length} (matches first) \u2014 raise --limit to see the rest`);
   for (const f3 of failures) notes.push(`unavailable \u2014 ${f3}`);
