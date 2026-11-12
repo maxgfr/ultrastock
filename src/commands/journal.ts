@@ -5,6 +5,8 @@ import { type Decision, pastDecisions, recordDecision, validateDecision } from "
 import { runAlerts, addRule, loadRules, notify, removeRule, type RuleKind } from "../alerts/alerts.js";
 import { clockNow } from "../core/net.js";
 import { argInt, argList, argValue, type CommandArgs, UsageError } from "../engine.js";
+import { sanitizeExternalText } from "../core/untrusted.js";
+import { refString } from "../people/types.js";
 import { printResult as out } from "./emit.js";
 import {
   addLesson,
@@ -249,7 +251,12 @@ export async function watchCommand(args: CommandArgs, asJson: boolean): Promise<
     return out(
       asJson,
       r,
-      r.map((x) => `${x.id}  ${x.kind.padEnd(5)} ${x.symbol ?? ""} ${x.expr ?? ""}${x.firedAt ? `  (last fired ${x.firedAt})` : ""}`).join("\n") || "no alerts",
+      r
+        .map(
+          (x) =>
+            `${x.id}  ${x.kind.padEnd(5)} ${x.symbol ?? (x.person ? sanitizeExternalText(refString(x.person), 80) : "")} ${x.expr ?? ""}${x.firedAt ? `  (last fired ${x.firedAt})` : ""}`,
+        )
+        .join("\n") || "no alerts",
     );
   }
   if (sub === "add") {

@@ -77,7 +77,7 @@ export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) 
       purpose: "bulk crypto klines (years of bars, futures mark/index/premium)",
     },
     uvx: { installed: has("uvx"), purpose: "runs maxgfr/crible, the global fundamental screener, unless a Homebrew crible of the pinned version is installed" },
-    pdftotext: { installed: has("pdftotext"), purpose: "optional: faster reading of Congress trade PDFs" },
+    pdftotext: { installed: has("pdftotext"), purpose: "optional: reads Congress (House PTR) and executive-branch (OGE 278-T) trade PDFs" },
     claude: {
       installed: has((process.env.ULTRASTOCK_CLAUDE_CMD ?? "claude").split(/\s+/)[0]!),
       purpose: "optional: research --search-with claude (Claude Code's web search, billed to your plan)",

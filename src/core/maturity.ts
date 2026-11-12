@@ -34,6 +34,7 @@ export const MATURITY: Record<string, Maturity> = {
   short: "beta",
   dividends: "beta",
   congress: "beta",
+  people: "beta",
   options: "beta",
   "options-analysis": "beta",
   stats: "stable",

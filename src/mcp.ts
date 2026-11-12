@@ -216,6 +216,36 @@ export const TOOLS: Tool[] = [
     params: {},
   },
   {
+    name: "people_search",
+    description:
+      "Who a name may mean among public figures whose trades a regulator publishes, asked live of each official source: House members (Clerk PTRs), the President and Senate-confirmed officials (OGE 278-T), SEC filers (13F funds, 13D/13G holders, Form 4 owners). Returns refs (source:id) for people_show. The Senate's eFD refuses automated clients: said in a note.",
+    command: ["people", "search"],
+    params: {
+      name: { kind: "string", description: "a name: Pelosi, Trump, Berkshire, Ackman…", positional: 0, required: true },
+      source: { kind: "string", description: "one source only", enum: ["house", "oge", "sec"] },
+    },
+  },
+  {
+    name: "people_show",
+    description:
+      "A public figure's recent disclosed trades (and with positions, what the filings say they hold): House PTR and OGE 278-T value bands, Form 4 shares and prices, 13F quarter changes, 13D/13G stakes. Each figure an [E#] with its filing linked; names and assets are external text.",
+    command: ["people", "show"],
+    params: {
+      person: {
+        kind: "string",
+        description: "a ref from people_search (house:…, oge:…, sec:<CIK>) or a name that means one filer",
+        positional: 0,
+        required: true,
+      },
+      source: { kind: "string", description: "one source only", enum: ["house", "oge", "sec"] },
+      since: { kind: "string", description: "filings received on or after YYYY-MM-DD" },
+      filings: { kind: "number", description: "how many filings to read (default 5 House, 3 OGE, 10 SEC per kind)" },
+      limit: { kind: "number", description: "how many trades to list (default 30)" },
+      positions: { kind: "boolean", description: "add what the filings say is held" },
+      out: OUT,
+    },
+  },
+  {
     name: "research",
     description:
       "Web research compiled into evidence. With a subject: write the worklist (RESEARCH.todo.json: angles and FR+EN queries — business model, results, governance, controversies, short-sellers; ETF factsheet/KID/replication/PEA; focus=results for the latest report, ask for one precise question). Then run those queries with YOUR web search and call again with out + hits (inline) to ingest: pages and PDFs fetched, walls rescued (Wayback, optional browser) or dropped, linked reports followed, each page a document [E#] (sources/E#.md, DOSSIER.md; an angle with fewer than two sources gets a rephrased second round in the worklist). No web search of your own: search-with claude|codex. check refuses a figure the cited page does not state.",

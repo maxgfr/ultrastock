@@ -85,18 +85,91 @@ export function parseSecTickerMap(json: unknown): Record<string, SecCompany> {
 /** "BRK.B" → "BRK-B": EDGAR writes share classes with a dash. */
 export const secTickerForm = (s: string) => s.trim().toUpperCase().replace(/\.US$/, "").replace(/[./]/g, "-");
 
+const tickerMap = () =>
+  cachedJson("sec:company_tickers", TTL.reference, async () => parseSecTickerMap((await secJson("https://www.sec.gov/files/company_tickers.json")).data));
+
 /** The CIK for a ticker (or a CIK given as digits, passed through). */
 export async function secCompany(tickerOrCik: string): Promise<{ cik: number; ticker?: string; title?: string }> {
   const s = tickerOrCik.trim().replace(/^CIK/i, "");
   if (/^\d{1,10}$/.test(s)) return { cik: Number(s) };
   const ticker = secTickerForm(s);
-  const map = await cachedJson("sec:company_tickers", TTL.reference, async () =>
-    parseSecTickerMap((await secJson("https://www.sec.gov/files/company_tickers.json")).data),
-  );
+  const map = await tickerMap();
   const hit = map?.[ticker];
   if (!map) throw new ProviderError(SEC_SOURCE, "ticker map unavailable (offline and not cached)", 0);
   if (!hit) throw new ProviderError(SEC_SOURCE, `no SEC registrant with ticker ${ticker}`, 404);
   return hit;
+}
+
+// Words that vary between how an issuer is named in a disclosure and in EDGAR ("MICROSOFT CORP" / "Microsoft Corporation").
+const NAME_NOISE = new Set(
+  "INC INCORPORATED CORP CORPORATION CO COMPANY LTD LIMITED PLC LLC LP NV SA AG SE THE NEW CL CLASS A B C COM COMMON STOCK SHS SHARES ORD ADR SPONSORED".split(
+    " ",
+  ),
+);
+
+/** An issuer's name reduced to what two spellings of it share: upper case, letters and digits, legal-form words dropped. */
+export function issuerNameKey(name: string): string {
+  return name
+    .toUpperCase()
+    .replace(/&/g, " AND ")
+    .replace(/[^A-Z0-9 ]+/g, " ")
+    .split(/\s+/)
+    .filter((w) => w && !NAME_NOISE.has(w))
+    .join(" ");
+}
+
+/** The tickers whose EDGAR title is this name: exact on the reduced name, else a unique prefix (a name cut short in a form). */
+export function tickerByTitle(map: Record<string, SecCompany>, name: string): string | undefined {
+  const key = issuerNameKey(name);
+  if (key.length < 3) return undefined;
+  const rows = Object.values(map);
+  const exact = rows.find((r) => issuerNameKey(r.title) === key);
+  if (exact) return exact.ticker;
+  if (key.length < 10) return undefined;
+  const prefixed = new Set(rows.filter((r) => issuerNameKey(r.title).startsWith(key)).map((r) => r.cik));
+  return prefixed.size === 1 ? rows.find((r) => prefixed.has(r.cik))!.ticker : undefined;
+}
+
+/** A US ticker for an issuer named in a disclosure (best effort, from EDGAR's own ticker list); undefined when unsure. */
+export async function secTickerByTitle(name: string): Promise<string | undefined> {
+  const map = await tickerMap().catch(() => undefined);
+  return map ? tickerByTitle(map, name) : undefined;
+}
+
+// ─── entity search ─────────────────────────────────────────────────────────
+
+/** A person, fund or company EDGAR knows by name. */
+export interface EdgarEntity {
+  cik: number;
+  /** As EDGAR records it — external text. */
+  name: string;
+  tickers: string[];
+}
+
+type EntitySearchJson = { hits?: { hits?: Array<{ _id?: string; _source?: { entity?: string; tickers?: string } }> } };
+
+/** The answer of EDGAR's name search (the suggestion box of sec.gov/edgar/search) → entities, best match first. */
+export function parseEntitySearch(json: EntitySearchJson): EdgarEntity[] {
+  return (json.hits?.hits ?? []).flatMap((h) => {
+    const cik = Number(h._id);
+    const raw = h._source?.entity?.trim();
+    if (!Number.isInteger(cik) || cik <= 0 || !raw) return [];
+    const tickers = (h._source?.tickers ?? "")
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    // "BERKSHIRE HATHAWAY INC (BRK-B, BRK-A)": the tickers are repeated in the name.
+    const name = tickers.length ? raw.replace(/\s*\([^)]*\)\s*$/, "") : raw;
+    return [{ cik, name, tickers }];
+  });
+}
+
+/** People, funds and companies whose EDGAR name matches `query` (live, the regulator's own index), best match first. */
+export async function searchEdgarEntities(query: string): Promise<EdgarEntity[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const res = await secJson<EntitySearchJson>(`https://efts.sec.gov/LATEST/search-index?keysTyped=${encodeURIComponent(q)}`);
+  return parseEntitySearch(res.data);
 }
 
 // ─── XBRL company facts ────────────────────────────────────────────────────

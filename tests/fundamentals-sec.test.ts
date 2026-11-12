@@ -13,7 +13,7 @@ import {
   secTickerForm,
   secUserAgent,
 } from "../src/providers/fundamentals/sec.js";
-import { diff13f, managerFor, parse13fTable, sec13f } from "../src/providers/fundamentals/sec-13f.js";
+import { diff13f, parse13fTable, sec13f } from "../src/providers/fundamentals/sec-13f.js";
 import { parseForm4, secInsiders, summarizeInsiders } from "../src/providers/fundamentals/sec-insiders.js";
 import { withFixture } from "./helpers/fixtures.js";
 
@@ -290,9 +290,6 @@ describe("SEC parsers", () => {
       ["AAA111111", "PUT", "new", 1],
       ["CCC333333", undefined, "sold", -9],
     ]);
-    expect(managerFor("berkshire").cik).toBe(1067983);
-    expect(managerFor("CIK1649339").note).toMatch(/2025/);
-    expect(() => managerFor("nobody at all")).toThrow(/unknown 13F manager/);
   });
 });
 
@@ -334,8 +331,10 @@ describe("SEC fixtures", () => {
 
   it("replays Berkshire's latest two 13F-HRs, with OpenFIGI tickers", async () => {
     await withFixture("fundamentals-sec-13f", async () => {
-      const ds = await sec13f("berkshire", { top: 5, tickers: true });
-      expect(ds.title).toMatch(/^Berkshire Hathaway 13F holdings/);
+      const ds = await sec13f(1067983, { top: 5, tickers: true });
+      expect(ds.title).toMatch(/^CIK1067983 13F holdings/);
+      // The filer's name is EDGAR's, external text: a fenced value, not part of the title.
+      expect(point(ds, "CIK1067983.13f.manager")).toMatchObject({ value: "BERKSHIRE HATHAWAY INC", untrusted: true });
       const total = point(ds, "CIK1067983.13f.total.value")?.value as number;
       expect(total).toBeGreaterThan(1e11);
       const weights = ds.points.filter((p) => p.key.endsWith(".weight"));

@@ -68,6 +68,7 @@ open thesis past its `review-by` date shows as OVERDUE in `journal digest`.
 |---|---|
 | `watch add <SYM> "<condition>"` | the condition becomes true on the latest closed bar, e.g. `close < sma200 and rsi14 < 30` |
 | `watch add 8k <US SYM>` | an important 8-K is filed |
+| `people follow "<source:id>"` | a public figure (House member, OGE filer, SEC filer) files a new report: one event per filing, with its buys, sales and largest trade; `people check` runs only these |
 | `watch add stops` | an open position (real or paper) trades at or below the newest stop among the buy tickets filled (wholly, or in part before a cancel) since the line was last opened — on a day after the fill, never on a bar from before the stop existed; once per ticket and line opening, and a line whose prices cannot be read is reported without holding up the others |
 
 - **Condition variables:** `close open high low volume change_pct ret5d

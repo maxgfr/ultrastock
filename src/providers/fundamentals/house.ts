@@ -12,6 +12,7 @@
 // when an external rung (pdftotext, anydoc…) is installed, and the row parser
 // below is best-effort over that text. Amounts are disclosed as RANGES only.
 // Member names are external text; scanned (handwritten) PTRs have no text.
+import { cachedJson, TTL } from "../../core/cache.js";
 import type { Dataset, Point } from "../../core/datasets.js";
 import { clockNow } from "../../core/net.js";
 import { extractPdf } from "../../engine.js";
@@ -58,18 +59,22 @@ export function houseIndexXml(zip: Buffer): string {
   return zipRead(zip, entry).toString("utf8").replace(/^﻿/, "");
 }
 
-/** Recent Periodic Transaction Reports (filing type P), optionally of one member (name substring), with PDF links. */
-export async function housePtrFilings(opts: { year?: number; limit?: number; member?: string; now?: Date } = {}): Promise<Dataset> {
-  const year = opts.year ?? (opts.now ?? clockNow()).getUTCFullYear();
+/** One year's disclosure index (every filing type), newest first. */
+export async function houseIndex(year: number): Promise<{ filings: HouseFiling[]; url: string; fetchedAt: string }> {
   const url = `${BASE}/financial-pdfs/${year}FD.zip`;
   const res = await fetchBinary(url, { accept: "application/zip,*/*" });
   if (!res.ok) throw new ProviderError(HOUSE_SOURCE, `${url} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
-  let filings: HouseFiling[];
   try {
-    filings = parseHouseIndex(houseIndexXml(res.bytes));
+    return { filings: parseHouseIndex(houseIndexXml(res.bytes)), url, fetchedAt: res.fetchedAt };
   } catch (e) {
     throw new ProviderError(HOUSE_SOURCE, `${url}: ${(e as Error).message}`, 502);
   }
+}
+
+/** Recent Periodic Transaction Reports (filing type P), optionally of one member (name substring), with PDF links. */
+export async function housePtrFilings(opts: { year?: number; limit?: number; member?: string; now?: Date } = {}): Promise<Dataset> {
+  const year = opts.year ?? (opts.now ?? clockNow()).getUTCFullYear();
+  const { filings, url, fetchedAt } = await houseIndex(year);
   const who = opts.member?.trim().toLowerCase();
   const ptrs = filings.filter((f) => f.filingType === "P" && (!who || f.member.toLowerCase().includes(who))).slice(0, opts.limit ?? 20);
   if (!ptrs.length) throw new ProviderError(HOUSE_SOURCE, `no periodic transaction report in ${year}${who ? " for that member" : ""}`, 404);
@@ -86,7 +91,7 @@ export async function housePtrFilings(opts: { year?: number; limit?: number; mem
     title: `US House periodic transaction reports, ${year}`,
     subject: "US.house",
     points,
-    provenance: { source: HOUSE_SOURCE, url, fetchedAt: res.fetchedAt, delay: "filing", official: true, asOf: ptrs[0]!.date },
+    provenance: { source: HOUSE_SOURCE, url, fetchedAt, delay: "filing", official: true, asOf: ptrs[0]!.date },
     notes: [
       "a PTR is due within 45 days of the trade (often later): the filing date is not the trade date",
       "transactions are in the linked PDFs — housePtrTransactions(docId) reads one; amounts are ranges",
@@ -173,4 +178,51 @@ export async function housePtrTransactions(docId: string, opts: { year?: number;
     provenance: { source: HOUSE_SOURCE, url, fetchedAt: res.fetchedAt, delay: "filing", official: true },
     notes,
   };
+}
+
+/** One PTR read from its PDF: its rows, and which extractor read it (or why none did). */
+export interface HousePtr {
+  rows: PtrTransaction[];
+  url: string;
+  via?: string;
+  reason?: string;
+  fetchedAt: string;
+}
+
+/** A PTR's rows, kept a year once read (a filed PTR does not change; an amendment is a new DocID). */
+export async function readHousePtr(docId: string, year: number): Promise<HousePtr> {
+  const url = `${BASE}/ptr-pdfs/${year}/${docId}.pdf`;
+  const read = async (): Promise<HousePtr> => {
+    const res = await fetchBinary(url, { accept: "application/pdf,*/*" });
+    if (!res.ok) throw new ProviderError(HOUSE_SOURCE, `${url} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+    const text = await extractPdf(res.bytes);
+    return {
+      rows: text.text ? parsePtrText(text.text) : [],
+      url,
+      ...(text.via ? { via: text.via } : {}),
+      ...(text.reason ? { reason: text.reason } : {}),
+      fetchedAt: res.fetchedAt,
+    };
+  };
+  let fresh: HousePtr | undefined;
+  const cached = await cachedJson(`house:ptr:${year}:${docId}`, TTL.immutable, async () => {
+    fresh = await read();
+    return fresh.rows.length ? fresh : undefined;
+  });
+  return cached ?? fresh ?? read();
+}
+
+/** The member names in an index that contain every word of `query` (case aside), each with their latest district. */
+export function houseMembersMatching(filings: readonly HouseFiling[], query: string): Array<{ member: string; stateDistrict: string; latest: string }> {
+  const words = query
+    .toLowerCase()
+    .split(/[\s,]+/)
+    .filter(Boolean);
+  const out = new Map<string, { member: string; stateDistrict: string; latest: string }>();
+  for (const f of filings) {
+    const name = f.member.toLowerCase();
+    if (!words.length || !words.every((w) => name.includes(w)) || out.has(f.member)) continue;
+    out.set(f.member, { member: f.member, stateDistrict: f.stateDistrict, latest: f.date });
+  }
+  return [...out.values()];
 }

@@ -140,7 +140,10 @@ export async function insidersCommand(args: CommandArgs, asJson: boolean): Promi
 
 export async function holdingsCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const manager = args.positional[0];
-  if (!manager) throw new UsageError("usage: ultrastock holdings <berkshire|pershing-square|bridgewater|…|CIK> [--limit <top n>] — latest 13F and its changes");
+  if (!manager)
+    throw new UsageError(
+      "usage: ultrastock holdings <manager name|CIK> [--limit <top n>] — latest 13F and its changes (a name is found through EDGAR's name search)",
+    );
   emitDatasets(
     args,
     [await sec13f(/^\d+$/.test(manager) ? Number(manager) : manager, { top: argInt(args, "limit", { min: 1, max: 100 }) ?? 15, tickers: true })],

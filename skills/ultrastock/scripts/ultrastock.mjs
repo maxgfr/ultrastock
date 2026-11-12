@@ -591,8 +591,8 @@ function treeFromPs() {
   const r3 = spawnSync("ps", ["-A", "-o", "pid=,ppid="], { encoding: "utf8", timeout: 5e3 });
   if (r3.status !== 0 || !r3.stdout) return void 0;
   const tree = /* @__PURE__ */ new Map();
-  for (const line of r3.stdout.split("\n")) {
-    const [pid, ppid] = line.trim().split(/\s+/).map(Number);
+  for (const line2 of r3.stdout.split("\n")) {
+    const [pid, ppid] = line2.trim().split(/\s+/).map(Number);
     if (pid && ppid) addChild(tree, ppid, pid);
   }
   return tree;
@@ -863,8 +863,8 @@ function failureDetail(tool, r3) {
     else if (l.startsWith("at ") && l.endsWith("{")) props = true;
     else if (l && !NOISE_RE.test(l)) lines.push(l);
   }
-  const line = lines.find((l) => ERROR_LINE_RE.test(l)) ?? lines[0];
-  const detail = (line ?? r3.error ?? "failed").replace(PATH_RE, (p) => p.slice(Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")) + 1)).slice(0, 200);
+  const line2 = lines.find((l) => ERROR_LINE_RE.test(l)) ?? lines[0];
+  const detail = (line2 ?? r3.error ?? "failed").replace(PATH_RE, (p) => p.slice(Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")) + 1)).slice(0, 200);
   return detail.startsWith(`${tool}:`) ? detail : `${tool}: ${detail}`;
 }
 var FAIL_FAST;
@@ -1228,8 +1228,8 @@ function markdownTable(rows, budget) {
   const rules = 3 * width + 2;
   const rule = `|${" --- |".repeat(width)}`;
   if (!budget.takeRules(rules + rule.length + 1)) return "";
-  const line = (row) => `| ${Array.from({ length: width }, (_, c) => cell(row[c] ?? "")).join(" | ")} |`;
-  const out = [line(rows[0]), rule];
+  const line2 = (row) => `| ${Array.from({ length: width }, (_, c) => cell(row[c] ?? "")).join(" | ")} |`;
+  const out = [line2(rows[0]), rule];
   let blank2 = false;
   for (let r3 = 1; r3 < last2; r3++) {
     const row = rows[r3];
@@ -1237,7 +1237,7 @@ function markdownTable(rows, budget) {
     if (empty && blank2) continue;
     blank2 = empty;
     if (!budget.takeRules(rules)) break;
-    out.push(line(row));
+    out.push(line2(row));
   }
   return out.join("\n");
 }
@@ -1544,11 +1544,11 @@ function drawingText(xml, budget, onlyBody = false) {
   const add2 = (s) => {
     if (para !== void 0 && budget.take(s.length)) para += s;
   };
-  const emit = (line) => {
+  const emit = (line2) => {
     const table2 = tables[tables.length - 1];
-    if (table2?.cell) table2.cell.push(line);
-    else if (shapes.length) shapes[shapes.length - 1].lines.push(line);
-    else if (!onlyBody) lines.push(line);
+    if (table2?.cell) table2.cell.push(line2);
+    else if (shapes.length) shapes[shapes.length - 1].lines.push(line2);
+    else if (!onlyBody) lines.push(line2);
   };
   walkXml(xml, {
     open(name, attrs2) {
@@ -1577,9 +1577,9 @@ function drawingText(xml, budget, onlyBody = false) {
       const table2 = tables[tables.length - 1];
       if (n2 === "t") inText = Math.max(0, inText - 1);
       else if (n2 === "p" && name.startsWith("a:") && para !== void 0) {
-        const line = para.trim();
+        const line2 = para.trim();
         para = void 0;
-        if (line) emit(line);
+        if (line2) emit(line2);
       } else if (name === "a:tc" && table2?.row && table2.cell) {
         table2.row.push(table2.cell.join(" "));
         table2.cell = void 0;
@@ -2381,8 +2381,8 @@ function classifyYtdlpError(stderr) {
   if (/timed out after/i.test(s)) return "yt-dlp timed out";
   if (/DRM protected/i.test(s)) return "the site serves this video under DRM: its picture and sound cannot be downloaded (subtitles still can)";
   if (/unsupported url|no video (?:formats|could be found)|no media found|there's no video/i.test(s)) return "no video at this URL (yt-dlp found none)";
-  const line = s.split("\n").map((l) => l.trim()).find((l) => l.startsWith("ERROR:"));
-  return `yt-dlp failed: ${(line ?? s.trim().split("\n")[0] ?? "").replace(/^ERROR:\s*/, "").slice(0, 200) || "no output"}`;
+  const line2 = s.split("\n").map((l) => l.trim()).find((l) => l.startsWith("ERROR:"));
+  return `yt-dlp failed: ${(line2 ?? s.trim().split("\n")[0] ?? "").replace(/^ERROR:\s*/, "").slice(0, 200) || "no output"}`;
 }
 async function withTempDir(label2, fn) {
   const dir2 = mkdtempSync2(join3(tmpdir3(), `${brand().name}-${label2}-`));
@@ -2553,7 +2553,7 @@ var init_vtt = __esm({
     TIMING = /^((?:\d+:)?\d{1,2}:\d{2}[.,]\d{3})\s+-->\s+((?:\d+:)?\d{1,2}:\d{2}[.,]\d{3})/;
     MIN_CUE_S = 0.05;
     ENTITIES2 = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", lrm: "", rlm: "" };
-    clean = (line) => decode(line.replace(/<[^<>]*>/g, "").replace(/\{\\[^{}]*\}/g, "")).replace(/\s+/g, " ").trim();
+    clean = (line2) => decode(line2.replace(/<[^<>]*>/g, "").replace(/\{\\[^{}]*\}/g, "")).replace(/\s+/g, " ").trim();
     SENTENCE_END = /(?<![.!?…])[.!?…]+["'”’)\]]*(?=\s|$)/g;
     ENDS_SENTENCE = /(?<![.!?…])[.!?…]+["'”’)\]]*$/;
     MAX_SEGMENT_S = 30;
@@ -3070,10 +3070,10 @@ function makeMatcher(expanded) {
     canonicals: expanded.map((e) => e.canonical),
     patterns: variants.map(({ source: source2, canonical: canonical2 }) => ({ source: source2, canonical: canonical2 })),
     canonicalOf: (span) => anchored.find(({ re }) => re.test(span))?.canonical,
-    matchLine: (line) => {
+    matchLine: (line2) => {
       const hit = /* @__PURE__ */ new Set();
       for (const { re, canonical: canonical2 } of regexes) {
-        if (!hit.has(canonical2) && re.test(line)) hit.add(canonical2);
+        if (!hit.has(canonical2) && re.test(line2)) hit.add(canonical2);
       }
       return hit;
     }
@@ -3086,21 +3086,21 @@ function nearestHeading(lines, anchor) {
   let heading;
   let inFence = false;
   for (let i = 0; i <= anchor && i < lines.length; i++) {
-    const line = lines[i];
-    if (/^\s*(```|~~~)/.test(line)) {
+    const line2 = lines[i];
+    if (/^\s*(```|~~~)/.test(line2)) {
       inFence = !inFence;
       continue;
     }
     if (inFence) continue;
-    const title = atxTitle(line);
+    const title = atxTitle(line2);
     if (title) heading = title;
   }
   return heading;
 }
-function atxTitle(line) {
-  const open2 = ATX_OPEN.exec(line);
+function atxTitle(line2) {
+  const open2 = ATX_OPEN.exec(line2);
   if (!open2) return void 0;
-  let title = line.slice(open2[0].length).trimEnd();
+  let title = line2.slice(open2[0].length).trimEnd();
   const close = ATX_CLOSE.exec(title);
   if (close) title = title.slice(0, close.index).trimEnd();
   return title ? title.replace(MD_ESCAPE, "$1") : void 0;
@@ -5252,9 +5252,9 @@ function wantedKind(deps, kind, profile) {
   return asked && isBrowserKind(asked) ? asked : readProfileKind(profile);
 }
 async function launch(deps, binary, profile, headless, kind, quiet) {
-  const wanted = binary ? void 0 : wantedKind(deps, kind, profile);
-  const found = binary ? { kind: kindOf(binary), path: binary } : deps.detectBrowser(wanted);
-  if (!found && wanted) throw new UsageError(`no ${wanted} found: install it, or name its executable with ${envName("BROWSER_BIN")}`);
+  const wanted2 = binary ? void 0 : wantedKind(deps, kind, profile);
+  const found = binary ? { kind: kindOf(binary), path: binary } : deps.detectBrowser(wanted2);
+  if (!found && wanted2) throw new UsageError(`no ${wanted2} found: install it, or name its executable with ${envName("BROWSER_BIN")}`);
   if (!found) {
     throw new Error(`no Chrome, Brave, Chromium or Edge found: install one, or set ${envName("BROWSER_BIN")} to the browser's executable`);
   }
@@ -6708,12 +6708,12 @@ function isHeaderRow(cells) {
 function tableToMarkdown(table2) {
   const width = table2.rows.reduce((w, r3) => Math.max(w, r3.length), Math.max(table2.headers.length, 1));
   const esc3 = (s) => s.replace(/\|/g, "\\|");
-  const line = (cells) => `| ${Array.from({ length: width }, (_, i) => esc3(cells[i] ?? "")).join(" | ")} |`;
+  const line2 = (cells) => `| ${Array.from({ length: width }, (_, i) => esc3(cells[i] ?? "")).join(" | ")} |`;
   const out = [];
   if (table2.caption) out.push(`**${table2.caption}**`, "");
-  out.push(line(table2.headers.length ? table2.headers : Array.from({ length: width }, () => "")));
+  out.push(line2(table2.headers.length ? table2.headers : Array.from({ length: width }, () => "")));
   out.push(`|${" --- |".repeat(width)}`);
-  for (const row of table2.rows) out.push(line(row));
+  for (const row of table2.rows) out.push(line2(row));
   return out.join("\n");
 }
 var collapse;
@@ -6946,13 +6946,13 @@ function escapeText(s, edges) {
   if (edges?.before && out[0] === "~") out = `\\${out}`;
   return out;
 }
-function escapeLineStart(line) {
-  const c = line[0];
-  if (c === "#") return /^#{1,6}(?:\s|$)/.test(line) ? `\\${line}` : line;
-  if (c === ">") return `\\${line}`;
-  if (c === "-" || c === "+" || c === "=") return /^[-+=](?:\s|$)/.test(line) || /^(?:[-=]\s*)+$/.test(line) ? `\\${line}` : line;
-  const ordered = /^(\d{1,9})[.)](?=\s|$)/.exec(line);
-  return ordered ? `${ordered[1]}\\${line.slice(ordered[1].length)}` : line;
+function escapeLineStart(line2) {
+  const c = line2[0];
+  if (c === "#") return /^#{1,6}(?:\s|$)/.test(line2) ? `\\${line2}` : line2;
+  if (c === ">") return `\\${line2}`;
+  if (c === "-" || c === "+" || c === "=") return /^[-+=](?:\s|$)/.test(line2) || /^(?:[-=]\s*)+$/.test(line2) ? `\\${line2}` : line2;
+  const ordered = /^(\d{1,9})[.)](?=\s|$)/.exec(line2);
+  return ordered ? `${ordered[1]}\\${line2.slice(ordered[1].length)}` : line2;
 }
 function longestRun(s, ch) {
   let best = 0;
@@ -7222,9 +7222,9 @@ var init_markdown2 = __esm({
         for (const raw of `${text2}
 
 `.split("\n")) {
-          const line = raw.trim();
-          if (line) {
-            para.push(escapeLineStart(line));
+          const line2 = raw.trim();
+          if (line2) {
+            para.push(escapeLineStart(line2));
             continue;
           }
           if (!para.length) continue;
@@ -7236,9 +7236,9 @@ var init_markdown2 = __esm({
       block(content) {
         if (!content.length) return;
         if (this.needBlank && this.lines.length) this.lines.push(this.prefix(false).trimEnd());
-        for (const line of content) {
+        for (const line2 of content) {
           const prefix = this.prefix(true);
-          this.lines.push(line ? prefix + line : prefix.trimEnd());
+          this.lines.push(line2 ? prefix + line2 : prefix.trimEnd());
         }
         this.needBlank = true;
       }
@@ -7522,8 +7522,8 @@ async function postJson(base2, path2, body, opts) {
 }
 function serverReason(data) {
   const raw = typeof data === "string" ? data : typeof data?.error === "string" ? data.error : "";
-  const line = cleanInline(raw).slice(0, 200);
-  return line || void 0;
+  const line2 = cleanInline(raw).slice(0, 200);
+  return line2 || void 0;
 }
 function mapScrapeResponse(json22) {
   if (!json22 || typeof json22 !== "object" || Array.isArray(json22)) return null;
@@ -8136,13 +8136,13 @@ function cleanInline(s) {
     return markup ? "" : tag;
   }).replace(/\s+/g, " ").trim();
 }
-function preSlotIndex(line) {
-  if (line.length < 3 || line[0] !== NUL2 || line[line.length - 1] !== NUL2) return void 0;
-  const i = Number(line.slice(1, -1));
+function preSlotIndex(line2) {
+  if (line2.length < 3 || line2[0] !== NUL2 || line2[line2.length - 1] !== NUL2) return void 0;
+  const i = Number(line2.slice(1, -1));
   return Number.isInteger(i) ? i : void 0;
 }
-function restoreInlinePre(line, blocks) {
-  const parts = line.split(NUL2);
+function restoreInlinePre(line2, blocks) {
+  const parts = line2.split(NUL2);
   let out = parts[0];
   for (let i = 1; i < parts.length; i += 2) {
     const code = (blocks[Number(parts[i])] ?? "").replace(/\s+/g, " ").trim();
@@ -8643,8 +8643,8 @@ async function rescueViaWayback(url, opts = {}) {
 function stripConsentBoilerplate(text2, opts = {}) {
   if (opts.markdown) return stripConsentMarkdown(text2);
   let dropped = 0;
-  const kept = text2.split("\n").filter((line) => {
-    const isBanner = isConsentLine(line.trim());
+  const kept = text2.split("\n").filter((line2) => {
+    const isBanner = isConsentLine(line2.trim());
     if (isBanner) dropped++;
     return !isBanner;
   });
@@ -8654,29 +8654,29 @@ function isConsentLine(t) {
   const hits = CONSENT_PATTERNS.reduce((n2, re) => n2 + (re.test(t) ? 1 : 0), 0);
   return BUTTON_LABEL.test(t) || hits >= 1 && t.length <= BUTTON_LENGTH && (hits >= 2 || CONSENT_ACTIONS.some((re) => re.test(t))) || hits >= 1 && t.length < NOTICE_LENGTH && BANNER_VOICE.test(t);
 }
-function visibleText(line) {
-  return line.replace(MD_LINE_START, "").replace(MD_DESTINATION, "]").replace(MD_MARKUP, "").trim();
+function visibleText(line2) {
+  return line2.replace(MD_LINE_START, "").replace(MD_DESTINATION, "]").replace(MD_MARKUP, "").trim();
 }
 function stripConsentMarkdown(text2) {
   let dropped = 0;
   let fence2 = "";
   const kept = [];
-  for (const line of text2.split("\n")) {
-    const f3 = MD_FENCE.exec(line);
+  for (const line2 of text2.split("\n")) {
+    const f3 = MD_FENCE.exec(line2);
     if (fence2) {
       if (f3 && f3[1][0] === fence2[0] && f3[1].length >= fence2.length && !f3[2].trim()) fence2 = "";
-      kept.push(line);
+      kept.push(line2);
       continue;
     }
     if (f3) fence2 = f3[1];
-    else if (!line.trim()) {
-      if (kept.length && kept[kept.length - 1].trim()) kept.push(line);
+    else if (!line2.trim()) {
+      if (kept.length && kept[kept.length - 1].trim()) kept.push(line2);
       continue;
-    } else if (!/^[\s>]*\|/.test(line) && isConsentLine(visibleText(line))) {
+    } else if (!/^[\s>]*\|/.test(line2) && isConsentLine(visibleText(line2))) {
       dropped++;
       continue;
     }
-    kept.push(line);
+    kept.push(line2);
   }
   while (kept.length && !kept[kept.length - 1].trim()) kept.pop();
   return { text: kept.join("\n"), dropped };
@@ -8700,12 +8700,12 @@ function focusedSnippet(text2, question, opts = {}) {
   const sentences = [];
   const headingTerms = [/* @__PURE__ */ new Set()];
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (/^#{1,6}\s/.test(line)) {
-      headingTerms.push(matcher.matchLine(line));
+    const line2 = lines[i];
+    if (/^#{1,6}\s/.test(line2)) {
+      headingTerms.push(matcher.matchLine(line2));
       continue;
     }
-    for (const raw of line.split(/(?<=[.!?])\s+/)) {
+    for (const raw of line2.split(/(?<=[.!?])\s+/)) {
       const t = raw.trim();
       if (t.length < 20) continue;
       sentences.push({ text: t, line: i, section: headingTerms.length - 1, terms: matcher.matchLine(t), prose: PROSE_END.test(t) });
@@ -11554,8 +11554,8 @@ function stripHtmlComments(text2) {
   }
   return out + text2.slice(from);
 }
-function stripInlineCode(line) {
-  return line.replace(/`[^`\n]*`/g, " ");
+function stripInlineCode(line2) {
+  return line2.replace(/`[^`\n]*`/g, " ");
 }
 function codeMask(lines) {
   const mask = new Array(lines.length).fill(false);
@@ -11575,12 +11575,12 @@ function codeMask(lines) {
   return mask;
 }
 var isHeadingOrRule = (t) => /^#{1,6}\s/.test(t) || /^([-*_])\1{2,}$/.test(t);
-var isTableSeparator = (line) => /\|/.test(line) && /^[\s:|-]+$/.test(line.trim()) && /-/.test(line);
-var isTableRow = (line) => /\|/.test(line.trim()) && !isTableSeparator(line);
-var isListItem = (line) => /^\s*([-*+]|\d+\.)\s+\S/.test(line);
-var isReferenceDefinition = (line) => /^ {0,3}\[[^\]\n]+\]:[ \t]*(?:<[^>\n]*>|\S+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*$/.test(line);
-function tableCells(line) {
-  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim()).join(" ");
+var isTableSeparator = (line2) => /\|/.test(line2) && /^[\s:|-]+$/.test(line2.trim()) && /-/.test(line2);
+var isTableRow = (line2) => /\|/.test(line2.trim()) && !isTableSeparator(line2);
+var isListItem = (line2) => /^\s*([-*+]|\d+\.)\s+\S/.test(line2);
+var isReferenceDefinition = (line2) => /^ {0,3}\[[^\]\n]+\]:[ \t]*(?:<[^>\n]*>|\S+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*$/.test(line2);
+function tableCells(line2) {
+  return line2.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim()).join(" ");
 }
 function extractClaimUnits(text2, opts = {}) {
   const lines = stripHtmlComments(text2).split("\n");
@@ -11606,26 +11606,26 @@ function extractClaimUnits(text2, opts = {}) {
       continue;
     }
     const raw = lines[i];
-    const line = stripInlineCode(raw);
-    const t = line.trim();
+    const line2 = stripInlineCode(raw);
+    const t = line2.trim();
     if (!prose.length && isReferenceDefinition(raw)) {
       i++;
       continue;
     }
-    if (t === "" || isHeadingOrRule(t) || isTableSeparator(line)) {
+    if (t === "" || isHeadingOrRule(t) || isTableSeparator(line2)) {
       flush();
       if (/^#{1,6}\s/.test(t)) section = opts.sectionTag?.(t);
       i++;
       continue;
     }
-    if (isTableRow(line)) {
+    if (isTableRow(line2)) {
       flush();
       const next2 = i + 1 < lines.length && !skip(i + 1) ? stripInlineCode(lines[i + 1]) : "";
       if (!(skipHeader && isTableSeparator(next2))) units.push(tag({ kind: "text", text: tableCells(stored(raw)) }));
       i++;
       continue;
     }
-    if (/^\s*>/.test(line)) {
+    if (/^\s*>/.test(line2)) {
       if (quoteMode === "prose") {
         const dequoted = stored(raw).replace(/^\s*>\s?/, "").trim();
         if (dequoted) prose.push(dequoted);
@@ -11643,7 +11643,7 @@ function extractClaimUnits(text2, opts = {}) {
       if (quoted.length) units.push(tag({ kind: "text", text: quoted.join(" ") }));
       continue;
     }
-    if (isListItem(line)) {
+    if (isListItem(line2)) {
       flush();
       const items = [];
       while (i < lines.length && !skip(i)) {
@@ -11865,9 +11865,9 @@ function firstProse(file) {
   }
   const body = text2.startsWith("---\n") ? text2.slice(text2.indexOf("\n---", 3) + 4) : text2;
   for (const block of body.split(/\n\s*\n/)) {
-    const line = block.trim();
-    if (!line || line.startsWith("#") || line.startsWith(">") || line.startsWith("|") || line.startsWith("```")) continue;
-    const flat2 = line.replace(/\s+/g, " ").replace(/[*`]/g, "");
+    const line2 = block.trim();
+    if (!line2 || line2.startsWith("#") || line2.startsWith(">") || line2.startsWith("|") || line2.startsWith("```")) continue;
+    const flat2 = line2.replace(/\s+/g, " ").replace(/[*`]/g, "");
     return flat2.length > 300 ? `${flat2.slice(0, 297)}\u2026` : flat2;
   }
   return void 0;
@@ -12191,8 +12191,8 @@ async function runStdioServer(adapter, opts = {}) {
   };
   const rl = createInterface({ input, terminal: false });
   try {
-    for await (const line of rl) {
-      const trimmed = line.trim();
+    for await (const line2 of rl) {
+      const trimmed = line2.trim();
       if (!trimmed) continue;
       let parsed;
       try {
@@ -12521,15 +12521,15 @@ function rsi(closes, n2 = 14) {
 function macd(closes, fast = 12, slow = 26, signalN = 9) {
   const f3 = ema(closes, fast);
   const s = ema(closes, slow);
-  const line = [];
+  const line2 = [];
   const startAt = slow - 1;
-  for (let i = startAt; i < closes.length; i++) line.push(f3[i] - s[i]);
-  const sig = ema(line, signalN);
+  for (let i = startAt; i < closes.length; i++) line2.push(f3[i] - s[i]);
+  const sig = ema(line2, signalN);
   const out = new Array(closes.length).fill(void 0);
-  for (let j = 0; j < line.length; j++) {
+  for (let j = 0; j < line2.length; j++) {
     const sv = sig[j];
     if (sv === void 0) continue;
-    out[j + startAt] = { macd: line[j], signal: sv, histogram: line[j] - sv };
+    out[j + startAt] = { macd: line2[j], signal: sv, histogram: line2[j] - sv };
   }
   return out;
 }
@@ -12712,7 +12712,7 @@ function untrustedBlock(source2, lines) {
 }
 function sanitizeExternalDocument(raw) {
   return raw.normalize("NFKC").split(/\r?\n/).map(
-    (line) => line.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, " ").replace(/<<<|>>>/g, " ").replace(/UNTRUSTED_DATA/gi, "untrusted data").replace(/[ \t]+/g, " ").trimEnd()
+    (line2) => line2.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, " ").replace(/<<<|>>>/g, " ").replace(/UNTRUSTED_DATA/gi, "untrusted data").replace(/[ \t]+/g, " ").trimEnd()
   ).join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -13526,8 +13526,8 @@ function parseCsvText(text2, delimiter2) {
   return rows.filter((r3) => r3.some((c) => c.trim() !== ""));
 }
 function sniffDelimiter(text2) {
-  for (const line of text2.split(/\r?\n/, 8)) {
-    const counts = [";", "	", ","].map((d) => [d, line.split(d).length - 1]).filter(([, n2]) => n2 > 0);
+  for (const line2 of text2.split(/\r?\n/, 8)) {
+    const counts = [";", "	", ","].map((d) => [d, line2.split(d).length - 1]).filter(([, n2]) => n2 > 0);
     if (counts.length) return counts.sort((a, b) => b[1] - a[1])[0][0];
   }
   return ",";
@@ -15005,8 +15005,8 @@ function mcpToolCall(child, tool, toolArgs, timeoutMs) {
       child.kill("SIGKILL");
       fail3(`crible mcp did not answer ${tool} within ${timeoutMs} ms`);
     }, timeoutMs);
-    const answer = (line) => {
-      const msg = JSON.parse(line);
+    const answer = (line2) => {
+      const msg = JSON.parse(line2);
       if (msg.id === 1) {
         send2({ jsonrpc: "2.0", method: "notifications/initialized" });
         send2({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: tool, arguments: toolArgs } });
@@ -15024,13 +15024,13 @@ function mcpToolCall(child, tool, toolArgs, timeoutMs) {
       buf += chunk.toString("utf8");
       let nl;
       while ((nl = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, nl).trim();
+        const line2 = buf.slice(0, nl).trim();
         buf = buf.slice(nl + 1);
-        if (!line.startsWith("{")) continue;
+        if (!line2.startsWith("{")) continue;
         try {
-          answer(line);
+          answer(line2);
         } catch {
-          fail3(`crible mcp sent an answer to ${tool} that is not JSON: ${line.slice(0, 120)}`);
+          fail3(`crible mcp sent an answer to ${tool} that is not JSON: ${line2.slice(0, 120)}`);
         }
       }
     });
@@ -15829,17 +15829,19 @@ function houseIndexXml(zip) {
   if (!entry2) throw new Error("no FD.xml in the archive");
   return zipRead(zip, entry2).toString("utf8").replace(/^﻿/, "");
 }
-async function housePtrFilings(opts = {}) {
-  const year = opts.year ?? (opts.now ?? clockNow()).getUTCFullYear();
+async function houseIndex(year) {
   const url = `${BASE10}/financial-pdfs/${year}FD.zip`;
   const res = await fetchBinary(url, { accept: "application/zip,*/*" });
   if (!res.ok) throw new ProviderError(HOUSE_SOURCE, `${url} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
-  let filings;
   try {
-    filings = parseHouseIndex(houseIndexXml(res.bytes));
+    return { filings: parseHouseIndex(houseIndexXml(res.bytes)), url, fetchedAt: res.fetchedAt };
   } catch (e) {
     throw new ProviderError(HOUSE_SOURCE, `${url}: ${e.message}`, 502);
   }
+}
+async function housePtrFilings(opts = {}) {
+  const year = opts.year ?? (opts.now ?? clockNow()).getUTCFullYear();
+  const { filings, url, fetchedAt } = await houseIndex(year);
   const who = opts.member?.trim().toLowerCase();
   const ptrs = filings.filter((f3) => f3.filingType === "P" && (!who || f3.member.toLowerCase().includes(who))).slice(0, opts.limit ?? 20);
   if (!ptrs.length) throw new ProviderError(HOUSE_SOURCE, `no periodic transaction report in ${year}${who ? " for that member" : ""}`, 404);
@@ -15856,7 +15858,7 @@ async function housePtrFilings(opts = {}) {
     title: `US House periodic transaction reports, ${year}`,
     subject: "US.house",
     points,
-    provenance: { source: HOUSE_SOURCE, url, fetchedAt: res.fetchedAt, delay: "filing", official: true, asOf: ptrs[0].date },
+    provenance: { source: HOUSE_SOURCE, url, fetchedAt, delay: "filing", official: true, asOf: ptrs[0].date },
     notes: [
       "a PTR is due within 45 days of the trade (often later): the filing date is not the trade date",
       "transactions are in the linked PDFs \u2014 housePtrTransactions(docId) reads one; amounts are ranges"
@@ -15918,6 +15920,37 @@ async function housePtrTransactions(docId, opts = {}) {
     provenance: { source: HOUSE_SOURCE, url, fetchedAt: res.fetchedAt, delay: "filing", official: true },
     notes
   };
+}
+async function readHousePtr(docId, year) {
+  const url = `${BASE10}/ptr-pdfs/${year}/${docId}.pdf`;
+  const read3 = async () => {
+    const res = await fetchBinary(url, { accept: "application/pdf,*/*" });
+    if (!res.ok) throw new ProviderError(HOUSE_SOURCE, `${url} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+    const text2 = await extractPdf(res.bytes);
+    return {
+      rows: text2.text ? parsePtrText(text2.text) : [],
+      url,
+      ...text2.via ? { via: text2.via } : {},
+      ...text2.reason ? { reason: text2.reason } : {},
+      fetchedAt: res.fetchedAt
+    };
+  };
+  let fresh;
+  const cached = await cachedJson(`house:ptr:${year}:${docId}`, TTL.immutable, async () => {
+    fresh = await read3();
+    return fresh.rows.length ? fresh : void 0;
+  });
+  return cached ?? fresh ?? read3();
+}
+function houseMembersMatching(filings, query2) {
+  const words3 = query2.toLowerCase().split(/[\s,]+/).filter(Boolean);
+  const out = /* @__PURE__ */ new Map();
+  for (const f3 of filings) {
+    const name = f3.member.toLowerCase();
+    if (!words3.length || !words3.every((w) => name.includes(w)) || out.has(f3.member)) continue;
+    out.set(f3.member, { member: f3.member, stateDistrict: f3.stateDistrict, latest: f3.date });
+  }
+  return [...out.values()];
 }
 
 // src/providers/fundamentals/nasdaq-analyst.ts
@@ -16305,19 +16338,54 @@ function parseSecTickerMap(json3) {
   return out;
 }
 var secTickerForm = (s) => s.trim().toUpperCase().replace(/\.US$/, "").replace(/[./]/g, "-");
+var tickerMap = () => cachedJson("sec:company_tickers", TTL.reference, async () => parseSecTickerMap((await secJson("https://www.sec.gov/files/company_tickers.json")).data));
 async function secCompany(tickerOrCik) {
   const s = tickerOrCik.trim().replace(/^CIK/i, "");
   if (/^\d{1,10}$/.test(s)) return { cik: Number(s) };
   const ticker = secTickerForm(s);
-  const map = await cachedJson(
-    "sec:company_tickers",
-    TTL.reference,
-    async () => parseSecTickerMap((await secJson("https://www.sec.gov/files/company_tickers.json")).data)
-  );
+  const map = await tickerMap();
   const hit = map?.[ticker];
   if (!map) throw new ProviderError(SEC_SOURCE, "ticker map unavailable (offline and not cached)", 0);
   if (!hit) throw new ProviderError(SEC_SOURCE, `no SEC registrant with ticker ${ticker}`, 404);
   return hit;
+}
+var NAME_NOISE = new Set(
+  "INC INCORPORATED CORP CORPORATION CO COMPANY LTD LIMITED PLC LLC LP NV SA AG SE THE NEW CL CLASS A B C COM COMMON STOCK SHS SHARES ORD ADR SPONSORED".split(
+    " "
+  )
+);
+function issuerNameKey(name) {
+  return name.toUpperCase().replace(/&/g, " AND ").replace(/[^A-Z0-9 ]+/g, " ").split(/\s+/).filter((w) => w && !NAME_NOISE.has(w)).join(" ");
+}
+function tickerByTitle(map, name) {
+  const key = issuerNameKey(name);
+  if (key.length < 3) return void 0;
+  const rows = Object.values(map);
+  const exact = rows.find((r3) => issuerNameKey(r3.title) === key);
+  if (exact) return exact.ticker;
+  if (key.length < 10) return void 0;
+  const prefixed = new Set(rows.filter((r3) => issuerNameKey(r3.title).startsWith(key)).map((r3) => r3.cik));
+  return prefixed.size === 1 ? rows.find((r3) => prefixed.has(r3.cik)).ticker : void 0;
+}
+async function secTickerByTitle(name) {
+  const map = await tickerMap().catch(() => void 0);
+  return map ? tickerByTitle(map, name) : void 0;
+}
+function parseEntitySearch(json3) {
+  return (json3.hits?.hits ?? []).flatMap((h) => {
+    const cik = Number(h._id);
+    const raw = h._source?.entity?.trim();
+    if (!Number.isInteger(cik) || cik <= 0 || !raw) return [];
+    const tickers = (h._source?.tickers ?? "").split(",").map((t) => t.trim()).filter(Boolean);
+    const name = tickers.length ? raw.replace(/\s*\([^)]*\)\s*$/, "") : raw;
+    return [{ cik, name, tickers }];
+  });
+}
+async function searchEdgarEntities(query2) {
+  const q = query2.trim();
+  if (!q) return [];
+  const res = await secJson(`https://efts.sec.gov/LATEST/search-index?keysTyped=${encodeURIComponent(q)}`);
+  return parseEntitySearch(res.data);
 }
 var SEC_METRICS = [
   {
@@ -16839,22 +16907,6 @@ async function secFullTextSearch(query2, opts = {}) {
 }
 
 // src/providers/fundamentals/sec-13f.ts
-var NOTABLE_13F_MANAGERS = [
-  { slug: "berkshire", cik: 1067983, name: "Berkshire Hathaway" },
-  { slug: "pershing-square", cik: 1336528, name: "Pershing Square Capital Management" },
-  { slug: "scion", cik: 1649339, name: "Scion Asset Management", note: "no 13F-HR since November 2025 (deregistered)" },
-  { slug: "bridgewater", cik: 1350694, name: "Bridgewater Associates" },
-  { slug: "renaissance", cik: 1037389, name: "Renaissance Technologies" },
-  { slug: "baupost", cik: 1061768, name: "Baupost Group" },
-  { slug: "soros", cik: 1029160, name: "Soros Fund Management" },
-  { slug: "appaloosa", cik: 1656456, name: "Appaloosa" },
-  { slug: "icahn", cik: 921669, name: "Carl Icahn" },
-  { slug: "duquesne", cik: 1536411, name: "Duquesne Family Office (Druckenmiller)" },
-  { slug: "third-point", cik: 1040273, name: "Third Point" },
-  { slug: "valueact", cik: 1418814, name: "ValueAct Holdings" },
-  { slug: "tiger-global", cik: 1167483, name: "Tiger Global Management" },
-  { slug: "citadel", cik: 1423053, name: "Citadel Advisors" }
-];
 function parse13fTable(xml, opts = {}) {
   const byKey = /* @__PURE__ */ new Map();
   for (const row of xmlBlocks(xml, "infoTable")) {
@@ -16896,16 +16948,22 @@ function diff13f(current2, previous) {
     if (!now.has(keyOf2(p))) out.push({ holding: { ...p, value: 0, shares: 0 }, change: "sold", sharesChange: -p.shares, previousShares: p.shares });
   return out;
 }
-function managerFor(manager) {
-  const s = String(manager).trim().toLowerCase().replace(/^cik/, "");
+var SEARCH_DEPTH = 6;
+async function managerFor(manager) {
+  const s = String(manager).trim().replace(/^cik/i, "");
   if (/^\d{1,10}$/.test(s)) {
-    const known = NOTABLE_13F_MANAGERS.find((m2) => m2.cik === Number(s));
-    return { cik: Number(s), ...known ? { name: known.name, ...known.note ? { note: known.note } : {} } : {} };
+    const sub = await secSubmissions(Number(s));
+    return { cik: Number(s), ...sub.name ? { name: sub.name } : {}, others: [], sub };
   }
-  const m = NOTABLE_13F_MANAGERS.find((x) => x.slug === s || x.name.toLowerCase().includes(s));
-  if (!m)
-    throw new ProviderError(SEC_SOURCE, `unknown 13F manager "${manager}" \u2014 pass a CIK, or one of: ${NOTABLE_13F_MANAGERS.map((x) => x.slug).join(", ")}`, 404);
-  return { cik: m.cik, name: m.name, ...m.note ? { note: m.note } : {} };
+  const query2 = s.replace(/[-_]+/g, " ");
+  const found = [];
+  for (const e of (await searchEdgarEntities(query2)).slice(0, SEARCH_DEPTH)) {
+    const sub = await secSubmissions(e.cik);
+    if (sub.filings.some((f3) => f3.form === "13F-HR")) found.push({ cik: e.cik, name: sub.name || e.name, sub });
+  }
+  const [best, ...rest] = found;
+  if (!best) throw new ProviderError(SEC_SOURCE, `no 13F filer among EDGAR's matches for "${manager}" \u2014 pass the manager's CIK`, 404);
+  return { ...best, others: rest.map((m) => ({ cik: m.cik, name: m.name ?? "" })) };
 }
 async function holdingsOf(cik, f3) {
   const base2 = archiveBase(cik, f3.accession);
@@ -16918,8 +16976,8 @@ async function holdingsOf(cik, f3) {
   throw new ProviderError(SEC_SOURCE, `no information table in 13F filing ${f3.accession}`, 404);
 }
 async function sec13f(manager, opts = {}) {
-  const mgr = managerFor(manager);
-  const sub = await secSubmissions(mgr.cik);
+  const mgr = await managerFor(manager);
+  const sub = mgr.sub;
   const list = sub.filings.filter((f3) => f3.form === "13F-HR").slice(0, 2);
   const latest2 = list[0];
   if (!latest2) throw new ProviderError(SEC_SOURCE, `no 13F-HR among the recent filings of CIK ${mgr.cik}`, 404);
@@ -16935,7 +16993,9 @@ async function sec13f(manager, opts = {}) {
     `13F-HR for the quarter ended ${period2}, filed ${latest2.filingDate}: filed up to 45 days after the quarter \u2014 the positions may have changed since`,
     "long US-listed equities and options only; no shorts, cash or non-US holdings"
   ];
-  if (mgr.note) notes.push(mgr.note);
+  if (mgr.others.length) notes.push(`other 13F filers match the name: ${mgr.others.map((m) => `CIK ${m.cik}`).join(", ")} \u2014 pass a CIK to read one of them`);
+  if (daysBetween(latest2.filingDate, isoDayOf(clockNow())) > 200)
+    notes.push(`the latest 13F-HR was filed ${latest2.filingDate}: the manager may have stopped filing, these positions are old`);
   let tickers = [];
   if (opts.tickers && top.length) {
     try {
@@ -16948,6 +17008,7 @@ async function sec13f(manager, opts = {}) {
     }
   }
   const points = [
+    ...mgr.name ? [{ key: `${subject}.13f.manager`, label: `${subject} 13F filer name (EDGAR)`, value: mgr.name, untrusted: true, url: sub.url }] : [],
     { key: `${subject}.13f.total.value`, label: `${subject} 13F reported portfolio value`, value: total, unit: "USD", asOf: period2, url: cur.url },
     {
       key: `${subject}.13f.positions.count`,
@@ -17013,11 +17074,26 @@ async function sec13f(manager, opts = {}) {
   } else notes.push("no previous 13F-HR in the recent filings: no quarter-on-quarter change");
   return {
     kind: "holdings",
-    title: `${mgr.name ?? subject} 13F holdings, quarter ended ${period2}`,
+    title: `${subject} 13F holdings, quarter ended ${period2}`,
     subject,
     points,
     provenance: { source: SEC_SOURCE, url: cur.url, fetchedAt: sub.fetchedAt, delay: "filing", official: true, asOf: period2 },
     notes
+  };
+}
+async function latest13f(cik) {
+  const sub = await secSubmissions(cik);
+  const [latest2, previous] = sub.filings.filter((f3) => f3.form === "13F-HR");
+  if (!latest2) return void 0;
+  const cur = await holdingsOf(cik, latest2);
+  const prev = previous ? await holdingsOf(cik, previous) : void 0;
+  return {
+    filing: latest2,
+    period: latest2.reportDate ?? latest2.filingDate,
+    holdings: cur.holdings,
+    ...prev ? { diffs: diff13f(cur.holdings, prev.holdings) } : {},
+    url: cur.url,
+    fetchedAt: sub.fetchedAt
   };
 }
 
@@ -17068,6 +17144,7 @@ function parseForm4(xml) {
   const originalFiled = xmlValue(xml, "dateOfOriginalSubmission")?.slice(0, 10);
   return {
     issuerCik: xmlValue(xml, "issuer", "issuerCik"),
+    issuerName: xmlValue(xml, "issuer", "issuerName"),
     symbol: xmlValue(xml, "issuer", "issuerTradingSymbol"),
     periodOfReport: xmlValue(xml, "periodOfReport"),
     owners,
@@ -17302,6 +17379,24 @@ async function secInsiders(tickerOrCik, opts = {}) {
     notes
   };
 }
+async function secOwnerForm4s(ownerCik, opts = {}) {
+  const sub = await secSubmissions(ownerCik);
+  const list = sub.filings.filter((f3) => (f3.form === "4" || f3.form === "4/A") && (!opts.since || f3.filingDate >= opts.since) && !opts.skip?.has(f3.accession)).slice(0, opts.limit ?? 20);
+  const forms = [];
+  const notes = [];
+  for (const f3 of list) {
+    try {
+      const doc = await form4Xml(ownerCik, f3);
+      const form = parseForm4(doc.xml);
+      if (!form.owners.some((o) => Number(o.cik) === ownerCik)) continue;
+      forms.push({ ...form, amendment: form.amendment || f3.form === "4/A", accession: f3.accession, filed: f3.filingDate, url: doc.url });
+    } catch (e) {
+      if (!(e instanceof ProviderError) || e.transient) throw e;
+      notes.push(`Form 4 ${f3.accession} unreadable: ${e.message}`);
+    }
+  }
+  return { name: sub.name, forms, notes, url: sub.url, fetchedAt: sub.fetchedAt };
+}
 
 // src/commands/fundamentals.ts
 var CRIBLE_FIELDS = [
@@ -17415,7 +17510,10 @@ async function insidersCommand(args, asJson) {
 }
 async function holdingsCommand(args, asJson) {
   const manager = args.positional[0];
-  if (!manager) throw new UsageError("usage: ultrastock holdings <berkshire|pershing-square|bridgewater|\u2026|CIK> [--limit <top n>] \u2014 latest 13F and its changes");
+  if (!manager)
+    throw new UsageError(
+      "usage: ultrastock holdings <manager name|CIK> [--limit <top n>] \u2014 latest 13F and its changes (a name is found through EDGAR's name search)"
+    );
   emitDatasets(
     args,
     [await sec13f(/^\d+$/.test(manager) ? Number(manager) : manager, { top: argInt(args, "limit", { min: 1, max: 100 }) ?? 15, tickers: true })],
@@ -23687,19 +23785,19 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
       const tokens = citationTokensIn(text2, isEvidenceCitation);
       const figs = extractFigures(text2);
       const dates = extractDates(unbracket(plainText(text2.replace(/`[^`]*`/g, " "))));
-      const line = lineOf(text2);
+      const line2 = lineOf(text2);
       if (heading && !figs.length && !tokens.length) continue;
       if (!figs.length && !tokens.length) {
         const ahead = dates.filter((d) => isAhead(d, today2));
         if (ahead.length) {
           claims++;
           problems.push({
-            line,
+            line: line2,
             kind: "uncited",
             message: `${ahead.map((d) => d.raw).join(", ")} stated without an [E#] \u2014 a date ahead cites the evidence that holds it: "${quote(text2)}"`
           });
         } else if (words(text2) >= 12)
-          problems.push({ line, kind: "unsourced", message: `a claim with no evidence cited \u2014 fine for reasoning, not for a fact: "${quote(text2)}"` });
+          problems.push({ line: line2, kind: "unsourced", message: `a claim with no evidence cited \u2014 fine for reasoning, not for a fact: "${quote(text2)}"` });
         continue;
       }
       claims++;
@@ -23711,13 +23809,13 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
         const item = store.get(t);
         if (!item)
           problems.push({
-            line,
+            line: line2,
             kind: "dangling",
             message: `[${t}] is not in this run's evidence (it holds E1\u2026${store.items[store.items.length - 1]?.id ?? "nothing"})`
           });
         else if (item.doc && !docOf(item))
           problems.push({
-            line,
+            line: line2,
             kind: "dangling",
             message: `[${t}] is a document whose text (${item.doc.path}) is missing from the run \u2014 re-run \`ultrastock research\``
           });
@@ -23727,7 +23825,7 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
           if (opts.maxAgeMs !== void 0 && !staleReported.has(t) && now - Date.parse(item.fetchedAt) > opts.maxAgeMs) {
             staleReported.add(t);
             problems.push({
-              line,
+              line: line2,
               kind: "stale",
               message: `[${t}] ${item.label} was read ${item.fetchedAt.slice(0, 16).replace("T", " ")} \u2014 older than --max-age; refresh the run`
             });
@@ -23735,7 +23833,7 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
         }
       }
       if (figs.length && !tokens.length) {
-        problems.push({ line, kind: "uncited", message: `${figs.map((f3) => f3.raw).join(", ")} stated without an [E#] \u2014 "${quote(text2)}"` });
+        problems.push({ line: line2, kind: "uncited", message: `${figs.map((f3) => f3.raw).join(", ")} stated without an [E#] \u2014 "${quote(text2)}"` });
         continue;
       }
       const cites = [...known, ...citedDocs];
@@ -23743,7 +23841,7 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
         for (const d of dates) {
           if (cites.some((it) => holdsDate(datesOf(it), d))) continue;
           problems.push({
-            line,
+            line: line2,
             kind: "unsupported",
             message: `the date ${d.raw} is in none of ${cites.map((c) => `[${c.id}]`).join(" ")} \u2014 cite the evidence that holds it (any usual form is read: 2026-11-17, 17/11/2026, 17 novembre 2026)`
           });
@@ -23758,7 +23856,7 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
           if (!doc.near.has(text2)) doc.near.set(text2, documentFigures(holder, nearClaim(doc, text2)));
           if (!figureMatches(f3, doc.near.get(text2)))
             problems.push({
-              line,
+              line: line2,
               kind: "distant",
               message: `${f3.raw} is in [${holder.id}] but far from the words of the claim \u2014 check it is the figure the claim means: "${quote(text2)}"`
             });
@@ -23767,14 +23865,14 @@ function checkAnswer(dir2, rawAnswer, opts = {}) {
         if (citedDocs.length) {
           const where = citedDocs.map((d) => `[${d.id}]${d.url ? ` (${d.url})` : ""}`).join(" ");
           problems.push({
-            line,
+            line: line2,
             kind: "unsupported",
             message: `${f3.raw} is not in the document${citedDocs.length > 1 ? "s" : ""} ${where}${known.length ? ` nor in ${known.map((k) => `[${k.id}]`).join(" ")}` : ""} \u2014 state the figure as the source writes it, or cite the evidence that holds it`
           });
           continue;
         }
         problems.push({
-          line,
+          line: line2,
           kind: "unsupported",
           message: `${f3.raw} is in none of ${tokens.map((t) => `[${t}]`).join(" ")} \u2014 cite the evidence that holds it, or compute it with \`ultrastock calc\``
         });
@@ -32527,15 +32625,15 @@ function customSmooth(values, n2) {
 function pmo(values, smooth1 = 35, smooth2 = 20, signal = 10) {
   const r12 = roc(values, 1);
   const s1 = chain(r12, (xs) => customSmooth(xs, smooth1));
-  const line = chain(
+  const line2 = chain(
     s1,
     (xs) => customSmooth(
       xs.map((x) => 10 * x),
       smooth2
     )
   );
-  const sig = chain(line, (xs) => ema(xs, signal));
-  return rowsOf({ pmo: line, signal: sig }, values.length);
+  const sig = chain(line2, (xs) => ema(xs, signal));
+  return rowsOf({ pmo: line2, signal: sig }, values.length);
 }
 function weightedRocSum(values, rocs, smas, weights) {
   const parts = rocs.map((r3, k) => chain(roc(values, r3), (xs) => sma(xs, smas[k])));
@@ -32550,17 +32648,17 @@ function weightedRocSum(values, rocs, smas, weights) {
   });
 }
 function kst(values, signal = 9) {
-  const line = weightedRocSum(values, [10, 15, 20, 30], [10, 10, 10, 15], [1, 2, 3, 4]);
-  return rowsOf({ kst: line, signal: chain(line, (xs) => sma(xs, signal)) }, values.length);
+  const line2 = weightedRocSum(values, [10, 15, 20, 30], [10, 10, 10, 15], [1, 2, 3, 4]);
+  return rowsOf({ kst: line2, signal: chain(line2, (xs) => sma(xs, signal)) }, values.length);
 }
 function pringSpecialK(values, signal = 10) {
-  const line = weightedRocSum(
+  const line2 = weightedRocSum(
     values,
     [10, 15, 20, 30, 40, 65, 75, 100, 195, 265, 390, 530],
     [10, 10, 10, 15, 50, 65, 75, 100, 130, 130, 130, 195],
     [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4]
   );
-  return rowsOf({ specialK: line, signal: chain(line, (xs) => sma(xs, signal)) }, values.length);
+  return rowsOf({ specialK: line2, signal: chain(line2, (xs) => sma(xs, signal)) }, values.length);
 }
 function coppockCurve(values, roc1 = 14, roc2 = 11, wmaPeriod = 10) {
   const a = roc(values, roc1);
@@ -32607,14 +32705,14 @@ function rvi(bars, n2 = 10) {
     num17[i] = sym3(co, i);
     den[i] = sym3(hl, i);
   }
-  const line = blank(bars.length);
+  const line2 = blank(bars.length);
   for (let i = n2 + 2; i < bars.length; i++) {
     const d = windowSum(den, i, n2);
-    line[i] = d === 0 ? 0 : windowSum(num17, i, n2) / d;
+    line2[i] = d === 0 ? 0 : windowSum(num17, i, n2) / d;
   }
   const out = blank(bars.length);
   for (let i = n2 + 5; i < bars.length; i++) {
-    const l = line;
+    const l = line2;
     out[i] = { rvi: l[i], signal: sym3(l, i) };
   }
   return out;
@@ -37071,16 +37169,16 @@ function parseElectionCalendar(wikitext, year) {
   const out = [];
   let month = -1;
   let current2;
-  for (const line of text2.split("\n")) {
-    const h = /^==\s*([A-Za-z]+)\s*==\s*$/.exec(line.trim());
+  for (const line2 of text2.split("\n")) {
+    const h = /^==\s*([A-Za-z]+)\s*==\s*$/.exec(line2.trim());
     if (h) {
       month = MONTHS6.indexOf(h[1].toLowerCase());
       current2 = void 0;
       continue;
     }
     if (month < 0) continue;
-    const top = /^\*(?!\*)\s*(.*)$/.exec(line);
-    const nested = /^\*\*\s*(.*)$/.exec(line);
+    const top = /^\*(?!\*)\s*(.*)$/.exec(line2);
+    const nested = /^\*\*\s*(.*)$/.exec(line2);
     if (top) {
       const body = top[1];
       const colon = body.indexOf(":");
@@ -37151,14 +37249,14 @@ function parseEcbCalendar(html) {
   const text2 = decodeEntities(html.replace(/<[^>]+>/g, "\n")).split("\n").map((l) => l.trim()).filter(Boolean);
   const out = [];
   let day4;
-  for (const line of text2) {
-    const d = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(line);
+  for (const line2 of text2) {
+    const d = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(line2);
     if (d) {
       day4 = `${d[3]}-${d[2]}-${d[1]}`;
       continue;
     }
-    if (!day4 || !/(?<!non-)monetary policy meeting/i.test(line)) continue;
-    if (/\(Day 1\)/i.test(line)) continue;
+    if (!day4 || !/(?<!non-)monetary policy meeting/i.test(line2)) continue;
+    if (/\(Day 1\)/i.test(line2)) continue;
     if (!out.some((m) => m.date === day4))
       out.push({ bank: "ECB", date: day4, area: "EU", currency: "EUR", label: "ECB monetary policy decision", url: ECB_URL });
   }
@@ -37604,14 +37702,14 @@ async function eventsRun(dir2, opts = {}) {
   const from = iso2(new Date(now.getTime() - since * DAY5));
   const to = iso2(new Date(now.getTime() + days * DAY5));
   const all = await marketEvents(from, to, notes);
-  const wanted = new Set((opts.countries ?? []).map((c) => c.toUpperCase()));
+  const wanted2 = new Set((opts.countries ?? []).map((c) => c.toUpperCase()));
   const euroArea = euroAreaMembers();
   if (all.some((e) => e.iso === "EU")) {
     const note = membershipNote(euroArea, "the euro area an ECB decision moves");
     if (note) notes.push(note);
   }
   const relevant = all.filter((e) => {
-    if (wanted.size && (wanted.has(e.iso) || e.iso === "EU" && euroArea.codes.some((c) => wanted.has(c)))) return true;
+    if (wanted2.size && (wanted2.has(e.iso) || e.iso === "EU" && euroArea.codes.some((c) => wanted2.has(c)))) return true;
     if (eventExposure(e, byCountry, byCurrency).length) return true;
     return !!opts.all && (!!COUNTRY_MARKETS[e.iso] || e.iso === "EU");
   });
@@ -38836,8 +38934,8 @@ function wikiTables(wikitext) {
   for (const m of wikitext.matchAll(/^\{\|[^\n]*\n([\s\S]*?)^\|\}/gm)) {
     const rows = [];
     let row;
-    for (const line of m[1].split("\n")) {
-      const t = line.trim();
+    for (const line2 of m[1].split("\n")) {
+      const t = line2.trim();
       if (t.startsWith("|-")) {
         if (row?.raw.length) rows.push(row);
         row = void 0;
@@ -38895,10 +38993,10 @@ function parseNamesList(wikitext) {
   const at = wikitext.search(/\{\{colonnes/i);
   if (at < 0) return [];
   const out = [];
-  for (const line of wikitext.slice(at).split("\n").slice(1)) {
-    if (line.trim().startsWith("}}")) break;
-    if (!line.startsWith("#")) continue;
-    const name = cleanWikitext(line.slice(1));
+  for (const line2 of wikitext.slice(at).split("\n").slice(1)) {
+    if (line2.trim().startsWith("}}")) break;
+    if (!line2.startsWith("#")) continue;
+    const name = cleanWikitext(line2.slice(1));
     if (name) out.push({ name });
   }
   return out;
@@ -40264,25 +40362,25 @@ async function stressAnalysis(m, f3) {
     const from = [];
     hs.forEach((h, i) => {
       const { win, proxy } = found[i];
-      const line = { symbol: h.symbol, weight: h.weightPct / 100, basis: "none" };
+      const line2 = { symbol: h.symbol, weight: h.weightPct / 100, basis: "none" };
       if (win) {
         register(win);
-        line.basis = proxy ? "proxy" : "own";
-        if (proxy) line.proxy = proxy;
-        line.move = win.end.close / win.start.close - 1;
+        line2.basis = proxy ? "proxy" : "own";
+        if (proxy) line2.proxy = proxy;
+        line2.move = win.end.close / win.start.close - 1;
         const key = f3.derive(
           section,
           `${P}.${sc.id}.${h.symbol}.move`,
           `${h.symbol} move over the ${sc.label} window${proxy ? ` (proxy ${proxy})` : ""}`,
-          pct7(line.move),
+          pct7(line2.move),
           "%",
           [`${win.key}.start`, `${win.key}.end`],
           `end close \xF7 start close \u2212 1, in the series' own currency${proxy ? `; ${h.symbol} had no prices then \u2014 ${proxy} stands in` : ""}`
         );
         if (key) from.push(key, h.keys.weight);
       } else if (h.assetClass === "crypto" && sc.to < CRYPTO_START) {
-        line.move = SHOCKS.crypto;
-        line.basis = "shock";
+        line2.move = SHOCKS.crypto;
+        line2.basis = "shock";
         const key = f3.derive(
           section,
           `${P}.${sc.id}.${h.symbol}.move`,
@@ -40294,7 +40392,7 @@ async function stressAnalysis(m, f3) {
         );
         if (key) from.push(key, h.keys.weight);
       }
-      lines.push(line);
+      lines.push(line2);
     });
     const rp = replay(lines);
     if (!from.length) {
@@ -43560,8 +43658,8 @@ async function bulkKlines(req) {
       throw new ProviderError(SOURCE35, `${req.pair}: ${e?.code ?? "FAILED"} ${e?.message ?? ""}`.trim(), e?.httpStatus ?? 0);
     }
     const file = res.outputPath ?? join42(out, readdirSync14(out).find((f3) => f3.endsWith(".jsonl")) ?? "");
-    const bars = readFileSync33(file, "utf8").split("\n").filter(Boolean).map((line) => {
-      const k = JSON.parse(line);
+    const bars = readFileSync33(file, "utf8").split("\n").filter(Boolean).map((line2) => {
+      const k = JSON.parse(line2);
       const iso4 = new Date(k.openTime).toISOString();
       return {
         date: /^(1d|3d|1w|1M)$/.test(req.interval) ? iso4.slice(0, 10) : iso4,
@@ -43614,8 +43712,8 @@ async function loadBars(raw, req) {
     return { resolved, series: await getHistory(resolved, req) };
   }
   const series = await getHistory(resolved, req);
-  const wanted = isoDay2(new Date(req.from.getTime() + 7 * DAY9));
-  if (inst.market === "euronext" && series.bars[0] && series.bars[0].date > wanted) {
+  const wanted2 = isoDay2(new Date(req.from.getTime() + 7 * DAY9));
+  if (inst.market === "euronext" && series.bars[0] && series.bars[0].date > wanted2) {
     try {
       const y = await resolveYahoo(inst.symbol);
       const longer = await getHistory({ instrument: { ...y, market: "europe" }, notes: [] }, req);
@@ -49523,6 +49621,34 @@ var TOOLS = [
     params: {}
   },
   {
+    name: "people_search",
+    description: "Who a name may mean among public figures whose trades a regulator publishes, asked live of each official source: House members (Clerk PTRs), the President and Senate-confirmed officials (OGE 278-T), SEC filers (13F funds, 13D/13G holders, Form 4 owners). Returns refs (source:id) for people_show. The Senate's eFD refuses automated clients: said in a note.",
+    command: ["people", "search"],
+    params: {
+      name: { kind: "string", description: "a name: Pelosi, Trump, Berkshire, Ackman\u2026", positional: 0, required: true },
+      source: { kind: "string", description: "one source only", enum: ["house", "oge", "sec"] }
+    }
+  },
+  {
+    name: "people_show",
+    description: "A public figure's recent disclosed trades (and with positions, what the filings say they hold): House PTR and OGE 278-T value bands, Form 4 shares and prices, 13F quarter changes, 13D/13G stakes. Each figure an [E#] with its filing linked; names and assets are external text.",
+    command: ["people", "show"],
+    params: {
+      person: {
+        kind: "string",
+        description: "a ref from people_search (house:\u2026, oge:\u2026, sec:<CIK>) or a name that means one filer",
+        positional: 0,
+        required: true
+      },
+      source: { kind: "string", description: "one source only", enum: ["house", "oge", "sec"] },
+      since: { kind: "string", description: "filings received on or after YYYY-MM-DD" },
+      filings: { kind: "number", description: "how many filings to read (default 5 House, 3 OGE, 10 SEC per kind)" },
+      limit: { kind: "number", description: "how many trades to list (default 30)" },
+      positions: { kind: "boolean", description: "add what the filings say is held" },
+      out: OUT
+    }
+  },
+  {
     name: "research",
     description: "Web research compiled into evidence. With a subject: write the worklist (RESEARCH.todo.json: angles and FR+EN queries \u2014 business model, results, governance, controversies, short-sellers; ETF factsheet/KID/replication/PEA; focus=results for the latest report, ask for one precise question). Then run those queries with YOUR web search and call again with out + hits (inline) to ingest: pages and PDFs fetched, walls rescued (Wayback, optional browser) or dropped, linked reports followed, each page a document [E#] (sources/E#.md, DOSSIER.md; an angle with fewer than two sources gets a rephrased second round in the worklist). No web search of your own: search-with claude|codex. check refuses a figure the cited page does not state.",
     command: ["research"],
@@ -50773,6 +50899,826 @@ async function incomeAnalysis(m, f3) {
 // src/alerts/alerts.ts
 import { existsSync as existsSync37, mkdirSync as mkdirSync28, readFileSync as readFileSync41 } from "fs";
 import { join as join51 } from "path";
+
+// src/providers/fundamentals/oge.ts
+var OGE_SOURCE = "oge";
+var API3 = "https://extapps2.oge.gov/201/Presiden.nsf/API.xsp/v3/rest";
+function kindOf2(type) {
+  if (/278\s*Transaction|278-?T/i.test(type)) return "278-T";
+  if (/annual/i.test(type)) return "annual";
+  if (/nominee/i.test(type)) return "nominee";
+  if (/new entrant/i.test(type)) return "new-entrant";
+  if (/termination/i.test(type)) return "termination";
+  if (/candidate/i.test(type)) return "candidate";
+  return "other";
+}
+function parseOgeIndex(json3) {
+  return (json3.data ?? []).flatMap((r3) => {
+    const html = r3.type ?? "";
+    const href2 = /href='([^']+)'/.exec(html)?.[1];
+    const pdf = href2 && /\/\$FILE\//.test(href2) ? decodeEntities(href2) : void 0;
+    const date = (r3.docDate ?? "").slice(0, 10);
+    const name = (r3.name ?? "").trim();
+    if (!name || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
+    const type = decodeEntities(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+    const unid = pdf ? /\/([0-9A-F]{32})\//i.exec(pdf)?.[1] : void 0;
+    return [
+      {
+        name,
+        title: (r3.title ?? "").trim(),
+        agency: (r3.agency ?? "").trim(),
+        kind: kindOf2(type),
+        date,
+        amended: !!r3.amended?.trim(),
+        ...pdf ? { url: pdf } : {},
+        id: unid ?? `${name}|${type}|${r3.docDate ?? ""}`
+      }
+    ];
+  }).sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
+}
+async function ogeFilings(name, opts = {}) {
+  const q = name.trim();
+  if (!q) throw new ProviderError(OGE_SOURCE, "a name is needed", 400);
+  const url = `${API3}?search%5Bvalue%5D=${encodeURIComponent(q)}&length=${opts.limit ?? 200}`;
+  const res = await fetchJson(url, { timeoutMs: 3e4 });
+  if (!res.ok || !res.data) throw new ProviderError(OGE_SOURCE, `${url} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+  const words3 = q.toLowerCase().split(/[\s,]+/).filter(Boolean);
+  const filings = parseOgeIndex(res.data).filter((f3) => words3.every((w) => f3.name.toLowerCase().includes(w)));
+  return { filings, url, fetchedAt: res.fetchedAt };
+}
+var OGE_BANDS = [
+  [1001, 15e3],
+  [15001, 5e4],
+  [50001, 1e5],
+  [100001, 25e4],
+  [250001, 5e5],
+  [500001, 1e6],
+  [1000001, 5e6],
+  [5000001, 25e6],
+  [25000001, 5e7],
+  [50000001, void 0]
+];
+function editDistance(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+function ogeType(raw) {
+  const s = raw.toLowerCase().replace(/[^a-z]/g, "");
+  if (/sa[l1i][eoa]/.test(s) || /^[a-z]?sa[l1i]$/.test(s)) return "sale";
+  const t = s.replace(/^[li]/, "");
+  const best = ["purchase", "exchange"].map((w) => ({ w, d: Math.min(editDistance(s, w), editDistance(t, w)) })).sort((a, b) => a.d - b.d)[0];
+  return best.d <= (best.w === "purchase" ? 4 : 3) ? best.w : void 0;
+}
+var OCR_DIGITS = { O: "0", o: "0", D: "0", Q: "0", l: "1", I: "1", i: "1", "|": "1", B: "8", R: "8", "?": "2", Z: "2" };
+var fixDigits = (s) => s.replace(/[OoDQlIi|BR?Z]/g, (c) => OCR_DIGITS[c]);
+function validDay(y, m, d) {
+  if (m < 1 || m > 12 || d < 1 || d > 31) return void 0;
+  const iso4 = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  return (/* @__PURE__ */ new Date(`${iso4}T00:00:00Z`)).toISOString().slice(0, 10) === iso4 ? iso4 : void 0;
+}
+function ogeDate(raw, filed, windowDays = 150) {
+  const s = fixDigits(raw.replace(/\s+/g, ""));
+  const inWindow = (iso4) => {
+    const age = daysBetween(iso4, filed);
+    return age >= -1 && age <= windowDays;
+  };
+  const exact = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+  if (exact) {
+    const iso4 = validDay(Number(exact[3]), Number(exact[1]), Number(exact[2]));
+    return iso4 && inWindow(iso4) ? iso4 : void 0;
+  }
+  const years = [Number(filed.slice(0, 4)), Number(filed.slice(0, 4)) - 1];
+  const found = /* @__PURE__ */ new Set();
+  for (const y of years) {
+    const yy = String(y);
+    for (const tail of [yy, yy.slice(1)]) {
+      const at = s.lastIndexOf(tail);
+      if (at < 0 || at + tail.length !== s.length) continue;
+      const head = s.slice(0, at).replace(/[^0-9/]+$/, "");
+      const parts = head.split(/[^0-9]+/).filter(Boolean);
+      if (parts.length === 2) {
+        const iso4 = validDay(y, Number(parts[0]), Number(parts[1]));
+        if (iso4 && inWindow(iso4)) {
+          found.add(iso4);
+          continue;
+        }
+      }
+      const candidates2 = [];
+      const splits = (digits2) => {
+        for (let k = 1; k < digits2.length && k <= 2; k++) candidates2.push([digits2.slice(0, k), digits2.slice(k)]);
+        for (let k = 1; k < digits2.length; k++) if (digits2[k] === "1") candidates2.push([digits2.slice(0, k), digits2.slice(k + 1)]);
+      };
+      const digits = parts.join("");
+      splits(digits);
+      if (digits.endsWith("1")) splits(digits.slice(0, -1));
+      for (const [m, d] of candidates2) {
+        if (!m || !d || d.length > 2) continue;
+        const iso4 = validDay(y, Number(m), Number(d));
+        if (iso4 && inWindow(iso4)) found.add(iso4);
+      }
+    }
+  }
+  return found.size === 1 ? [...found][0] : void 0;
+}
+function ogeAmount(raw) {
+  if (/over/i.test(raw)) {
+    const top = OGE_BANDS[OGE_BANDS.length - 1];
+    return { low: top[0] };
+  }
+  const sides = raw.replace(/[•·~–—=]/g, "-").split("-").map((side2) => {
+    const t = side2.replace(/[\s,.'"`]/g, "").replace(/^[$Ss]/, "");
+    const n2 = Number(fixDigits(t.replace(/[Ss]/g, "5")).replace(/[^0-9]/g, ""));
+    return Number.isFinite(n2) && n2 > 0 ? n2 : void 0;
+  });
+  const [low, high] = [sides[0], sides[sides.length - 1]];
+  const band = OGE_BANDS.find(([l]) => l === low) ?? OGE_BANDS.find(([, h]) => h !== void 0 && h === high);
+  return band ? { low: band[0], ...band[1] !== void 0 ? { high: band[1] } : {} } : void 0;
+}
+var ROW2 = /^\s*(\d{1,4})?\s{2,}(\S.*?)\s{2,}(\S.{1,14}?)\s{2,}(\S.{2,14}?)\s{2,}(Yes|Yos|Ye5|Y0s|Vos|Ves|No|N0)\b\s*(.*)$/;
+var NUMBERED = /^\s*\d{1,4}\s{3,}[A-Z0-9]/;
+var ROW_START = new RegExp(`${NUMBERED.source}|\\s{2,}(?:Yes|Yos|Ye5|Y0s|Vos|Ves|No|N0)\\s+\\S{0,2}\\s*[$Ss5]?\\s*\\d[\\d\\s,.]*\\s*[-\u2022\xB7~\u2013\u2014]`);
+function parse278tText(text2, filed) {
+  const rows = [];
+  let unread = 0;
+  let wrapped = false;
+  for (const line2 of text2.split(/\r?\n/)) {
+    if (!ROW_START.test(line2)) {
+      if (line2.trim()) wrapped = false;
+      continue;
+    }
+    const m = ROW2.exec(line2);
+    const type = m ? ogeType(m[3]) : void 0;
+    if (!m || !type) {
+      const numbered = NUMBERED.test(line2);
+      if (numbered || !wrapped) unread++;
+      wrapped = numbered;
+      continue;
+    }
+    wrapped = false;
+    const date = ogeDate(m[4], filed);
+    const amount2 = ogeAmount(m[6]);
+    rows.push({
+      row: m[1] ? Number(m[1]) : rows.length + unread + 1,
+      description: m[2].replace(/\s+/g, " ").trim(),
+      type,
+      ...date ? { date } : {},
+      ...amount2 ? { amountLow: amount2.low, ...amount2.high !== void 0 ? { amountHigh: amount2.high } : {} } : {},
+      late: /^[yv]/i.test(m[5])
+    });
+  }
+  return { rows, unread };
+}
+async function oge278t(filing) {
+  const url = filing.url;
+  if (!url) throw new ProviderError(OGE_SOURCE, "this report is available on request only (OGE Form 201), not as a public PDF", 404);
+  const read3 = async () => {
+    const res = await fetchBinary(url, { accept: "application/pdf,*/*", timeoutMs: 12e4 });
+    if (!res.ok) throw new ProviderError(OGE_SOURCE, `${url} (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+    const pdf = await extractPdf(res.bytes, { engines: ["pdftotext", "anydoc", "ocr"] });
+    const parsed = pdf.text ? parse278tText(pdf.text, filing.date) : { rows: [], unread: 0 };
+    return { ...parsed, ...pdf.via ? { via: pdf.via } : {}, ...pdf.reason ? { reason: pdf.reason } : {}, fetchedAt: res.fetchedAt };
+  };
+  let fresh;
+  const cached = await cachedJson(`oge:278t:${filing.id}`, TTL.immutable, async () => {
+    fresh = await read3();
+    return fresh.rows.length ? fresh : void 0;
+  });
+  return cached ?? fresh ?? read3();
+}
+
+// src/providers/fundamentals/sec-13dg.ts
+var cikNum = (s) => {
+  const n2 = Number((s ?? "").trim());
+  return Number.isInteger(n2) && n2 > 0 ? n2 : void 0;
+};
+function parseSchedule13(xml) {
+  const type = xmlValue(xml, "headerData", "submissionType") ?? "";
+  const schedule = /13G/i.test(type) ? "13G" : "13D";
+  const filerCiks = /* @__PURE__ */ new Set();
+  const filer = cikNum(xmlValue(xml, "headerData", "filerInfo", "filer", "filerCredentials", "cik"));
+  if (filer) filerCiks.add(filer);
+  const people = [...xmlBlocks(xml, "reportingPersonInfo"), ...xmlBlocks(xml, "coverPageHeaderReportingPersonDetails")];
+  let shares;
+  let percent;
+  for (const p of people) {
+    const cik = cikNum(xmlValue(p, "reportingPersonCIK") ?? xmlValue(p, "reportingPersonCik"));
+    if (cik) filerCiks.add(cik);
+    const owned = xmlNumber(p, "aggregateAmountOwned") ?? xmlNumber(p, "reportingPersonBeneficiallyOwnedAggregateNumberOfShares");
+    const pct14 = xmlNumber(p, "percentOfClass") ?? xmlNumber(p, "classPercent");
+    if (owned !== void 0 && (shares === void 0 || owned > shares)) shares = owned;
+    if (pct14 !== void 0 && (percent === void 0 || pct14 > percent)) percent = pct14;
+  }
+  const issuer = xmlBlocks(xml, "issuerInfo")[0] ?? "";
+  const event = xmlValue(xml, "coverPageHeader", "dateOfEvent") ?? xmlValue(xml, "coverPageHeader", "eventDateRequiresFilingThisStatement");
+  const issuerCik = cikNum(xmlValue(issuer, "issuerCIK") ?? xmlValue(issuer, "issuerCik"));
+  const cusip = xmlValue(issuer, "issuerCusipNumber");
+  const eventDate = mdyToIso(event);
+  return {
+    schedule,
+    amendment: /\/A$/i.test(type),
+    filerCiks: [...filerCiks],
+    ...issuerCik ? { issuerCik } : {},
+    issuerName: xmlValue(issuer, "issuerName") ?? "",
+    ...cusip ? { cusip } : {},
+    ...eventDate ? { eventDate } : {},
+    ...shares !== void 0 ? { shares } : {},
+    ...percent !== void 0 ? { percent } : {}
+  };
+}
+var isXmlSchedule = (f3) => /^SCHEDULE 13[DG](\/A)?$/.test(f3.form);
+async function sec13dgStakes(holderCik, opts = {}) {
+  const sub = await secSubmissions(holderCik);
+  const list = sub.filings.filter((f3) => isXmlSchedule(f3) && (!opts.since || f3.filingDate >= opts.since) && !opts.skip?.has(f3.accession)).slice(0, opts.limit ?? 10);
+  const stakes = [];
+  const notes = [];
+  for (const f3 of list) {
+    const url = `${archiveBase(holderCik, f3.accession)}/${f3.primaryDocument.replace(/^xsl[^/]*\//, "")}`;
+    try {
+      const stake = parseSchedule13((await secText(url)).body);
+      if (!stake.filerCiks.includes(holderCik)) continue;
+      stakes.push({ ...stake, accession: f3.accession, filed: f3.filingDate, url });
+    } catch (e) {
+      if (!(e instanceof ProviderError) || e.transient) throw e;
+      notes.push(`schedule ${f3.accession} unreadable: ${e.message}`);
+    }
+  }
+  if (sub.filings.some((f3) => /^SC 13[DG]/.test(f3.form)) && !opts.since)
+    notes.push("schedules filed before December 2024 (SC 13D/SC 13G) are free text and are not read");
+  return { name: sub.name, stakes, notes, url: sub.url, fetchedAt: sub.fetchedAt };
+}
+
+// src/providers/fundamentals/senate.ts
+var SENATE_SEARCH_URL = "https://efdsearch.senate.gov/search/";
+async function senateStatus() {
+  const res = await fetchText(`${SENATE_SEARCH_URL}home/`, { timeoutMs: 15e3, retries: 0 }).catch(() => void 0);
+  const status2 = res?.status ?? 0;
+  if (status2 === 403)
+    return {
+      reachable: false,
+      status: status2,
+      note: `Senate trades not read: the Senate's eFD refuses automated clients from this network (HTTP 403) \u2014 search a senator by hand at ${SENATE_SEARCH_URL}`
+    };
+  if (!res?.ok)
+    return { reachable: false, status: status2, note: `Senate trades not read: eFD did not answer (${status2 || res?.error || "no response"}) \u2014 ${SENATE_SEARCH_URL}` };
+  return {
+    reachable: true,
+    status: status2,
+    note: `Senate trades not read: eFD answers, but its search needs a terms-accepted session ultrastock does not open \u2014 search a senator by hand at ${SENATE_SEARCH_URL}`
+  };
+}
+
+// src/people/types.ts
+var refString = (r3) => `${r3.source}:${r3.id}`;
+function parseRefString(s) {
+  const m = /^(house|oge|sec):(.+)$/i.exec(s.trim());
+  if (!m) return void 0;
+  const source2 = m[1].toLowerCase();
+  const raw = m[2].trim();
+  if (source2 !== "sec") return { source: source2, id: raw };
+  const cik = raw.replace(/^cik/i, "");
+  return /^\d{1,10}$/.test(cik) ? { source: source2, id: String(Number(cik)) } : void 0;
+}
+
+// src/people/resolve.ts
+var SEC_DEPTH = 6;
+var SEC_ROLE_NAMES = { "13f": "13F filer", form4: "Form 4 reporting owner", "13dg": "13D/13G holder" };
+function secRolesOf(sub) {
+  const forms = new Set(sub.filings.map((f3) => f3.form));
+  const roles = [];
+  if (forms.has("13F-HR")) roles.push("13f");
+  if (!sub.tickers.length && (forms.has("4") || forms.has("4/A"))) roles.push("form4");
+  if ([...forms].some((f3) => /^SCHEDULE 13[DG]/.test(f3))) roles.push("13dg");
+  return roles;
+}
+var secRoleText = (roles) => roles.map((r3) => SEC_ROLE_NAMES[r3]).join(" \xB7 ");
+async function houseCandidates(query2, now) {
+  const year = now.getUTCFullYear();
+  const seen = /* @__PURE__ */ new Map();
+  for (const y of [year, year - 1]) {
+    const idx = await houseIndex(y).catch((e) => {
+      if (y === year) throw e;
+      return void 0;
+    });
+    for (const m of houseMembersMatching(idx?.filings.filter((f3) => f3.filingType === "P") ?? [], query2))
+      if (!seen.has(m.member)) seen.set(m.member, { source: "house", id: m.member, name: m.member, role: `US House member, ${m.stateDistrict}` });
+    if (seen.size) break;
+  }
+  return [...seen.values()];
+}
+async function ogeCandidates(query2) {
+  const { filings } = await ogeFilings(query2);
+  const seen = /* @__PURE__ */ new Map();
+  for (const f3 of filings)
+    if ((f3.kind === "278-T" || f3.kind === "annual") && !seen.has(f3.name))
+      seen.set(f3.name, { source: "oge", id: f3.name, name: f3.name, role: [f3.title, f3.agency].filter(Boolean).join(", ") });
+  return [...seen.values()];
+}
+async function secCandidates(query2) {
+  const out = [];
+  for (const e of (await searchEdgarEntities(query2)).slice(0, SEC_DEPTH)) {
+    const sub = await secSubmissions(e.cik);
+    const roles = secRolesOf(sub);
+    if (roles.length) out.push({ source: "sec", id: String(e.cik), name: sub.name || e.name, role: secRoleText(roles), roles });
+  }
+  return out;
+}
+async function searchPeople(query2, opts = {}) {
+  const now = opts.now ?? clockNow();
+  const asks = [
+    ["house", () => houseCandidates(query2, now)],
+    ["oge", () => ogeCandidates(query2)],
+    ["sec", () => secCandidates(query2)]
+  ];
+  const chosen = asks.filter(([s]) => !opts.source || s === opts.source);
+  const got = await Promise.allSettled(chosen.map(([, run3]) => run3()));
+  const candidates2 = [];
+  const notes = [];
+  got.forEach((g, i) => {
+    if (g.status === "fulfilled") candidates2.push(...g.value);
+    else notes.push(`${chosen[i][0]} not searched: ${g.reason.message}`);
+  });
+  if (opts.senate !== false && (!opts.source || opts.source === "house")) notes.push((await senateStatus()).note);
+  return { candidates: candidates2, notes };
+}
+async function refFromString(s) {
+  const r3 = parseRefString(s);
+  if (!r3) return void 0;
+  if (r3.source !== "sec") return { ...r3, name: r3.id };
+  const sub = await secSubmissions(Number(r3.id));
+  const roles = secRolesOf(sub);
+  return { ...r3, name: sub.name || `CIK ${r3.id}`, role: secRoleText(roles), roles };
+}
+var AmbiguousPerson = class extends Error {
+  constructor(query2, candidates2, notes) {
+    super(
+      candidates2.length ? `"${query2}" matches ${candidates2.length} filers \u2014 name one by its ref (source:id), shown by \`ultrastock people search\`` : `nobody matches "${query2}" at the House Clerk, OGE or EDGAR${notes.length ? ` (${notes.join("; ")})` : ""}`
+    );
+    this.query = query2;
+    this.candidates = candidates2;
+    this.notes = notes;
+  }
+  query;
+  candidates;
+  notes;
+};
+async function pickPerson(query2, opts = {}) {
+  const direct = await refFromString(query2);
+  if (direct) return direct;
+  const { candidates: candidates2, notes } = await searchPeople(query2, { ...opts, senate: false });
+  if (candidates2.length === 1) return candidates2[0];
+  const exact = candidates2.filter((c) => c.name.trim().toLowerCase() === query2.trim().toLowerCase());
+  if (exact.length === 1) return exact[0];
+  throw new AmbiguousPerson(query2, candidates2, notes);
+}
+
+// src/people/activity.ts
+var PTR_SIDE = { P: "buy", S: "sell", "S (partial)": "sell", E: "exchange" };
+var FORM4_SIDE = { P: "buy", S: "sell" };
+var wanted = (o, id) => !o.listOnly && !o.skip?.has(id);
+async function houseActivity(ref, o) {
+  const now = o.now ?? clockNow();
+  const year = now.getUTCFullYear();
+  const years = !o.since || o.since < `${year}-01-01` ? [year, year - 1] : [year];
+  const listed = [];
+  let index;
+  for (const y of years) {
+    const idx = await houseIndex(y).catch((e) => {
+      if (y === year) throw e;
+      return void 0;
+    });
+    if (!idx) continue;
+    index ??= idx;
+    for (const f3 of idx.filings) if (f3.filingType === "P" && f3.member === ref.id) listed.push({ docId: f3.docId, date: f3.date, year: f3.year, url: f3.pdfUrl });
+  }
+  const recent = listed.filter((f3) => !o.since || f3.date >= o.since).sort((a, b) => b.date.localeCompare(a.date)).slice(0, o.limit ?? 5);
+  const filings = [];
+  for (const f3 of recent) {
+    const base2 = { id: f3.docId, source: "house", form: "House PTR", filed: f3.date, url: f3.url };
+    if (!wanted(o, f3.docId)) {
+      filings.push({ ...base2, trades: [], read: false });
+      continue;
+    }
+    const ptr = await readHousePtr(f3.docId, f3.year);
+    filings.push({
+      ...base2,
+      read: true,
+      trades: ptr.rows.map((r3) => ({
+        asset: r3.ticker ?? "asset without a ticker",
+        ...r3.ticker ? { ticker: r3.ticker } : {},
+        side: PTR_SIDE[r3.type] ?? "other",
+        code: r3.type,
+        date: r3.date,
+        ...r3.amountLow !== void 0 ? { amountLow: r3.amountLow } : {},
+        ...r3.amountHigh !== void 0 ? { amountHigh: r3.amountHigh } : {}
+      })),
+      ...ptr.rows.length ? {} : { note: `rows not readable from the PDF (${ptr.reason ?? "no row recognized"}) \u2014 open it; a handwritten PTR has no text` }
+    });
+  }
+  return {
+    ref,
+    filings,
+    notes: [
+      "a House PTR is due within 45 days of the trade (often later); amounts are the form's value bands",
+      "rows are read from the PDF's text, best effort (pdftotext reads more of them) \u2014 check against the linked filing"
+    ],
+    provenance: { source: HOUSE_SOURCE, url: index?.url ?? "", fetchedAt: index?.fetchedAt ?? now.toISOString() }
+  };
+}
+async function ogeActivity(ref, o) {
+  const idx = await ogeFilings(ref.id);
+  const reports = idx.filings.filter((f3) => f3.name === ref.id && f3.kind === "278-T" && (!o.since || f3.date >= o.since)).slice(0, o.limit ?? 3);
+  const filings = [];
+  for (const f3 of reports) {
+    const base2 = { id: f3.id, source: "oge", form: `OGE 278-T${f3.amended ? " (amended)" : ""}`, filed: f3.date, url: f3.url ?? idx.url };
+    if (!f3.url) {
+      filings.push({ ...base2, trades: [], read: false, note: "available on request only (OGE Form 201)" });
+      continue;
+    }
+    if (!wanted(o, f3.id)) {
+      filings.push({ ...base2, trades: [], read: false });
+      continue;
+    }
+    const r3 = await oge278t(f3);
+    const tickers = /* @__PURE__ */ new Map();
+    for (const row of r3.rows) if (!tickers.has(row.description)) tickers.set(row.description, await secTickerByTitle(row.description));
+    filings.push({
+      ...base2,
+      read: true,
+      unread: r3.unread,
+      trades: r3.rows.map((row) => {
+        const ticker = tickers.get(row.description);
+        return {
+          asset: row.description,
+          ...ticker ? { ticker } : {},
+          side: row.type === "purchase" ? "buy" : row.type === "sale" ? "sell" : "exchange",
+          code: row.type,
+          ...row.date ? { date: row.date } : {},
+          ...row.amountLow !== void 0 ? { amountLow: row.amountLow } : {},
+          ...row.amountHigh !== void 0 ? { amountHigh: row.amountHigh } : {}
+        };
+      }),
+      ...r3.rows.length ? {} : { note: `rows not readable from the PDF (${r3.reason ?? "no row recognized"}) \u2014 install pdftotext (poppler), or open it` }
+    });
+  }
+  return {
+    ref,
+    filings,
+    notes: [
+      "a 278-T is due within 30 days of the filer's notice of a trade and 45 days after it; amounts are the form's value bands",
+      "the PDFs are scans read through their OCR layer: a row whose type, date or amount does not read is left out or left blank, never guessed \u2014 check against the linked report",
+      "tickers are matched to the filed names through EDGAR's ticker list, best effort; bonds and funds keep their name only"
+    ],
+    provenance: { source: OGE_SOURCE, url: idx.url, fetchedAt: idx.fetchedAt }
+  };
+}
+async function secActivity(ref, o) {
+  const cik = Number(ref.id);
+  const sub = await secSubmissions(cik);
+  const roles = ref.roles ?? secRolesOf(sub);
+  const filings = [];
+  const notes = [];
+  const limit = o.limit ?? 10;
+  const listed = (forms) => sub.filings.filter((f3) => forms.test(f3.form) && (!o.since || f3.filingDate >= o.since)).slice(0, limit);
+  if (roles.includes("13f")) {
+    const [f3] = listed(/^13F-HR$/);
+    if (f3 && !wanted(o, f3.accession))
+      filings.push({ id: f3.accession, source: "sec", form: "13F-HR", filed: f3.filingDate, url: f3.url, trades: [], read: false });
+    else if (f3) {
+      const q = await latest13f(cik);
+      if (q) {
+        const trades2 = (q.diffs ?? []).filter((d) => d.change !== "unchanged").map((d) => ({
+          asset: `${d.holding.issuer}${d.holding.putCall ? ` (${d.holding.putCall})` : ""}`,
+          side: d.change === "new" || d.change === "added" ? "buy" : "sell",
+          code: d.change,
+          date: q.period,
+          shares: Math.abs(d.sharesChange),
+          sharesAfter: d.holding.shares
+        }));
+        filings.push({
+          id: q.filing.accession,
+          source: "sec",
+          form: "13F-HR",
+          filed: q.filing.filingDate,
+          url: q.url,
+          trades: trades2,
+          read: true,
+          ...q.diffs ? {} : { note: "no previous 13F-HR to compare: no change shown" }
+        });
+        notes.push(
+          `13F-HR for the quarter ended ${q.period}: positions at the quarter's end, filed up to 45 days later; changes are against the previous 13F-HR`
+        );
+      }
+    }
+  }
+  if (roles.includes("form4")) {
+    if (o.listOnly)
+      for (const f3 of listed(/^4(\/A)?$/))
+        filings.push({ id: f3.accession, source: "sec", form: `Form ${f3.form}`, filed: f3.filingDate, url: f3.url, trades: [], read: false });
+    else {
+      const got = await secOwnerForm4s(cik, { limit, since: o.since, skip: o.skip });
+      notes.push(...got.notes);
+      for (const form of got.forms) {
+        const base2 = { id: form.accession, source: "sec", form: form.amendment ? "Form 4/A" : "Form 4", filed: form.filed, url: form.url };
+        if (o.skip?.has(form.accession)) {
+          filings.push({ ...base2, trades: [], read: false });
+          continue;
+        }
+        filings.push({
+          ...base2,
+          read: true,
+          trades: form.transactions.map((t) => ({
+            asset: form.issuerName ?? form.symbol ?? `CIK ${form.issuerCik ?? "?"}`,
+            ...form.symbol ? { ticker: form.symbol.toUpperCase() } : {},
+            side: FORM4_SIDE[t.code] ?? "other",
+            code: `${t.code} (${FORM4_CODES[t.code] ?? "other"})`,
+            date: t.date,
+            shares: t.acquired ? t.shares : -t.shares,
+            ...t.price !== void 0 ? { price: t.price } : {},
+            ...t.sharesAfter !== void 0 ? { sharesAfter: t.sharesAfter } : {},
+            ...t.direct ? {} : { indirect: true }
+          }))
+        });
+      }
+      notes.push(
+        "Form 4 within two business days of the trade: exact shares and prices; P (open-market purchase) and S (sale) are the trades, A/M/F/G are compensation, exercises, tax and gifts"
+      );
+    }
+  }
+  if (roles.includes("13dg")) {
+    if (o.listOnly)
+      for (const f3 of listed(/^SCHEDULE 13[DG](\/A)?$/))
+        filings.push({
+          id: f3.accession,
+          source: "sec",
+          form: f3.form.replace("SCHEDULE", "Schedule"),
+          filed: f3.filingDate,
+          url: f3.url,
+          trades: [],
+          read: false
+        });
+    else {
+      const got = await sec13dgStakes(cik, { limit, since: o.since, skip: o.skip });
+      notes.push(...got.notes);
+      const last2 = /* @__PURE__ */ new Map();
+      const rows = [...got.stakes].reverse().map((s) => {
+        const key = s.cusip ?? s.issuerName;
+        const before = last2.get(key);
+        last2.set(key, s.percent);
+        const side2 = before === void 0 || s.percent === void 0 ? s.amendment ? "other" : "buy" : s.percent > before ? "buy" : s.percent < before ? "sell" : "other";
+        return { s, side: side2 };
+      });
+      for (const { s, side: side2 } of rows.reverse()) {
+        const base2 = { id: s.accession, source: "sec", form: `Schedule ${s.schedule}${s.amendment ? "/A" : ""}`, filed: s.filed, url: s.url };
+        if (o.skip?.has(s.accession)) {
+          filings.push({ ...base2, trades: [], read: false });
+          continue;
+        }
+        filings.push({
+          ...base2,
+          read: true,
+          trades: [
+            {
+              asset: s.issuerName,
+              side: side2,
+              code: s.amendment ? "amended stake" : "stake above 5%",
+              ...s.eventDate ? { date: s.eventDate } : {},
+              ...s.shares !== void 0 ? { sharesAfter: s.shares } : {},
+              ...s.percent !== void 0 ? { percent: s.percent } : {}
+            }
+          ]
+        });
+      }
+      notes.push(
+        "Schedules 13D/13G report a stake above 5% of a class (13D within 5 business days of the event, 13G later); the side compares the stake with the one filed before it"
+      );
+    }
+  }
+  if (!roles.length) throw new ProviderError(SEC_SOURCE, `CIK ${cik} files no 13F, Form 4 as owner or Schedule 13D/13G in its recent filings`, 404);
+  filings.sort((a, b) => b.filed.localeCompare(a.filed) || a.id.localeCompare(b.id));
+  return { ref: { ...ref, roles }, filings, notes, provenance: { source: SEC_SOURCE, url: sub.url, fetchedAt: sub.fetchedAt } };
+}
+async function personActivity(ref, opts = {}) {
+  if (ref.source === "house") return houseActivity(ref, opts);
+  if (ref.source === "oge") return ogeActivity(ref, opts);
+  return secActivity(ref, opts);
+}
+
+// src/people/datasets.ts
+function personSubject(ref) {
+  const slug = ref.source === "sec" ? `CIK${ref.id}` : ref.id.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+  return `PEOPLE.${ref.source}.${slug}`;
+}
+var fileKey = (f3) => f3.id.replace(/[^A-Za-z0-9-]/g, "").slice(0, 24);
+var SIDE_WORD = { buy: "buy", sell: "sale", exchange: "exchange", other: "other" };
+var assetText = (t) => t.ticker && t.ticker !== t.asset ? `${t.ticker} \u2014 ${t.asset}` : t.ticker ?? t.asset;
+function tradePoints2(subject, f3, t, i) {
+  const k = `${subject}.${fileKey(f3)}.${i + 1}`;
+  const what = `${subject} ${f3.form} filed ${f3.filed}, row ${i + 1}: ${SIDE_WORD[t.side]}${t.code ? ` [${t.code}]` : ""} on ${t.date ?? "a date that did not read"}${t.indirect ? ", held indirectly" : ""}`;
+  const asOf = t.date ?? f3.filed;
+  const pts = [{ key: `${k}.asset`, label: `${what}, asset`, value: assetText(t), untrusted: true, asOf, url: f3.url }];
+  if (t.amountLow !== void 0) pts.push({ key: `${k}.amountLow`, label: `${what}, value band low`, value: t.amountLow, unit: "USD", asOf });
+  if (t.amountHigh !== void 0) pts.push({ key: `${k}.amountHigh`, label: `${what}, value band high`, value: t.amountHigh, unit: "USD", asOf });
+  if (t.shares !== void 0) pts.push({ key: `${k}.shares`, label: `${what}, shares (+ acquired, \u2212 disposed)`, value: t.shares, unit: "shares", asOf });
+  if (t.price !== void 0) pts.push({ key: `${k}.price`, label: `${what}, price per share`, value: t.price, unit: "USD", asOf });
+  if (t.sharesAfter !== void 0) pts.push({ key: `${k}.sharesAfter`, label: `${what}, shares held after`, value: t.sharesAfter, unit: "shares", asOf });
+  if (t.percent !== void 0) pts.push({ key: `${k}.percent`, label: `${what}, share of the class`, value: t.percent, unit: "%", asOf });
+  return pts;
+}
+function activityDataset(a, opts = {}) {
+  const subject = personSubject(a.ref);
+  const limit = opts.limit ?? 30;
+  const points = [
+    { key: `${subject}.name`, label: `${subject} name as the source records it`, value: a.ref.name, untrusted: true },
+    { key: `${subject}.ref`, label: `${subject} reference to follow or show this filer`, value: refString(a.ref), untrusted: true }
+  ];
+  if (a.ref.role) points.push({ key: `${subject}.role`, label: `${subject} role as the source records it`, value: a.ref.role, untrusted: true });
+  let shown = 0;
+  let hidden = 0;
+  const counts = { buy: 0, sell: 0 };
+  for (const f3 of a.filings) {
+    const fk = `${subject}.${fileKey(f3)}`;
+    points.push({
+      key: `${fk}.trades`,
+      label: `${subject} ${f3.form} filed ${f3.filed}: transactions ${f3.read ? "read" : "not read (listed only)"}`,
+      value: f3.trades.length,
+      unit: "count",
+      asOf: f3.filed,
+      url: f3.url
+    });
+    if (f3.unread)
+      points.push({
+        key: `${fk}.unread`,
+        label: `${subject} ${f3.form} filed ${f3.filed}: rows that did not read`,
+        value: f3.unread,
+        unit: "count",
+        asOf: f3.filed
+      });
+    f3.trades.forEach((t, i) => {
+      if (t.side === "buy") counts.buy++;
+      if (t.side === "sell") counts.sell++;
+      if (shown >= limit) {
+        hidden++;
+        return;
+      }
+      shown++;
+      points.push(...tradePoints2(subject, f3, t, i));
+    });
+  }
+  const newest = a.filings[0]?.filed;
+  points.push(
+    { key: `${subject}.buys.count`, label: `${subject} buys in the filings read`, value: counts.buy, unit: "count", ...newest ? { asOf: newest } : {} },
+    { key: `${subject}.sells.count`, label: `${subject} sales in the filings read`, value: counts.sell, unit: "count", ...newest ? { asOf: newest } : {} }
+  );
+  const notes = [...a.notes];
+  for (const f3 of a.filings) if (f3.note) notes.push(`${f3.form} filed ${f3.filed}: ${f3.note}`);
+  if (hidden) notes.push(`${hidden} more transactions not shown \u2014 raise --limit, or open the filings`);
+  if (!a.filings.length) notes.push("no filing in the window \u2014 widen --since or raise --filings");
+  return {
+    kind: "people",
+    title: `${subject} disclosed trades (${a.filings.length} filings)`,
+    subject,
+    points,
+    provenance: { ...a.provenance, delay: "filing", official: true, ...newest ? { asOf: newest } : {} },
+    notes
+  };
+}
+async function positionsDataset(a, opts = {}) {
+  const subject = personSubject(a.ref);
+  const points = [];
+  const notes = [];
+  const top = opts.top ?? 15;
+  let asOf;
+  if (a.ref.source === "sec") {
+    if (a.ref.roles?.includes("13f")) {
+      const q = await latest13f(Number(a.ref.id));
+      if (q) {
+        asOf = q.period;
+        const total = q.holdings.reduce((s, h) => s + h.value, 0);
+        q.holdings.slice(0, top).forEach((h, i) => {
+          const k = `${subject}.13f.${h.cusip}${h.putCall ? `.${h.putCall.toLowerCase()}` : ""}`;
+          const what = `${subject} 13F position #${i + 1} (CUSIP ${h.cusip}${h.putCall ? ` ${h.putCall}` : ""}) at ${q.period}`;
+          points.push(
+            { key: `${k}.issuer`, label: `${what}, issuer`, value: `${h.issuer} \u2014 ${h.titleOfClass}`, untrusted: true, asOf: q.period, url: q.url },
+            { key: `${k}.value`, label: `${what}, value`, value: h.value, unit: "USD", asOf: q.period },
+            {
+              key: `${k}.weight`,
+              label: `${what}, weight`,
+              value: total ? h.value / total * 100 : 0,
+              unit: "%",
+              asOf: q.period,
+              formula: "value / total reported value"
+            },
+            { key: `${k}.shares`, label: `${what}, shares`, value: h.shares, unit: "shares", asOf: q.period }
+          );
+        });
+        notes.push(`13F positions at the quarter ended ${q.period} (long US equities and listed options only), filed ${q.filing.filingDate}`);
+      }
+    }
+    const held = /* @__PURE__ */ new Map();
+    for (const f3 of a.filings.filter((x) => x.form.startsWith("Form 4")))
+      for (const t of f3.trades) {
+        const key = `${t.ticker ?? t.asset}|${t.indirect ? "I" : "D"}`;
+        if (t.sharesAfter !== void 0 && !held.has(key)) held.set(key, { t, f: f3 });
+      }
+    for (const { t, f: f3 } of held.values()) {
+      const k = `${subject}.form4.${(t.ticker ?? fileKey(f3)).replace(/[^A-Za-z0-9-]/g, "")}.${t.indirect ? "indirect" : "direct"}`;
+      const what = `${subject} shares held ${t.indirect ? "indirectly" : "directly"} after the Form 4 filed ${f3.filed}`;
+      points.push(
+        { key: `${k}.asset`, label: `${what}, issuer`, value: assetText(t), untrusted: true, asOf: t.date ?? f3.filed, url: f3.url },
+        { key: `${k}.shares`, label: `${what}, shares`, value: t.sharesAfter, unit: "shares", asOf: t.date ?? f3.filed }
+      );
+    }
+    if (held.size) notes.push("Form 4 holdings are the shares owned after each issuer's latest reported trade among the filings read");
+    const stakes = /* @__PURE__ */ new Map();
+    for (const f3 of a.filings.filter((x) => x.form.startsWith("Schedule 13")))
+      for (const t of f3.trades) if (!stakes.has(t.asset)) stakes.set(t.asset, { t, f: f3 });
+    let n2 = 0;
+    for (const { t, f: f3 } of stakes.values()) {
+      const k = `${subject}.stake.${++n2}`;
+      const what = `${subject} stake reported in the ${f3.form} filed ${f3.filed}`;
+      points.push({ key: `${k}.issuer`, label: `${what}, issuer`, value: t.asset, untrusted: true, asOf: t.date ?? f3.filed, url: f3.url });
+      if (t.percent !== void 0)
+        points.push({ key: `${k}.percent`, label: `${what}, share of the class`, value: t.percent, unit: "%", asOf: t.date ?? f3.filed });
+      if (t.sharesAfter !== void 0)
+        points.push({ key: `${k}.shares`, label: `${what}, shares beneficially owned`, value: t.sharesAfter, unit: "shares", asOf: t.date ?? f3.filed });
+    }
+    if (stakes.size) notes.push("13D/13G stakes: the latest schedule per issuer among those read; a stake under 5% is no longer reported");
+  } else {
+    const flow = /* @__PURE__ */ new Map();
+    for (const f3 of a.filings)
+      f3.trades.forEach((t, i) => {
+        if (t.side !== "buy" && t.side !== "sell") return;
+        const key = t.ticker ?? (f3.source === "oge" ? t.asset : `${f3.id}#${i}`);
+        const r3 = flow.get(key) ?? { asset: assetText(t), buys: 0, sells: 0, inLow: 0, inHigh: 0, outLow: 0, outHigh: 0, openIn: false, openOut: false };
+        if (t.amountHigh === void 0) r3[t.side === "buy" ? "openIn" : "openOut"] = true;
+        if (t.side === "buy") {
+          r3.buys++;
+          r3.inLow += t.amountLow ?? 0;
+          r3.inHigh += t.amountHigh ?? t.amountLow ?? 0;
+        } else {
+          r3.sells++;
+          r3.outLow += t.amountLow ?? 0;
+          r3.outHigh += t.amountHigh ?? t.amountLow ?? 0;
+        }
+        flow.set(key, r3);
+      });
+    const rows = [...flow.values()].sort((x, y) => y.inHigh + y.outHigh - (x.inHigh + x.outHigh)).slice(0, top);
+    asOf = a.filings[0]?.filed;
+    const since = a.filings[a.filings.length - 1]?.filed;
+    rows.forEach((r3, i) => {
+      const k = `${subject}.flow.${i + 1}`;
+      const what = `${subject} trades read in filings ${since ?? "?"} \u2192 ${asOf ?? "?"}, asset #${i + 1}`;
+      points.push(
+        { key: `${k}.asset`, label: `${what}`, value: r3.asset, untrusted: true, ...asOf ? { asOf } : {} },
+        { key: `${k}.buys`, label: `${what}, buys`, value: r3.buys, unit: "count", ...asOf ? { asOf } : {} },
+        { key: `${k}.sells`, label: `${what}, sales`, value: r3.sells, unit: "count", ...asOf ? { asOf } : {} },
+        { key: `${k}.boughtLow`, label: `${what}, bought, sum of band lows`, value: r3.inLow, unit: "USD", ...asOf ? { asOf } : {} },
+        {
+          key: `${k}.boughtHigh`,
+          label: `${what}, bought, sum of band highs${r3.openIn ? " (a band without a top counted at its low)" : ""}`,
+          value: r3.inHigh,
+          unit: "USD",
+          ...asOf ? { asOf } : {}
+        },
+        { key: `${k}.soldLow`, label: `${what}, sold, sum of band lows`, value: r3.outLow, unit: "USD", ...asOf ? { asOf } : {} },
+        {
+          key: `${k}.soldHigh`,
+          label: `${what}, sold, sum of band highs${r3.openOut ? " (a band without a top counted at its low)" : ""}`,
+          value: r3.outHigh,
+          unit: "USD",
+          ...asOf ? { asOf } : {}
+        }
+      );
+    });
+    notes.push(
+      a.ref.source === "house" ? "a PTR lists trades, not holdings: this is the net of the trades read, in value bands \u2014 holdings are in the member's annual Financial Disclosure report" : "a 278-T lists trades, not holdings: this is the net of the trades read, in value bands \u2014 holdings are in the filer's annual OGE 278e"
+    );
+  }
+  if (!points.length) notes.push("no position could be derived from the filings read");
+  return {
+    kind: "people-positions",
+    title: `${subject} positions as disclosed`,
+    subject,
+    points,
+    provenance: { ...a.provenance, delay: "filing", official: true, ...asOf ? { asOf } : {} },
+    notes
+  };
+}
+function filingAlertMessage(ref, f3, prefix) {
+  const name = sanitizeExternalText(ref.name, 80);
+  const buys = f3.trades.filter((t) => t.side === "buy").length;
+  const sells = f3.trades.filter((t) => t.side === "sell").length;
+  const big = [...f3.trades].sort((x, y) => (y.amountHigh ?? y.amountLow ?? 0) - (x.amountHigh ?? x.amountLow ?? 0))[0];
+  const band = (t) => t.amountLow !== void 0 ? ` $${t.amountLow.toLocaleString("en-US")}${t.amountHigh !== void 0 ? `\u2013$${t.amountHigh.toLocaleString("en-US")}` : "+"}` : "";
+  const largest = big && (big.amountLow !== void 0 || big.amountHigh !== void 0) ? `; largest: ${SIDE_WORD[big.side]} ${sanitizeExternalText(big.ticker ?? big.asset, 60)}${band(big)}` : "";
+  const what = f3.read ? `${buys} buy(s), ${sells} sale(s)${largest}` : f3.note ?? "not read";
+  return `${prefix ? `${prefix} \u2014 ` : ""}${name}: ${f3.form} filed ${f3.filed} \u2014 ${what} ${f3.url}`;
+}
+
+// src/alerts/alerts.ts
 var statePath = () => join51(homeDir(), "state", "alerts.json");
 function loadRules2() {
   return existsSync37(statePath()) ? JSON.parse(readFileSync41(statePath(), "utf8")) : [];
@@ -50848,8 +51794,9 @@ function addRule(input, now = /* @__PURE__ */ new Date()) {
     if (unknown2.length) throw new Error(`unknown variable(s) ${unknown2.join(", ")} \u2014 available: ${ALERT_VARIABLES.join(", ")}`);
   }
   if (input.kind === "8k" && !input.symbol) throw new Error("an 8-K alert needs a US symbol");
+  if (input.kind === "person" && !input.person) throw new Error("a person alert needs who to follow");
   const rule = {
-    id: `a-${contentHash(`${input.kind}|${input.symbol ?? ""}|${input.expr ?? ""}|${now.toISOString()}`).slice(0, 10)}`,
+    id: `a-${contentHash(`${input.kind}|${input.symbol ?? ""}|${input.expr ?? ""}|${input.person ? refString(input.person) : ""}|${now.toISOString()}`).slice(0, 10)}`,
     ...input,
     symbol: input.symbol?.toUpperCase(),
     createdAt: now.toISOString()
@@ -50927,7 +51874,7 @@ function tradedAfter(b, fill3) {
   }
   return b.date.slice(0, 10) > fill3.slice(0, 10);
 }
-async function runAlerts(now = clockNow()) {
+async function runAlerts(now = clockNow(), opts = {}) {
   const read3 = loadRules2();
   const rules = [...read3];
   const events = [];
@@ -50941,6 +51888,7 @@ async function runAlerts(now = clockNow()) {
   };
   for (let k = 0; k < rules.length; k++) {
     const rule = rules[k];
+    if (opts.kinds && !opts.kinds.includes(rule.kind)) continue;
     try {
       if (rule.kind === "expr") {
         const r3 = evaluateRule(rule, await barsOf(rule.symbol), at);
@@ -50955,6 +51903,15 @@ async function runAlerts(now = clockNow()) {
           events.push({ rule: rule.id, symbol: rule.symbol, at, message: `${rule.symbol}: ${p.label}` });
         }
         rules[k] = { ...rule, seen: [...seen].slice(-200) };
+      } else if (rule.kind === "person" && rule.person) {
+        const seen = new Set(rule.seen ?? []);
+        const act = await personActivity(rule.person, { limit: 5, skip: seen, now });
+        for (const f3 of act.filings) {
+          if (seen.has(f3.id)) continue;
+          seen.add(f3.id);
+          events.push({ rule: rule.id, at, message: filingAlertMessage(rule.person, f3, rule.message) });
+        }
+        rules[k] = { ...rule, seen: [...seen].slice(-200), ...events.some((e) => e.rule === rule.id) ? { firedAt: at } : {} };
       } else if (rule.kind === "events") {
         const seen = new Set(rule.seen ?? []);
         for (const ev of await upcomingEventAlerts({ days: rule.days, minWeight: rule.minWeight, now })) {
@@ -51069,7 +52026,7 @@ function csvRowsWithLines(text2, delimiter2) {
   let row = [];
   let cell3 = "";
   let quoted = false;
-  let line = 1;
+  let line2 = 1;
   let start = 1;
   const flush = () => {
     row.push(cell3);
@@ -51086,7 +52043,7 @@ function csvRowsWithLines(text2, delimiter2) {
           i++;
         } else quoted = false;
       } else {
-        if (ch === "\n") line++;
+        if (ch === "\n") line2++;
         cell3 += ch;
       }
       continue;
@@ -51100,8 +52057,8 @@ function csvRowsWithLines(text2, delimiter2) {
     } else if (ch === "\n" || ch === "\r") {
       if (ch === "\r" && src2[i + 1] === "\n") i++;
       flush();
-      line++;
-      start = line;
+      line2++;
+      start = line2;
     } else cell3 += ch;
   }
   if (cell3 !== "" || row.length) flush();
@@ -51109,9 +52066,9 @@ function csvRowsWithLines(text2, delimiter2) {
 }
 function sniffSeparator(text2) {
   let best = [",", 0];
-  for (const line of text2.split(/\r?\n/, 30)) {
+  for (const line2 of text2.split(/\r?\n/, 30)) {
     for (const d of [";", "	", ","]) {
-      const n2 = line.split(d).length - 1;
+      const n2 = line2.split(d).length - 1;
       if (n2 > best[1]) best = [d, n2];
     }
   }
@@ -51249,11 +52206,11 @@ function ledgerRefusal(t) {
   if (cash && !(typeof t.amount === "number" && Number.isFinite(t.amount))) return `a ${t.type} needs an amount`;
   return void 0;
 }
-function accept(res, line, t, legacy = []) {
+function accept(res, line2, t, legacy = []) {
   const clean3 = Object.fromEntries(Object.entries(t).filter(([, v]) => v !== void 0 && v !== ""));
   const why2 = ledgerRefusal(clean3);
   if (why2) {
-    res.skipped.push({ line, reason: why2 });
+    res.skipped.push({ line: line2, reason: why2 });
     return;
   }
   res.transactions.push(clean3);
@@ -51305,7 +52262,7 @@ function parseBinance(text2, opts) {
 }
 function tradeHistory(recs, opts) {
   const res = emptyResult();
-  for (const { line, rec } of recs) {
+  for (const { line: line2, rec } of recs) {
     const pairCell = rec.pair ?? rec.market ?? "";
     const side2 = (rec.side ?? rec.type ?? "").toUpperCase();
     const date = statementDate(rec.dateutc);
@@ -51319,7 +52276,7 @@ function tradeHistory(recs, opts) {
     const base2 = executed?.unit ?? pair?.base;
     const quote2 = quoteAmt?.unit ?? pair?.quote;
     if (!date || price === void 0 || !executed || side2 !== "BUY" && side2 !== "SELL" || !base2 || !quote2) {
-      res.skipped.push({ line, reason: `unreadable trade row (date, side "${side2}", price, executed amount or pair "${pairCell}")` });
+      res.skipped.push({ line: line2, reason: `unreadable trade row (date, side "${side2}", price, executed amount or pair "${pairCell}")` });
       continue;
     }
     const feeCoin = (feeCell?.unit ?? rec.feecoin ?? quote2).toUpperCase();
@@ -51332,7 +52289,7 @@ function tradeHistory(recs, opts) {
       quantity = round3(side2 === "BUY" ? quantity - fee : quantity + fee);
       feeQuote = round3(fee * price);
     }
-    accept(res, line, {
+    accept(res, line2, {
       date,
       type: side2 === "BUY" ? "buy" : "sell",
       account: opts.account,
@@ -51345,7 +52302,7 @@ function tradeHistory(recs, opts) {
       origin: ORIGIN
     });
     if (fee > 0 && feeCoin !== quote2 && feeCoin !== base2)
-      accept(res, line, {
+      accept(res, line2, {
         date,
         type: "fee",
         account: opts.account,
@@ -51371,26 +52328,26 @@ function transactionHistory(recs, opts) {
   const res = emptyResult();
   const quote2 = (opts.quote ?? "USDT").toUpperCase();
   const coinsAsPositions = /* @__PURE__ */ new Set();
-  for (const { line, rec } of recs) {
+  for (const { line: line2, rec } of recs) {
     const op = (rec.operation ?? "").trim().toLowerCase();
     const coin = (rec.coin ?? "").trim().toUpperCase();
     const change = statementNumber(rec.change);
     const date = statementDate(rec.utctime);
     if (!date || change === void 0 || !coin) {
-      res.skipped.push({ line, reason: `unreadable row (time "${rec.utctime ?? ""}", coin or change "${rec.change ?? ""}")` });
+      res.skipped.push({ line: line2, reason: `unreadable row (time "${rec.utctime ?? ""}", coin or change "${rec.change ?? ""}")` });
       continue;
     }
     const kind = DEPOSIT_OPS.has(op) ? "in" : WITHDRAW_OPS.has(op) ? "out" : INTERNAL.test(op) ? "internal" : INCOME.test(op) ? "income" : TRADE_LEG.test(op) ? "trade" : "unknown";
     if (kind === "internal" || kind === "trade" || kind === "unknown") {
       res.skipped.push({
-        line,
+        line: line2,
         reason: kind === "internal" ? `"${rec.operation}" moves coins between Binance wallets \u2014 nothing to book` : kind === "trade" ? `"${rec.operation}" is a trade leg \u2014 import the Trade History export for trades` : `operation "${rec.operation}" is not imported`
       });
       continue;
     }
     const amount2 = Math.abs(change);
     if (CASH_ASSETS.has(coin)) {
-      accept(res, line, {
+      accept(res, line2, {
         date,
         type: kind === "in" ? "deposit" : kind === "out" ? "withdrawal" : "interest",
         account: opts.account,
@@ -51402,7 +52359,7 @@ function transactionHistory(recs, opts) {
       continue;
     }
     coinsAsPositions.add(coin);
-    accept(res, line, {
+    accept(res, line2, {
       date,
       type: kind === "out" ? "transfer-out" : "transfer-in",
       account: opts.account,
@@ -51455,7 +52412,7 @@ function parseCoinbase(text2, opts) {
   }
   const recs = recordsAfter(rows, h);
   const cols = recs[0] ? columnsOf(recs[0].rec) : void 0;
-  for (const { line, rec } of recs) {
+  for (const { line: line2, rec } of recs) {
     if (!cols) break;
     const kind = (rec.transactiontype ?? "").trim().toLowerCase();
     const asset = (rec.asset ?? "").trim().toUpperCase();
@@ -51466,18 +52423,18 @@ function parseCoinbase(text2, opts) {
     const subtotal = Math.abs(statementNumber(rec[cols.subtotal]) ?? Number.NaN);
     const fee = Math.abs(statementNumber(cols.fees ? rec[cols.fees] : void 0) ?? 0);
     if (!date || !asset || !Number.isFinite(qty) || qty === 0) {
-      res.skipped.push({ line, reason: `unreadable row (timestamp "${rec.timestamp ?? ""}", asset or quantity "${rec.quantitytransacted ?? ""}")` });
+      res.skipped.push({ line: line2, reason: `unreadable row (timestamp "${rec.timestamp ?? ""}", asset or quantity "${rec.quantitytransacted ?? ""}")` });
       continue;
     }
     if (INTERNAL2.has(kind)) {
-      res.skipped.push({ line, reason: `"${rec.transactiontype}" moves funds inside Coinbase \u2014 nothing to book` });
+      res.skipped.push({ line: line2, reason: `"${rec.transactiontype}" moves funds inside Coinbase \u2014 nothing to book` });
       continue;
     }
     const execPrice = Number.isFinite(subtotal) && subtotal > 0 ? round3(subtotal / qty) : spot;
     const base2 = { date, account: opts.account, origin: ORIGIN2 };
     const cashAsset = CASH_ASSETS.has(asset);
     if (BUYS.has(kind) || SELLS.has(kind)) {
-      accept(res, line, {
+      accept(res, line2, {
         ...base2,
         type: BUYS.has(kind) ? "buy" : "sell",
         symbol: pairSymbol(asset, currency),
@@ -51493,14 +52450,14 @@ function parseCoinbase(text2, opts) {
       const toQty = statementNumber(m?.[3]);
       const to = m?.[4]?.toUpperCase();
       if (!m || !to || !toQty || !Number.isFinite(subtotal)) {
-        res.skipped.push({ line, reason: 'convert without a readable "Converted <qty> <asset> to <qty> <asset>" note or subtotal' });
+        res.skipped.push({ line: line2, reason: 'convert without a readable "Converted <qty> <asset> to <qty> <asset>" note or subtotal' });
         continue;
       }
       if (cashAsset || CASH_ASSETS.has(to)) {
-        res.skipped.push({ line, reason: `convert between ${asset} and ${to} involves a cash asset \u2014 record it as a buy or sell by hand` });
+        res.skipped.push({ line: line2, reason: `convert between ${asset} and ${to} involves a cash asset \u2014 record it as a buy or sell by hand` });
         continue;
       }
-      accept(res, line, {
+      accept(res, line2, {
         ...base2,
         type: "sell",
         symbol: pairSymbol(asset, currency),
@@ -51510,7 +52467,7 @@ function parseCoinbase(text2, opts) {
         currency,
         note: `convert to ${to}`
       });
-      accept(res, line, {
+      accept(res, line2, {
         ...base2,
         type: "buy",
         symbol: pairSymbol(to, currency),
@@ -51525,11 +52482,11 @@ function parseCoinbase(text2, opts) {
     const into = kind === "receive" || kind === "deposit" || income;
     const outOf = kind === "send" || kind === "withdrawal";
     if (!into && !outOf) {
-      res.skipped.push({ line, reason: `transaction type "${rec.transactiontype}" is not imported` });
+      res.skipped.push({ line: line2, reason: `transaction type "${rec.transactiontype}" is not imported` });
       continue;
     }
     if (cashAsset) {
-      accept(res, line, {
+      accept(res, line2, {
         ...base2,
         type: income ? "interest" : into ? "deposit" : "withdrawal",
         amount: into ? qty : -qty,
@@ -51539,10 +52496,10 @@ function parseCoinbase(text2, opts) {
       continue;
     }
     if (!currency) {
-      res.skipped.push({ line, reason: `${kind} of ${asset} without a price currency to name its pair` });
+      res.skipped.push({ line: line2, reason: `${kind} of ${asset} without a price currency to name its pair` });
       continue;
     }
-    accept(res, line, {
+    accept(res, line2, {
       ...base2,
       type: into ? "transfer-in" : "transfer-out",
       symbol: pairSymbol(asset, currency),
@@ -52001,12 +52958,12 @@ function parseIbkr(text2, opts) {
   if (accounts.size > 1) res.warnings.push(`the file holds ${accounts.size} IBKR accounts; all are booked to "${opts.account}"`);
   const trades2 = recs.filter((r3) => r3.kind === "trade");
   const levels = new Set(trades2.map((r3) => (pick2(r3.f, "levelofdetail", "datadiscriminator") ?? "EXECUTION").toUpperCase()));
-  const wanted = levels.has("EXECUTION") ? "EXECUTION" : levels.has("TRADE") ? "TRADE" : "ORDER";
+  const wanted2 = levels.has("EXECUTION") ? "EXECUTION" : levels.has("TRADE") ? "TRADE" : "ORDER";
   for (const r3 of trades2) {
     const f3 = r3.f;
     const level = (pick2(f3, "levelofdetail", "datadiscriminator") ?? "EXECUTION").toUpperCase();
-    if (level !== wanted) {
-      res.skipped.push({ line: r3.line, reason: `${level.toLowerCase()} detail row (the ${wanted.toLowerCase()} rows are imported)` });
+    if (level !== wanted2) {
+      res.skipped.push({ line: r3.line, reason: `${level.toLowerCase()} detail row (the ${wanted2.toLowerCase()} rows are imported)` });
       continue;
     }
     const cat = (pick2(f3, "assetcategory", "assetclass") ?? "STK").toUpperCase();
@@ -52217,7 +53174,7 @@ function parseKraken(text2, opts) {
 }
 function trades(recs, opts) {
   const res = emptyResult();
-  for (const { line, rec } of recs) {
+  for (const { line: line2, rec } of recs) {
     const pair = krakenPair(rec.pair ?? "");
     const side2 = (rec.type ?? "").toLowerCase();
     const date = statementDate(rec.time);
@@ -52225,18 +53182,18 @@ function trades(recs, opts) {
     const vol = statementNumber(rec.vol, ".");
     const fee = statementNumber(rec.fee, ".") ?? 0;
     if (!pair || !date || price === void 0 || !vol || side2 !== "buy" && side2 !== "sell") {
-      res.skipped.push({ line, reason: `unreadable trade row (pair "${rec.pair ?? ""}", time, type "${rec.type ?? ""}", price or vol)` });
+      res.skipped.push({ line: line2, reason: `unreadable trade row (pair "${rec.pair ?? ""}", time, type "${rec.type ?? ""}", price or vol)` });
       continue;
     }
     if ((statementNumber(rec.margin, ".") ?? 0) !== 0) {
-      res.skipped.push({ line, reason: "margin trade: the ledger has no leverage" });
+      res.skipped.push({ line: line2, reason: "margin trade: the ledger has no leverage" });
       continue;
     }
     const old = legacyKrakenPair(rec.pair ?? "");
     const was = old && { symbol: pairSymbol(old.base, old.quote), currency: old.quote };
     accept(
       res,
-      line,
+      line2,
       {
         date,
         type: side2 === "buy" ? "buy" : "sell",
@@ -52260,7 +53217,7 @@ function ledgers(recs, opts) {
   const res = emptyResult();
   const quote2 = (opts.quote ?? "EUR").toUpperCase();
   const legs = /* @__PURE__ */ new Map();
-  for (const { line, rec } of recs) {
+  for (const { line: line2, rec } of recs) {
     const type = (rec.type ?? "").toLowerCase();
     const subtype = (rec.subtype ?? "").toLowerCase();
     const asset = krakenAsset(rec.asset ?? "");
@@ -52268,35 +53225,35 @@ function ledgers(recs, opts) {
     const fee = Math.abs(statementNumber(rec.fee, ".") ?? 0);
     const date = statementDate(rec.time);
     if (!rec.txid) {
-      res.skipped.push({ line, reason: "entry without a ledger id (Kraken's pending duplicate of a settled entry)" });
+      res.skipped.push({ line: line2, reason: "entry without a ledger id (Kraken's pending duplicate of a settled entry)" });
       continue;
     }
     if (!date || amount2 === void 0 || !asset) {
-      res.skipped.push({ line, reason: `unreadable ledger row (time "${rec.time ?? ""}", asset or amount "${rec.amount ?? ""}")` });
+      res.skipped.push({ line: line2, reason: `unreadable ledger row (time "${rec.time ?? ""}", asset or amount "${rec.amount ?? ""}")` });
       continue;
     }
     if (type === "trade" || type === "margin" || type === "rollover" || type === "settled") {
-      res.skipped.push({ line, reason: `"${type}" ledger leg \u2014 import trades.csv for trades` });
+      res.skipped.push({ line: line2, reason: `"${type}" ledger leg \u2014 import trades.csv for trades` });
       continue;
     }
     if (type === "spend" || type === "receive") {
       const k = rec.refid || rec.txid;
-      legs.set(k, [...legs.get(k) ?? [], { line, asset, amount: amount2, fee, date }]);
+      legs.set(k, [...legs.get(k) ?? [], { line: line2, asset, amount: amount2, fee, date }]);
       continue;
     }
     const reward = type === "staking" || type === "earn" && subtype === "reward" || type === "dividend" && amount2 > 0;
     if (type === "transfer" || type === "earn" || INTERNAL_SUBTYPES.test(subtype)) {
       if (!reward) {
-        res.skipped.push({ line, reason: `"${type}${subtype ? `/${subtype}` : ""}" moves funds between Kraken wallets \u2014 nothing to book` });
+        res.skipped.push({ line: line2, reason: `"${type}${subtype ? `/${subtype}` : ""}" moves funds between Kraken wallets \u2014 nothing to book` });
         continue;
       }
     }
     if (type !== "deposit" && type !== "withdrawal" && !reward) {
-      res.skipped.push({ line, reason: `ledger type "${type}" is not imported` });
+      res.skipped.push({ line: line2, reason: `ledger type "${type}" is not imported` });
       continue;
     }
     if (CASH_ASSETS.has(asset)) {
-      accept(res, line, {
+      accept(res, line2, {
         date,
         type: reward ? "interest" : type === "deposit" ? "deposit" : "withdrawal",
         account: opts.account,
@@ -52305,11 +53262,11 @@ function ledgers(recs, opts) {
         note: reward ? `kraken ${type} reward` : void 0,
         origin: ORIGIN5
       });
-      if (fee > 0) accept(res, line, { date, type: "fee", account: opts.account, amount: -fee, currency: asset, note: `kraken ${type} fee`, origin: ORIGIN5 });
+      if (fee > 0) accept(res, line2, { date, type: "fee", account: opts.account, amount: -fee, currency: asset, note: `kraken ${type} fee`, origin: ORIGIN5 });
       continue;
     }
     const out = type === "withdrawal";
-    accept(res, line, {
+    accept(res, line2, {
       date,
       type: out ? "transfer-out" : "transfer-in",
       account: opts.account,
@@ -53421,7 +54378,7 @@ async function newsCommand2(args, asJson) {
       now
     )
   ) : 0;
-  const line = (i) => `${fresh.has(i.id) ? "+ " : ""}[${i.subject}] ${(i.published_at ?? i.first_seen_at).slice(0, 16).replace("T", " ")} ${i.title}${i.source ? ` | ${i.source}` : ""} \u2014 ${i.url}`;
+  const line2 = (i) => `${fresh.has(i.id) ? "+ " : ""}[${i.subject}] ${(i.published_at ?? i.first_seen_at).slice(0, 16).replace("T", " ")} ${i.title}${i.source ? ` | ${i.source}` : ""} \u2014 ${i.url}`;
   const value2 = {
     book: book2,
     days,
@@ -53437,9 +54394,9 @@ async function newsCommand2(args, asJson) {
   const text2 = [
     held.length ? `${book2} book \u2014 headlines for ${held.length} holding(s), last ${days} day(s)` : `${book2} book holds nothing: no headline to look for`,
     `NEW since the last check (not yet marked seen): ${unseen.length}${fresh.size ? `, ${fresh.size} found for the first time this run (+)` : ""}`,
-    untrustedBlock("news (google-news, gdelt, yahoo)", unseen.map(line)),
+    untrustedBlock("news (google-news, gdelt, yahoo)", unseen.map(line2)),
     seen.length ? `already seen: ${seen.length}` : "",
-    untrustedBlock("news (google-news, gdelt, yahoo)", seen.slice(0, 20).map(line)),
+    untrustedBlock("news (google-news, gdelt, yahoo)", seen.slice(0, 20).map(line2)),
     markSeen ? `marked ${marked} headline(s) as seen` : unseen.length ? "  `--mark-seen` marks these as seen, so the next check lists only what is new" : "",
     ...notes.map((n2) => `  note: ${n2}`)
   ].filter(Boolean).join("\n");
@@ -54992,7 +55949,9 @@ async function watchCommand(args, asJson) {
     return printResult(
       asJson,
       r3,
-      r3.map((x) => `${x.id}  ${x.kind.padEnd(5)} ${x.symbol ?? ""} ${x.expr ?? ""}${x.firedAt ? `  (last fired ${x.firedAt})` : ""}`).join("\n") || "no alerts"
+      r3.map(
+        (x) => `${x.id}  ${x.kind.padEnd(5)} ${x.symbol ?? (x.person ? sanitizeExternalText(refString(x.person), 80) : "")} ${x.expr ?? ""}${x.firedAt ? `  (last fired ${x.firedAt})` : ""}`
+      ).join("\n") || "no alerts"
     );
   }
   if (sub === "add") {
@@ -55659,9 +56618,9 @@ async function morningRun(dir2, opts = {}) {
   if (opts.news !== false) {
     const moved = new Set(moves.filter((m) => Math.abs(m.changePct) >= MOVE_WARN_PCT).map((m) => m.symbol));
     const soon = new Set(dates.filter((d) => d.kind === "earnings" && d.date <= end && d.sessionsAway <= NEAR_SESSIONS).map((d) => d.symbol));
-    const wanted = universe.filter((s) => !parsePredictionSymbol(s) && (heldBy.has(s) || moved.has(s) || soon.has(s))).slice(0, MAX_NEWS);
+    const wanted2 = universe.filter((s) => !parsePredictionSymbol(s) && (heldBy.has(s) || moved.has(s) || soon.has(s))).slice(0, MAX_NEWS);
     const byRow = new Map(rows.map((r3) => [r3.symbol, r3]));
-    const got = await mapLimit(wanted, 2, async (s) => {
+    const got = await mapLimit(wanted2, 2, async (s) => {
       const inst = byRow.get(s)?.instrument;
       const name = newsName(s, inst);
       try {
@@ -55678,7 +56637,7 @@ async function morningRun(dir2, opts = {}) {
         return void 0;
       }
     });
-    wanted.forEach((s, i) => {
+    wanted2.forEach((s, i) => {
       const r3 = got[i];
       if (!r3) return;
       const points = r3.ds.points.filter((p) => namesCompany(String(p.value), r3.name, s)).slice(0, 3);
@@ -55693,9 +56652,9 @@ async function morningRun(dir2, opts = {}) {
   const attention2 = [];
   if (opts.social !== false) {
     const byRow = new Map(rows.map((r3) => [r3.symbol, r3]));
-    const wanted = universe.filter((s) => byRow.get(s)?.instrument).slice(0, MAX_SOCIAL);
-    const got = await mapLimit(wanted, 2, async (s) => socialDatasets(byRow.get(s).instrument).catch(() => void 0));
-    wanted.forEach((s, i) => {
+    const wanted2 = universe.filter((s) => byRow.get(s)?.instrument).slice(0, MAX_SOCIAL);
+    const got = await mapLimit(wanted2, 2, async (s) => socialDatasets(byRow.get(s).instrument).catch(() => void 0));
+    wanted2.forEach((s, i) => {
       const r3 = got[i];
       if (!r3) return;
       for (const ds of r3.datasets) {
@@ -55723,7 +56682,7 @@ async function morningRun(dir2, opts = {}) {
         }
       }
     });
-    if (universe.length > wanted.length) f3.note(`retail attention read for the first ${wanted.length} names of ${universe.length}`);
+    if (universe.length > wanted2.length) f3.note(`retail attention read for the first ${wanted2.length} names of ${universe.length}`);
   }
   const pastResults = {};
   {
@@ -56020,6 +56979,88 @@ async function morningCommand(args, asJson) {
       ""
     ].join("\n")
   );
+}
+
+// src/commands/people.ts
+var USAGE4 = 'usage: ultrastock people search "<name>" [--source house|oge|sec] | show "<name|source:id>" [--since <date>] [--filings <n>] [--limit <n>] [--positions] | follow "<name|source:id>" [--message <text>] | unfollow <alert-id|source:id> | list | check [--notify]';
+var SOURCES2 = ["house", "oge", "sec"];
+function sourceArg(args) {
+  const s = argValue(args, "source")?.toLowerCase();
+  if (s === void 0) return void 0;
+  if (s === "senate") throw new UsageError("the Senate's eFD refuses automated clients: search a senator by hand at https://efdsearch.senate.gov/search/");
+  if (!SOURCES2.includes(s)) throw new UsageError(`--source is one of ${SOURCES2.join(", ")}`);
+  return s;
+}
+function sinceArg(args) {
+  const s = argValue(args, "since");
+  if (s !== void 0 && !/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new UsageError("--since is a day, YYYY-MM-DD");
+  return s;
+}
+var line = (c) => `${refString(c).padEnd(34)} ${sanitizeExternalText(c.name, 60)}${c.role ? `  (${sanitizeExternalText(c.role, 80)})` : ""}`;
+async function person(args, query2) {
+  try {
+    return await pickPerson(query2, { source: sourceArg(args) });
+  } catch (e) {
+    if (!(e instanceof AmbiguousPerson)) throw e;
+    const list = e.candidates.slice(0, 15).map((c) => `  ${line(c)}`);
+    throw new UsageError([e.message, ...list, ...e.candidates.length ? [`then: ultrastock people show "${refString(e.candidates[0])}"`] : []].join("\n"));
+  }
+}
+async function peopleCommand(args, asJson) {
+  const [sub, ...rest] = args.positional;
+  const query2 = rest.join(" ").trim();
+  if (sub === "search") {
+    if (!query2) throw new UsageError(USAGE4);
+    const r3 = await searchPeople(query2, { source: sourceArg(args) });
+    return printResult(
+      asJson,
+      r3,
+      [
+        ...r3.candidates.length ? r3.candidates.map(line) : [`nobody matches "${query2}"`],
+        ...r3.notes.map((n2) => `note: ${n2}`),
+        ...r3.candidates.length ? [`show one: ultrastock people show "${refString(r3.candidates[0])}"`] : []
+      ].join("\n")
+    );
+  }
+  if (sub === "show") {
+    if (!query2) throw new UsageError(USAGE4);
+    const ref = await person(args, query2);
+    const act = await personActivity(ref, { since: sinceArg(args), limit: argInt(args, "filings", { min: 1, max: 50 }) });
+    const ds = [activityDataset(act, { limit: argInt(args, "limit", { min: 1, max: 500 }) ?? 30 })];
+    if (args.bools.has("positions")) ds.push(await positionsDataset(act, { top: argInt(args, "limit", { min: 1, max: 100 }) ?? 15 }));
+    return emitDatasets(args, ds, asJson);
+  }
+  if (sub === "follow") {
+    if (!query2) throw new UsageError(USAGE4);
+    const ref = await person(args, query2);
+    const listed = await personActivity(ref, { listOnly: true, limit: 20 });
+    const rule = addRule({ kind: "person", person: listed.ref, message: argValue(args, "message"), seen: listed.filings.map((f3) => f3.id) }, clockNow());
+    return printResult(asJson, rule, `following ${refString(ref)} as alert ${rule.id} \u2014 \`ultrastock people check\` (or \`watch run\`) reports its new filings`);
+  }
+  if (sub === "unfollow") {
+    if (!query2) throw new UsageError(USAGE4);
+    const ids = loadRules2().filter((r3) => r3.kind === "person" && (r3.id === query2 || r3.person && refString(r3.person) === query2)).map((r3) => r3.id);
+    for (const id of ids) removeRule(id);
+    return printResult(asJson, { removed: ids }, ids.length ? `stopped following (${ids.join(", ")})` : `no person alert ${query2}`);
+  }
+  if (sub === "list" || sub === void 0) {
+    const rules = loadRules2().filter((r3) => r3.kind === "person" && r3.person);
+    return printResult(
+      asJson,
+      rules,
+      rules.map((r3) => `${r3.id}  ${line(r3.person)}${r3.firedAt ? `  (last fired ${r3.firedAt})` : ""}`).join("\n") || 'nobody is followed \u2014 ultrastock people follow "<name>"'
+    );
+  }
+  if (sub === "check") {
+    const r3 = await runAlerts(clockNow(), { kinds: ["person"] });
+    const sent = args.bools.has("notify") ? await notify(r3.events) : [];
+    return printResult(
+      asJson,
+      { ...r3, sent },
+      [...r3.events.map((e) => `NEW ${e.message}`), ...r3.errors.map((e) => `error: ${e}`), ...sent.map((s) => `  ${s}`)].join("\n") || "no new filing"
+    );
+  }
+  throw new UsageError(USAGE4);
 }
 
 // src/commands/profile.ts
@@ -58371,7 +59412,7 @@ function neutralReport(input) {
 }
 
 // src/commands/tax.ts
-var USAGE4 = "usage: ultrastock tax report|lots|harvest|verify|export|rules template|set|show [--country CC] [--regime fr|us] [--year YYYY] [--neutral] [--file <rules.json>] [--currency <code>] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,\u2026 | short=\u2026,long=\u2026] [--envelope-value <account>:<YYYY-MM-DD>=<value>,\u2026] [--lot-method fifo|hifo|lifo] [--household single|couple] [--format 8949|2086|2074|koinly|neutral|neutral-json] [--out <dir>] [--json]";
+var USAGE5 = "usage: ultrastock tax report|lots|harvest|verify|export|rules template|set|show [--country CC] [--regime fr|us] [--year YYYY] [--neutral] [--file <rules.json>] [--currency <code>] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,\u2026 | short=\u2026,long=\u2026] [--envelope-value <account>:<YYYY-MM-DD>=<value>,\u2026] [--lot-method fifo|hifo|lifo] [--household single|couple] [--format 8949|2086|2074|koinly|neutral|neutral-json] [--out <dir>] [--json]";
 var DISCLAIMER = "ultrastock contains no tax law: every rule here is the agent's research (sources and dates beside each) \u2014 a preparation aid, not tax advice; have a professional confirm";
 var rate = (raw) => {
   if (raw === void 0) return void 0;
@@ -58699,7 +59740,7 @@ async function rulesCommand(args, asJson, sub, country2, year) {
     );
     return emitDatasets(args, [rulesDataset(rules, clockNow().toISOString())], false);
   }
-  throw new UsageError(`tax rules is template, set or show \u2014 ${USAGE4}`);
+  throw new UsageError(`tax rules is template, set or show \u2014 ${USAGE5}`);
 }
 async function taxCommand(args, asJson) {
   const [sub = "report", sub2] = args.positional;
@@ -58779,7 +59820,7 @@ async function taxCommand(args, asJson) {
       throw new UsageError(
         `tax ${sub} needs a tax engine (FR, US): for ${country2}, \`tax report\` lists the disposals and lots as facts beside the researched rules`
       );
-    throw new UsageError(USAGE4);
+    throw new UsageError(USAGE5);
   }
   const regime = regimeFor(country2, y);
   if (sub === "report" || sub === "lots") {
@@ -58833,7 +59874,7 @@ async function taxCommand(args, asJson) {
 ${pn.join("\n")}` : ""}`
     );
   }
-  throw new UsageError(USAGE4);
+  throw new UsageError(USAGE5);
 }
 
 // src/commands/facts.ts
@@ -59666,7 +60707,7 @@ async function builtinScreen(id, opts) {
 
 // src/commands/screen.ts
 var ENGINES = ["tradingview", "crible", "builtin"];
-var USAGE5 = "usage: ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market america|france|germany|europe|uk|crypto|\u2026] [--universe SPX|NDX|CAC40|SBF120|DAX|SX5E|AEX|UKX|<comma list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--out <dir>] [--json] | screen --list [--engine \u2026] | screen --engine crible --bootstrap (download, or refresh, crible's dataset)";
+var USAGE6 = "usage: ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market america|france|germany|europe|uk|crypto|\u2026] [--universe SPX|NDX|CAC40|SBF120|DAX|SX5E|AEX|UKX|<comma list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--out <dir>] [--json] | screen --list [--engine \u2026] | screen --engine crible --bootstrap (download, or refresh, crible's dataset)";
 var isTechnical = (q) => TECHNICAL_IDS.includes(q);
 function pickEngine(query2) {
   if (tvPreset(query2)) return "tradingview";
@@ -59834,7 +60875,7 @@ async function screenCommand(args, asJson) {
   if (argBool(args, "list")) return listCommand(engineFlag, asJson);
   const query2 = args.positional.join(" ").trim();
   if (!query2 && argBool(args, "bootstrap") && engineFlag === "crible") return cribleRefresh(asJson);
-  if (!query2) throw new UsageError(USAGE5);
+  if (!query2) throw new UsageError(USAGE6);
   const engine = engineFlag ?? pickEngine(query2);
   if (argBool(args, "bootstrap") && engine !== "crible") throw new UsageError("--bootstrap downloads crible's dataset: it goes with --engine crible");
   if (argValue(args, "universe") && engine !== "builtin")
@@ -60252,11 +61293,11 @@ async function etfPropose(dir2, o) {
       asOf: day4,
       official: false
     });
-  const work = alloc.lines.map((line) => {
-    const p = etfPlacement(line.bucket, o.envelope);
-    const w = { line, inside: p.inside, notes: [], scored: [] };
+  const work = alloc.lines.map((line2) => {
+    const p = etfPlacement(line2.bucket, o.envelope);
+    const w = { line: line2, inside: p.inside, notes: [], scored: [] };
     if (!p.inside) {
-      impossible.push(`${line.bucket.label} (${line.weightPct} % of the plan) \u2014 ${p.why}`);
+      impossible.push(`${line2.bucket.label} (${line2.weightPct} % of the plan) \u2014 ${p.why}`);
     }
     return w;
   });
@@ -60724,7 +61765,7 @@ var ETF_USAGE = `usage:
   ultrastock etf propose [--goal core|growth|income|defensive] [--envelope pea|cto|av] [--risk 1-7] [--amount <EUR>]
                          [--max-funds 4] [--acc|--dist] [--currency EUR] [--hedged] [--out <run>] [--json]
                                                               PROPOSAL.md + TARGETS.json: a stated allocation convention, scored funds`;
-var USAGE6 = ETF_USAGE;
+var USAGE7 = ETF_USAGE;
 function distributionOf(args) {
   if (argBool(args, "acc") && argBool(args, "dist")) throw new UsageError("--acc and --dist are opposites: pick one");
   return argBool(args, "acc") ? "acc" : argBool(args, "dist") ? "dist" : void 0;
@@ -60746,7 +61787,7 @@ async function etfCommand(args, asJson) {
   if (sub === "compare") {
     const syms = symbolsOf(args);
     if (syms.length < 2 || syms.length > 6) throw new UsageError(`etf compare takes 2 to 6 ETFs, comma-separated
-${USAGE6}`);
+${USAGE7}`);
     const r3 = await etfCompare(syms);
     const out = argValue(args, "out");
     const registered = registerDatasets(out ? resolve20(out) : void 0, r3.datasets);
@@ -60788,7 +61829,7 @@ ${USAGE6}`);
   if (sub === "overlap") {
     const syms = symbolsOf(args);
     if (syms.length !== 2) throw new UsageError(`etf overlap takes exactly two ETFs
-${USAGE6}`);
+${USAGE7}`);
     emitDatasets(args, await etfOverlapReport(syms[0], syms[1]), asJson);
     return;
   }
@@ -60803,7 +61844,7 @@ ${USAGE6}`);
     };
     if (query2 && (browse.asset || browse.focus || browse.exposure || browse.sort || browse.leveraged))
       throw new UsageError(`--asset, --focus, --exposure, --sort and --leveraged browse the catalogue: drop the query "${query2}", or drop them
-${USAGE6}`);
+${USAGE7}`);
     let r3;
     try {
       r3 = await etfFind(query2, {
@@ -60823,7 +61864,7 @@ ${USAGE6}`);
   }
   if (sub === "propose") {
     if (args.positional.length > 1) throw new UsageError(`etf propose takes flags only
-${USAGE6}`);
+${USAGE7}`);
     const riskRaw = argValue(args, "risk");
     const risk = riskRaw === void 0 ? void 0 : Number(riskRaw);
     if (risk !== void 0 && !(Number.isInteger(risk) && risk >= 1 && risk <= 7))
@@ -60857,7 +61898,7 @@ run: ${dir2}
 `);
     return;
   }
-  throw new UsageError(USAGE6);
+  throw new UsageError(USAGE7);
 }
 
 // src/commands/value.ts
@@ -62059,6 +63100,7 @@ var MATURITY = {
   short: "beta",
   dividends: "beta",
   congress: "beta",
+  people: "beta",
   options: "beta",
   "options-analysis": "beta",
   stats: "stable",
@@ -62127,7 +63169,7 @@ async function doctorReport(opts = {}) {
       purpose: "bulk crypto klines (years of bars, futures mark/index/premium)"
     },
     uvx: { installed: has("uvx"), purpose: "runs maxgfr/crible, the global fundamental screener, unless a Homebrew crible of the pinned version is installed" },
-    pdftotext: { installed: has("pdftotext"), purpose: "optional: faster reading of Congress trade PDFs" },
+    pdftotext: { installed: has("pdftotext"), purpose: "optional: reads Congress (House PTR) and executive-branch (OGE 278-T) trade PDFs" },
     claude: {
       installed: has((process.env.ULTRASTOCK_CLAUDE_CMD ?? "claude").split(/\s+/)[0]),
       purpose: "optional: research --search-with claude (Claude Code's web search, billed to your plan)"
@@ -62280,6 +63322,9 @@ USAGE
   ultrastock short <US symbol> [--out <dir>] [--json]
   ultrastock dividends <US symbol> [--limit <n>] [--out <dir>] [--json]
   ultrastock congress [--member <name>] [--doc <DocID>] [--year <yyyy>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock people search "<name>" [--source house|oge|sec] [--json]
+  ultrastock people show "<name|source:id>" [--source house|oge|sec] [--since <date>] [--filings <n>] [--limit <n>] [--positions] [--out <dir>] [--json]
+  ultrastock people follow "<name|source:id>" [--source house|oge|sec] [--message <text>] | unfollow <alert-id|source:id> | list | check [--notify] [--json]
   ultrastock portfolio show|perf [--book real|paper] [--out <dir>] [--json]
   ultrastock portfolio risk|stress|optimize|location|lookthrough|income [--book real|paper] [--benchmark <sym>] [--universe a,b,c] [--max-weight <%>] [--out <dir>] [--json]
   ultrastock portfolio rebalance --targets <file.json|{"CW8.PA":60,"CASH":5}> [--band <pts>] [--rel-band <%>] [--contribution <amount>] [--book] [--out <dir>] [--json]
@@ -62558,6 +63603,11 @@ COMMANDS
   short     Short interest and days to cover (Nasdaq) and daily short volume (FINRA).
   dividends Dividend history, yield and ex-dates (Nasdaq).
   congress  US House periodic transaction reports, and one report's trades.
+  people    Public figures' disclosed trades and positions, found by name at each
+            official source, live: House members (Clerk PTRs), the President and
+            Senate-confirmed officials (OGE 278-T), and SEC filers \u2014 funds (13F),
+            holders above 5% (13D/13G), insiders (Form 4 as owner, every issuer).
+            follow adds an alert that fires on each new filing; check runs them.
   portfolio The user's holdings: an append-only ledger per book ("real" for what
             they hold, "paper" for simulation) \u2014 positions, cash, average cost
             (PMP) and FIFO lots recomputed from the transactions, marked to market
@@ -62775,6 +63825,7 @@ ENVIRONMENT
 
 Nothing here needs an API key. Exit codes: 0 done, 1 failed or refused, 2 bad invocation.`;
 var VALUE_FLAGS = [
+  "filings",
   "out",
   "min-weight",
   "country",
@@ -62931,6 +63982,7 @@ var VALUE_FLAGS = [
 ];
 var BOOL_FLAGS = [
   "json",
+  "positions",
   "neutral",
   "all",
   "confirm",
@@ -62990,6 +64042,7 @@ var COMMANDS = [
   "short",
   "dividends",
   "congress",
+  "people",
   "options",
   "options-analysis",
   "stats",
@@ -63114,6 +64167,7 @@ var SPEC = {
     short: ["out", ...NET],
     dividends: ["limit", "out", ...NET],
     congress: ["member", "doc", "year", "limit", "out", ...NET],
+    people: ["source", "since", "filings", "limit", "positions", "message", "notify", "out", ...NET],
     portfolio: [
       "book",
       "account",
@@ -63251,6 +64305,7 @@ function arity(args) {
     return Number.POSITIVE_INFINITY;
   if (args.command === "news" || args.command === "social" || args.command === "cot" || args.command === "resolve") return Number.POSITIVE_INFINITY;
   if (args.command === "congress") return 0;
+  if (args.command === "people") return Number.POSITIVE_INFINITY;
   if (args.command === "portfolio") return 3;
   if (args.command === "ticket" || args.command === "paper" || args.command === "decide" || args.command === "knowledge") return 2;
   if (args.command === "journal" || args.command === "watch" || args.command === "watchlist" || args.command === "tax" || args.command === "backtest" || args.command === "strategy" || args.command === "broker")
@@ -63430,6 +64485,7 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
   if (cmd === "short") return shortCommand(args, asJson);
   if (cmd === "dividends") return dividendsCommand(args, asJson);
   if (cmd === "congress") return congressCommand(args, asJson);
+  if (cmd === "people") return peopleCommand(args, asJson);
   if (cmd === "portfolio") return portfolioCommand(args, asJson);
   if (cmd === "decide") return decideCommand(args, asJson);
   if (cmd === "journal") return journalCommand(args, asJson);

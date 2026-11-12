@@ -1,13 +1,14 @@
 // Alerts: rules written in the safe expression language over a symbol's latest
 // closed bars and indicators, plus event rules (an important 8-K, a stop hit by
-// an open position). A rule fires on the EDGE — once when its condition becomes
+// an open position, a new filing by a public figure followed). A rule fires on the EDGE — once when its condition becomes
 // true — and re-arms when the condition is false again, so `watch run` can be
 // scheduled every few minutes (cron, launchd, an agent loop) without repeating
 // itself. State lives in ULTRASTOCK_HOME/state/alerts.json.
 //
 // Notifications go to stdout always; to an ntfy topic or a webhook only when
 // the user configured one, and webhooks only to URLs on an allowlist. A rule's
-// message is the user's text; external text never becomes part of a rule.
+// message is the user's text; external text never becomes part of a rule's
+// condition (a followed person's name is kept as data, and sanitized in a message).
 import { upcomingEventAlerts } from "../analyze/events/run.js";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -17,13 +18,16 @@ import { withFileLockSync } from "../core/lock.js";
 import { clockNow, fetchText } from "../core/net.js";
 import { homeDir } from "../core/paths.js";
 import { contentHash, env, writeFileAtomic } from "../engine.js";
+import { personActivity } from "../people/activity.js";
+import { filingAlertMessage } from "../people/datasets.js";
+import { type PersonRef, refString } from "../people/types.js";
 import { buildBook, lineOpenedAt, readLedger, type Transaction } from "../portfolio/ledger.js";
 import { secFilings } from "../providers/fundamentals/sec.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
 import type { Bar, PriceSeries } from "../providers/types.js";
 import { filledAt, listTickets, type Ticket } from "../trading/tickets.js";
 
-export type RuleKind = "expr" | "8k" | "stops" | "events";
+export type RuleKind = "expr" | "8k" | "stops" | "events" | "person";
 
 export interface AlertRule {
   id: string;
@@ -41,6 +45,8 @@ export interface AlertRule {
   /** For "events": how far ahead to look, and the least share of the book (%) an event must touch. */
   days?: number;
   minWeight?: number;
+  /** For "person": who is followed (a House member, an OGE filer, an SEC filer). */
+  person?: PersonRef;
 }
 
 export interface AlertEvent {
@@ -126,7 +132,7 @@ export function alertSeries(bars: readonly Bar[]): Record<string, Array<number |
 }
 
 export function addRule(
-  input: { kind: RuleKind; symbol?: string; expr?: string; message?: string; days?: number; minWeight?: number },
+  input: { kind: RuleKind; symbol?: string; expr?: string; message?: string; days?: number; minWeight?: number; person?: PersonRef; seen?: string[] },
   now = new Date(),
 ): AlertRule {
   if (input.kind === "expr") {
@@ -135,8 +141,9 @@ export function addRule(
     if (unknown.length) throw new Error(`unknown variable(s) ${unknown.join(", ")} — available: ${ALERT_VARIABLES.join(", ")}`);
   }
   if (input.kind === "8k" && !input.symbol) throw new Error("an 8-K alert needs a US symbol");
+  if (input.kind === "person" && !input.person) throw new Error("a person alert needs who to follow");
   const rule: AlertRule = {
-    id: `a-${contentHash(`${input.kind}|${input.symbol ?? ""}|${input.expr ?? ""}|${now.toISOString()}`).slice(0, 10)}`,
+    id: `a-${contentHash(`${input.kind}|${input.symbol ?? ""}|${input.expr ?? ""}|${input.person ? refString(input.person) : ""}|${now.toISOString()}`).slice(0, 10)}`,
     ...input,
     symbol: input.symbol?.toUpperCase(),
     createdAt: now.toISOString(),
@@ -263,8 +270,8 @@ function tradedAfter(b: Bar, fill: string): boolean {
   return b.date.slice(0, 10) > fill.slice(0, 10);
 }
 
-/** Run every rule once; fires only on edges and unseen events. */
-export async function runAlerts(now = clockNow()): Promise<{ events: AlertEvent[]; errors: string[] }> {
+/** Run every rule once (or only the rules of `kinds`); fires only on edges and unseen events. */
+export async function runAlerts(now = clockNow(), opts: { kinds?: readonly RuleKind[] } = {}): Promise<{ events: AlertEvent[]; errors: string[] }> {
   const read = loadRules();
   const rules = [...read];
   const events: AlertEvent[] = [];
@@ -278,6 +285,7 @@ export async function runAlerts(now = clockNow()): Promise<{ events: AlertEvent[
   };
   for (let k = 0; k < rules.length; k++) {
     const rule = rules[k]!;
+    if (opts.kinds && !opts.kinds.includes(rule.kind)) continue;
     try {
       if (rule.kind === "expr") {
         const r = evaluateRule(rule, await barsOf(rule.symbol!), at);
@@ -292,6 +300,16 @@ export async function runAlerts(now = clockNow()): Promise<{ events: AlertEvent[
           events.push({ rule: rule.id, symbol: rule.symbol, at, message: `${rule.symbol}: ${p.label}` });
         }
         rules[k] = { ...rule, seen: [...seen].slice(-200) };
+      } else if (rule.kind === "person" && rule.person) {
+        // Each new filing once: those already seen are listed, not read again (a 278-T is several MB).
+        const seen = new Set(rule.seen ?? []);
+        const act = await personActivity(rule.person, { limit: 5, skip: seen, now });
+        for (const f of act.filings) {
+          if (seen.has(f.id)) continue;
+          seen.add(f.id);
+          events.push({ rule: rule.id, at, message: filingAlertMessage(rule.person, f, rule.message) });
+        }
+        rules[k] = { ...rule, seen: [...seen].slice(-200), ...(events.some((e) => e.rule === rule.id) ? { firedAt: at } : {}) };
       } else if (rule.kind === "events") {
         // Elections and rate decisions ahead that touch the book: once per event.
         const seen = new Set(rule.seen ?? []);

@@ -35,6 +35,7 @@ import { readLedgerWithoutWriting } from "./portfolio/ledger.js";
 import { serveCommand } from "./serve/server.js";
 import { decideCommand, journalCommand, knowledgeCommand, watchCommand, watchlistCommand } from "./commands/journal.js";
 import { morningCommand } from "./commands/morning.js";
+import { peopleCommand } from "./commands/people.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
 import { taxCommand } from "./commands/tax.js";
 import { factsCommand } from "./commands/facts.js";
@@ -122,6 +123,9 @@ USAGE
   ultrastock short <US symbol> [--out <dir>] [--json]
   ultrastock dividends <US symbol> [--limit <n>] [--out <dir>] [--json]
   ultrastock congress [--member <name>] [--doc <DocID>] [--year <yyyy>] [--limit <n>] [--out <dir>] [--json]
+  ultrastock people search "<name>" [--source house|oge|sec] [--json]
+  ultrastock people show "<name|source:id>" [--source house|oge|sec] [--since <date>] [--filings <n>] [--limit <n>] [--positions] [--out <dir>] [--json]
+  ultrastock people follow "<name|source:id>" [--source house|oge|sec] [--message <text>] | unfollow <alert-id|source:id> | list | check [--notify] [--json]
   ultrastock portfolio show|perf [--book real|paper] [--out <dir>] [--json]
   ultrastock portfolio risk|stress|optimize|location|lookthrough|income [--book real|paper] [--benchmark <sym>] [--universe a,b,c] [--max-weight <%>] [--out <dir>] [--json]
   ultrastock portfolio rebalance --targets <file.json|{"CW8.PA":60,"CASH":5}> [--band <pts>] [--rel-band <%>] [--contribution <amount>] [--book] [--out <dir>] [--json]
@@ -400,6 +404,11 @@ COMMANDS
   short     Short interest and days to cover (Nasdaq) and daily short volume (FINRA).
   dividends Dividend history, yield and ex-dates (Nasdaq).
   congress  US House periodic transaction reports, and one report's trades.
+  people    Public figures' disclosed trades and positions, found by name at each
+            official source, live: House members (Clerk PTRs), the President and
+            Senate-confirmed officials (OGE 278-T), and SEC filers — funds (13F),
+            holders above 5% (13D/13G), insiders (Form 4 as owner, every issuer).
+            follow adds an alert that fires on each new filing; check runs them.
   portfolio The user's holdings: an append-only ledger per book ("real" for what
             they hold, "paper" for simulation) — positions, cash, average cost
             (PMP) and FIFO lots recomputed from the transactions, marked to market
@@ -618,6 +627,7 @@ ENVIRONMENT
 Nothing here needs an API key. Exit codes: 0 done, 1 failed or refused, 2 bad invocation.`;
 
 export const VALUE_FLAGS = [
+  "filings",
   "out",
   "min-weight",
   "country",
@@ -774,6 +784,7 @@ export const VALUE_FLAGS = [
 ];
 export const BOOL_FLAGS = [
   "json",
+  "positions",
   "neutral",
   "all",
   "confirm",
@@ -833,6 +844,7 @@ export const COMMANDS = [
   "short",
   "dividends",
   "congress",
+  "people",
   "options",
   "options-analysis",
   "stats",
@@ -958,6 +970,7 @@ const SPEC: CliSpec = {
     short: ["out", ...NET],
     dividends: ["limit", "out", ...NET],
     congress: ["member", "doc", "year", "limit", "out", ...NET],
+    people: ["source", "since", "filings", "limit", "positions", "message", "notify", "out", ...NET],
     portfolio: [
       "book",
       "account",
@@ -1112,6 +1125,7 @@ function arity(args: CommandArgs): number {
     return Number.POSITIVE_INFINITY;
   if (args.command === "news" || args.command === "social" || args.command === "cot" || args.command === "resolve") return Number.POSITIVE_INFINITY;
   if (args.command === "congress") return 0;
+  if (args.command === "people") return Number.POSITIVE_INFINITY;
   if (args.command === "portfolio") return 3;
   if (args.command === "ticket" || args.command === "paper" || args.command === "decide" || args.command === "knowledge") return 2;
   if (
@@ -1301,6 +1315,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "short") return shortCommand(args, asJson);
   if (cmd === "dividends") return dividendsCommand(args, asJson);
   if (cmd === "congress") return congressCommand(args, asJson);
+  if (cmd === "people") return peopleCommand(args, asJson);
   if (cmd === "portfolio") return portfolioCommand(args, asJson);
   if (cmd === "decide") return decideCommand(args, asJson);
   if (cmd === "journal") return journalCommand(args, asJson);

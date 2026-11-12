@@ -108,6 +108,7 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | market hours, holidays, the next sessions | `calendar sessions --market XPAR` | [data-sources](references/data-sources.md) |
 | a company's numbers: statements, filings | `fundamentals <sym> [--asof]`, `filings <US sym>` | [fundamentals-filings](references/fundamentals-filings.md) |
 | who is buying: insiders, institutions, Congress, short sellers | `insiders`, `holdings <manager>`, `congress`, `short` | [fundamentals-filings](references/fundamentals-filings.md) |
+| what a public figure trades and holds (Pelosi, Trump, Berkshire, an activist, an insider), and to be told when they file | `people search "<name>"` → `people show "<source:id>" [--positions]`; `people follow` + `people check` | [fundamentals-filings](references/fundamentals-filings.md) |
 | what analysts expect, the dividend record | `analyst <US sym>`, `dividends <US sym>` | [fundamentals-filings](references/fundamentals-filings.md) |
 | to find a listing from a name or an ISIN | `resolve "<name>"` | [data-sources](references/data-sources.md) |
 | the macro picture: inflation, jobs, growth | `macro us|ea|fr|<country>`, `macro fred <ID>` | [macro-markets](references/macro-markets.md) |
@@ -153,6 +154,7 @@ ultrastock macro us|ea|fr|<country>|fred <ID> · rates [us|ea] · fx [USD,GBP] �
 ultrastock news "<query>" [--symbol <SYM>] [--lang fr] [--pulse] · social <sym…> · universe <index> · snapshot <symbol> · fund <ISIN,…> [--wrapper-fee <pct>] · resolve "<name|ISIN>"
 ultrastock fundamentals <sym> [--asof <date>] [--source sec|esef|crible] · filings <sym> [--forms 8-K] | --search "<text>"
 ultrastock insiders <sym> · holdings <manager> · analyst|short|dividends <US sym> · congress [--member] [--doc]
+ultrastock people search "<name>" · people show "<name|source:id>" [--since] [--filings] [--limit] [--positions] · people follow|unfollow|list|check
 ultrastock options <symbol> · crypto <view> [<target>] · predict kalshi|manifold|polymarket [<query>]
 ultrastock technicals <symbol> [--interval] [--indicators <name:k=v;…>] [--benchmark] · valuation <symbol> [--erp] [--terminal]
 ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market] [--universe] [--sort] [--limit] · screen --list · screen --engine crible --bootstrap (refresh a stale dataset)

@@ -60,6 +60,8 @@ export interface InsiderTransaction {
 
 export interface Form4 {
   issuerCik?: string;
+  /** As filed — external text. */
+  issuerName?: string;
   symbol?: string;
   periodOfReport?: string;
   owners: InsiderOwner[];
@@ -115,6 +117,7 @@ export function parseForm4(xml: string): Form4 {
   const originalFiled = xmlValue(xml, "dateOfOriginalSubmission")?.slice(0, 10);
   return {
     issuerCik: xmlValue(xml, "issuer", "issuerCik"),
+    issuerName: xmlValue(xml, "issuer", "issuerName"),
     symbol: xmlValue(xml, "issuer", "issuerTradingSymbol"),
     periodOfReport: xmlValue(xml, "periodOfReport"),
     owners,
@@ -318,7 +321,7 @@ export function summarizeInsiders(filings: readonly FiledForm4[], now: Date, win
 }
 
 /** The raw ownership XML of a Form 4 filing: the xsl-less primary document, else the first .xml of its index. */
-async function form4Xml(cik: number, f: SecFiling): Promise<{ xml: string; url: string }> {
+export async function form4Xml(cik: number, f: SecFiling): Promise<{ xml: string; url: string }> {
   const base = archiveBase(cik, f.accession);
   const raw = f.primaryDocument.replace(/^xsl[^/]*\//, "");
   if (raw.endsWith(".xml")) {
@@ -420,4 +423,42 @@ export async function secInsiders(tickerOrCik: string, opts: { limit?: number; n
     provenance: { source: SEC_SOURCE, url: sub.url, fetchedAt: sub.fetchedAt, delay: "filing", official: true, asOf: list[0]!.filingDate },
     notes,
   };
+}
+
+/** A Form 4 a person filed as reporting owner, with where it was read. */
+export interface OwnerForm4 extends Form4 {
+  accession: string;
+  filed: string;
+  url: string;
+}
+
+/**
+ * The Form 4s a person (or a fund) filed as REPORTING OWNER, across every
+ * issuer: EDGAR lists them in the owner's own submissions, and each filing is
+ * readable under the owner's CIK. A company's submissions also list the Form 4
+ * its insiders filed about it — those name another reporting owner and are left
+ * out. Newest first; `since` drops filings received before that day.
+ */
+export async function secOwnerForm4s(
+  ownerCik: number,
+  opts: { limit?: number; since?: string; skip?: ReadonlySet<string> } = {},
+): Promise<{ name: string; forms: OwnerForm4[]; notes: string[]; url: string; fetchedAt: string }> {
+  const sub = await secSubmissions(ownerCik);
+  const list = sub.filings
+    .filter((f) => (f.form === "4" || f.form === "4/A") && (!opts.since || f.filingDate >= opts.since) && !opts.skip?.has(f.accession))
+    .slice(0, opts.limit ?? 20);
+  const forms: OwnerForm4[] = [];
+  const notes: string[] = [];
+  for (const f of list) {
+    try {
+      const doc = await form4Xml(ownerCik, f);
+      const form = parseForm4(doc.xml);
+      if (!form.owners.some((o) => Number(o.cik) === ownerCik)) continue;
+      forms.push({ ...form, amendment: form.amendment || f.form === "4/A", accession: f.accession, filed: f.filingDate, url: doc.url });
+    } catch (e) {
+      if (!(e instanceof ProviderError) || e.transient) throw e;
+      notes.push(`Form 4 ${f.accession} unreadable: ${e.message}`);
+    }
+  }
+  return { name: sub.name, forms, notes, url: sub.url, fetchedAt: sub.fetchedAt };
 }

@@ -11,29 +11,14 @@
 // thousands before). Rows are summed per CUSIP and put/call, since managers
 // split one position across sub-managers. Amendments (13F-HR/A) are ignored:
 // they may restate or merely add rows, and nothing in the list says which.
+// A manager named rather than given by CIK is found through EDGAR's name search.
 import type { Dataset, Point } from "../../core/datasets.js";
+import { clockNow } from "../../core/net.js";
 import { ProviderError } from "../types.js";
 import { openfigiMap, preferredFigi } from "./openfigi.js";
-import { archiveBase, SEC_SOURCE, type SecFiling, secJson, secSubmissions, secText } from "./sec.js";
+import { archiveBase, SEC_SOURCE, type SecFiling, type SecSubmissions, searchEdgarEntities, secJson, secSubmissions, secText } from "./sec.js";
+import { daysBetween, isoDayOf } from "./util.js";
 import { xmlBlocks, xmlNumber, xmlValue } from "./xml.js";
-
-/** Well-known 13F filers (CIKs verified against EDGAR's submissions, October 2026). */
-export const NOTABLE_13F_MANAGERS: ReadonlyArray<{ slug: string; cik: number; name: string; note?: string }> = [
-  { slug: "berkshire", cik: 1067983, name: "Berkshire Hathaway" },
-  { slug: "pershing-square", cik: 1336528, name: "Pershing Square Capital Management" },
-  { slug: "scion", cik: 1649339, name: "Scion Asset Management", note: "no 13F-HR since November 2025 (deregistered)" },
-  { slug: "bridgewater", cik: 1350694, name: "Bridgewater Associates" },
-  { slug: "renaissance", cik: 1037389, name: "Renaissance Technologies" },
-  { slug: "baupost", cik: 1061768, name: "Baupost Group" },
-  { slug: "soros", cik: 1029160, name: "Soros Fund Management" },
-  { slug: "appaloosa", cik: 1656456, name: "Appaloosa" },
-  { slug: "icahn", cik: 921669, name: "Carl Icahn" },
-  { slug: "duquesne", cik: 1536411, name: "Duquesne Family Office (Druckenmiller)" },
-  { slug: "third-point", cik: 1040273, name: "Third Point" },
-  { slug: "valueact", cik: 1418814, name: "ValueAct Holdings" },
-  { slug: "tiger-global", cik: 1167483, name: "Tiger Global Management" },
-  { slug: "citadel", cik: 1423053, name: "Citadel Advisors" },
-];
 
 export interface Holding {
   /** Issuer name as filed — external text. */
@@ -101,17 +86,39 @@ export function diff13f(current: Holding[], previous: Holding[]): HoldingDiff[] 
   return out;
 }
 
-/** A manager by slug ("berkshire") or CIK. */
-export function managerFor(manager: string | number): { cik: number; name?: string; note?: string } {
-  const s = String(manager).trim().toLowerCase().replace(/^cik/, "");
+export interface Manager13f {
+  cik: number;
+  /** As EDGAR records it — external text. */
+  name?: string;
+  /** Other 13F filers the name also matched, best first. */
+  others: Array<{ cik: number; name: string }>;
+  sub: SecSubmissions & { url: string; fetchedAt: string };
+}
+
+/** How many of EDGAR's name matches are read to find the ones that file 13F reports. */
+const SEARCH_DEPTH = 6;
+
+/**
+ * A 13F filer by CIK, or by name through EDGAR's own name search: of the
+ * entities the name matches, the best-ranked one that has filed a 13F-HR
+ * (the others are kept, to be listed). No list of managers is kept here —
+ * who files 13Fs, and under which name, changes.
+ */
+export async function managerFor(manager: string | number): Promise<Manager13f> {
+  const s = String(manager).trim().replace(/^cik/i, "");
   if (/^\d{1,10}$/.test(s)) {
-    const known = NOTABLE_13F_MANAGERS.find((m) => m.cik === Number(s));
-    return { cik: Number(s), ...(known ? { name: known.name, ...(known.note ? { note: known.note } : {}) } : {}) };
+    const sub = await secSubmissions(Number(s));
+    return { cik: Number(s), ...(sub.name ? { name: sub.name } : {}), others: [], sub };
   }
-  const m = NOTABLE_13F_MANAGERS.find((x) => x.slug === s || x.name.toLowerCase().includes(s));
-  if (!m)
-    throw new ProviderError(SEC_SOURCE, `unknown 13F manager "${manager}" — pass a CIK, or one of: ${NOTABLE_13F_MANAGERS.map((x) => x.slug).join(", ")}`, 404);
-  return { cik: m.cik, name: m.name, ...(m.note ? { note: m.note } : {}) };
+  const query = s.replace(/[-_]+/g, " ");
+  const found: Array<Omit<Manager13f, "others">> = [];
+  for (const e of (await searchEdgarEntities(query)).slice(0, SEARCH_DEPTH)) {
+    const sub = await secSubmissions(e.cik);
+    if (sub.filings.some((f) => f.form === "13F-HR")) found.push({ cik: e.cik, name: sub.name || e.name, sub });
+  }
+  const [best, ...rest] = found;
+  if (!best) throw new ProviderError(SEC_SOURCE, `no 13F filer among EDGAR's matches for "${manager}" — pass the manager's CIK`, 404);
+  return { ...best, others: rest.map((m) => ({ cik: m.cik, name: m.name ?? "" })) };
 }
 
 async function holdingsOf(cik: number, f: SecFiling): Promise<{ holdings: Holding[]; url: string }> {
@@ -133,8 +140,8 @@ async function holdingsOf(cik: number, f: SecFiling): Promise<{ holdings: Holdin
  * OpenFIGI (one extra request per 10 holdings).
  */
 export async function sec13f(manager: string | number, opts: { top?: number; tickers?: boolean } = {}): Promise<Dataset> {
-  const mgr = managerFor(manager);
-  const sub = await secSubmissions(mgr.cik);
+  const mgr = await managerFor(manager);
+  const sub = mgr.sub;
   const list = sub.filings.filter((f) => f.form === "13F-HR").slice(0, 2);
   const latest = list[0];
   if (!latest) throw new ProviderError(SEC_SOURCE, `no 13F-HR among the recent filings of CIK ${mgr.cik}`, 404);
@@ -150,7 +157,9 @@ export async function sec13f(manager: string | number, opts: { top?: number; tic
     `13F-HR for the quarter ended ${period}, filed ${latest.filingDate}: filed up to 45 days after the quarter — the positions may have changed since`,
     "long US-listed equities and options only; no shorts, cash or non-US holdings",
   ];
-  if (mgr.note) notes.push(mgr.note);
+  if (mgr.others.length) notes.push(`other 13F filers match the name: ${mgr.others.map((m) => `CIK ${m.cik}`).join(", ")} — pass a CIK to read one of them`);
+  if (daysBetween(latest.filingDate, isoDayOf(clockNow())) > 200)
+    notes.push(`the latest 13F-HR was filed ${latest.filingDate}: the manager may have stopped filing, these positions are old`);
 
   let tickers: Array<string | undefined> = [];
   if (opts.tickers && top.length) {
@@ -165,6 +174,7 @@ export async function sec13f(manager: string | number, opts: { top?: number; tic
   }
 
   const points: Point[] = [
+    ...(mgr.name ? [{ key: `${subject}.13f.manager`, label: `${subject} 13F filer name (EDGAR)`, value: mgr.name, untrusted: true, url: sub.url }] : []),
     { key: `${subject}.13f.total.value`, label: `${subject} 13F reported portfolio value`, value: total, unit: "USD", asOf: period, url: cur.url },
     {
       key: `${subject}.13f.positions.count`,
@@ -233,10 +243,37 @@ export async function sec13f(manager: string | number, opts: { top?: number; tic
   } else notes.push("no previous 13F-HR in the recent filings: no quarter-on-quarter change");
   return {
     kind: "holdings",
-    title: `${mgr.name ?? subject} 13F holdings, quarter ended ${period}`,
+    title: `${subject} 13F holdings, quarter ended ${period}`,
     subject,
     points,
     provenance: { source: SEC_SOURCE, url: cur.url, fetchedAt: sub.fetchedAt, delay: "filing", official: true, asOf: period },
     notes,
+  };
+}
+
+/** A manager's latest 13F-HR as data: the holdings, and the changes against the previous 13F-HR when there is one. */
+export async function latest13f(cik: number): Promise<
+  | {
+      filing: SecFiling;
+      period: string;
+      holdings: Holding[];
+      diffs?: HoldingDiff[];
+      url: string;
+      fetchedAt: string;
+    }
+  | undefined
+> {
+  const sub = await secSubmissions(cik);
+  const [latest, previous] = sub.filings.filter((f) => f.form === "13F-HR");
+  if (!latest) return undefined;
+  const cur = await holdingsOf(cik, latest);
+  const prev = previous ? await holdingsOf(cik, previous) : undefined;
+  return {
+    filing: latest,
+    period: latest.reportDate ?? latest.filingDate,
+    holdings: cur.holdings,
+    ...(prev ? { diffs: diff13f(cur.holdings, prev.holdings) } : {}),
+    url: cur.url,
+    fetchedAt: sub.fetchedAt,
   };
 }

@@ -11,6 +11,8 @@
     { "args": ["cot", "ES"], "keys": ["ES.cot."] },
     { "args": ["sentiment", "vix"], "keys": ["US.vol."] },
     { "args": ["universe", "CAC40"], "keys": ["CAC40.universe."] },
-    { "args": ["predict", "kalshi", "events", "--limit", "3"], "keys": ["KALSHI."] }
+    { "args": ["predict", "kalshi", "events", "--limit", "3"], "keys": ["KALSHI."] },
+    { "args": ["people", "show", "sec:1067983", "--filings", "1"], "keys": ["PEOPLE.sec.CIK1067983."] },
+    { "args": ["people", "show", "house:Hon. Nancy Pelosi", "--filings", "1"], "keys": ["PEOPLE.house.hon-nancy-pelosi."] }
   ]
 }
