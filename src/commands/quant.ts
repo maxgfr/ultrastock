@@ -30,6 +30,7 @@ import { getHistory, resolveSymbol } from "../providers/router.js";
 import type { Bar, PriceSeries } from "../providers/types.js";
 import { mergedProvenance, PointList } from "../analyze/quant/common.js";
 import { closedBars } from "../analyze/regime/common.js";
+import { benchmarkNote, chooseBenchmark } from "../analyze/benchmark.js";
 import { leverageHeat, poolsFromPoints, realisedPoints, yieldSustainability } from "../analyze/quant/crypto.js";
 import {
   buildStrategy,
@@ -231,7 +232,17 @@ export async function statsCommand(args: CommandArgs, asJson: boolean): Promise<
         `annualised with ${perYear} periods a year (${a.crypto ? "crypto trades every day" : "exchange sessions"}); closed daily bars only`,
       ]),
     );
-    const benchRaw = argValue(args, "benchmark") ?? (a.us ? "SPY" : "CW8.PA");
+    // --benchmark, else the profile's, else stats' own convention: SPY for a US listing, CW8.PA for anything else.
+    const flag = argValue(args, "benchmark");
+    const choice = flag
+      ? undefined
+      : chooseBenchmark(
+          a.us
+            ? { symbol: "SPY", why: "convention: a US listing is measured against SPY (S&P 500)" }
+            : { symbol: "CW8.PA", why: "convention: anything but a US listing is measured against CW8.PA (MSCI World, EUR)" },
+        );
+    const benchRaw = flag ?? choice!.symbol;
+    const benchLine = choice ? benchmarkNote(choice) : `benchmark ${benchRaw}: --benchmark`;
     const b = await fetchBars(benchRaw, from, now);
     if (b.series && b.bars.length >= 30 && b.sym !== a.sym) {
       const rp = new PointList();
@@ -239,11 +250,12 @@ export async function statsCommand(args: CommandArgs, asJson: boolean): Promise<
       const relNotes = benchmarkPoints(a.sym, b.sym, a.bars, b.bars, perYearRel, rp);
       out.push(
         dataset("stats", `${a.sym} performance vs ${b.sym}`, a.sym, rp, mergedProvenance([a.series!.provenance, b.series.provenance], asOf), [
+          benchLine,
           ...relNotes,
           `returns on the dates both trade, annualised with ${perYearRel}${a.crypto !== b.crypto ? " (a crypto asset against an exchange benchmark: each return spans the gap between shared sessions)" : ""}`,
         ]),
       );
-    } else if (b.sym !== a.sym) unavailable.push(`unavailable — benchmark ${benchRaw}: ${b.error ?? "too little history"}`);
+    } else if (b.sym !== a.sym) unavailable.push(benchLine, `unavailable — benchmark ${benchRaw}: ${b.error ?? "too little history"}`);
   } else {
     const aligned = alignCloses(ok.map((g) => g.bars));
     if (aligned.dates.length < 30) throw new Error(`only ${aligned.dates.length} dates shared by ${ok.map((g) => g.sym).join(", ")} — not enough to compare`);

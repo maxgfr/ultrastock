@@ -20641,6 +20641,31 @@ ${formatDatasets(registered)}`);
 }
 var fmt3 = (x, d = 2) => x === void 0 || !Number.isFinite(x) ? "n/a" : String(Number(x.toFixed(d)));
 
+// src/analyze/benchmark.ts
+function profileBenchmark() {
+  try {
+    return loadProfile()?.benchmark;
+  } catch {
+    return void 0;
+  }
+}
+function chooseBenchmark(convention) {
+  if (!convention) return void 0;
+  const own = profileBenchmark();
+  if (own) return { symbol: own, why: "the profile's benchmark (`profile set benchmark`)", source: "profile" };
+  return { ...convention, source: "convention" };
+}
+function listingConvention(market, mic) {
+  if (market === "crypto") return void 0;
+  if (market === "us") return { symbol: "SPY", why: "convention: a US listing is measured against SPY (S&P 500)" };
+  if (mic === "XPAR" || mic === "ETFP") return { symbol: "FR0003500008", why: "convention: a Paris listing is measured against the CAC 40" };
+  return { symbol: "CW8.PA", why: "convention: a listing outside the US and Paris is measured against CW8.PA (MSCI World, EUR)" };
+}
+function bookConvention(base2) {
+  return base2 === "EUR" ? { symbol: "CW8.PA", why: "convention: a EUR book is measured against CW8.PA (MSCI World, EUR)" } : { symbol: "SPY", why: `convention: a ${base2} book is measured against SPY (S&P 500, USD)` };
+}
+var benchmarkNote = (c) => `benchmark ${c.symbol}: ${c.why}${c.source === "convention" ? " \u2014 `profile set benchmark <symbol>` to measure against your own" : ""}`;
+
 // src/analytics/stats.ts
 function mean(xs) {
   if (!xs.length) return Number.NaN;
@@ -22517,7 +22542,12 @@ async function statsCommand(args, asJson) {
         `annualised with ${perYear} periods a year (${a.crypto ? "crypto trades every day" : "exchange sessions"}); closed daily bars only`
       ])
     );
-    const benchRaw = argValue(args, "benchmark") ?? (a.us ? "SPY" : "CW8.PA");
+    const flag = argValue(args, "benchmark");
+    const choice = flag ? void 0 : chooseBenchmark(
+      a.us ? { symbol: "SPY", why: "convention: a US listing is measured against SPY (S&P 500)" } : { symbol: "CW8.PA", why: "convention: anything but a US listing is measured against CW8.PA (MSCI World, EUR)" }
+    );
+    const benchRaw = flag ?? choice.symbol;
+    const benchLine = choice ? benchmarkNote(choice) : `benchmark ${benchRaw}: --benchmark`;
     const b = await fetchBars(benchRaw, from, now);
     if (b.series && b.bars.length >= 30 && b.sym !== a.sym) {
       const rp = new PointList();
@@ -22525,11 +22555,12 @@ async function statsCommand(args, asJson) {
       const relNotes = benchmarkPoints(a.sym, b.sym, a.bars, b.bars, perYearRel, rp);
       out.push(
         dataset2("stats", `${a.sym} performance vs ${b.sym}`, a.sym, rp, mergedProvenance([a.series.provenance, b.series.provenance], asOf), [
+          benchLine,
           ...relNotes,
           `returns on the dates both trade, annualised with ${perYearRel}${a.crypto !== b.crypto ? " (a crypto asset against an exchange benchmark: each return spans the gap between shared sessions)" : ""}`
         ])
       );
-    } else if (b.sym !== a.sym) unavailable.push(`unavailable \u2014 benchmark ${benchRaw}: ${b.error ?? "too little history"}`);
+    } else if (b.sym !== a.sym) unavailable.push(benchLine, `unavailable \u2014 benchmark ${benchRaw}: ${b.error ?? "too little history"}`);
   } else {
     const aligned = alignCloses2(ok.map((g) => g.bars));
     if (aligned.dates.length < 30) throw new Error(`only ${aligned.dates.length} dates shared by ${ok.map((g) => g.sym).join(", ")} \u2014 not enough to compare`);
@@ -33874,31 +33905,6 @@ function breakouts(bars, opts = {}) {
   }
   return out;
 }
-
-// src/analyze/benchmark.ts
-function profileBenchmark() {
-  try {
-    return loadProfile()?.benchmark;
-  } catch {
-    return void 0;
-  }
-}
-function chooseBenchmark(convention) {
-  if (!convention) return void 0;
-  const own = profileBenchmark();
-  if (own) return { symbol: own, why: "the profile's benchmark (`profile set benchmark`)", source: "profile" };
-  return { ...convention, source: "convention" };
-}
-function listingConvention(market, mic) {
-  if (market === "crypto") return void 0;
-  if (market === "us") return { symbol: "SPY", why: "convention: a US listing is measured against SPY (S&P 500)" };
-  if (mic === "XPAR" || mic === "ETFP") return { symbol: "FR0003500008", why: "convention: a Paris listing is measured against the CAC 40" };
-  return { symbol: "CW8.PA", why: "convention: a listing outside the US and Paris is measured against CW8.PA (MSCI World, EUR)" };
-}
-function bookConvention(base2) {
-  return base2 === "EUR" ? { symbol: "CW8.PA", why: "convention: a EUR book is measured against CW8.PA (MSCI World, EUR)" } : { symbol: "SPY", why: `convention: a ${base2} book is measured against SPY (S&P 500, USD)` };
-}
-var benchmarkNote = (c) => `benchmark ${c.symbol}: ${c.why}${c.source === "convention" ? " \u2014 `profile set benchmark <symbol>` to measure against your own" : ""}`;
 
 // src/analyze/technicals.ts
 var r6 = (x) => Number(x.toPrecision(10));
