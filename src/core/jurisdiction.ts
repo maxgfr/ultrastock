@@ -497,6 +497,14 @@ async function esmaRegister(url: string): Promise<{ rows: Record<string, string>
   return r!;
 }
 
+/** The register's dd/mm/yyyy date as yyyy-mm-dd; undefined when it is not one. */
+function registerDate(d: string): string | undefined {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(d.trim());
+  if (!m) return undefined;
+  const iso = `${m[3]}-${m[2]!.padStart(2, "0")}-${m[1]!.padStart(2, "0")}`;
+  return Number.isNaN(Date.parse(iso)) ? undefined : iso;
+}
+
 /** Names a venue is registered under besides its own (Kraken's EU entity is Payward). Matching hints, not rules. */
 const VENUE_ALIASES: Record<string, string[]> = { kraken: ["kraken", "payward"] };
 
@@ -526,8 +534,21 @@ export async function checkMica(venue: string, country = "FR", opts: { lei?: str
     const leis = new Set(casps.rows.filter(named).map(leiOf).filter(Boolean));
     hit = (r) => named(r) || (!!leiOf(r) && leis.has(leiOf(r)));
   }
+  // An authorisation the register dates as ended (ac_authorisationEndDate on or before today) is no longer one; an end
+  // date that cannot be read counts as ended (fail-closed). Either way the reading says which entries were set aside.
+  const today = clockNow().toISOString().slice(0, 10);
+  const ended: string[] = [];
+  const current = (r: Record<string, string>) => {
+    const end = (r.ac_authorisationEndDate ?? "").trim();
+    if (!end) return true;
+    const iso = registerDate(end);
+    if (iso && iso > today) return true;
+    ended.push(`${r.ae_lei_name || r.ae_commercial_name || "an entry"}, ended ${end}`);
+    return false;
+  };
   const authorised = casps.rows
     .filter(hit)
+    .filter(current)
     .map((r) => ({
       name: r.ae_lei_name ?? "",
       lei: leiOf(r),
@@ -542,6 +563,7 @@ export async function checkMica(venue: string, country = "FR", opts: { lei?: str
       website: r.ae_website ?? "",
     }))
     .filter((e) => e.homeState === c || e.passportedTo.includes(c));
+  if (ended.length) notes.push(`entries whose authorisation ended are not counted (${[...new Set(ended)].join("; ")})`);
   const warnings = ncasp.rows.filter(hit).map((r) => ({
     name: r.ae_lei_name || r.ae_commercial_name || "",
     lei: leiOf(r),

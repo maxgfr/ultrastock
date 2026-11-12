@@ -18138,6 +18138,12 @@ async function esmaRegister(url) {
   });
   return r3;
 }
+function registerDate(d) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(d.trim());
+  if (!m) return void 0;
+  const iso4 = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  return Number.isNaN(Date.parse(iso4)) ? void 0 : iso4;
+}
 var VENUE_ALIASES = { kraken: ["kraken", "payward"] };
 async function checkMica(venue, country2 = "FR", opts = {}) {
   const c = country2.toUpperCase();
@@ -18159,7 +18165,17 @@ async function checkMica(venue, country2 = "FR", opts = {}) {
     const leis = new Set(casps.rows.filter(named).map(leiOf).filter(Boolean));
     hit = (r3) => named(r3) || !!leiOf(r3) && leis.has(leiOf(r3));
   }
-  const authorised = casps.rows.filter(hit).map((r3) => ({
+  const today2 = clockNow().toISOString().slice(0, 10);
+  const ended = [];
+  const current2 = (r3) => {
+    const end = (r3.ac_authorisationEndDate ?? "").trim();
+    if (!end) return true;
+    const iso4 = registerDate(end);
+    if (iso4 && iso4 > today2) return true;
+    ended.push(`${r3.ae_lei_name || r3.ae_commercial_name || "an entry"}, ended ${end}`);
+    return false;
+  };
+  const authorised = casps.rows.filter(hit).filter(current2).map((r3) => ({
     name: r3.ae_lei_name ?? "",
     lei: leiOf(r3),
     commercialName: r3.ae_commercial_name ?? "",
@@ -18169,6 +18185,7 @@ async function checkMica(venue, country2 = "FR", opts = {}) {
     passportedTo: (r3.ac_serviceCode_cou ?? "").split("|").map((s) => s.trim().toUpperCase()).filter(Boolean),
     website: r3.ae_website ?? ""
   })).filter((e) => e.homeState === c || e.passportedTo.includes(c));
+  if (ended.length) notes.push(`entries whose authorisation ended are not counted (${[...new Set(ended)].join("; ")})`);
   const warnings = ncasp.rows.filter(hit).map((r3) => ({
     name: r3.ae_lei_name || r3.ae_commercial_name || "",
     lei: leiOf(r3),
