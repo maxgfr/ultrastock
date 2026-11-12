@@ -15,6 +15,7 @@ import { clockNow } from "../core/net.js";
 import { loadProfile } from "../core/profile.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
 import { gridRefusals, type InstrumentRules, publicInstrumentRules, snap, tickAt } from "./brokers/rules.js";
+import { feeLookup } from "./fees.js";
 import type { HttpFn, Venue } from "./brokers/types.js";
 import { gateContextFor } from "./context.js";
 import { venueSymbol } from "./live.js";
@@ -181,6 +182,15 @@ export async function planTrade(input: PlanInput): Promise<TradePlanResult> {
   if (domicile) notes.push(`fund domicile ${domicile.code ?? "unknown"} (${domicile.basis})`);
   const quoteNote = quoteAssetNote(venue, inst.currency, loadProfile()?.jurisdiction);
   if (quoteNote) notes.push(quoteNote);
+  // A paper fill is made only with a known fee (trading/paper.ts): the plan says which one, or why `paper submit` will refuse.
+  if (venue === "paper") {
+    const fee = feeLookup({ account: input.account, currency: inst.currency }, inst.market, "taker", { now });
+    notes.push(
+      "missing" in fee
+        ? `fees: none known for a paper fill on ${input.account}, so \`ultrastock paper submit\` refuses the ticket until one is — ${fee.missing}`
+        : `fees: a paper fill on ${input.account} pays ${fee.basis}`,
+    );
+  }
   const draft: Order = {
     account: input.account,
     symbol: inst.symbol,

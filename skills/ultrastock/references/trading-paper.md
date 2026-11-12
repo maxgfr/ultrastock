@@ -72,7 +72,8 @@ to change.
   venue the account names, `account.<id>.*` for another broker, Binance's
   for a crypto fill), taker when it crosses the book, maker when `paper
   sweep` reaches a resting limit. With neither, **paper refuses to fill**:
-  research the fees or import the account's statements.
+  research the fees or import the account's statements. A paper `plan` says
+  which fee its fill would pay, or that none is known yet.
 - `paper sweep` works limit orders against the bars traded since.
 - `paper book` lists the paper positions.
 - `paper readiness` says whether the paper record supports real money:

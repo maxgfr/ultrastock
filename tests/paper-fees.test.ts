@@ -74,6 +74,10 @@ describe("a paper fill needs its fee", () => {
     await appendTransactions([{ date: "2026-10-01", type: "deposit", account: "cto", amount: 20_000, currency: "EUR", origin: "manual" }], "paper");
     await withFixture("trading-paper-mcpa", async () => {
       const p = await planTrade({ symbol: "MC.PA", account: "cto", now: clockNow() });
+      // The plan says it before the ticket is submitted.
+      expect(p.notes.join("\n")).toMatch(
+        /fees: none known for a paper fill on cto, so `ultrastock paper submit` refuses the ticket until one is — no fee is known/,
+      );
       const t = createTicket(p.order);
       await recordCheck(t.id, p.gate);
       await expect(paperSubmit(t.id, clockNow())).rejects.toThrow(/no paper fill: no fee is known for account\.cto\.fees/);
@@ -86,6 +90,7 @@ describe("a paper fill needs its fee", () => {
     await appendTransactions([{ date: "2026-10-01", type: "deposit", account: "cto", amount: 20_000, currency: "EUR", origin: "manual" }], "paper");
     await withFixture("trading-paper-mcpa", async () => {
       const p = await planTrade({ symbol: "MC.PA", account: "cto", now: clockNow() });
+      expect(p.notes.join("\n")).toMatch(/fees: a paper fill on cto pays .*account\.cto/);
       const t = createTicket(p.order);
       await recordCheck(t.id, p.gate);
       const r = await paperSubmit(t.id, clockNow());

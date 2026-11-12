@@ -53125,6 +53125,12 @@ async function planTrade(input) {
   if (domicile) notes.push(`fund domicile ${domicile.code ?? "unknown"} (${domicile.basis})`);
   const quoteNote = quoteAssetNote(venue, inst.currency, loadProfile()?.jurisdiction);
   if (quoteNote) notes.push(quoteNote);
+  if (venue === "paper") {
+    const fee = feeLookup({ account: input.account, currency: inst.currency }, inst.market, "taker", { now });
+    notes.push(
+      "missing" in fee ? `fees: none known for a paper fill on ${input.account}, so \`ultrastock paper submit\` refuses the ticket until one is \u2014 ${fee.missing}` : `fees: a paper fill on ${input.account} pays ${fee.basis}`
+    );
+  }
   const draft = {
     account: input.account,
     symbol: inst.symbol,
