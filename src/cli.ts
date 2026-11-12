@@ -140,8 +140,8 @@ USAGE
   ultrastock decide <run> <decision.json> [--json]
   ultrastock tax rules template --country CC --year YYYY [--currency <code>] | tax rules set --file <rules.json> [--country CC] [--year YYYY] | tax rules show [--country CC] [--year YYYY] [--json]
   ultrastock tax verify [--country CC] [--year YYYY] [--json]
-  ultrastock facts research <jurisdiction|tax> [--country CC] [--key k,…] [--year YYYY] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]
-  ultrastock facts template|show <jurisdiction|tax> [--country CC] [--key k,…] [--year YYYY] [--json] | facts set <domain> --file <facts.json> [--country CC] [--json]
+  ultrastock facts research <jurisdiction|funds|tax> [--country CC] [--key k,…] [--year YYYY] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]
+  ultrastock facts template|show <jurisdiction|funds|tax> [--country CC] [--key k,…] [--year YYYY] [--json] | facts set <domain> --file <facts.json> [--country CC] [--json]
   ultrastock tax report [--country CC|--regime fr|us] [--year YYYY] [--neutral] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,…|short=…,long=…] [--envelope-value <account>:<date>=<value>] [--lot-method fifo|hifo|lifo] [--household single|couple] [--out <dir>] [--json]
   ultrastock tax lots|harvest [--country FR|US] [--year YYYY] [--json]
   ultrastock tax export --format 8949|2086|2074|koinly|neutral|neutral-json [--country CC] [--year YYYY] [--neutral] [--out <dir>]
@@ -480,7 +480,8 @@ COMMANDS
   facts     Rules that differ by country and change — what the investor's
             country allows (jurisdiction: Polymarket, Kalshi, US-domiciled
             ETFs, crypto platforms and the register that lists them, foreign
-            account reporting, PFIC), the tax rules (tax) — are not in ultrastock:
+            account reporting, PFIC), what a fund domicile means for
+            withholding (funds), the tax rules (tax) — are not in ultrastock:
             the agent researches them. research gathers, per key, the official
             documents (the keyless search cascade of research --engine-search,
             or your own hits with --web-results, one list per key) into the run

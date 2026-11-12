@@ -3,6 +3,7 @@
 //
 //   jurisdiction   what a country allows (Polymarket, Kalshi, US-domiciled
 //                  ETFs, crypto platforms and their register…), per country
+//   funds          what a fund domicile means for withholding, per domicile
 //   tax            a country's tax rules for a year (`tax rules …` is the
 //                  same, and stays)
 //
@@ -13,6 +14,7 @@
 // current or stale. The gates read the stored conclusions; nothing else.
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { FUNDS } from "../core/fund-facts.js";
 import { JURISDICTION, rulesFor } from "../core/jurisdiction.js";
 import { clockNow } from "../core/net.js";
 import { runDirFor } from "../core/paths.js";
@@ -26,10 +28,10 @@ import { printResult as out } from "./emit.js";
 import { readWebResults } from "./research.js";
 import { taxCommand } from "./tax.js";
 
-export const FACT_DOMAINS: Readonly<Record<string, Domain>> = { jurisdiction: JURISDICTION, tax: TAX };
+export const FACT_DOMAINS: Readonly<Record<string, Domain>> = { jurisdiction: JURISDICTION, funds: FUNDS, tax: TAX };
 
 const USAGE =
-  "usage: ultrastock facts research|template|set|show <jurisdiction|tax> [--country CC] [--key k,…] [--year YYYY] [--file <facts.json>] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]";
+  "usage: ultrastock facts research|template|set|show <jurisdiction|funds|tax> [--country CC] [--key k,…] [--year YYYY] [--file <facts.json>] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]";
 
 function domainOf(name: string | undefined): Domain {
   const d = name ? FACT_DOMAINS[name] : undefined;
@@ -44,7 +46,11 @@ function countryOf(d: Domain, args: CommandArgs): string {
   const p = loadProfile();
   const fromProfile = d === TAX ? p?.taxResidence : d === JURISDICTION ? p?.jurisdiction : undefined;
   if (fromProfile) return countryCode(fromProfile);
-  throw new UsageError("no country in the profile: pass --country CC (an ISO 3166 code such as FR, US, DE), or run `ultrastock profile init`");
+  throw new UsageError(
+    d === FUNDS
+      ? "funds facts are kept per fund domicile: pass --country CC (IE, LU, US…)"
+      : "no country in the profile: pass --country CC (an ISO 3166 code such as FR, US, DE), or run `ultrastock profile init`",
+  );
 }
 
 /** The period a domain's facts are for: a tax year (--year, default last year), else today's date. */

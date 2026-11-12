@@ -25250,6 +25250,46 @@ function deltaMarkdown(r3, beforeDir, afterDir) {
 // src/analyze/etf.ts
 import { join as join30 } from "path";
 
+// src/core/fund-facts.ts
+function fundKeys(domicile) {
+  const n2 = countryName(domicile);
+  const y = clockNow().getUTCFullYear();
+  return [
+    {
+      key: "withholding",
+      label: `Withholding tax a fund domiciled in ${n2} suffers on foreign (US in particular) dividends, and what ${n2} withholds on its distributions to non-resident investors`,
+      type: "text",
+      unit: "a sentence, no investor-level advice",
+      query: `${n2} domiciled UCITS fund withholding tax US dividends treaty distributions non-resident investors ${y}`,
+      prefer: "the domicile's tax authority, the tax treaty text, or the fund's own prospectus",
+      maxAgeDays: 365,
+      note: "Shown next to a fund's domicile in `analyze` / `etf`: say what the sources state, with no rate you did not read in them."
+    }
+  ];
+}
+var FUNDS = defineDomain({
+  name: "funds",
+  period: "date",
+  keysFor: fundKeys,
+  strict: () => true,
+  templateCommand: (country2) => `ultrastock facts template funds --country ${countryCode(country2)}`,
+  setCommand: "ultrastock facts set funds --file <file.json>",
+  about: (c, date) => `TEMPLATE to fill by research. "country" is a fund DOMICILE (${c}), not the investor's country. ultrastock holds no tax rule: fill each value with what official sources for ${c} state on ${date}, its "sources", "verifiedAt" and "confidence"; set "researchedAt"; then \`ultrastock facts set funds --file <this file>\`.`
+});
+var fundsResearchCommand = (domicile) => `ultrastock facts research funds --country ${domicile.toUpperCase()} --out <run>`;
+function withholdingNote(code) {
+  if (!code) return "domicile unknown: the withholding tax a fund suffers (and passes on) depends on its domicile \u2014 read it in the KID or prospectus.";
+  const c = code.toUpperCase();
+  const n2 = countryName(c);
+  if (/^[A-Z]{2}$/.test(c))
+    try {
+      const f3 = loadLatestFacts(FUNDS, c).current.withholding;
+      if (f3 && typeof f3.value === "string") return `${n2} (${c}), as researched on ${f3.verifiedAt}: ${f3.value}${f3.sources[0] ? ` (${f3.sources[0]})` : ""}`;
+    } catch {
+    }
+  return `domicile ${c}: the withholding tax a ${n2}-domiciled fund suffers on foreign dividends, and passes on, is not researched here \u2014 \`${fundsResearchCommand(c)}\`, or read the prospectus.`;
+}
+
 // src/providers/funds/amundi.ts
 var AMUNDI_SOURCE = "amundi";
 var AMUNDI_URL = "https://www.amundietf.fr/mapi/ProductAPI/getProductsData";
@@ -26800,24 +26840,6 @@ function etfDomicile(input) {
     return { code: isin.slice(0, 2), basis: "the ISIN's country prefix (a fund's ISIN is issued in its domicile)" };
   if (input.market === "us") return { code: "US", basis: "a US listing with no fund domicile read \u2014 US-listed ETFs are US-domiciled" };
   return { basis: "no fund domicile, ISIN or US listing to read it from" };
-}
-function withholdingNote(code) {
-  switch (code) {
-    case "IE":
-      return "Ireland (UCITS): Ireland's tax treaty with the US generally lets an Irish fund suffer a reduced US withholding tax on US dividends, and Ireland does not withhold on distributions to non-resident investors who qualify; foreign dividends from other countries are withheld under each country's own treaty with Ireland.";
-    case "LU":
-      return "Luxembourg (UCITS): a Luxembourg fund holding US shares directly usually cannot claim the US treaty rate, so the full US withholding tends to apply at the fund level; a swap ETF receives the index's net return from its counterparty (the index methodology sets the withholding assumed).";
-    case "FR":
-      return "France (UCITS): a French fund is taxed on foreign dividends under France's treaties; a swap fund receives the index's net return through the swap. For a French resident, the PEA / CTO envelope decides the investor-level tax, not the domicile.";
-    case "US":
-      return "United States: a non-US investor's distributions from a US fund are subject to US withholding at the treaty rate (form W-8BEN), on top of the withholding the fund itself suffers abroad; US-situs assets can also raise US estate-tax questions for non-residents. In the EU, US-domiciled ETFs have no PRIIPs KID.";
-    case "DE":
-      return "Germany: a German fund is subject to the German investment tax regime (Investmentsteuergesetz) at the fund level; foreign investors should check the treaty treatment of its distributions.";
-    case void 0:
-      return "domicile unknown: the withholding tax a fund suffers (and passes on) depends on its domicile \u2014 read it in the KID or prospectus.";
-    default:
-      return `domicile ${code}: the withholding the fund suffers on foreign dividends depends on ${code}'s tax treaties \u2014 read the prospectus; no rule is recorded here for this domicile.`;
-  }
 }
 var SUFFIXES = /\b(?:inc|incorporated|corp|corporation|co|company|ltd|limited|plc|sa|nv|ag|se|spa|asa|ab|oyj|holdings?|group|class [a-z]|cl [a-z]|common stock|ord|reg|registered|shs|adr)\b/g;
 function holdingNameKey(name) {
@@ -48363,12 +48385,12 @@ var TOOLS = [
   },
   {
     name: "facts",
-    description: "The researched facts ultrastock reads instead of holding rules of its own: show what is stored (jurisdiction: what the investor's country allows \u2014 Polymarket, Kalshi, US-domiciled ETFs, crypto platforms and their register; tax: a year's tax rules), current or stale, with sources; template prints the JSON to research and fill. Researching (`facts research`, which reads the web into a run) and storing (`facts set`) are not exposed here.",
+    description: "The researched facts ultrastock reads instead of holding rules of its own: show what is stored (jurisdiction: what the investor's country allows \u2014 Polymarket, Kalshi, US-domiciled ETFs, crypto platforms and their register; funds: a fund domicile's withholding; tax: a year's tax rules), current or stale, with sources; template prints the JSON to research and fill. Researching (`facts research`, which reads the web into a run) and storing (`facts set`) are not exposed here.",
     command: ["facts"],
     params: {
       action: { kind: "string", description: "show or template", positional: 0, required: true, enum: ["show", "template"] },
-      domain: { kind: "string", description: "jurisdiction or tax", positional: 1, required: true, enum: ["jurisdiction", "tax"] },
-      country: { kind: "string", description: "ISO 3166 alpha-2 country; default the profile's" },
+      domain: { kind: "string", description: "jurisdiction, funds or tax", positional: 1, required: true, enum: ["jurisdiction", "funds", "tax"] },
+      country: { kind: "string", description: "ISO 3166 alpha-2 country (funds: the fund domicile); default the profile's" },
       key: { kind: "string", description: "only these keys, comma-separated" },
       year: { kind: "number", description: "tax: the tax year" }
     }
@@ -57394,8 +57416,8 @@ function worklistMarkdown(w) {
 }
 
 // src/commands/facts.ts
-var FACT_DOMAINS = { jurisdiction: JURISDICTION, tax: TAX2 };
-var USAGE5 = "usage: ultrastock facts research|template|set|show <jurisdiction|tax> [--country CC] [--key k,\u2026] [--year YYYY] [--file <facts.json>] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]";
+var FACT_DOMAINS = { jurisdiction: JURISDICTION, funds: FUNDS, tax: TAX2 };
+var USAGE5 = "usage: ultrastock facts research|template|set|show <jurisdiction|funds|tax> [--country CC] [--key k,\u2026] [--year YYYY] [--file <facts.json>] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]";
 function domainOf2(name) {
   const d = name ? FACT_DOMAINS[name] : void 0;
   if (!d) throw new UsageError(`${name ? `"${name}" is not a facts domain` : "which domain?"} \u2014 one of ${Object.keys(FACT_DOMAINS).join(", ")}. ${USAGE5}`);
@@ -57407,7 +57429,9 @@ function countryOf2(d, args) {
   const p = loadProfile();
   const fromProfile = d === TAX2 ? p?.taxResidence : d === JURISDICTION ? p?.jurisdiction : void 0;
   if (fromProfile) return countryCode(fromProfile);
-  throw new UsageError("no country in the profile: pass --country CC (an ISO 3166 code such as FR, US, DE), or run `ultrastock profile init`");
+  throw new UsageError(
+    d === FUNDS ? "funds facts are kept per fund domicile: pass --country CC (IE, LU, US\u2026)" : "no country in the profile: pass --country CC (an ISO 3166 code such as FR, US, DE), or run `ultrastock profile init`"
+  );
 }
 function periodOf(d, args) {
   const now = clockNow();
@@ -60568,8 +60592,8 @@ USAGE
   ultrastock decide <run> <decision.json> [--json]
   ultrastock tax rules template --country CC --year YYYY [--currency <code>] | tax rules set --file <rules.json> [--country CC] [--year YYYY] | tax rules show [--country CC] [--year YYYY] [--json]
   ultrastock tax verify [--country CC] [--year YYYY] [--json]
-  ultrastock facts research <jurisdiction|tax> [--country CC] [--key k,\u2026] [--year YYYY] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]
-  ultrastock facts template|show <jurisdiction|tax> [--country CC] [--key k,\u2026] [--year YYYY] [--json] | facts set <domain> --file <facts.json> [--country CC] [--json]
+  ultrastock facts research <jurisdiction|funds|tax> [--country CC] [--key k,\u2026] [--year YYYY] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]
+  ultrastock facts template|show <jurisdiction|funds|tax> [--country CC] [--key k,\u2026] [--year YYYY] [--json] | facts set <domain> --file <facts.json> [--country CC] [--json]
   ultrastock tax report [--country CC|--regime fr|us] [--year YYYY] [--neutral] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,\u2026|short=\u2026,long=\u2026] [--envelope-value <account>:<date>=<value>] [--lot-method fifo|hifo|lifo] [--household single|couple] [--out <dir>] [--json]
   ultrastock tax lots|harvest [--country FR|US] [--year YYYY] [--json]
   ultrastock tax export --format 8949|2086|2074|koinly|neutral|neutral-json [--country CC] [--year YYYY] [--neutral] [--out <dir>]
@@ -60908,7 +60932,8 @@ COMMANDS
   facts     Rules that differ by country and change \u2014 what the investor's
             country allows (jurisdiction: Polymarket, Kalshi, US-domiciled
             ETFs, crypto platforms and the register that lists them, foreign
-            account reporting, PFIC), the tax rules (tax) \u2014 are not in ultrastock:
+            account reporting, PFIC), what a fund domicile means for
+            withholding (funds), the tax rules (tax) \u2014 are not in ultrastock:
             the agent researches them. research gathers, per key, the official
             documents (the keyless search cascade of research --engine-search,
             or your own hits with --web-results, one list per key) into the run

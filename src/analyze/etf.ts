@@ -19,6 +19,7 @@ import { simpleReturns } from "../analytics/performance.js";
 import { correlation } from "../analytics/stats.js";
 import { type Dataset, formatDatasets, type Point, type Registered, registerDatasets } from "../core/datasets.js";
 import { EvidenceStore, formatEvidence, formatNumber } from "../core/evidence.js";
+import { withholdingNote } from "../core/fund-facts.js";
 import { ruleFact, ruleWhy } from "../core/jurisdiction.js";
 import { clockNow } from "../core/net.js";
 import { loadProfile } from "../core/profile.js";
@@ -123,25 +124,8 @@ export function etfDomicile(input: { fundCountry?: string; isin?: string; market
   return { basis: "no fund domicile, ISIN or US listing to read it from" };
 }
 
-/** What the domicile means for withholding tax — qualitative, no rates: they depend on the treaty and the investor. */
-export function withholdingNote(code: string | undefined): string {
-  switch (code) {
-    case "IE":
-      return "Ireland (UCITS): Ireland's tax treaty with the US generally lets an Irish fund suffer a reduced US withholding tax on US dividends, and Ireland does not withhold on distributions to non-resident investors who qualify; foreign dividends from other countries are withheld under each country's own treaty with Ireland.";
-    case "LU":
-      return "Luxembourg (UCITS): a Luxembourg fund holding US shares directly usually cannot claim the US treaty rate, so the full US withholding tends to apply at the fund level; a swap ETF receives the index's net return from its counterparty (the index methodology sets the withholding assumed).";
-    case "FR":
-      return "France (UCITS): a French fund is taxed on foreign dividends under France's treaties; a swap fund receives the index's net return through the swap. For a French resident, the PEA / CTO envelope decides the investor-level tax, not the domicile.";
-    case "US":
-      return "United States: a non-US investor's distributions from a US fund are subject to US withholding at the treaty rate (form W-8BEN), on top of the withholding the fund itself suffers abroad; US-situs assets can also raise US estate-tax questions for non-residents. In the EU, US-domiciled ETFs have no PRIIPs KID.";
-    case "DE":
-      return "Germany: a German fund is subject to the German investment tax regime (Investmentsteuergesetz) at the fund level; foreign investors should check the treaty treatment of its distributions.";
-    case undefined:
-      return "domicile unknown: the withholding tax a fund suffers (and passes on) depends on its domicile — read it in the KID or prospectus.";
-    default:
-      return `domicile ${code}: the withholding the fund suffers on foreign dividends depends on ${code}'s tax treaties — read the prospectus; no rule is recorded here for this domicile.`;
-  }
-}
+/** What the domicile means for withholding tax: the researched sentence for that domicile (core/fund-facts.ts), or what to research. */
+export { withholdingNote };
 
 // ─── overlap ────────────────────────────────────────────────────────────────
 

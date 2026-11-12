@@ -21,6 +21,8 @@ import {
 import { debateRunbook } from "../src/analyze/full.js";
 import type { TvMatch } from "../src/analyze/screen/tradingview.js";
 import { EvidenceStore } from "../src/core/evidence.js";
+import { FUNDS } from "../src/core/fund-facts.js";
+import { saveFacts } from "../src/core/researched.js";
 import { clockNow } from "../src/core/net.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
 import { appendTransactions } from "../src/portfolio/ledger.js";
@@ -78,9 +80,26 @@ describe("replication, PEA, domicile — the decision table", () => {
     expect(etfDomicile({ isin: "XS1234567890", market: "euronext" }).code).toBeUndefined();
     expect(etfDomicile({}).code).toBeUndefined();
   });
-  it("the withholding note is qualitative: no invented rate", () => {
-    for (const c of ["IE", "LU", "US", "FR", "DE", undefined]) expect(withholdingNote(c)).not.toMatch(/\d\s*%|percent/);
-    expect(withholdingNote("US")).toMatch(/PRIIPs/);
+  it("the withholding note asserts nothing of its own: the researched sentence for the domicile, or what to research", () => {
+    for (const c of ["IE", "LU", "US", "FR", "DE", undefined]) expect(withholdingNote(c)).not.toMatch(/\d\s*%|percent|treaty rate/);
+    expect(withholdingNote("IE")).toContain("ultrastock facts research funds --country IE --out <run>");
+    expect(withholdingNote(undefined)).toMatch(/domicile unknown/);
+    saveFacts(FUNDS, {
+      country: "IE",
+      date: "2026-01-02",
+      researchedAt: "2026-01-02",
+      facts: {
+        withholding: {
+          value: "TEST DATA, not law — what the sources say about an Irish fund",
+          label: "TEST",
+          sources: ["https://example.invalid/ultrastock-test-data-not-law"],
+          verifiedAt: "2026-01-02",
+          confidence: "low",
+        },
+      },
+    });
+    expect(withholdingNote("IE")).toMatch(/^Ireland \(IE\), as researched on 2026-01-02: TEST DATA, not law/);
+    expect(withholdingNote("LU")).toMatch(/not researched/);
   });
 });
 

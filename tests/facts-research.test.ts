@@ -188,6 +188,10 @@ describe("facts template | set | show", () => {
     const show = (await cli(["facts", "show", "jurisdiction", "--country", "FR"])).out;
     expect(show).toMatch(/kalshi: RESTRICTED — TEST: not offered to residents/);
     expect(show).toMatch(/polymarket: UNKNOWN — not researched for FR/);
+    expect((await cli(["facts", "show", "funds", "--country", "IE"])).out).toMatch(
+      /withholding: not researched — `ultrastock facts research funds --country IE --key withholding/,
+    );
+    expect((await cli(["facts", "show", "funds"])).code).toBe(2);
     expect((await cli(["facts", "show", "nope"])).code).toBe(2);
     // Tax keeps its own commands: facts template tax is tax rules template.
     const tax = JSON.parse((await cli(["facts", "template", "tax", "--country", "DE", "--year", "2025"])).out);

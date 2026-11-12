@@ -432,12 +432,12 @@ export const TOOLS: Tool[] = [
   {
     name: "facts",
     description:
-      "The researched facts ultrastock reads instead of holding rules of its own: show what is stored (jurisdiction: what the investor's country allows — Polymarket, Kalshi, US-domiciled ETFs, crypto platforms and their register; tax: a year's tax rules), current or stale, with sources; template prints the JSON to research and fill. Researching (`facts research`, which reads the web into a run) and storing (`facts set`) are not exposed here.",
+      "The researched facts ultrastock reads instead of holding rules of its own: show what is stored (jurisdiction: what the investor's country allows — Polymarket, Kalshi, US-domiciled ETFs, crypto platforms and their register; funds: a fund domicile's withholding; tax: a year's tax rules), current or stale, with sources; template prints the JSON to research and fill. Researching (`facts research`, which reads the web into a run) and storing (`facts set`) are not exposed here.",
     command: ["facts"],
     params: {
       action: { kind: "string", description: "show or template", positional: 0, required: true, enum: ["show", "template"] },
-      domain: { kind: "string", description: "jurisdiction or tax", positional: 1, required: true, enum: ["jurisdiction", "tax"] },
-      country: { kind: "string", description: "ISO 3166 alpha-2 country; default the profile's" },
+      domain: { kind: "string", description: "jurisdiction, funds or tax", positional: 1, required: true, enum: ["jurisdiction", "funds", "tax"] },
+      country: { kind: "string", description: "ISO 3166 alpha-2 country (funds: the fund domicile); default the profile's" },
       key: { kind: "string", description: "only these keys, comma-separated" },
       year: { kind: "number", description: "tax: the tax year" },
     },
