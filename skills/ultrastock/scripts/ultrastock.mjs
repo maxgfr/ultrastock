@@ -15208,21 +15208,21 @@ async function amfInsiderDeclarations(issuer, opts = {}) {
       if (t.volume !== void 0) points.push({ key: `${tk}.volume`, label: `${what} volume`, value: t.volume, unit: "shares", asOf });
       if (t.price !== void 0) points.push({ key: `${tk}.price`, label: `${what} price`, value: t.price, ...t.currency ? { unit: t.currency } : {}, asOf });
       if (t.price !== void 0 && t.volume !== void 0) {
-        const amount = t.price * t.volume;
+        const amount2 = t.price * t.volume;
         points.push({
           key: `${tk}.amount`,
           label: `${what} amount`,
-          value: amount,
+          value: amount2,
           ...t.currency ? { unit: t.currency } : {},
           asOf,
           formula: "price \xD7 volume"
         });
         currencies.add(t.currency ?? "?");
         if (t.side === "buy") {
-          totals.buy += amount;
+          totals.buy += amount2;
           totals.buys++;
         } else if (t.side === "sell") {
-          totals.sell += amount;
+          totals.sell += amount2;
           totals.sells++;
         }
       }
@@ -20015,11 +20015,29 @@ var VENUE_SPEC = [
     note: "the per-series fee_multiplier is read live from Kalshi's series API: do not fold it in here"
   }
 ];
+var ACCOUNT_FEE_KEY = /^account\.([A-Za-z0-9]+)\.(fees|perUnit|minimum)$/;
+function accountFeeSpec(key) {
+  const m = ACCOUNT_FEE_KEY.exec(key);
+  if (!m) return void 0;
+  const [, id, what] = m;
+  if (what === "fees")
+    return feeSpec(`account.${id}`, `The broker behind the account ${id}`, "broker commission schedule {country}", "the broker's own fee page");
+  return {
+    key,
+    label: `The broker behind the account ${id}: ${what === "perUnit" ? "commission per unit" : "minimum commission per order"}`,
+    type: "amount",
+    unit: what === "perUnit" ? "instrument currency per unit (0 where the schedule is a percentage)" : "instrument currency per order",
+    query: "broker commission schedule {country}",
+    prefer: "the broker's own fee page",
+    maxAgeDays: FEE_MAX_AGE_DAYS
+  };
+}
 var VENUES = defineDomain({
   name: "venues",
   period: "date",
   keysFor: () => VENUE_SPEC,
   strict: () => false,
+  extraKey: (key) => accountFeeSpec(key),
   templateCommand: (c) => factsTemplateCommand("venues", countryCode(c)),
   setCommand: factsSetCommand("venues"),
   about: (c, date) => `TEMPLATE to fill by research. ultrastock contains no venue fee: every value must come from the venue's own fee page, as it applies to a resident of ${c}, read on ${date}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"; remove a key you did not research rather than guessing it. For one of the user's own accounts at another broker, add "account.<id>.fees" ({maker, taker}), "account.<id>.perUnit" and "account.<id>.minimum" (the account id letters and digits only). Tick sizes, lot steps and Kalshi's per-series fee multiplier are read live from the venues: do not store them. Then store the file with \`${factsSetCommand("venues").replace("<file.json>", "<this file>")}\`.`
@@ -21947,10 +21965,10 @@ function sizePosition(i) {
     reasons
   };
 }
-function binaryKelly(p, price, fraction2 = 0.5) {
+function binaryKelly(p, price, fraction3 = 0.5) {
   if (price <= 0 || price >= 1) return 0;
   const b = (1 - price) / price;
-  return Math.max(0, (p - (1 - p) / b) * fraction2);
+  return Math.max(0, (p - (1 - p) / b) * fraction3);
 }
 function expectancy(rMultiples) {
   const wins = rMultiples.filter((r3) => r3 > 0);
@@ -25129,9 +25147,9 @@ function buildBook(txs) {
   }
   return {
     positions: [...positions.values()].filter((p) => p.quantity > 0 || p.realizedPmp !== 0 || p.dividends !== 0),
-    cash: [...cash.entries()].map(([k, amount]) => {
+    cash: [...cash.entries()].map(([k, amount2]) => {
       const [account, currency] = k.split("|");
-      return { account, currency, amount };
+      return { account, currency, amount: amount2 };
     }),
     transactions: sorted
   };
@@ -40956,9 +40974,9 @@ function rebalance(holdings, targets, opts = {}) {
   for (const d of [...drift2].sort((x, y) => x.drift - y.drift)) {
     if (cash <= 0 || d.drift >= 0) break;
     const need = -d.drift / 100 * total;
-    const amount = Math.min(need, cash);
-    cash -= amount;
-    trades2.push({ asset: d.asset, current: d.drift + (targets[d.asset] ?? 0) / tsum * 100, target: (targets[d.asset] ?? 0) / tsum * 100, amount });
+    const amount2 = Math.min(need, cash);
+    cash -= amount2;
+    trades2.push({ asset: d.asset, current: d.drift + (targets[d.asset] ?? 0) / tsum * 100, target: (targets[d.asset] ?? 0) / tsum * 100, amount: amount2 });
   }
   for (const d of drift2) {
     const target = (targets[d.asset] ?? 0) / tsum * 100;
@@ -40966,11 +40984,11 @@ function rebalance(holdings, targets, opts = {}) {
     const residual = d.drift + alreadyBought / total * 100;
     const outOfBand = Math.abs(residual) > band || target > 0 && Math.abs(residual) / target > rel;
     if (!outOfBand) continue;
-    const amount = -residual / 100 * total;
-    if (Math.abs(amount) < (opts.minTrade ?? 0)) continue;
+    const amount2 = -residual / 100 * total;
+    if (Math.abs(amount2) < (opts.minTrade ?? 0)) continue;
     const existing = trades2.find((t) => t.asset === d.asset);
-    if (existing) existing.amount += amount;
-    else trades2.push({ asset: d.asset, current: target + d.drift, target, amount });
+    if (existing) existing.amount += amount2;
+    else trades2.push({ asset: d.asset, current: target + d.drift, target, amount: amount2 });
   }
   return { trades: trades2.filter((t) => Math.abs(t.amount) > 1e-9), drift: drift2 };
 }
@@ -47759,15 +47777,15 @@ var TaxRegime = class {
    * An amount in the regime's currency at the transaction's date (stablecoins at their peg, named in the notes). The
    * amount is in the row's currency unless `currency` names another (the base of a pair such as EURUSDT).
    */
-  toBase(t, amount, input, currency = t.currency) {
-    if (amount === 0) return 0;
+  toBase(t, amount2, input, currency = t.currency) {
+    if (amount2 === 0) return 0;
     let c = currency.toUpperCase();
     if (isStablecoin(c)) c = c.startsWith("EUR") ? "EUR" : "USD";
-    if (c === this.currency) return amount;
+    if (c === this.currency) return amount2;
     const rate2 = input.fx(c, day3(t.date));
     if (rate2 === void 0)
       throw new Error(`no ${c}\u2192${this.currency} rate for ${day3(t.date)} (transaction ${t.id}) \u2014 the tax report needs every amount converted at its date`);
-    return amount * rate2;
+    return amount2 * rate2;
   }
   /** Transactions up to the end of the year, oldest first. */
   history(input) {
@@ -48068,37 +48086,52 @@ function ownFeeRate(account, currency, txs) {
 var CRYPTO_VENUES = { binance: "binance.spot", kraken: "kraken.spot", coinbase: "coinbase.spot" };
 function scheduleKeys(account, market) {
   const a = account.toLowerCase();
-  const out = [];
-  if (CRYPTO_VENUES[a]) out.push({ prefix: CRYPTO_VENUES[a], full: false });
-  else if (a === "ibkr") out.push({ prefix: "ibkr", full: true });
-  else out.push({ prefix: accountKey(account), full: true });
-  if (market === "crypto" && !CRYPTO_VENUES[a]) out.push({ prefix: "binance.spot", full: false });
-  return out;
+  const crypto = market === "crypto";
+  if (CRYPTO_VENUES[a]) return crypto ? [{ prefix: CRYPTO_VENUES[a], full: false }] : [];
+  if (a === "ibkr") return crypto ? [] : [{ prefix: "ibkr", full: true }];
+  return [{ prefix: accountKey(account), full: true }, ...crypto ? [{ prefix: "binance.spot", full: false }] : []];
 }
+var fraction2 = (x) => typeof x === "number" && Number.isFinite(x) && x >= 0 && x <= 1;
+var amount = (x) => typeof x === "number" && Number.isFinite(x) && x >= 0;
 function researchedFee(account, market, side2, opts = {}) {
   const tried = [];
-  for (const { prefix, full } of scheduleKeys(account, market)) {
+  const malformed = [];
+  const schedules = scheduleKeys(account, market);
+  for (const { prefix, full } of schedules) {
     const fees = venueFact(`${prefix}.fees`, opts);
     const keys = full ? [`${prefix}.fees`, `${prefix}.perUnit`, `${prefix}.minimum`] : [`${prefix}.fees`];
     tried.push(...keys);
     if ("missing" in fees) continue;
+    const pct14 = fees.value?.[side2];
+    if (!fraction2(pct14)) {
+      malformed.push(`${prefix}.fees is not {maker, taker} fractions of the notional`);
+      continue;
+    }
     let perUnit;
     let minimum;
     if (full) {
       const u = venueFact(`${prefix}.perUnit`, opts);
       const m = venueFact(`${prefix}.minimum`, opts);
       if ("missing" in u || "missing" in m) continue;
+      if (!amount(u.value) || !amount(m.value)) {
+        malformed.push(`${prefix}.perUnit and ${prefix}.minimum are amounts \u2265 0`);
+        continue;
+      }
       perUnit = u;
       minimum = m;
     }
-    const pct14 = fees.value[side2];
     return {
       model: { pct: pct14, ...perUnit ? { perUnit: perUnit.value } : {}, min: minimum?.value ?? 0 },
       source: "researched",
       basis: `${prefix} ${side2} ${(pct14 * 100).toFixed(4)} %${perUnit ? ` + ${perUnit.value} per unit, minimum ${minimum.value}` : ""} \u2014 ${fees.basis}`
     };
   }
-  return { missing: missingVenueFact(venueCountry(), [...new Set(tried)]) };
+  if (!schedules.length)
+    return {
+      missing: `no fee is known for a ${market} fill on ${account}: the ${account} schedule ultrastock reads covers ${market === "crypto" ? "stocks and ETFs, not crypto-assets" : "crypto-assets only"} \u2014 research the broker behind this account (${accountKey(account)}.fees, .perUnit, .minimum): \`${researchCommand("venues", venueCountry() ?? "CC")}\``
+    };
+  const why2 = missingVenueFact(venueCountry(), [...new Set(tried)]);
+  return { missing: malformed.length ? `${[...new Set(malformed)].join("; ")}: read as unknown \u2014 ${why2}` : why2 };
 }
 function feeLookup(o, market, side2, opts = {}) {
   const own = ownFeeRate(o.account, o.currency, opts.ledger ?? readLedger("real"));
@@ -51158,13 +51191,13 @@ function transactionHistory(recs, opts) {
       });
       continue;
     }
-    const amount = Math.abs(change);
+    const amount2 = Math.abs(change);
     if (CASH_ASSETS.has(coin)) {
       accept(res, line, {
         date,
         type: kind === "in" ? "deposit" : kind === "out" ? "withdrawal" : "interest",
         account: opts.account,
-        amount: kind === "out" ? -amount : amount,
+        amount: kind === "out" ? -amount2 : amount2,
         currency: coin,
         note: kind === "income" ? `binance: ${op}` : void 0,
         origin: ORIGIN
@@ -51177,7 +51210,7 @@ function transactionHistory(recs, opts) {
       type: kind === "out" ? "transfer-out" : "transfer-in",
       account: opts.account,
       symbol: pairSymbol(coin, quote2),
-      quantity: amount,
+      quantity: amount2,
       currency: quote2,
       note: kind === "income" ? `binance ${op}: no price in the export, booked at the running average cost` : void 0,
       origin: ORIGIN
@@ -51465,10 +51498,10 @@ function parseGeneric(text2, opts) {
     res.warnings.push(
       `--fee-sign ${opts.feeSign} is not used: no fee or tax type of the file is written with both signs (one sign throughout a type: those rows are charges)`
     );
-  const charge = (amount, type) => {
-    if (mixed.includes(type) && opts.feeSign === "charge-negative") return amount;
-    if (mixed.includes(type) && opts.feeSign === "charge-positive") return -amount;
-    return -Math.abs(amount);
+  const charge = (amount2, type) => {
+    if (mixed.includes(type) && opts.feeSign === "charge-negative") return amount2;
+    if (mixed.includes(type) && opts.feeSign === "charge-positive") return -amount2;
+    return -Math.abs(amount2);
   };
   for (const r3 of rows.slice(h + 1)) {
     const cell3 = (k) => {
@@ -51497,17 +51530,17 @@ function parseGeneric(text2, opts) {
     const quantity = n2("quantity");
     let price = n2("price");
     const fee = n2("fee");
-    let amount = n2("amount");
+    let amount2 = n2("amount");
     const currency = (cell3("currency") ?? defaultCurrency).toUpperCase();
-    if ((type === "buy" || type === "sell") && price === void 0 && amount !== void 0 && quantity) {
+    if ((type === "buy" || type === "sell") && price === void 0 && amount2 !== void 0 && quantity) {
       const f3 = Math.abs(fee ?? 0);
-      price = round3((type === "buy" ? Math.abs(amount) - f3 : Math.abs(amount) + f3) / Math.abs(quantity));
+      price = round3((type === "buy" ? Math.abs(amount2) - f3 : Math.abs(amount2) + f3) / Math.abs(quantity));
       pricedFromAmount++;
     }
     const cashType = type === "deposit" || type === "withdrawal" || type === "dividend" || type === "interest" || type === "fee" || type === "tax";
-    if (cashType && amount === void 0 && quantity !== void 0 && price !== void 0) amount = round3(quantity * price);
-    if (cashType && amount !== void 0)
-      amount = type === "deposit" || type === "dividend" || type === "interest" ? Math.abs(amount) : type === "fee" || type === "tax" ? charge(amount, type) : -Math.abs(amount);
+    if (cashType && amount2 === void 0 && quantity !== void 0 && price !== void 0) amount2 = round3(quantity * price);
+    if (cashType && amount2 !== void 0)
+      amount2 = type === "deposit" || type === "dividend" || type === "interest" ? Math.abs(amount2) : type === "fee" || type === "tax" ? charge(amount2, type) : -Math.abs(amount2);
     accept(
       res,
       r3.line,
@@ -51519,7 +51552,7 @@ function parseGeneric(text2, opts) {
         isin: isin && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) ? isin : void 0,
         quantity: quantity !== void 0 && !cashType ? Math.abs(quantity) : void 0,
         price: cashType ? void 0 : price,
-        amount: cashType ? amount : void 0,
+        amount: cashType ? amount2 : void 0,
         fee: !cashType && fee ? Math.abs(fee) : void 0,
         currency,
         note: cell3("note"),
@@ -51845,14 +51878,14 @@ function parseIbkr(text2, opts) {
     const f3 = r3.f;
     if (hasDetail && (pick2(f3, "levelofdetail") ?? "").toUpperCase() !== "DETAIL") continue;
     const kind = (pick2(f3, "type") ?? "").toLowerCase();
-    const amount = statementNumber(pick2(f3, "amount"));
+    const amount2 = statementNumber(pick2(f3, "amount"));
     const date = dateOf(f3, "datetime", "date", "settledate", "reportdate");
     const currency = (pick2(f3, "currency", "currencyprimary") ?? "").toUpperCase();
-    if (amount === void 0 || !date) {
-      res.skipped.push({ line: r3.line, reason: `unreadable cash transaction: ${amount === void 0 ? `amount "${pick2(f3, "amount") ?? ""}"` : "date"}` });
+    if (amount2 === void 0 || !date) {
+      res.skipped.push({ line: r3.line, reason: `unreadable cash transaction: ${amount2 === void 0 ? `amount "${pick2(f3, "amount") ?? ""}"` : "date"}` });
       continue;
     }
-    const type = kind.includes("withholding") || /\btax/.test(kind) ? "tax" : kind.includes("dividend") ? "dividend" : kind.includes("deposit") || kind.includes("withdraw") ? amount >= 0 ? "deposit" : "withdrawal" : kind.includes("interest") ? "interest" : kind.includes("fee") || kind.includes("commission") ? "fee" : void 0;
+    const type = kind.includes("withholding") || /\btax/.test(kind) ? "tax" : kind.includes("dividend") ? "dividend" : kind.includes("deposit") || kind.includes("withdraw") ? amount2 >= 0 ? "deposit" : "withdrawal" : kind.includes("interest") ? "interest" : kind.includes("fee") || kind.includes("commission") ? "fee" : void 0;
     if (!type) {
       res.skipped.push({ line: r3.line, reason: `cash transaction type "${pick2(f3, "type") ?? ""}" is not imported` });
       continue;
@@ -51865,7 +51898,7 @@ function parseIbkr(text2, opts) {
       account: opts.account,
       symbol,
       isin,
-      amount,
+      amount: amount2,
       currency,
       fxToBase: fx && fx > 0 ? fx : void 0,
       note: type === "tax" ? "withholding tax" : void 0,
@@ -52034,14 +52067,14 @@ function ledgers(recs, opts) {
     const type = (rec.type ?? "").toLowerCase();
     const subtype = (rec.subtype ?? "").toLowerCase();
     const asset = krakenAsset(rec.asset ?? "");
-    const amount = statementNumber(rec.amount, ".");
+    const amount2 = statementNumber(rec.amount, ".");
     const fee = Math.abs(statementNumber(rec.fee, ".") ?? 0);
     const date = statementDate(rec.time);
     if (!rec.txid) {
       res.skipped.push({ line, reason: "entry without a ledger id (Kraken's pending duplicate of a settled entry)" });
       continue;
     }
-    if (!date || amount === void 0 || !asset) {
+    if (!date || amount2 === void 0 || !asset) {
       res.skipped.push({ line, reason: `unreadable ledger row (time "${rec.time ?? ""}", asset or amount "${rec.amount ?? ""}")` });
       continue;
     }
@@ -52051,10 +52084,10 @@ function ledgers(recs, opts) {
     }
     if (type === "spend" || type === "receive") {
       const k = rec.refid || rec.txid;
-      legs.set(k, [...legs.get(k) ?? [], { line, asset, amount, fee, date }]);
+      legs.set(k, [...legs.get(k) ?? [], { line, asset, amount: amount2, fee, date }]);
       continue;
     }
-    const reward = type === "staking" || type === "earn" && subtype === "reward" || type === "dividend" && amount > 0;
+    const reward = type === "staking" || type === "earn" && subtype === "reward" || type === "dividend" && amount2 > 0;
     if (type === "transfer" || type === "earn" || INTERNAL_SUBTYPES.test(subtype)) {
       if (!reward) {
         res.skipped.push({ line, reason: `"${type}${subtype ? `/${subtype}` : ""}" moves funds between Kraken wallets \u2014 nothing to book` });
@@ -52070,7 +52103,7 @@ function ledgers(recs, opts) {
         date,
         type: reward ? "interest" : type === "deposit" ? "deposit" : "withdrawal",
         account: opts.account,
-        amount: reward ? amount : type === "deposit" ? Math.abs(amount) : -Math.abs(amount),
+        amount: reward ? amount2 : type === "deposit" ? Math.abs(amount2) : -Math.abs(amount2),
         currency: asset,
         note: reward ? `kraken ${type} reward` : void 0,
         origin: ORIGIN5
@@ -52084,7 +52117,7 @@ function ledgers(recs, opts) {
       type: out ? "transfer-out" : "transfer-in",
       account: opts.account,
       symbol: pairSymbol(asset, quote2),
-      quantity: round3(out ? Math.abs(amount) + fee : Math.abs(amount) - fee),
+      quantity: round3(out ? Math.abs(amount2) + fee : Math.abs(amount2) - fee),
       currency: quote2,
       note: reward ? `kraken ${type} reward: no price in the export, booked at the running average cost` : void 0,
       origin: ORIGIN5
@@ -53701,8 +53734,8 @@ async function portfolioCommand(args, asJson) {
   if (PORTFOLIO_ANALYTICS_ACTIONS.includes(sub)) return portfolioAnalyticsCommand(args, asJson);
   if (sub === "deposit" || sub === "withdraw") {
     const [account, amountRaw] = rest;
-    const amount = num13(amountRaw, "amount");
-    if (!account || amount === void 0 || amount <= 0)
+    const amount2 = num13(amountRaw, "amount");
+    if (!account || amount2 === void 0 || amount2 <= 0)
       throw new UsageError(`usage: ultrastock portfolio ${sub} <account> <amount> [--currency EUR] [--date YYYY-MM-DD] [--book real|paper]`);
     const r3 = await appendTransactions(
       [
@@ -53710,14 +53743,14 @@ async function portfolioCommand(args, asJson) {
           date: argValue(args, "date") ?? clockNow().toISOString().slice(0, 10),
           type: sub === "deposit" ? "deposit" : "withdrawal",
           account,
-          amount: sub === "deposit" ? amount : -amount,
+          amount: sub === "deposit" ? amount2 : -amount2,
           currency: (argValue(args, "currency") ?? loadProfile()?.baseCurrency ?? "EUR").toUpperCase(),
           origin: "manual"
         }
       ],
       book2
     );
-    return printResult(asJson, r3, `${r3.added.length ? "recorded" : "already recorded"}: ${sub} ${amount} on ${account} (${book2} book)`);
+    return printResult(asJson, r3, `${r3.added.length ? "recorded" : "already recorded"}: ${sub} ${amount2} on ${account} (${book2} book)`);
   }
   if (sub === "add") {
     const type = rest[0];
@@ -56637,16 +56670,16 @@ var FranceRegime = class extends TaxRegime {
         pos2.firstBuy ??= day3(t.date);
         st.securities.set(key, pos2);
       } else if ((t.type === "dividend" || t.type === "interest") && inYear(t)) {
-        const amount = this.toBase(t, t.amount ?? 0, input);
+        const amount2 = this.toBase(t, t.amount ?? 0, input);
         const foreign = brokerIsForeign(env2.envelope?.broker);
         st.events.push({
           ...base2,
           kind: t.type,
-          amount: round22(amount),
+          amount: round22(amount2),
           notes: [
             ...isFrenchSecurity(t) ? [] : ["foreign-source income: also on form 2047"],
             ...foreign === true ? [
-              `paid at a foreign broker: ${pct9(pfuIr)} instalment (${round22(amount * pfuIr)} \u20AC) and social levies (${round22(amount * ps)} \u20AC) to pay with form 2778-DIV by day ${dueDay} of the following month`
+              `paid at a foreign broker: ${pct9(pfuIr)} instalment (${round22(amount2 * pfuIr)} \u20AC) and social levies (${round22(amount2 * ps)} \u20AC) to pay with form 2778-DIV by day ${dueDay} of the following month`
             ] : []
           ],
           lines: {
@@ -56737,8 +56770,8 @@ var FranceRegime = class extends TaxRegime {
         return;
       }
       const v = Math.max(value2, price);
-      const fraction2 = acquisitionNet * price / v;
-      const gain = net - fraction2;
+      const fraction3 = acquisitionNet * price / v;
+      const gain = net - fraction3;
       const understated = c.unknownSince ? `computed without the share of the acquisition price used by the disposal of ${c.unknownSince}, whose portfolio value is unknown: this gain is understated \u2014 give that value and run the report again` : void 0;
       if (inYear && understated && !st.warnings.some((w) => w.includes("is understated")))
         st.warnings.push(
@@ -56750,7 +56783,7 @@ var FranceRegime = class extends TaxRegime {
           kind: "crypto-disposal",
           quantity: t.quantity,
           proceeds: round22(net),
-          cost: round22(fraction2),
+          cost: round22(fraction3),
           fees: round22(fee),
           gain: round22(gain),
           formula: `${round22(net)} \u2212 ${round22(acquisitionNet)} \xD7 ${round22(price)} / ${round22(v)}`,
@@ -56772,7 +56805,7 @@ var FranceRegime = class extends TaxRegime {
             ...understated ? [understated] : []
           ]
         });
-      c.fractions += fraction2;
+      c.fractions += fraction3;
       return;
     }
     if (t.type === "transfer-in" && inYear)
@@ -57570,7 +57603,7 @@ var UsRegime = class extends TaxRegime {
       }
       if (SHELTERED.has(env2.type)) continue;
       if ((t.type === "dividend" || t.type === "interest") && inYear(t)) {
-        const amount = this.toBase(t, t.amount ?? 0, input);
+        const amount2 = this.toBase(t, t.amount ?? 0, input);
         const notes = [];
         let qualified;
         if (t.type === "dividend") {
@@ -57584,7 +57617,7 @@ var UsRegime = class extends TaxRegime {
         events.push({
           ...base2,
           kind: t.type,
-          amount: round22(amount),
+          amount: round22(amount2),
           lines: { qualified: String(qualified ?? false), foreignSource: String(!/^US/.test(t.isin ?? "US") || /\.[A-Z]{1,3}$/.test(sym3)) },
           notes
         });
@@ -57864,15 +57897,15 @@ function neutralReport(input) {
     warnings.push(
       `costMethod "${String(researched2)}" does not name FIFO or the weighted average alone and plainly: apply it as described \u2014 both costs are shown, neither is marked`
     );
-  const value2 = (t, amount, currency = t.currency) => {
-    if (amount === 0) return 0;
+  const value2 = (t, amount2, currency = t.currency) => {
+    if (amount2 === 0) return 0;
     let c = currency.toUpperCase();
     if (isStablecoin(c)) c = c.startsWith("EUR") ? "EUR" : "USD";
-    if (c === base2) return amount;
+    if (c === base2) return amount2;
     const rate2 = input.fx(c, day3(t.date));
     if (rate2 === void 0)
       throw new Error(`no ${c}\u2192${base2} rate for ${day3(t.date)} (transaction ${t.id}) \u2014 the report needs every amount converted at its date`);
-    return amount * rate2;
+    return amount2 * rate2;
   };
   const securityOf = securityKeys(input.transactions);
   const crypto = (t) => isCryptoTx(t, input.envelopes);
@@ -58059,15 +58092,15 @@ function neutralReport(input) {
       continue;
     }
     if (t.type === "dividend" || t.type === "interest") {
-      const amount = value2(t, t.amount ?? 0);
+      const amount2 = value2(t, t.amount ?? 0);
       const paidInCrypto = isCrypto && !isFiat(t.currency);
       const coin = paidInCrypto && !isStablecoin(t.currency);
-      if (paidInCrypto && typeof t.amount === "number") acquire2(t.currency.toUpperCase(), d, t.amount, amount);
+      if (paidInCrypto && typeof t.amount === "number") acquire2(t.currency.toUpperCase(), d, t.amount, amount2);
       income.push({
         ...where(t),
         kind: coin ? "reward" : t.type,
         symbol: t.symbol,
-        amount: round22(amount),
+        amount: round22(amount2),
         withheld: 0,
         notes: paidInCrypto ? [`paid in ${t.currency}: valued at that day's rate, and a holding acquired at that value`] : []
       });
@@ -60575,8 +60608,8 @@ ${USAGE6}`);
     if (risk !== void 0 && !(Number.isInteger(risk) && risk >= 1 && risk <= 7))
       throw new UsageError(`--risk takes a whole score from 1 to 7, not "${riskRaw}"`);
     const amountRaw = argValue(args, "amount");
-    const amount = amountRaw === void 0 ? void 0 : Number(amountRaw.replace(/[_\s]/g, ""));
-    if (amount !== void 0 && !(Number.isFinite(amount) && amount > 0)) throw new UsageError(`--amount takes a positive amount (10000), not "${amountRaw}"`);
+    const amount2 = amountRaw === void 0 ? void 0 : Number(amountRaw.replace(/[_\s]/g, ""));
+    if (amount2 !== void 0 && !(Number.isFinite(amount2) && amount2 > 0)) throw new UsageError(`--amount takes a positive amount (10000), not "${amountRaw}"`);
     const goal = argOneOf(args, "goal", ETF_GOALS) ?? "core";
     const envelope = argOneOf(args, "envelope", ETF_ENVELOPES) ?? "cto";
     const dir2 = runDirFor(argValue(args, "out"), `etf-propose-${goal}-${envelope}-${runId()}`);
@@ -60586,7 +60619,7 @@ ${USAGE6}`);
         goal,
         envelope,
         risk,
-        amount,
+        amount: amount2,
         maxFunds: argInt(args, "max-funds", { min: 1, max: 8 }) ?? 4,
         distribution: distributionOf(args),
         currency: currencyOf2(args),

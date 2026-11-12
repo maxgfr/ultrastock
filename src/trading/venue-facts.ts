@@ -18,9 +18,10 @@
 //   ibkr.minimum      amount: minimum per order, in the instrument's currency
 //   kalshi.feeFormula text: the fee formula as the schedule writes it — the engine computes only KALSHI_QUADRATIC
 //   kalshi.fees       rates {taker, maker}: the coefficients of that formula
-//   account.<id>.fees|perUnit|minimum   free keys: the broker behind one of the user's accounts
+//   account.<id>.fees|perUnit|minimum   the broker behind one of the user's accounts: the same shapes as the
+//                     ibkr keys ({maker, taker} rates; amounts), checked when stored and when read
 //
-// Every fee key is read as unknown 365 days after it was verified.
+// Every fee key, an account's included, is read as unknown 365 days after it was verified.
 import { UsageError } from "../engine.js";
 import { clockNow } from "../core/net.js";
 import { loadProfile } from "../core/profile.js";
@@ -108,12 +109,36 @@ export const VENUE_SPEC: readonly FactSpec[] = [
   },
 ];
 
-/** The venues domain. Not strict: the broker behind an account (`account.<id>.fees`…) is free research. */
+const ACCOUNT_FEE_KEY = /^account\.([A-Za-z0-9]+)\.(fees|perUnit|minimum)$/;
+
+/**
+ * The spec of an account's fee key (`account.<id>.fees|perUnit|minimum`): the shape and the age limit of the registered
+ * keys it mirrors — a {maker, taker} pair of fractions, an amount ≥ 0 — so a malformed or stale one reads as missing.
+ */
+function accountFeeSpec(key: string): FactSpec | undefined {
+  const m = ACCOUNT_FEE_KEY.exec(key);
+  if (!m) return undefined;
+  const [, id, what] = m;
+  if (what === "fees")
+    return feeSpec(`account.${id}`, `The broker behind the account ${id}`, "broker commission schedule {country}", "the broker's own fee page");
+  return {
+    key,
+    label: `The broker behind the account ${id}: ${what === "perUnit" ? "commission per unit" : "minimum commission per order"}`,
+    type: "amount",
+    unit: what === "perUnit" ? "instrument currency per unit (0 where the schedule is a percentage)" : "instrument currency per order",
+    query: "broker commission schedule {country}",
+    prefer: "the broker's own fee page",
+    maxAgeDays: FEE_MAX_AGE_DAYS,
+  };
+}
+
+/** The venues domain. Not strict: the broker behind an account (`account.<id>.fees`…) is the user's own research. */
 export const VENUES = defineDomain<FactSpec>({
   name: "venues",
   period: "date",
   keysFor: () => VENUE_SPEC,
   strict: () => false,
+  extraKey: (key) => accountFeeSpec(key),
   templateCommand: (c) => factsTemplateCommand("venues", countryCode(c)),
   setCommand: factsSetCommand("venues"),
   about: (c, date) =>
