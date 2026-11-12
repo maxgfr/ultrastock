@@ -137,6 +137,7 @@ export async function journalCommand(args: CommandArgs, asJson: boolean): Promis
             }`,
         ),
         ...r.errors.map((e) => `  error: ${e}`),
+        ...r.notes.map((n) => `  note: ${n}`),
       ].join("\n"),
     );
   }

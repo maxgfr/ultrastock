@@ -82,8 +82,8 @@ describe("options-analysis helpers", () => {
     expiryPoints(q, "2026-11-20", out);
     expect(val(out, "XYZ.quant.opt.2026-11-20.atmStrike")).toBe(100);
     expect(val(out, "XYZ.quant.opt.2026-11-20.atmIv") as number).toBeCloseTo(30, 5);
-    // 1-sd move from IV: S σ √T.
-    const t = (Date.parse("2026-11-20T20:00:00Z") - NOW.getTime()) / (365 * 86_400_000);
+    // 1-sd move from IV: S σ √T, to the 16:00 New York close — 21:00 UTC on 20 November, after the clocks went back.
+    const t = (Date.parse("2026-11-20T21:00:00Z") - NOW.getTime()) / (365 * 86_400_000);
     expect(val(out, "XYZ.quant.opt.2026-11-20.move1sd.iv") as number).toBeCloseTo(100 * 0.3 * Math.sqrt(t), 6);
     // Straddle-implied 1-sd ≈ IV-implied for an ATM straddle at the money.
     expect(Math.abs((val(out, "XYZ.quant.opt.2026-11-20.move1sd.straddle") as number) / (100 * 0.3 * Math.sqrt(t)) - 1)).toBeLessThan(0.05);
@@ -235,8 +235,8 @@ describe("stats helpers", () => {
     ];
     // Euronext has closed by 17:00 UTC: today's bar is final.
     expect(closedBars(bars, "euronext", new Date("2026-10-24T17:00:00Z"))).toHaveLength(2);
-    // The US close is not settled at 21:05 UTC in winter (16:00 EST = 21:00 UTC).
-    expect(closedBars(bars, "us", new Date("2026-10-24T21:05:00Z"))).toHaveLength(1);
+    // The US close is not settled at 20:05 UTC while New York is on daylight time (16:00 EDT = 20:00 UTC, feed 15 min late).
+    expect(closedBars(bars, "us", new Date("2026-10-24T20:05:00Z"))).toHaveLength(1);
     // A bar dated after today never passes.
     const ahead = [...bars, { date: "2026-10-25", open: 1, high: 1, low: 1, close: 1 }];
     expect(closedBars(ahead, "us", new Date("2026-10-24T22:00:00Z")).map((b) => b.date)).toEqual(["2026-10-23", "2026-10-24"]);

@@ -260,6 +260,7 @@ Domains so far:
 | Domain | Country / period | Keys | Read by |
 |---|---|---|---|
 | `tax` | tax residence / tax year | the rules the FR and US engines read; a generic list elsewhere | the tax engines, `tax report`, `portfolio location` |
+| `calendar` | the exchange's country (US for XNYS, FR for XPAR, IT for XMIL, NO for XOSL) / year | `<MIC>.open`, `<MIC>.close` (local HH:MM), `<MIC>.specialClosures` (dates, `[]` for none), max age 120 days | `calendar`, session counts (journal settle, morning, catalysts), the closed-bar rule, option settlement times |
 | `geo` | `EU` / the date the membership holds from | `eu.members`, `eea.nonEuMembers`, `euroArea.members` (ISO codes, max age 365 days) | the PEA first pass, the `pea-candidates` screen, `value --region europe\|pea`, European peers, the ECB exposure in `events` |
 
 `src/core/geo.ts` is the only place EU, EEA and euro-area membership is read.
@@ -270,6 +271,20 @@ list (as of 2026-01-01: 27 EU states, Iceland, Liechtenstein and Norway, the
 every output using it says so with the command to research a current one
 (`ultrastock facts research geo --country EU`). The lists are written in the
 order earlier requests were recorded with (by English name; peers by code).
+
+`src/core/calendar.ts` computes the holiday rules (observance, Easter, early
+closes; `calendar verify` lists them against the exchange's page). What no rule
+predicts is a `calendar` fact: the year's trading hours and one-off closures.
+Without researched hours it uses the hours published when the file was written
+(dated, sourced; `calendar sessions` says so). The past one-off closures stay
+recorded up to the date they were checked; past it, without a researched list,
+every session count (journal settle, the morning brief, catalyst clusters)
+carries a note that it assumes no unresearched closure. Session times are
+computed in the exchange's time zone with Intl, daylight saving included: a
+bar dated today is final 15 minutes after the New York close (US), 20 minutes
+after the Paris close (Euronext, Europe, funds: the auction and a 15-minute
+feed), 75 minutes after New York's (world); US options settle at the New York
+close, Deribit's at 08:00 UTC (its contract specification).
 
 ## MCP
 

@@ -10,6 +10,7 @@ import { argValue, type CommandArgs, jsonLine, mapLimit } from "../../engine.js"
 import { isoDayOf as isoDay } from "../../providers/fundamentals/util.js";
 import { getHistory, resolveSymbol } from "../../providers/router.js";
 import type { Bar, Market, PriceSeries } from "../../providers/types.js";
+import { type CalendarMarket, localTimeToUtc, MARKETS, marketHours } from "../../core/calendar.js";
 
 /** At most this many requests in flight per command. */
 export const FETCH_CONCURRENCY = 4;
@@ -23,34 +24,42 @@ export const shiftDay = (iso: string, days: number) => isoDay(new Date(Date.pars
 export const round4 = (x: number) => Number(x.toFixed(4));
 
 /**
- * Minute of the UTC day after which a market's bar dated today is final, after
- * the close in both DST regimes and behind a feed delayed by 15 minutes: US
- * 21:15 (16:00 EST = 21:00 UTC); Euronext, other European venues and their
- * once-a-day funds 17:00 (the closing auction uncrosses about 17:35 CET =
- * 16:35 UTC, so a 15-minute-late feed shows the final price from 16:50 —
- * before that, today's bar may hold the pre-auction price); "world" 21:15, its
- * last venues being Toronto, Mexico and São Paulo. A crypto candle dated
- * today is still open: never final.
+ * When a market's bar dated today is final: the close of its calendar's
+ * regular session in the exchange's own time zone (core/calendar.ts hours —
+ * researched, else the dated built-in ones), daylight saving included, plus a
+ * margin. US: 15 minutes, a feed delayed by 15 minutes. Euronext, other
+ * European venues (on Paris time) and their once-a-day funds: 20 minutes, the
+ * closing auction uncrossing about 5 minutes after the close and the feed 15
+ * late — before that, today's bar may hold the pre-auction price. "World":
+ * New York's close plus 75 minutes, its last venues being Toronto, Mexico and
+ * São Paulo. A crypto candle dated today is still open: never final.
  */
-const SESSION_FINAL_UTC: Record<Market, number | undefined> = {
+const SESSION_FINAL: Record<Market, { calendar: CalendarMarket; afterCloseMin: number } | undefined> = {
   crypto: undefined,
-  us: 21 * 60 + 15,
-  world: 21 * 60 + 15,
-  euronext: 17 * 60,
-  europe: 17 * 60,
-  fund: 17 * 60,
+  us: { calendar: "XNYS", afterCloseMin: 15 },
+  world: { calendar: "XNYS", afterCloseMin: 75 },
+  euronext: { calendar: "XPAR", afterCloseMin: 20 },
+  europe: { calendar: "XPAR", afterCloseMin: 20 },
+  fund: { calendar: "XPAR", afterCloseMin: 20 },
 };
 
+/** The instant a market's bar dated `day` is final (see SESSION_FINAL), or undefined for a market whose bar never is. */
+export function sessionFinalAt(market: Market, day: string): Date | undefined {
+  const s = SESSION_FINAL[market];
+  if (!s) return undefined;
+  const close = marketHours(s.calendar, Number(day.slice(0, 4))).close;
+  return new Date(localTimeToUtc(day, close, MARKETS[s.calendar].timeZone).getTime() + s.afterCloseMin * 60_000);
+}
+
 /**
- * Bars whose session is over at `now` (see SESSION_FINAL_UTC): a bar dated
+ * Bars whose session is over at `now` (see SESSION_FINAL): a bar dated
  * today passes only once its market's session is final. Later-dated bars never
  * pass. The one closed-bar rule of every analysis (no look-ahead).
  */
 export function closedBars<T extends { date: string }>(bars: readonly T[], market: Market, now: Date): T[] {
   const today = isoDay(now);
-  const minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-  const final = SESSION_FINAL_UTC[market];
-  const closedToday = final !== undefined && minutes >= final;
+  const final = sessionFinalAt(market, today);
+  const closedToday = final !== undefined && now.getTime() >= final.getTime();
   return bars.filter((b) => b.date.slice(0, 10) < today || (b.date.slice(0, 10) === today && closedToday));
 }
 

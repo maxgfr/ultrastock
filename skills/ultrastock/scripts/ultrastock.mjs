@@ -14679,7 +14679,7 @@ function readBrief(dir2) {
 }
 
 // src/analyze/full.ts
-import { existsSync as existsSync25, readFileSync as readFileSync27 } from "fs";
+import { existsSync as existsSync26, readFileSync as readFileSync27 } from "fs";
 import { join as join33 } from "path";
 
 // src/commands/emit.ts
@@ -20038,23 +20038,341 @@ var moveKey = (m) => `${m >= 0 ? "+" : ""}${Number((m * 100).toFixed(2))}`;
 
 // src/analyze/regime/common.ts
 import { resolve as resolve5 } from "path";
+
+// src/core/calendar.ts
+import { existsSync as existsSync16, statSync as statSync11 } from "fs";
+var MARKETS = {
+  XNYS: { id: "XNYS", name: "NYSE / Nasdaq", timeZone: "America/New_York", mics: ["XNYS", "XNAS", "ARCX", "BATS"] },
+  XPAR: {
+    id: "XPAR",
+    name: "Euronext (Paris, Amsterdam, Brussels, Lisbon, Dublin)",
+    timeZone: "Europe/Paris",
+    mics: ["XPAR", "XAMS", "XBRU", "XLIS", "XMSM", "ALXP", "XMLI", "ETFP", "TNLA", "ALXB", "ALXL", "XESM"]
+  },
+  XMIL: { id: "XMIL", name: "Euronext Milan", timeZone: "Europe/Rome", mics: ["MTAA", "EXGM"] },
+  XOSL: { id: "XOSL", name: "Euronext Oslo", timeZone: "Europe/Oslo", mics: ["XOSL", "MERK", "XOAS"] },
+  CRYPTO: { id: "CRYPTO", name: "Crypto venues (24/7)", timeZone: "UTC", mics: [] }
+};
+var MARKET_COUNTRY = { XNYS: "US", XPAR: "FR", XMIL: "IT", XOSL: "NO" };
+var SOURCE19 = {
+  XNYS: "https://www.nyse.com/markets/hours-calendars",
+  XPAR: "https://www.euronext.com/en/trade/trading-hours-holidays",
+  XMIL: "https://www.borsaitaliana.it/borsaitaliana/calendario-e-orari-di-negoziazione/calendario-borsa-orari-di-negoziazione.en.htm",
+  XOSL: "https://www.euronext.com/en/trade/trading-hours-holidays"
+};
+var BUILT_IN_HOURS = {
+  checkedAt: "2026-10-24",
+  hours: { XNYS: ["09:30", "16:00"], XPAR: ["09:00", "17:30"], XMIL: ["09:00", "17:30"], XOSL: ["09:00", "16:20"] }
+};
+var PAST_SPECIAL_CLOSURES = [
+  {
+    market: "XNYS",
+    date: "2025-01-09",
+    name: "National Day of Mourning (President Carter)",
+    kind: "closed",
+    source: "https://www.nyse.com/markets/hours-calendars"
+  }
+];
+var CLOSURES_CHECKED_THROUGH = "2026-10-24";
+var keysOf = (m) => [
+  {
+    key: `${m}.open`,
+    label: `${MARKETS[m].name}: regular session open, local time (${MARKETS[m].timeZone})`,
+    type: "time",
+    unit: "HH:MM local time",
+    query: `${MARKETS[m].name} trading hours {period}`,
+    prefer: SOURCE19[m],
+    maxAgeDays: 120
+  },
+  {
+    key: `${m}.close`,
+    label: `${MARKETS[m].name}: regular session close (closing auction included), local time (${MARKETS[m].timeZone})`,
+    type: "time",
+    unit: "HH:MM local time",
+    query: `${MARKETS[m].name} trading hours close {period}`,
+    prefer: SOURCE19[m],
+    maxAgeDays: 120
+  },
+  {
+    key: `${m}.specialClosures`,
+    label: `${MARKETS[m].name}: one-off full-day closures in the year that the regular holiday calendar does not list (a day of mourning, an outage) \u2014 [] for none`,
+    type: "dates",
+    unit: "YYYY-MM-DD dates",
+    query: `${MARKETS[m].name} market closed unscheduled closure {period}`,
+    prefer: SOURCE19[m],
+    maxAgeDays: 120,
+    note: "name each closure in the fact's note"
+  }
+];
+var marketsOf = (country2) => Object.keys(MARKET_COUNTRY).filter((m) => MARKET_COUNTRY[m] === country2);
+var CALENDAR = defineDomain({
+  name: "calendar",
+  period: "year",
+  keysFor: (c) => marketsOf(c).flatMap(keysOf),
+  strict: (c) => marketsOf(c).length > 0,
+  templateCommand: (c) => researchCommand("calendar", c),
+  setCommand: factsSetCommand("calendar"),
+  about: (c, year) => `TEMPLATE to fill by research: the trading hours and the one-off closures of ${marketsOf(c).join(", ") || "no calendar ultrastock computes"} in ${year}, read on the exchange's own calendar page. The regular holidays are computed from the rules (\`ultrastock calendar verify --year ${year}\` lists them to compare).`
+});
+var FACTS2 = /* @__PURE__ */ new Map();
+function calendarFacts(market, year) {
+  const country2 = MARKET_COUNTRY[market];
+  const path2 = factsPath(CALENDAR, country2, year);
+  const stamp2 = existsSync16(path2) ? String(statSync11(path2).mtimeMs) : "none";
+  const hit = FACTS2.get(path2);
+  if (hit && hit.stamp === stamp2) return hit.facts;
+  let facts = {};
+  try {
+    if (stamp2 !== "none") facts = loadFacts(CALENDAR, country2, year).current;
+  } catch {
+    facts = {};
+  }
+  FACTS2.set(path2, { stamp: stamp2, facts });
+  return facts;
+}
+function marketHours(market, year = clockNow().getUTCFullYear()) {
+  if (market === "CRYPTO") return { open: "00:00", close: "24:00", origin: "built-in", sources: [], asOf: BUILT_IN_HOURS.checkedAt };
+  const f3 = calendarFacts(market, year);
+  const open2 = f3[`${market}.open`];
+  const close = f3[`${market}.close`];
+  if (open2 && close)
+    return {
+      open: open2.value,
+      close: close.value,
+      origin: "researched",
+      sources: [.../* @__PURE__ */ new Set([...open2.sources, ...close.sources])],
+      asOf: [open2.verifiedAt, close.verifiedAt].sort()[0]
+    };
+  const [o, c] = BUILT_IN_HOURS.hours[market];
+  return { open: o, close: c, origin: "built-in", sources: [SOURCE19[market]], asOf: BUILT_IN_HOURS.checkedAt };
+}
+function hoursNote(market, h) {
+  if (market === "CRYPTO" || h.origin === "researched") return void 0;
+  return `${MARKETS[market].name} hours ${h.open}\u2013${h.close} are ultrastock's built-in ones (as published on ${h.sources.join(", ")} on ${h.asOf}), not a current research \u2014 \`${researchCommand("calendar", MARKET_COUNTRY[market])}\``;
+}
+function specialClosures(market, year) {
+  if (market === "CRYPTO") return { closures: [], researched: true };
+  const f3 = calendarFacts(market, year)[`${market}.specialClosures`];
+  if (f3) {
+    const names2 = f3.note ? ` \u2014 ${f3.note}` : "";
+    return {
+      closures: f3.value.map((date) => ({ date, name: `one-off closure (researched${names2})`, kind: "closed" })),
+      researched: true
+    };
+  }
+  return {
+    closures: PAST_SPECIAL_CLOSURES.filter((s) => s.market === market && s.date.startsWith(String(year))).map((s) => ({
+      date: s.date,
+      name: s.name,
+      kind: s.kind
+    })),
+    researched: false
+  };
+}
+function sessionCountCaveat(market, from, to) {
+  if (!market || market === "CRYPTO") return void 0;
+  const [lo, hi] = from <= to ? [from, to] : [to, from];
+  if (hi <= CLOSURES_CHECKED_THROUGH) return void 0;
+  const years = [];
+  for (let y = Math.max(Number(lo.slice(0, 4)), Number(CLOSURES_CHECKED_THROUGH.slice(0, 4))); y <= Number(hi.slice(0, 4)); y++)
+    if (!specialClosures(market, y).researched) years.push(y);
+  if (!years.length) return void 0;
+  return `${MARKETS[market].name}: one-off closures (a day of mourning, an outage) after ${CLOSURES_CHECKED_THROUGH} are not researched for ${years.join(", ")} \u2014 the session count counts every rule-computed session as open and may be off by a day; research them with \`${researchCommand("calendar", MARKET_COUNTRY[market])}\``;
+}
+function localTimeToUtc(day4, hhmm, timeZone) {
+  const [y, m, d] = day4.split("-").map(Number);
+  const [hh, mm] = hhmm.split(":").map(Number);
+  const wall = Date.UTC(y, m - 1, d, hh, mm);
+  const fmt8 = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+  const offset = (at) => {
+    const p = Object.fromEntries(fmt8.formatToParts(new Date(at)).map((x) => [x.type, x.value]));
+    return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second)) - Math.floor(at / 1e3) * 1e3;
+  };
+  const first = wall - offset(wall);
+  return new Date(wall - offset(first));
+}
+var utc = (y, m, d) => new Date(Date.UTC(y, m - 1, d));
+var fmt2 = (d) => d.toISOString().slice(0, 10);
+var addDays = (d, n2) => new Date(d.getTime() + n2 * 864e5);
+function easterSunday(year) {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f3 = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f3 + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day4 = (h + l - 7 * m + 114) % 31 + 1;
+  return utc(year, month, day4);
+}
+function nthWeekday(year, month, weekday, n2) {
+  if (n2 > 0) {
+    const first = utc(year, month, 1);
+    const offset2 = (weekday - first.getUTCDay() + 7) % 7;
+    return addDays(first, offset2 + (n2 - 1) * 7);
+  }
+  const last2 = utc(year, month + 1, 0);
+  const offset = (last2.getUTCDay() - weekday + 7) % 7;
+  return addDays(last2, -offset);
+}
+function observed(d) {
+  const w = d.getUTCDay();
+  return w === 6 ? addDays(d, -1) : w === 0 ? addDays(d, 1) : d;
+}
+function holidays(market, year) {
+  const out = [];
+  const closed = (d, name) => out.push({ date: fmt2(d), name, kind: "closed" });
+  const early = (d, name, closeAt2) => {
+    const w = d.getUTCDay();
+    if (w !== 0 && w !== 6) out.push({ date: fmt2(d), name, kind: "early-close", closeAt: closeAt2 });
+  };
+  const easter = easterSunday(year);
+  if (market === "XNYS") {
+    const ny = utc(year, 1, 1);
+    if (ny.getUTCDay() !== 6) closed(observed(ny), "New Year's Day");
+    closed(nthWeekday(year, 1, 1, 3), "Martin Luther King Jr. Day");
+    closed(nthWeekday(year, 2, 1, 3), "Washington's Birthday");
+    closed(addDays(easter, -2), "Good Friday");
+    closed(nthWeekday(year, 5, 1, -1), "Memorial Day");
+    if (year >= 2022) closed(observed(utc(year, 6, 19)), "Juneteenth");
+    const july4 = utc(year, 7, 4);
+    closed(observed(july4), "Independence Day");
+    if (july4.getUTCDay() >= 2 && july4.getUTCDay() <= 5) early(utc(year, 7, 3), "Day before Independence Day", "13:00");
+    closed(nthWeekday(year, 9, 1, 1), "Labor Day");
+    const thanksgiving = nthWeekday(year, 11, 4, 4);
+    closed(thanksgiving, "Thanksgiving Day");
+    early(addDays(thanksgiving, 1), "Day after Thanksgiving", "13:00");
+    const xmas = utc(year, 12, 25);
+    closed(observed(xmas), "Christmas Day");
+    if (xmas.getUTCDay() >= 2 && xmas.getUTCDay() <= 5) early(utc(year, 12, 24), "Christmas Eve", "13:00");
+  } else if (market === "XPAR") {
+    closed(utc(year, 1, 1), "New Year's Day");
+    closed(addDays(easter, -2), "Good Friday");
+    closed(addDays(easter, 1), "Easter Monday");
+    closed(utc(year, 5, 1), "Labour Day");
+    closed(utc(year, 12, 25), "Christmas Day");
+    closed(utc(year, 12, 26), "Boxing Day");
+    early(utc(year, 12, 24), "Christmas Eve", "14:05");
+    early(utc(year, 12, 31), "New Year's Eve", "14:05");
+  } else if (market === "XMIL") {
+    closed(utc(year, 1, 1), "New Year's Day");
+    closed(addDays(easter, -2), "Good Friday");
+    closed(addDays(easter, 1), "Easter Monday");
+    closed(utc(year, 5, 1), "Labour Day");
+    closed(utc(year, 8, 15), "Assumption Day");
+    closed(utc(year, 12, 24), "Christmas Eve");
+    closed(utc(year, 12, 25), "Christmas Day");
+    closed(utc(year, 12, 26), "St Stephen's Day");
+    closed(utc(year, 12, 31), "New Year's Eve");
+  } else if (market === "XOSL") {
+    closed(utc(year, 1, 1), "New Year's Day");
+    closed(addDays(easter, -3), "Maundy Thursday");
+    closed(addDays(easter, -2), "Good Friday");
+    closed(addDays(easter, 1), "Easter Monday");
+    closed(utc(year, 5, 1), "Labour Day");
+    closed(utc(year, 5, 17), "Constitution Day");
+    closed(addDays(easter, 39), "Ascension Day");
+    closed(addDays(easter, 50), "Whit Monday");
+    closed(utc(year, 12, 24), "Christmas Eve");
+    closed(utc(year, 12, 25), "Christmas Day");
+    closed(utc(year, 12, 26), "Boxing Day");
+    closed(utc(year, 12, 31), "New Year's Eve");
+  }
+  for (const h of specialClosures(market, year).closures) if (!out.some((x) => x.date === h.date && x.kind === "closed")) out.push(h);
+  return out.filter((h) => ![0, 6].includes((/* @__PURE__ */ new Date(`${h.date}T00:00:00Z`)).getUTCDay())).sort((a, b) => a.date.localeCompare(b.date));
+}
+function marketForMic(mic) {
+  if (!mic) return "XNYS";
+  for (const m of Object.values(MARKETS)) if (m.mics.includes(mic)) return m.id;
+  return /^X?NAS|NYSE|ARCA|AMEX|BATS/i.test(mic) ? "XNYS" : "XPAR";
+}
+function calendarFor(i) {
+  if (i.market === "crypto") return "CRYPTO";
+  if (i.market === "us") return "XNYS";
+  if (i.market === "euronext") return marketForMic(i.mic);
+  return void 0;
+}
+var YEARS = /* @__PURE__ */ new Map();
+function yearOf(market, year) {
+  const path2 = market === "CRYPTO" ? "" : factsPath(CALENDAR, MARKET_COUNTRY[market], year);
+  const key = `${market}:${year}:${path2 && existsSync16(path2) ? `${path2}@${statSync11(path2).mtimeMs}` : "none"}`;
+  let y = YEARS.get(key);
+  if (!y) {
+    const list = holidays(market, year);
+    y = {
+      closed: new Set(list.filter((h) => h.kind === "closed").map((h) => h.date)),
+      early: new Map(list.filter((h) => h.kind === "early-close").map((h) => [h.date, h]))
+    };
+    YEARS.set(key, y);
+  }
+  return y;
+}
+function isTradingDay(market, date) {
+  if (market === "CRYPTO") return true;
+  const d = /* @__PURE__ */ new Date(`${date}T00:00:00Z`);
+  if ([0, 6].includes(d.getUTCDay())) return false;
+  if (!market) return true;
+  return !yearOf(market, d.getUTCFullYear()).closed.has(date);
+}
+function nextSessions(market, from, n2) {
+  const out = [];
+  let d = /* @__PURE__ */ new Date(`${from}T00:00:00Z`);
+  for (let guard = 0; out.length < n2 && guard < 400; guard++, d = addDays(d, 1)) {
+    const day4 = fmt2(d);
+    if (!isTradingDay(market, day4)) continue;
+    const e = yearOf(market, d.getUTCFullYear()).early.get(day4);
+    out.push({ date: day4, closeAt: e?.closeAt ?? marketHours(market, d.getUTCFullYear()).close, early: !!e });
+  }
+  return out;
+}
+function addSessions(market, from, n2) {
+  let d = /* @__PURE__ */ new Date(`${from}T00:00:00Z`);
+  let left = n2;
+  for (let guard = 0; left > 0 && guard < 2e3; guard++) {
+    d = addDays(d, 1);
+    if (isTradingDay(market, fmt2(d))) left--;
+  }
+  return fmt2(d);
+}
+
+// src/analyze/regime/common.ts
 var FETCH_CONCURRENCY = 4;
 var DAY2 = 864e5;
 var shiftDay = (iso4, days) => isoDayOf(new Date(Date.parse(`${iso4}T00:00:00Z`) + days * DAY2));
 var round4 = (x) => Number(x.toFixed(4));
-var SESSION_FINAL_UTC = {
+var SESSION_FINAL = {
   crypto: void 0,
-  us: 21 * 60 + 15,
-  world: 21 * 60 + 15,
-  euronext: 17 * 60,
-  europe: 17 * 60,
-  fund: 17 * 60
+  us: { calendar: "XNYS", afterCloseMin: 15 },
+  world: { calendar: "XNYS", afterCloseMin: 75 },
+  euronext: { calendar: "XPAR", afterCloseMin: 20 },
+  europe: { calendar: "XPAR", afterCloseMin: 20 },
+  fund: { calendar: "XPAR", afterCloseMin: 20 }
 };
+function sessionFinalAt(market, day4) {
+  const s = SESSION_FINAL[market];
+  if (!s) return void 0;
+  const close = marketHours(s.calendar, Number(day4.slice(0, 4))).close;
+  return new Date(localTimeToUtc(day4, close, MARKETS[s.calendar].timeZone).getTime() + s.afterCloseMin * 6e4);
+}
 function closedBars(bars, market, now) {
   const today2 = isoDayOf(now);
-  const minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-  const final = SESSION_FINAL_UTC[market];
-  const closedToday = final !== void 0 && minutes >= final;
+  const final = sessionFinalAt(market, today2);
+  const closedToday = final !== void 0 && now.getTime() >= final.getTime();
   return bars.filter((b) => b.date.slice(0, 10) < today2 || b.date.slice(0, 10) === today2 && closedToday);
 }
 function alignCloses(a, b) {
@@ -20148,7 +20466,7 @@ function emitReport(args, report2, asJson) {
 ${formatDatasets(registered)}`);
   if (!out) process.stdout.write("note: no --out, so nothing was registered as evidence \u2014 pass --out <dir> to cite these figures\n");
 }
-var fmt2 = (x, d = 2) => x === void 0 || !Number.isFinite(x) ? "n/a" : String(Number(x.toFixed(d)));
+var fmt3 = (x, d = 2) => x === void 0 || !Number.isFinite(x) ? "n/a" : String(Number(x.toFixed(d)));
 
 // src/analytics/stats.ts
 function mean(xs) {
@@ -20862,7 +21180,7 @@ function yieldSustainability(p) {
 }
 
 // src/analyze/quant/options.ts
-import { existsSync as existsSync16, mkdirSync as mkdirSync11, readFileSync as readFileSync19 } from "fs";
+import { existsSync as existsSync17, mkdirSync as mkdirSync11, readFileSync as readFileSync19 } from "fs";
 import { join as join20 } from "path";
 
 // src/analytics/options.ts
@@ -21047,7 +21365,10 @@ function unusualActivity(chain2, threshold = 3.5, multiplier = 100) {
 // src/analyze/quant/options.ts
 var DAY3 = 864e5;
 var YEAR = 365 * DAY3;
-var SETTLE_HOUR = { cboe: "20", deribit: "08" };
+function settlementAt(venue, expiry) {
+  if (venue === "deribit") return /* @__PURE__ */ new Date(`${expiry}T08:00:00Z`);
+  return localTimeToUtc(expiry, marketHours("XNYS", Number(expiry.slice(0, 4))).close, MARKETS.XNYS.timeZone);
+}
 function toQuantChain(chain2, venue, now, rate2) {
   const inverse2 = chain2.premiumCurrency === chain2.underlying;
   const toCcy = inverse2 ? chain2.underlyingPrice : 1;
@@ -21056,7 +21377,7 @@ function toQuantChain(chain2, venue, now, rate2) {
   let filled = 0;
   const options = [];
   for (const c of chain2.contracts) {
-    const t = Math.max(0, (Date.parse(`${c.expiry}T${SETTLE_HOUR[venue]}:00:00Z`) - now.getTime()) / YEAR);
+    const t = Math.max(0, (settlementAt(venue, c.expiry).getTime() - now.getTime()) / YEAR);
     const forward = c.underlyingPrice ?? chain2.underlyingPrice;
     const iv = c.iv !== void 0 && c.iv > 0 ? c.iv / 100 : void 0;
     let { delta, gamma } = c;
@@ -21273,7 +21594,7 @@ function ivHistoryPath(symbol) {
 function recordIv(symbol, date, iv) {
   const path2 = ivHistoryPath(symbol);
   let h = { symbol, series: {} };
-  if (existsSync16(path2)) {
+  if (existsSync17(path2)) {
     try {
       const raw = JSON.parse(readFileSync19(path2, "utf8"));
       if (raw && typeof raw.series === "object") h = { symbol, series: raw.series };
@@ -22325,7 +22646,7 @@ async function predictAnalysisCommand(args, asJson) {
 }
 
 // src/research/run.ts
-import { existsSync as existsSync18, readFileSync as readFileSync22 } from "fs";
+import { existsSync as existsSync19, readFileSync as readFileSync22 } from "fs";
 import { join as join23 } from "path";
 
 // src/research/angles.ts
@@ -22383,7 +22704,7 @@ var RESULTS = [
   ["results-segments", "Segments", "{n} r\xE9sultats par division segment {y}", "{n} {y} segment results by division"],
   ["results-reaction", "Market and analysts' reaction", "{n} r\xE9sultats {y} r\xE9action march\xE9 analystes", "{n} {y} earnings reaction analysts"]
 ];
-var CALENDAR = [
+var CALENDAR2 = [
   [
     "financial-calendar",
     "The issuer's financial calendar",
@@ -22419,7 +22740,7 @@ function researchAngles(s) {
     return out;
   }
   if (s.focus === "results") return (s.kind === "company" ? COMPANY_RESULTS : RESULTS).map((t) => angle(t, s));
-  if (s.focus === "calendar") return CALENDAR.map((t) => angle(t, s));
+  if (s.focus === "calendar") return CALENDAR2.map((t) => angle(t, s));
   const table2 = s.kind === "etf" ? ETF : s.kind === "crypto" ? CRYPTO : s.kind === "company" ? COMPANY : EQUITY;
   return table2.map((t) => angle(t, s));
 }
@@ -22631,7 +22952,7 @@ async function delegatedSearch(who, queries, opts = {}) {
 }
 
 // src/research/dossier.ts
-import { existsSync as existsSync17, mkdirSync as mkdirSync12, readdirSync as readdirSync9, readFileSync as readFileSync21 } from "fs";
+import { existsSync as existsSync18, mkdirSync as mkdirSync12, readdirSync as readdirSync9, readFileSync as readFileSync21 } from "fs";
 import { join as join22 } from "path";
 
 // src/core/dates.ts
@@ -23177,12 +23498,12 @@ function researchFiles(tag) {
 }
 var researchTag = (symbolOrName) => symbolOrName.replace(/[^A-Za-z0-9.-]+/g, "_");
 function researchTags(dir2) {
-  if (!existsSync17(dir2)) return [];
+  if (!existsSync18(dir2)) return [];
   return readdirSync9(dir2).map((f3) => /^RESEARCH\.(.+)\.todo\.json$/.exec(f3)?.[1]).filter((t) => !!t).sort();
 }
 function readTodo(dir2, tag) {
   const path2 = join22(dir2, researchFiles(tag).todo);
-  if (!existsSync17(path2)) return void 0;
+  if (!existsSync18(path2)) return void 0;
   const t = JSON.parse(readFileSync21(path2, "utf8"));
   if (t.schema !== 1 || !Array.isArray(t.angles)) throw new Error(`${path2} is not an ultrastock research worklist`);
   return t;
@@ -23867,7 +24188,7 @@ async function startResearch(raw, opts = {}) {
 }
 function previousDocs(dir2, tag) {
   const path2 = join23(dir2, researchFiles(tag).index);
-  if (!existsSync18(path2)) return [];
+  if (!existsSync19(path2)) return [];
   const store = EvidenceStore.load(dir2);
   if (!store) return [];
   const out = [];
@@ -23985,19 +24306,19 @@ async function researchRound(dir2, todo, notes, opts = {}) {
 }
 
 // src/journal/journal.ts
-import { appendFileSync as appendFileSync5, existsSync as existsSync24, mkdirSync as mkdirSync17, readdirSync as readdirSync11, readFileSync as readFileSync26 } from "fs";
+import { appendFileSync as appendFileSync5, existsSync as existsSync25, mkdirSync as mkdirSync17, readdirSync as readdirSync11, readFileSync as readFileSync26 } from "fs";
 import { join as join29 } from "path";
 
 // src/analyze/decision.ts
-import { appendFileSync as appendFileSync3, existsSync as existsSync20, mkdirSync as mkdirSync13 } from "fs";
+import { appendFileSync as appendFileSync3, existsSync as existsSync21, mkdirSync as mkdirSync13 } from "fs";
 import { join as join24 } from "path";
 
 // src/portfolio/jsonl.ts
-import { appendFileSync as appendFileSync2, closeSync as closeSync4, existsSync as existsSync19, openSync as openSync4, readFileSync as readFileSync23, readSync as readSync2, statSync as statSync11, truncateSync } from "fs";
+import { appendFileSync as appendFileSync2, closeSync as closeSync4, existsSync as existsSync20, openSync as openSync4, readFileSync as readFileSync23, readSync as readSync2, statSync as statSync12, truncateSync } from "fs";
 var warnOnStderr = (m) => void process.stderr.write(`ultrastock: warning: ${m}
 `);
 function readJsonl(path2, warn = warnOnStderr) {
-  if (!existsSync19(path2)) return [];
+  if (!existsSync20(path2)) return [];
   const lines = readFileSync23(path2, "utf8").split("\n");
   const tail = lines.pop() ?? "";
   const out = [];
@@ -24021,8 +24342,8 @@ function readJsonl(path2, warn = warnOnStderr) {
   return out;
 }
 function sealJsonlTail(path2) {
-  if (!existsSync19(path2)) return;
-  const size = statSync11(path2).size;
+  if (!existsSync20(path2)) return;
+  const size = statSync12(path2).size;
   if (!size) return;
   const fd = openSync4(path2, "r");
   const last2 = Buffer.alloc(1);
@@ -24118,7 +24439,7 @@ function recordDecision(input, runDir2) {
     "<!-- ENTRY_END -->",
     ""
   ].join("\n");
-  if (!existsSync20(md)) writeFileAtomic(md, "# Decision journal\n\nAppend-only. Each entry is settled later against the price (`journal settle`).\n\n");
+  if (!existsSync21(md)) writeFileAtomic(md, "# Decision journal\n\nAppend-only. Each entry is settled later against the price (`journal settle`).\n\n");
   appendFileSync3(md, entry2);
   return { file, journal: md, id: d.id };
 }
@@ -24131,7 +24452,7 @@ import { appendFileSync as appendFileSync4, mkdirSync as mkdirSync15 } from "fs"
 import { join as join26 } from "path";
 
 // src/core/db.ts
-import { chmodSync as chmodSync2, closeSync as closeSync5, existsSync as existsSync21, mkdirSync as mkdirSync14, openSync as openSync5, readFileSync as readFileSync24 } from "fs";
+import { chmodSync as chmodSync2, closeSync as closeSync5, existsSync as existsSync22, mkdirSync as mkdirSync14, openSync as openSync5, readFileSync as readFileSync24 } from "fs";
 import { createRequire } from "module";
 import { join as join25 } from "path";
 var SQLITE_UNAVAILABLE = "the SQLite store needs Node \u2265 22.5 (unflagged from 22.13) with node:sqlite \u2014 the JSONL ledger keeps working; upgrade Node to use `portfolio db`";
@@ -24165,7 +24486,7 @@ function sqliteSupported() {
 var storePath = () => join25(homeDir(), "ultrastock.db");
 var markerPath = () => join25(homeDir(), "store.json");
 function storeAvailable() {
-  return existsSync21(storePath()) && sqliteSupported();
+  return existsSync22(storePath()) && sqliteSupported();
 }
 var MIGRATIONS = [
   `
@@ -24262,7 +24583,7 @@ function migrate(db) {
 function openStore(opts = {}) {
   const { DatabaseSync } = sqlite();
   const path2 = storePath();
-  if (!existsSync21(path2)) {
+  if (!existsSync22(path2)) {
     if (!opts.create || opts.readOnly) throw new Error(`no local store at ${path2}: run \`ultrastock portfolio db init\` first`);
     mkdirSync14(homeDir(), { recursive: true });
     closeSync5(openSync5(path2, "a", 384));
@@ -24304,7 +24625,7 @@ function inTransaction(db, fn) {
 var schemaVersionOf = (db) => userVersion(db);
 function ledgerBackend() {
   const p = markerPath();
-  if (!existsSync21(p)) return "jsonl";
+  if (!existsSync22(p)) return "jsonl";
   try {
     return JSON.parse(readFileSync24(p, "utf8")).ledger === "sqlite" ? "sqlite" : "jsonl";
   } catch {
@@ -24750,11 +25071,11 @@ function xirr(flows) {
 }
 
 // src/trading/tickets.ts
-import { closeSync as closeSync6, existsSync as existsSync23, fsyncSync as fsyncSync2, mkdirSync as mkdirSync16, openSync as openSync6, readdirSync as readdirSync10, readFileSync as readFileSync25, writeSync as writeSync3 } from "fs";
+import { closeSync as closeSync6, existsSync as existsSync24, fsyncSync as fsyncSync2, mkdirSync as mkdirSync16, openSync as openSync6, readdirSync as readdirSync10, readFileSync as readFileSync25, writeSync as writeSync3 } from "fs";
 import { join as join28 } from "path";
 
 // src/trading/riskgate.ts
-import { existsSync as existsSync22 } from "fs";
+import { existsSync as existsSync23 } from "fs";
 import { join as join27 } from "path";
 function killSwitchPath() {
   return join27(homeDir(), "KILL");
@@ -24783,7 +25104,7 @@ function riskGate(o, c) {
   const notionalBase = o.quantity * o.price * c.fxToBase;
   const riskReducing = o.side === "sell" && o.quantity <= c.heldQuantity + 1e-9;
   if (!(o.quantity > 0) || !(o.price > 0)) add2("INVALID", "block", "quantity and price must be positive");
-  if (existsSync22(killSwitchPath()))
+  if (existsSync23(killSwitchPath()))
     add2("KILL_SWITCH", riskReducing ? "warn" : "block", `the kill switch is on (${killSwitchPath()}) \u2014 only risk-reducing orders pass`);
   if (c.breaker.tripped)
     add2("BREAKER", riskReducing ? "warn" : "block", `circuit breaker tripped: ${c.breaker.reason ?? "loss limit"} \u2014 no new risk until it resets`);
@@ -24926,7 +25247,7 @@ function readAudit(warn) {
 }
 function loadTicket(id) {
   const p = ticketPath(id);
-  if (!existsSync23(p)) throw new Error(`no ticket ${id}`);
+  if (!existsSync24(p)) throw new Error(`no ticket ${id}`);
   return JSON.parse(readFileSync25(p, "utf8"));
 }
 function save(t) {
@@ -24935,7 +25256,7 @@ function save(t) {
 `, 384);
 }
 function listTickets(filter) {
-  if (!existsSync23(ticketsDir())) return [];
+  if (!existsSync24(ticketsDir())) return [];
   return readdirSync10(ticketsDir()).filter((f3) => f3.endsWith(".json")).map((f3) => JSON.parse(readFileSync25(join28(ticketsDir(), f3), "utf8"))).filter((t) => !filter || filter(t)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 async function transition(id, to, why2, mutate, now = /* @__PURE__ */ new Date(), from, refused) {
@@ -24970,7 +25291,7 @@ function createTicket(order, opts = {}) {
     validUntil: opts.validUntil,
     history: [{ at: now.toISOString(), from: "none", to: "draft", why: "created" }]
   };
-  if (existsSync23(ticketPath(t.id))) throw new Error(`ticket ${t.id} already exists`);
+  if (existsSync24(ticketPath(t.id))) throw new Error(`ticket ${t.id} already exists`);
   save(t);
   audit({ event: "ticket", id: t.id, from: "none", to: "draft", fingerprint, order });
   return t;
@@ -25026,11 +25347,11 @@ function saveThesis(t) {
 }
 function loadThesis(id) {
   const f3 = join29(thesesDir(), `${id}.json`);
-  if (!/^th-[a-z0-9.-]+$/.test(id) || id.includes("..") || !existsSync24(f3)) throw new Error(`no thesis ${id}`);
+  if (!/^th-[a-z0-9.-]+$/.test(id) || id.includes("..") || !existsSync25(f3)) throw new Error(`no thesis ${id}`);
   return JSON.parse(readFileSync26(f3, "utf8"));
 }
 function listTheses() {
-  if (!existsSync24(thesesDir())) return [];
+  if (!existsSync25(thesesDir())) return [];
   return readdirSync11(thesesDir()).filter((f3) => f3.endsWith(".json")).map((f3) => JSON.parse(readFileSync26(join29(thesesDir(), f3), "utf8"))).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 function addThesis(input, now = /* @__PURE__ */ new Date()) {
@@ -25230,14 +25551,14 @@ function addLesson(text2, tags = [], now = /* @__PURE__ */ new Date()) {
   if (clean3.length < 10) throw new Error("a lesson is a sentence: what happened, and what to do differently");
   mkdirSync17(knowledgeDir(), { recursive: true });
   const f3 = join29(knowledgeDir(), "lessons.md");
-  if (!existsSync24(f3)) writeFileAtomic(f3, "# Lessons\n\nThe user's own pitfalls, newest last. Read before deciding.\n\n");
+  if (!existsSync25(f3)) writeFileAtomic(f3, "# Lessons\n\nThe user's own pitfalls, newest last. Read before deciding.\n\n");
   appendFileSync5(f3, `- ${now.toISOString().slice(0, 10)}${tags.length ? ` [${tags.join(", ")}]` : ""}: ${clean3}
 `);
   return f3;
 }
 function readLessons(tag) {
   const f3 = join29(knowledgeDir(), "lessons.md");
-  if (!existsSync24(f3)) return [];
+  if (!existsSync25(f3)) return [];
   return readFileSync26(f3, "utf8").split("\n").filter((l) => l.startsWith("- ") && (!tag || l.includes(`[${tag}`) || l.includes(`, ${tag}`)));
 }
 function importSource(title, body, origin, now = /* @__PURE__ */ new Date()) {
@@ -25923,7 +26244,7 @@ async function nportHoldings(ticker) {
 
 // src/providers/markets/tradingview.ts
 var BASE21 = "https://scanner.tradingview.com";
-var SOURCE19 = "tradingview";
+var SOURCE20 = "tradingview";
 var NOTE = "unofficial endpoint (TradingView's screener backend); delayed snapshot";
 var TV_SNAPSHOT_COLUMNS = [
   "description",
@@ -26125,22 +26446,22 @@ function tvRowPoints(row, columns, asOf) {
   return out;
 }
 async function scan(market, body) {
-  if (!/^[a-z0-9_]+$/.test(market)) throw new ProviderError(SOURCE19, `"${market}" is not a TradingView scanner market (germany, france, america, global\u2026)`, 400);
+  if (!/^[a-z0-9_]+$/.test(market)) throw new ProviderError(SOURCE20, `"${market}" is not a TradingView scanner market (germany, france, america, global\u2026)`, 400);
   const url = `${BASE21}/${market}/scan`;
   const res = await fetchJson(url, { method: "POST", json: body, userAgent: "browser", hostIntervalMs: 1e3 });
   if (!res.ok || !res.data || !Array.isArray(res.data.data)) {
-    if (res.status === 404) throw new ProviderError(SOURCE19, `TradingView has no scanner market "${market}"`, 404);
-    throw new ProviderError(SOURCE19, `scan on ${market} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+    if (res.status === 404) throw new ProviderError(SOURCE20, `TradingView has no scanner market "${market}"`, 404);
+    throw new ProviderError(SOURCE20, `scan on ${market} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   }
   return { data: res.data, url, fetchedAt: res.fetchedAt };
 }
 async function tradingviewSnapshot(symbol, opts = {}) {
   const ticker = toTradingViewTicker(symbol);
-  if (!ticker) throw new ProviderError(SOURCE19, `cannot map ${symbol} to a TradingView ticker \u2014 pass EXCHANGE:TICKER (e.g. NASDAQ:AAPL)`, 400);
+  if (!ticker) throw new ProviderError(SOURCE20, `cannot map ${symbol} to a TradingView ticker \u2014 pass EXCHANGE:TICKER (e.g. NASDAQ:AAPL)`, 400);
   const columns = opts.columns ?? TV_SNAPSHOT_COLUMNS;
   const res = await scan(opts.market ?? "global", { symbols: { tickers: [ticker] }, columns });
   const row = res.data.data.find((r3) => r3.s === ticker) ?? res.data.data[0];
-  if (!row) throw new ProviderError(SOURCE19, `TradingView knows no ${ticker}`, 404);
+  if (!row) throw new ProviderError(SOURCE20, `TradingView knows no ${ticker}`, 404);
   const day4 = res.fetchedAt.slice(0, 10);
   const notes = [NOTE];
   const cur = row.d[columns.indexOf("currency")];
@@ -26151,7 +26472,7 @@ async function tradingviewSnapshot(symbol, opts = {}) {
     title: `${ticker} TradingView snapshot`,
     subject: symbol.toUpperCase(),
     points: tvRowPoints(row, columns, day4),
-    provenance: { source: SOURCE19, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day4 },
+    provenance: { source: SOURCE20, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day4 },
     notes
   };
 }
@@ -26174,13 +26495,13 @@ async function tradingviewScan(market, opts = {}) {
     title: `TradingView ${market} screener`,
     subject: market,
     points,
-    provenance: { source: SOURCE19, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day4 },
+    provenance: { source: SOURCE20, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day4 },
     notes
   };
 }
 
 // src/providers/macro/ecb.ts
-var SOURCE20 = "ecb";
+var SOURCE21 = "ecb";
 var BASE22 = "https://data-api.ecb.europa.eu/service/data";
 function parseSdmxCsv(text2) {
   const byKey = /* @__PURE__ */ new Map();
@@ -26198,10 +26519,10 @@ var ecbUrl = (flow, key, n2) => `${BASE22}/${encodeURIComponent(flow)}/${key.spl
 async function fetchEcb(flow, key, n2 = 12) {
   const url = ecbUrl(flow, key, n2);
   const res = await fetchText(url, { accept: "text/csv" });
-  if (res.status === 404) throw new ProviderError(SOURCE20, `no series ${flow}.${key}`, 404);
-  requireOk(SOURCE20, res, `series ${flow}.${key}`);
+  if (res.status === 404) throw new ProviderError(SOURCE21, `no series ${flow}.${key}`, 404);
+  requireOk(SOURCE21, res, `series ${flow}.${key}`);
   const series = parseSdmxCsv(res.body);
-  if (!series.length) throw new ProviderError(SOURCE20, `series ${flow}.${key} returned no observations`);
+  if (!series.length) throw new ProviderError(SOURCE21, `series ${flow}.${key} returned no observations`);
   return { series, url: res.url, fetchedAt: res.fetchedAt };
 }
 async function ecbSeries(flow, key, n2 = 12, opts = {}) {
@@ -26216,7 +26537,7 @@ async function ecbSeries(flow, key, n2 = 12, opts = {}) {
     title: opts.label ?? `ECB ${flow}.${key}`,
     subject: opts.subject ?? "EA",
     points,
-    provenance: { source: SOURCE20, url, fetchedAt, official: true, asOf: series[0].obs[series[0].obs.length - 1]?.date },
+    provenance: { source: SOURCE21, url, fetchedAt, official: true, asOf: series[0].obs[series[0].obs.length - 1]?.date },
     notes: []
   };
 }
@@ -26250,7 +26571,7 @@ async function ecbPolicyRates() {
     title: "ECB key interest rates",
     subject: "EA",
     points,
-    provenance: { source: SOURCE20, url, fetchedAt, official: true },
+    provenance: { source: SOURCE21, url, fetchedAt, official: true },
     notes: ["Dates are the dates the current rates took effect; the change is versus the previous decision."]
   };
 }
@@ -26284,7 +26605,7 @@ async function ecbYieldCurve(tenors = EA_TENORS) {
     title: "Euro area AAA government yield curve (ECB)",
     subject: "EA",
     points,
-    provenance: { source: SOURCE20, url, fetchedAt, delay: "eod", official: true, asOf: y10?.date },
+    provenance: { source: SOURCE21, url, fetchedAt, delay: "eod", official: true, asOf: y10?.date },
     notes: ["Spot rates fitted by the ECB on AAA-rated euro area central government bonds (Svensson model)."]
   };
 }
@@ -26334,7 +26655,7 @@ async function ecbSovereignYields(countries = SOVEREIGN_COUNTRIES) {
     title: "Euro area 10-year sovereign yields and spreads over the Bund (ECB)",
     subject: "EA",
     points,
-    provenance: { source: SOURCE20, url, fetchedAt, official: true, asOf: bund?.date },
+    provenance: { source: SOURCE21, url, fetchedAt, official: true, asOf: bund?.date },
     notes: [
       "Monthly averages of secondary-market yields (the ECB's long-term interest rate for convergence purposes), published after the month ends: a trend, not today's price."
     ]
@@ -26353,7 +26674,7 @@ async function ecbFx(currencies = ["USD", "GBP", "JPY", "CHF"], n2 = 5) {
     title: "ECB euro foreign exchange reference rates",
     subject: "EUR",
     points,
-    provenance: { source: SOURCE20, url, fetchedAt, delay: "eod", official: true },
+    provenance: { source: SOURCE21, url, fetchedAt, delay: "eod", official: true },
     notes: [
       "Reference rates set around 14:15 CET each TARGET business day \u2014 for information, not a transaction rate.",
       ...missing.length ? [`no ECB reference rate for: ${missing.join(", ")}`] : []
@@ -28336,179 +28657,6 @@ async function etfFundDomicile(inst) {
   return etfDomicile({ fundCountry, isin: inst.isin, market: inst.market });
 }
 
-// src/core/calendar.ts
-var MARKETS = {
-  XNYS: { id: "XNYS", name: "NYSE / Nasdaq", timeZone: "America/New_York", open: "09:30", close: "16:00", mics: ["XNYS", "XNAS", "ARCX", "BATS"] },
-  XPAR: {
-    id: "XPAR",
-    name: "Euronext (Paris, Amsterdam, Brussels, Lisbon, Dublin)",
-    timeZone: "Europe/Paris",
-    open: "09:00",
-    close: "17:30",
-    mics: ["XPAR", "XAMS", "XBRU", "XLIS", "XMSM", "ALXP", "XMLI", "ETFP", "TNLA", "ALXB", "ALXL", "XESM"]
-  },
-  XMIL: { id: "XMIL", name: "Euronext Milan", timeZone: "Europe/Rome", open: "09:00", close: "17:30", mics: ["MTAA", "EXGM"] },
-  XOSL: { id: "XOSL", name: "Euronext Oslo", timeZone: "Europe/Oslo", open: "09:00", close: "16:20", mics: ["XOSL", "MERK", "XOAS"] },
-  CRYPTO: { id: "CRYPTO", name: "Crypto venues (24/7)", timeZone: "UTC", open: "00:00", close: "24:00", mics: [] }
-};
-var SPECIAL_CLOSURES = [
-  {
-    market: "XNYS",
-    date: "2025-01-09",
-    name: "National Day of Mourning (President Carter)",
-    kind: "closed",
-    source: "https://www.nyse.com/markets/hours-calendars"
-  }
-];
-var utc = (y, m, d) => new Date(Date.UTC(y, m - 1, d));
-var fmt3 = (d) => d.toISOString().slice(0, 10);
-var addDays = (d, n2) => new Date(d.getTime() + n2 * 864e5);
-function easterSunday(year) {
-  const a = year % 19;
-  const b = Math.floor(year / 100);
-  const c = year % 100;
-  const d = Math.floor(b / 4);
-  const e = b % 4;
-  const f3 = Math.floor((b + 8) / 25);
-  const g = Math.floor((b - f3 + 1) / 3);
-  const h = (19 * a + b - d - g + 15) % 30;
-  const i = Math.floor(c / 4);
-  const k = c % 4;
-  const l = (32 + 2 * e + 2 * i - h - k) % 7;
-  const m = Math.floor((a + 11 * h + 22 * l) / 451);
-  const month = Math.floor((h + l - 7 * m + 114) / 31);
-  const day4 = (h + l - 7 * m + 114) % 31 + 1;
-  return utc(year, month, day4);
-}
-function nthWeekday(year, month, weekday, n2) {
-  if (n2 > 0) {
-    const first = utc(year, month, 1);
-    const offset2 = (weekday - first.getUTCDay() + 7) % 7;
-    return addDays(first, offset2 + (n2 - 1) * 7);
-  }
-  const last2 = utc(year, month + 1, 0);
-  const offset = (last2.getUTCDay() - weekday + 7) % 7;
-  return addDays(last2, -offset);
-}
-function observed(d) {
-  const w = d.getUTCDay();
-  return w === 6 ? addDays(d, -1) : w === 0 ? addDays(d, 1) : d;
-}
-function holidays(market, year) {
-  const out = [];
-  const closed = (d, name) => out.push({ date: fmt3(d), name, kind: "closed" });
-  const early = (d, name, closeAt2) => {
-    const w = d.getUTCDay();
-    if (w !== 0 && w !== 6) out.push({ date: fmt3(d), name, kind: "early-close", closeAt: closeAt2 });
-  };
-  const easter = easterSunday(year);
-  if (market === "XNYS") {
-    const ny = utc(year, 1, 1);
-    if (ny.getUTCDay() !== 6) closed(observed(ny), "New Year's Day");
-    closed(nthWeekday(year, 1, 1, 3), "Martin Luther King Jr. Day");
-    closed(nthWeekday(year, 2, 1, 3), "Washington's Birthday");
-    closed(addDays(easter, -2), "Good Friday");
-    closed(nthWeekday(year, 5, 1, -1), "Memorial Day");
-    if (year >= 2022) closed(observed(utc(year, 6, 19)), "Juneteenth");
-    const july4 = utc(year, 7, 4);
-    closed(observed(july4), "Independence Day");
-    if (july4.getUTCDay() >= 2 && july4.getUTCDay() <= 5) early(utc(year, 7, 3), "Day before Independence Day", "13:00");
-    closed(nthWeekday(year, 9, 1, 1), "Labor Day");
-    const thanksgiving = nthWeekday(year, 11, 4, 4);
-    closed(thanksgiving, "Thanksgiving Day");
-    early(addDays(thanksgiving, 1), "Day after Thanksgiving", "13:00");
-    const xmas = utc(year, 12, 25);
-    closed(observed(xmas), "Christmas Day");
-    if (xmas.getUTCDay() >= 2 && xmas.getUTCDay() <= 5) early(utc(year, 12, 24), "Christmas Eve", "13:00");
-  } else if (market === "XPAR") {
-    closed(utc(year, 1, 1), "New Year's Day");
-    closed(addDays(easter, -2), "Good Friday");
-    closed(addDays(easter, 1), "Easter Monday");
-    closed(utc(year, 5, 1), "Labour Day");
-    closed(utc(year, 12, 25), "Christmas Day");
-    closed(utc(year, 12, 26), "Boxing Day");
-    early(utc(year, 12, 24), "Christmas Eve", "14:05");
-    early(utc(year, 12, 31), "New Year's Eve", "14:05");
-  } else if (market === "XMIL") {
-    closed(utc(year, 1, 1), "New Year's Day");
-    closed(addDays(easter, -2), "Good Friday");
-    closed(addDays(easter, 1), "Easter Monday");
-    closed(utc(year, 5, 1), "Labour Day");
-    closed(utc(year, 8, 15), "Assumption Day");
-    closed(utc(year, 12, 24), "Christmas Eve");
-    closed(utc(year, 12, 25), "Christmas Day");
-    closed(utc(year, 12, 26), "St Stephen's Day");
-    closed(utc(year, 12, 31), "New Year's Eve");
-  } else if (market === "XOSL") {
-    closed(utc(year, 1, 1), "New Year's Day");
-    closed(addDays(easter, -3), "Maundy Thursday");
-    closed(addDays(easter, -2), "Good Friday");
-    closed(addDays(easter, 1), "Easter Monday");
-    closed(utc(year, 5, 1), "Labour Day");
-    closed(utc(year, 5, 17), "Constitution Day");
-    closed(addDays(easter, 39), "Ascension Day");
-    closed(addDays(easter, 50), "Whit Monday");
-    closed(utc(year, 12, 24), "Christmas Eve");
-    closed(utc(year, 12, 25), "Christmas Day");
-    closed(utc(year, 12, 26), "Boxing Day");
-    closed(utc(year, 12, 31), "New Year's Eve");
-  }
-  for (const s of SPECIAL_CLOSURES) if (s.market === market && s.date.startsWith(String(year))) out.push({ date: s.date, name: s.name, kind: s.kind });
-  return out.filter((h) => ![0, 6].includes((/* @__PURE__ */ new Date(`${h.date}T00:00:00Z`)).getUTCDay())).sort((a, b) => a.date.localeCompare(b.date));
-}
-function marketForMic(mic) {
-  if (!mic) return "XNYS";
-  for (const m of Object.values(MARKETS)) if (m.mics.includes(mic)) return m.id;
-  return /^X?NAS|NYSE|ARCA|AMEX|BATS/i.test(mic) ? "XNYS" : "XPAR";
-}
-function calendarFor(i) {
-  if (i.market === "crypto") return "CRYPTO";
-  if (i.market === "us") return "XNYS";
-  if (i.market === "euronext") return marketForMic(i.mic);
-  return void 0;
-}
-var YEARS = /* @__PURE__ */ new Map();
-function yearOf(market, year) {
-  const key = `${market}:${year}`;
-  let y = YEARS.get(key);
-  if (!y) {
-    const list = holidays(market, year);
-    y = {
-      closed: new Set(list.filter((h) => h.kind === "closed").map((h) => h.date)),
-      early: new Map(list.filter((h) => h.kind === "early-close").map((h) => [h.date, h]))
-    };
-    YEARS.set(key, y);
-  }
-  return y;
-}
-function isTradingDay(market, date) {
-  if (market === "CRYPTO") return true;
-  const d = /* @__PURE__ */ new Date(`${date}T00:00:00Z`);
-  if ([0, 6].includes(d.getUTCDay())) return false;
-  if (!market) return true;
-  return !yearOf(market, d.getUTCFullYear()).closed.has(date);
-}
-function nextSessions(market, from, n2) {
-  const out = [];
-  let d = /* @__PURE__ */ new Date(`${from}T00:00:00Z`);
-  for (let guard = 0; out.length < n2 && guard < 400; guard++, d = addDays(d, 1)) {
-    const day4 = fmt3(d);
-    if (!isTradingDay(market, day4)) continue;
-    const e = yearOf(market, d.getUTCFullYear()).early.get(day4);
-    out.push({ date: day4, closeAt: e?.closeAt ?? MARKETS[market].close, early: !!e });
-  }
-  return out;
-}
-function addSessions(market, from, n2) {
-  let d = /* @__PURE__ */ new Date(`${from}T00:00:00Z`);
-  let left = n2;
-  for (let guard = 0; left > 0 && guard < 2e3; guard++) {
-    d = addDays(d, 1);
-    if (isTradingDay(market, fmt3(d))) left--;
-  }
-  return fmt3(d);
-}
-
 // src/providers/macro/calendars.ts
 var NASDAQ = "https://api.nasdaq.com/api/calendar";
 var FF_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json";
@@ -29467,7 +29615,7 @@ async function catalystsReport(raw, days, now = clockNow(), opts = {}) {
       ]);
       timeline.push({
         date: expiry,
-        text: `option expiry: \xB1${fmt2(em.move1sd)} USD (\xB1${fmt2(em.move1sd / chain2.underlyingPrice * 100, 1)} %) implied to here`,
+        text: `option expiry: \xB1${fmt3(em.move1sd)} USD (\xB1${fmt3(em.move1sd / chain2.underlyingPrice * 100, 1)} %) implied to here`,
         keys: [`${ns}.options.move1sd`, `${ns}.options.move1sdPct`]
       });
     } else notes.push(expiry ? `no two-sided ATM quote at ${expiry} \u2014 no expected move` : `no option expiry on or after ${end}`);
@@ -29485,7 +29633,7 @@ async function catalystsReport(raw, days, now = clockNow(), opts = {}) {
         const ex = v("excessMedian");
         const dr = v("driftMedian");
         past.push(
-          `past results: a median move of \xB1${fmt2(abs, 1)} %{${sym3}.results.absMedian} over ${n2}{${sym3}.results.n} reports` + (ex !== void 0 ? `, ${fmt2(ex, 1)} %{${sym3}.results.excessMedian} median against SPY` : "") + (dr !== void 0 ? `, then a median 20-session drift of ${fmt2(dr, 1)} %{${sym3}.results.driftMedian} against SPY` : "")
+          `past results: a median move of \xB1${fmt3(abs, 1)} %{${sym3}.results.absMedian} over ${n2}{${sym3}.results.n} reports` + (ex !== void 0 ? `, ${fmt3(ex, 1)} %{${sym3}.results.excessMedian} median against SPY` : "") + (dr !== void 0 ? `, then a median 20-session drift of ${fmt3(dr, 1)} %{${sym3}.results.driftMedian} against SPY` : "")
         );
       }
     } catch (e) {
@@ -29493,6 +29641,8 @@ async function catalystsReport(raw, days, now = clockNow(), opts = {}) {
     }
   } else if (full && inst.kind === "equity" && !us)
     notes.push("past results reactions: SEC registrants only \u2014 no keyless history of other issuers' results dates");
+  const caveat = sessionCountCaveat(market, today2, end);
+  if (caveat) notes.push(caveat);
   const clusters = eventClusters(
     catalysts.filter((c) => inWindow(c.date)),
     today2,
@@ -29760,7 +29910,7 @@ function cryptoRegime(c) {
 }
 
 // src/providers/macro/fred.ts
-var SOURCE21 = "fred";
+var SOURCE22 = "fred";
 var FRED_PRESETS = {
   DGS10: { label: "US 10-year Treasury constant-maturity yield", unit: "%", freq: "d" },
   DGS2: { label: "US 2-year Treasury constant-maturity yield", unit: "%", freq: "d" },
@@ -29804,7 +29954,7 @@ async function fredSeries(id, opts = {}) {
       userAgent: politeUa(),
       recordAs: apiUrl("REDACTED")
     });
-    if (!res.ok || !res.data) throw new ProviderError(SOURCE21, `${sid}: API answered HTTP ${res.status}`, res.status);
+    if (!res.ok || !res.data) throw new ProviderError(SOURCE22, `${sid}: API answered HTTP ${res.status}`, res.status);
     obs = parseFredJson(res.data);
     url = `https://fred.stlouisfed.org/series/${sid}`;
     fetchedAt = res.fetchedAt;
@@ -29812,20 +29962,20 @@ async function fredSeries(id, opts = {}) {
     const csvUrl = `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(sid)}&cosd=${start}`;
     const res = await fetchText(csvUrl, { accept: "text/csv", userAgent: politeUa() });
     if (res.status === 404 || res.ok && !/observation_date|DATE/.test(res.body.slice(0, 80)))
-      throw new ProviderError(SOURCE21, `no FRED series ${sid}`, res.status === 404 ? 404 : 400);
-    if (!res.ok) throw new ProviderError(SOURCE21, `${sid}: keyless CSV export refused (HTTP ${res.status}) \u2014 set FRED_API_KEY (free)`, res.status);
+      throw new ProviderError(SOURCE22, `no FRED series ${sid}`, res.status === 404 ? 404 : 400);
+    if (!res.ok) throw new ProviderError(SOURCE22, `${sid}: keyless CSV export refused (HTTP ${res.status}) \u2014 set FRED_API_KEY (free)`, res.status);
     obs = parseFredCsv(res.body, sid);
     url = res.url;
     fetchedAt = res.fetchedAt;
     notes.push("read keyless from FRED's graph CSV export; set FRED_API_KEY (free) to use the documented API");
   }
-  if (!obs.length) throw new ProviderError(SOURCE21, `${sid}: no observations since ${start}`);
+  if (!obs.length) throw new ProviderError(SOURCE22, `${sid}: no observations since ${start}`);
   return {
     kind: "macro",
     title: preset ? `${preset.label} (FRED ${sid})` : `FRED series ${sid}`,
     subject: "US",
     points: seriesPoints(`US.fred.${sid}`, preset?.label ?? `FRED series ${sid}`, preset?.unit, obs, { history: opts.history ?? true }),
-    provenance: { source: SOURCE21, url, fetchedAt, official: true, asOf: obs[obs.length - 1].date },
+    provenance: { source: SOURCE22, url, fetchedAt, official: true, asOf: obs[obs.length - 1].date },
     notes
   };
 }
@@ -30274,10 +30424,10 @@ function componentPoints(ns, components, asOf) {
 }
 function adviceSummary(ns, a, cite2) {
   return [
-    `zone: ${a.zone}${cite2(`${ns}.coach.zone`)} \xB7 score ${fmt2(a.score, 1)}/100${cite2(`${ns}.coach.score`)} on ${fmt2(a.coverage * 100, 0)} % of the weights${cite2(`${ns}.coach.coverage`)}`,
+    `zone: ${a.zone}${cite2(`${ns}.coach.zone`)} \xB7 score ${fmt3(a.score, 1)}/100${cite2(`${ns}.coach.score`)} on ${fmt3(a.coverage * 100, 0)} % of the weights${cite2(`${ns}.coach.coverage`)}`,
     `max exposure: ${a.maxExposurePct === void 0 ? "n/a (coverage under 50 %)" : `${a.maxExposurePct} %`}${cite2(`${ns}.coach.maxExposure`)} \xB7 new entries: ${a.newEntries}${cite2(`${ns}.coach.newEntries`)}`,
     `components: ${a.components.map(
-      (c) => `${c.id} ${c.score === void 0 ? "n/a" : fmt2(c.score, 0)}${c.score === void 0 ? "" : cite2(`${ns}.coach.${c.id}.score`)} (w ${c.weight})`
+      (c) => `${c.id} ${c.score === void 0 ? "n/a" : fmt3(c.score, 0)}${c.score === void 0 ? "" : cite2(`${ns}.coach.${c.id}.score`)} (w ${c.weight})`
     ).join(", ") || "none"}`
   ];
 }
@@ -30332,7 +30482,7 @@ var meanOf = (xs) => {
   const v = xs.filter((x) => x !== void 0 && Number.isFinite(x));
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : void 0;
 };
-var signalLine = (ns, s, cite2) => `  - ${s.label}: ${s.value === void 0 ? "n/a" : (s.value >= 0 ? "+" : "") + fmt2(s.value)}${cite2(`${ns}.signal.${s.id}`)} \u2014 ${s.reason}`;
+var signalLine = (ns, s, cite2) => `  - ${s.label}: ${s.value === void 0 ? "n/a" : (s.value >= 0 ? "+" : "") + fmt3(s.value)}${cite2(`${ns}.signal.${s.id}`)} \u2014 ${s.reason}`;
 async function usRegime(now = clockNow()) {
   const ns = "US.regime";
   const [hist, side2] = await Promise.all([
@@ -30425,7 +30575,7 @@ async function usRegime(now = clockNow()) {
       id: "sentiment",
       label: "CNN Fear & Greed, read contrarian",
       value: sentiment,
-      reason: `index ${fmt2(fg, 1)} \u2014 ${fg <= 20 ? "extreme fear: contrarian risk-on" : fg >= 80 ? "extreme greed: contrarian risk-off" : "between the extremes: a small tilt, mostly noise"}`
+      reason: `index ${fmt3(fg, 1)} \u2014 ${fg <= 20 ? "extreme fear: contrarian risk-on" : fg >= 80 ? "extreme greed: contrarian risk-off" : "between the extremes: a small tilt, mostly noise"}`
     };
     signals.push(s);
     sec.add("US volatility and sentiment signals", p, signalPoints(ns, s, "\u2264 20 \u2192 +0.8, \u2265 80 \u2192 \u22120.8, else (50 \u2212 index) / 30 \xD7 0.5", p.asOf));
@@ -30439,7 +30589,7 @@ async function usRegime(now = clockNow()) {
       id: "breadth.above200",
       label: "US large caps above their 200-day",
       value: breadthSignal(tv.pct),
-      reason: `${tv.above} of ${tv.total} (${fmt2(tv.pct, 1)} %) close above their 200-day average`
+      reason: `${tv.above} of ${tv.total} (${fmt3(tv.pct, 1)} %) close above their 200-day average`
     };
     signals.push(breadthPct);
     sec.add("US large-cap breadth (TradingView, unofficial)", p, [
@@ -30509,7 +30659,7 @@ async function usRegime(now = clockNow()) {
       ...context.map((s) => signalLine(ns, s, cite2)),
       ...spreads.map(({ spread: spread2, r: r3 }) => {
         const k = `${ns}.credit.oas.${spread2.id}`;
-        return `  - ${spread2.label}: ${fmt2(r3.level)} %${cite2(k)}${r3.changeBp !== void 0 ? `, ${r3.changeBp >= 0 ? "+" : ""}${fmt2(r3.changeBp, 0)} bp over ${SPREAD_LOOKBACK} observations${cite2(`${k}.chg${SPREAD_LOOKBACK}`)}` : ""}${r3.widening ? ` \u2014 WIDENING${cite2(`${k}.widening`)}: credit is pricing more risk` : ""}`;
+        return `  - ${spread2.label}: ${fmt3(r3.level)} %${cite2(k)}${r3.changeBp !== void 0 ? `, ${r3.changeBp >= 0 ? "+" : ""}${fmt3(r3.changeBp, 0)} bp over ${SPREAD_LOOKBACK} observations${cite2(`${k}.chg${SPREAD_LOOKBACK}`)}` : ""}${r3.widening ? ` \u2014 WIDENING${cite2(`${k}.widening`)}: credit is pricing more risk` : ""}`;
       }),
       ...notes.length ? ["notes:", ...notes.map((n2) => `  - ${n2}`)] : []
     ]
@@ -30582,7 +30732,7 @@ async function euRegime(now = clockNow()) {
       id: "breadth.above200",
       label: "euro-area large caps above their 200-day",
       value: breadthSignal(b.pct),
-      reason: `${b.above} of ${b.total} (${fmt2(b.pct, 1)} %) close above their 200-day average (${tv.datasets.length} of ${EU_MARKETS.length} markets read)`
+      reason: `${b.above} of ${b.total} (${fmt3(b.pct, 1)} %) close above their 200-day average (${tv.datasets.length} of ${EU_MARKETS.length} markets read)`
     };
     signals.push(breadthPct);
     sec.add("EU large-cap breadth (TradingView, unofficial)", p, [
@@ -30612,7 +30762,7 @@ async function euRegime(now = clockNow()) {
     context.push({
       id: "curve.2s10s",
       label: "euro AAA 2s10s",
-      reason: `${fmt2(slope, 1)} bp \u2014 ${slope < 0 ? "inverted: the market prices cuts ahead, a late-cycle sign" : slope < 50 ? "flat" : "positively sloped"} (context: rates, not credit)`
+      reason: `${fmt3(slope, 1)} bp \u2014 ${slope < 0 ? "inverted: the market prices cuts ahead, a late-cycle sign" : slope < 50 ? "flat" : "positively sloped"} (context: rates, not credit)`
     });
   }
   const vix = side2.ok["Cboe VIX term structure"];
@@ -30828,13 +30978,13 @@ async function cryptoRegimeReport(now = clockNow()) {
     json: { market: "crypto", asOf, regime: r3 },
     summary: (cite2) => [
       `# Crypto market regime \u2014 as of ${asOf}`,
-      `regime: ${r3.label}${cite2(`${ns}.label`)} \xB7 score ${fmt2(r3.score, 1)}/100${cite2(`${ns}.score`)} on ${fmt2(r3.coverage * 100, 0)} % of the weights${cite2(`${ns}.coverage`)}`,
-      `components: ${r3.components.map((c) => `${c.id} ${c.score === void 0 ? "n/a" : fmt2(c.score, 0) + cite2(`${ns}.coach.${c.id}.score`)} (w ${c.weight})`).join(", ")}`,
+      `regime: ${r3.label}${cite2(`${ns}.label`)} \xB7 score ${fmt3(r3.score, 1)}/100${cite2(`${ns}.score`)} on ${fmt3(r3.coverage * 100, 0)} % of the weights${cite2(`${ns}.coverage`)}`,
+      `components: ${r3.components.map((c) => `${c.id} ${c.score === void 0 ? "n/a" : fmt3(c.score, 0) + cite2(`${ns}.coach.${c.id}.score`)} (w ${c.weight})`).join(", ")}`,
       "inputs:",
       ...signals.map((s) => signalLine(ns, s, cite2)),
-      `  - BTC 30-day return: ${fmt2(inputs.btcReturn30dPct)} %${cite2(`${ns}.btc.return30d`)} \xB7 drawdown from ATH: ${fmt2(inputs.btcDrawdownPct)} %${cite2("BTC.market.ath.change")}`,
-      `  - alt breadth (30-day change > 0, proxy for above the 50-day): ${fmt2(inputs.altBreadthPct, 1)} %${cite2(`${ns}.altBreadth.pct`)}`,
-      `  - funding annualised: ${fmt2(inputs.fundingAnnualizedPct, 1)} %${cite2(fundingKey)}`,
+      `  - BTC 30-day return: ${fmt3(inputs.btcReturn30dPct)} %${cite2(`${ns}.btc.return30d`)} \xB7 drawdown from ATH: ${fmt3(inputs.btcDrawdownPct)} %${cite2("BTC.market.ath.change")}`,
+      `  - alt breadth (30-day change > 0, proxy for above the 50-day): ${fmt3(inputs.altBreadthPct, 1)} %${cite2(`${ns}.altBreadth.pct`)}`,
+      `  - funding annualised: ${fmt3(inputs.fundingAnnualizedPct, 1)} %${cite2(fundingKey)}`,
       ...notes.length ? ["notes:", ...notes.map((n2) => `  - ${n2}`)] : []
     ]
   };
@@ -30979,7 +31129,7 @@ function sectorPoints(ns, s, bench, asOf) {
     out.push({ key: `${k}.members`, label: `${s.name} large caps in the screen`, value: s.members, unit: "count", ...asOf ? { asOf } : {} });
   return out;
 }
-var tableLine = (s, cite2, ns, extra) => `  ${String(s.rank ?? "\u2013").padStart(2)}. ${s.name.padEnd(24)} rel 1m ${fmt2(s.rel["1m"], 1).padStart(6)} \xB7 3m ${fmt2(s.rel["3m"], 1).padStart(6)} \xB7 6m ${fmt2(s.rel["6m"], 1).padStart(6)}${cite2(`${ns}.${s.id}.rs.composite`)}  ${extra}`;
+var tableLine = (s, cite2, ns, extra) => `  ${String(s.rank ?? "\u2013").padStart(2)}. ${s.name.padEnd(24)} rel 1m ${fmt3(s.rel["1m"], 1).padStart(6)} \xB7 3m ${fmt3(s.rel["3m"], 1).padStart(6)} \xB7 6m ${fmt3(s.rel["6m"], 1).padStart(6)}${cite2(`${ns}.${s.id}.rs.composite`)}  ${extra}`;
 async function usSectors(now = clockNow()) {
   const ns = "US.sector";
   const ids = Object.keys(SECTOR_ETFS);
@@ -31092,7 +31242,7 @@ async function euSectors() {
       `rotation: ${rot.reading}${cite2(`${ns}.rotation`)} \u2014 ${rot.reason}`,
       `leaders: ${leaders.map((s) => s.name).join(", ")}${cite2(`${ns}.leaders`)} \xB7 laggards: ${laggards.map((s) => s.name).join(", ")}${cite2(`${ns}.laggards`)}`,
       "relative strength (median performance relative to all large caps, in %; rank 1 = strongest):",
-      ...ranked.map((s) => tableLine(s, cite2, ns, `${s.members} stocks, ${fmt2(s.pctAbove200, 0)} % > 200d${cite2(`${ns}.${s.id}.above200.pct`)}`)),
+      ...ranked.map((s) => tableLine(s, cite2, ns, `${s.members} stocks, ${fmt3(s.pctAbove200, 0)} % > 200d${cite2(`${ns}.${s.id}.above200.pct`)}`)),
       ...notes.length ? ["notes:", ...notes.map((n2) => `  - ${n2}`)] : []
     ]
   };
@@ -32627,7 +32777,7 @@ var period = (name, def2, description) => ({
   min: 1
 });
 var real = (name, def2, description) => ({ name, kind: "number", default: def2, description, min: 0 });
-var SOURCE22 = { name: "source", kind: "string", default: "close", description: "Price series read", choices: PRICE_SOURCES };
+var SOURCE23 = { name: "source", kind: "string", default: "close", description: "Price series read", choices: PRICE_SOURCES };
 var BENCHMARK2 = { name: "benchmark", kind: "bars", description: "Benchmark bars (as-of joined by date)" };
 var num8 = (p, k) => p[k];
 var str4 = (p, k) => p[k];
@@ -32638,18 +32788,18 @@ function def(name, group, description, params, outputs, run3) {
 }
 var V = ["value"];
 var BAND = ["upper", "middle", "lower"];
-def("sma", "averages", "Simple moving average", [period("period", 20, "Window"), SOURCE22], V, (b, p) => sma(src(b, p), num8(p, "period")));
-def("ema", "averages", "Exponential moving average, SMA-seeded", [period("period", 20, "Window"), SOURCE22], V, (b, p) => ema(src(b, p), num8(p, "period")));
-def("wma", "averages", "Linearly weighted moving average", [period("period", 20, "Window"), SOURCE22], V, (b, p) => wma(src(b, p), num8(p, "period")));
-def("rma", "averages", "Wilder's smoothing (RMA/SMMA)", [period("period", 14, "Window"), SOURCE22], V, (b, p) => rma(src(b, p), num8(p, "period")));
-def("dema", "averages", "Mulloy's double EMA", [period("period", 20, "Window"), SOURCE22], V, (b, p) => dema(src(b, p), num8(p, "period")));
-def("tema", "averages", "Mulloy's triple EMA", [period("period", 20, "Window"), SOURCE22], V, (b, p) => tema(src(b, p), num8(p, "period")));
-def("hma", "averages", "Hull moving average", [period("period", 16, "Window"), SOURCE22], V, (b, p) => hma(src(b, p), num8(p, "period")));
+def("sma", "averages", "Simple moving average", [period("period", 20, "Window"), SOURCE23], V, (b, p) => sma(src(b, p), num8(p, "period")));
+def("ema", "averages", "Exponential moving average, SMA-seeded", [period("period", 20, "Window"), SOURCE23], V, (b, p) => ema(src(b, p), num8(p, "period")));
+def("wma", "averages", "Linearly weighted moving average", [period("period", 20, "Window"), SOURCE23], V, (b, p) => wma(src(b, p), num8(p, "period")));
+def("rma", "averages", "Wilder's smoothing (RMA/SMMA)", [period("period", 14, "Window"), SOURCE23], V, (b, p) => rma(src(b, p), num8(p, "period")));
+def("dema", "averages", "Mulloy's double EMA", [period("period", 20, "Window"), SOURCE23], V, (b, p) => dema(src(b, p), num8(p, "period")));
+def("tema", "averages", "Mulloy's triple EMA", [period("period", 20, "Window"), SOURCE23], V, (b, p) => tema(src(b, p), num8(p, "period")));
+def("hma", "averages", "Hull moving average", [period("period", 16, "Window"), SOURCE23], V, (b, p) => hma(src(b, p), num8(p, "period")));
 def(
   "kama",
   "averages",
   "Kaufman adaptive moving average",
-  [period("period", 10, "Efficiency-ratio window"), period("fast", 2, "Fast EMA period"), period("slow", 30, "Slow EMA period"), SOURCE22],
+  [period("period", 10, "Efficiency-ratio window"), period("fast", 2, "Fast EMA period"), period("slow", 30, "Slow EMA period"), SOURCE23],
   V,
   (b, p) => kama(src(b, p), num8(p, "period"), num8(p, "fast"), num8(p, "slow"))
 );
@@ -32657,7 +32807,7 @@ def(
   "mcginleyDynamic",
   "averages",
   "McGinley Dynamic",
-  [period("period", 14, "Window"), { ...real("k", 1, "McGinley's constant (he suggested 0.6)"), min: 0.01 }, SOURCE22],
+  [period("period", 14, "Window"), { ...real("k", 1, "McGinley's constant (he suggested 0.6)"), min: 0.01 }, SOURCE23],
   V,
   (b, p) => mcginleyDynamic(src(b, p), num8(p, "period"), num8(p, "k"))
 );
@@ -32666,7 +32816,7 @@ def(
   "movingAverage",
   "averages",
   "Moving average of a chosen type",
-  [period("period", 20, "Window"), { name: "type", kind: "string", default: "ema", description: "Average type", choices: MA_TYPES }, SOURCE22],
+  [period("period", 20, "Window"), { name: "type", kind: "string", default: "ema", description: "Average type", choices: MA_TYPES }, SOURCE23],
   V,
   (b, p) => movingAverage(src(b, p), num8(p, "period"), str4(p, "type"))
 );
@@ -32726,7 +32876,7 @@ def(
   "ravi",
   "trend",
   "Chande's Range Action Verification Index (%)",
-  [period("shortPeriod", 7, "Short SMA"), period("longPeriod", 65, "Long SMA"), SOURCE22],
+  [period("shortPeriod", 7, "Short SMA"), period("longPeriod", 65, "Long SMA"), SOURCE23],
   V,
   (b, p) => ravi(src(b, p), num8(p, "shortPeriod"), num8(p, "longPeriod"))
 );
@@ -32734,21 +32884,21 @@ def(
   "linearRegressionSlope",
   "trend",
   "Least-squares slope per bar",
-  [period("period", 14, "Window"), SOURCE22],
+  [period("period", 14, "Window"), SOURCE23],
   V,
   (b, p) => linearRegressionSlope(src(b, p), num8(p, "period"))
 );
-def("rsi", "momentum", "Wilder's RSI", [period("period", 14, "Window"), SOURCE22], V, (b, p) => rsi(src(b, p), num8(p, "period")));
+def("rsi", "momentum", "Wilder's RSI", [period("period", 14, "Window"), SOURCE23], V, (b, p) => rsi(src(b, p), num8(p, "period")));
 def(
   "macd",
   "momentum",
   "Appel's MACD",
-  [period("fast", 12, "Fast EMA"), period("slow", 26, "Slow EMA"), period("signal", 9, "Signal EMA"), SOURCE22],
+  [period("fast", 12, "Fast EMA"), period("slow", 26, "Slow EMA"), period("signal", 9, "Signal EMA"), SOURCE23],
   ["macd", "signal", "histogram"],
   (b, p) => macd(src(b, p), num8(p, "fast"), num8(p, "slow"), num8(p, "signal"))
 );
-def("roc", "momentum", "Rate of change (%)", [period("period", 12, "Lookback"), SOURCE22], V, (b, p) => roc(src(b, p), num8(p, "period")));
-def("momentum", "momentum", "Momentum (price difference)", [period("period", 10, "Lookback"), SOURCE22], V, (b, p) => momentum(src(b, p), num8(p, "period")));
+def("roc", "momentum", "Rate of change (%)", [period("period", 12, "Lookback"), SOURCE23], V, (b, p) => roc(src(b, p), num8(p, "period")));
+def("momentum", "momentum", "Momentum (price difference)", [period("period", 10, "Lookback"), SOURCE23], V, (b, p) => momentum(src(b, p), num8(p, "period")));
 def(
   "stochastic",
   "momentum",
@@ -32783,7 +32933,7 @@ def(
     period("stochasticPeriod", 14, "Stochastic window"),
     period("kPeriod", 3, "%K smoothing"),
     period("dPeriod", 3, "%D smoothing"),
-    SOURCE22
+    SOURCE23
   ],
   ["stochRsi", "k", "d"],
   (b, p) => stochRsi(src(b, p), num8(p, "rsiPeriod"), num8(p, "stochasticPeriod"), num8(p, "kPeriod"), num8(p, "dPeriod"))
@@ -32812,12 +32962,12 @@ def(
   V,
   (b, p) => awesomeOscillator(b, num8(p, "fastPeriod"), num8(p, "slowPeriod"))
 );
-def("trix", "momentum", "Hutson's TRIX (%)", [period("period", 14, "EMA window"), SOURCE22], V, (b, p) => trix(src(b, p), num8(p, "period")));
+def("trix", "momentum", "Hutson's TRIX (%)", [period("period", 14, "EMA window"), SOURCE23], V, (b, p) => trix(src(b, p), num8(p, "period")));
 def(
   "pmo",
   "momentum",
   "DecisionPoint Price Momentum Oscillator",
-  [period("smooth1Period", 35, "First smoothing"), period("smooth2Period", 20, "Second smoothing"), period("signalPeriod", 10, "Signal EMA"), SOURCE22],
+  [period("smooth1Period", 35, "First smoothing"), period("smooth2Period", 20, "Second smoothing"), period("signalPeriod", 10, "Signal EMA"), SOURCE23],
   ["pmo", "signal"],
   (b, p) => pmo(src(b, p), num8(p, "smooth1Period"), num8(p, "smooth2Period"), num8(p, "signalPeriod"))
 );
@@ -32825,7 +32975,7 @@ def(
   "kst",
   "momentum",
   "Pring's Know Sure Thing (daily)",
-  [period("signalPeriod", 9, "Signal SMA"), SOURCE22],
+  [period("signalPeriod", 9, "Signal SMA"), SOURCE23],
   ["kst", "signal"],
   (b, p) => kst(src(b, p), num8(p, "signalPeriod"))
 );
@@ -32833,7 +32983,7 @@ def(
   "pringSpecialK",
   "momentum",
   "Pring's Special K (daily)",
-  [period("signalPeriod", 10, "Signal SMA"), SOURCE22],
+  [period("signalPeriod", 10, "Signal SMA"), SOURCE23],
   ["specialK", "signal"],
   (b, p) => pringSpecialK(src(b, p), num8(p, "signalPeriod"))
 );
@@ -32841,7 +32991,7 @@ def(
   "coppockCurve",
   "momentum",
   "Coppock curve",
-  [period("rocPeriod1", 14, "Long ROC"), period("rocPeriod2", 11, "Short ROC"), period("wmaPeriod", 10, "WMA window"), SOURCE22],
+  [period("rocPeriod1", 14, "Long ROC"), period("rocPeriod2", 11, "Short ROC"), period("wmaPeriod", 10, "WMA window"), SOURCE23],
   V,
   (b, p) => coppockCurve(src(b, p), num8(p, "rocPeriod1"), num8(p, "rocPeriod2"), num8(p, "wmaPeriod"))
 );
@@ -32849,7 +32999,7 @@ def(
   "dpo",
   "momentum",
   "Detrended Price Oscillator (not displaced)",
-  [period("period", 20, "SMA window"), SOURCE22],
+  [period("period", 20, "SMA window"), SOURCE23],
   V,
   (b, p) => dpo(src(b, p), num8(p, "period"))
 );
@@ -32892,7 +33042,7 @@ def(
     return a.map((x, i) => x === void 0 || m[i] === void 0 || m[i] === 0 ? void 0 : x / m[i]);
   }
 );
-def("stdev", "volatility", "Rolling standard deviation", [period("period", 20, "Window"), SOURCE22], V, (b, p) => rollingStdev(src(b, p), num8(p, "period")));
+def("stdev", "volatility", "Rolling standard deviation", [period("period", 20, "Window"), SOURCE23], V, (b, p) => rollingStdev(src(b, p), num8(p, "period")));
 def("choppinessIndex", "volatility", "Dreiss' Choppiness Index", [period("period", 14, "Window")], V, (b, p) => choppinessIndex(b, num8(p, "period")));
 def(
   "massIndex",
@@ -32945,7 +33095,7 @@ def(
   "bollinger",
   "bands",
   "Bollinger bands",
-  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE22],
+  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE23],
   BAND,
   (b, p) => bollinger(src(b, p), num8(p, "period"), num8(p, "stdDev"))
 );
@@ -32953,7 +33103,7 @@ def(
   "bollingerPercentB",
   "bands",
   "Bollinger %B",
-  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE22],
+  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE23],
   V,
   (b, p) => bollingerPercentB(src(b, p), num8(p, "period"), num8(p, "stdDev"))
 );
@@ -32961,7 +33111,7 @@ def(
   "bollingerBandwidth",
   "bands",
   "Bollinger bandwidth",
-  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE22],
+  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE23],
   V,
   (b, p) => bollingerBandwidth(src(b, p), num8(p, "period"), num8(p, "stdDev"))
 );
@@ -32990,7 +33140,7 @@ def(
     period("period", 20, "Window"),
     real("percentage", 2.5, "Envelope %"),
     { name: "type", kind: "string", default: "sma", description: "Average type", choices: ["sma", "ema"] },
-    SOURCE22
+    SOURCE23
   ],
   BAND,
   (b, p) => movingAverageEnvelope(src(b, p), num8(p, "period"), num8(p, "percentage"), str4(p, "type"))
@@ -33035,16 +33185,16 @@ def(
 );
 def("rollingVwap", "volume", "Rolling VWAP", [period("period", 20, "Window")], V, (b, p) => rollingVwap(b, num8(p, "period")));
 def("volumeSma", "volume", "SMA of volume", [period("period", 20, "Window")], V, (b, p) => sma(priceSource(b, "volume"), num8(p, "period")));
-def("rollingMax", "stats", "Rolling maximum", [period("period", 20, "Window"), SOURCE22], V, (b, p) => rollingMax(src(b, p), num8(p, "period")));
-def("rollingMin", "stats", "Rolling minimum", [period("period", 20, "Window"), SOURCE22], V, (b, p) => rollingMin(src(b, p), num8(p, "period")));
+def("rollingMax", "stats", "Rolling maximum", [period("period", 20, "Window"), SOURCE23], V, (b, p) => rollingMax(src(b, p), num8(p, "period")));
+def("rollingMin", "stats", "Rolling minimum", [period("period", 20, "Window"), SOURCE23], V, (b, p) => rollingMin(src(b, p), num8(p, "period")));
 def("highestHigh", "stats", "Highest high", [period("period", 14, "Window")], V, (b, p) => highestHigh(b, num8(p, "period")));
 def("lowestLow", "stats", "Lowest low", [period("period", 14, "Window")], V, (b, p) => lowestLow(b, num8(p, "period")));
-def("zScore", "stats", "Z-score against the rolling mean/stdev", [period("period", 20, "Window"), SOURCE22], V, (b, p) => zScore(src(b, p), num8(p, "period")));
+def("zScore", "stats", "Z-score against the rolling mean/stdev", [period("period", 20, "Window"), SOURCE23], V, (b, p) => zScore(src(b, p), num8(p, "period")));
 def(
   "percentRank",
   "stats",
   "Percent of the previous n values \u2264 the current one",
-  [period("period", 252, "Window"), SOURCE22],
+  [period("period", 252, "Window"), SOURCE23],
   V,
   (b, p) => percentRank(src(b, p), num8(p, "period"))
 );
@@ -34561,14 +34711,14 @@ function growthOf(periods, field2, years = 3) {
 }
 
 // src/providers/macro/frankfurter.ts
-var SOURCE23 = "frankfurter";
+var SOURCE24 = "frankfurter";
 var BASE23 = "https://api.frankfurter.dev/v1";
 var sym = (symbols) => symbols?.length ? `&symbols=${symbols.map((s) => s.toUpperCase()).join(",")}` : "";
 async function frankfurterLatest(base2 = "EUR", symbols) {
   const b = base2.toUpperCase();
   const res = await fetchJson(`${BASE23}/latest?base=${b}${sym(symbols)}`);
-  if (res.status === 404 || res.status === 422) throw new ProviderError(SOURCE23, `unknown currency in ${b}${sym(symbols)}`, res.status);
-  requireOk(SOURCE23, res, `latest rates for ${b}`);
+  if (res.status === 404 || res.status === 422) throw new ProviderError(SOURCE24, `unknown currency in ${b}${sym(symbols)}`, res.status);
+  requireOk(SOURCE24, res, `latest rates for ${b}`);
   const d = res.data;
   const points = Object.entries(d.rates).map(([ccy, v]) => ({
     key: `${b}.fx.${ccy}`,
@@ -34582,7 +34732,7 @@ async function frankfurterLatest(base2 = "EUR", symbols) {
     title: `Euro reference rates via Frankfurter \u2014 ${d.date}`,
     subject: b,
     points,
-    provenance: { source: SOURCE23, url: res.url, fetchedAt: res.fetchedAt, delay: "eod", official: false, asOf: d.date },
+    provenance: { source: SOURCE24, url: res.url, fetchedAt: res.fetchedAt, delay: "eod", official: false, asOf: d.date },
     notes: ["ECB reference rates relayed by frankfurter.dev; cross rates for a non-EUR base are derived from the euro rates."]
   };
 }
@@ -35645,7 +35795,7 @@ async function analyzeFull(raw, dir2, opts = {}) {
     );
   let delta;
   if (opts.since) {
-    if (!existsSync25(join33(opts.since, "evidence.json"))) notes.push(`--since ${opts.since}: no evidence there, no delta`);
+    if (!existsSync26(join33(opts.since, "evidence.json"))) notes.push(`--since ${opts.since}: no evidence there, no delta`);
     else {
       delta = deltaMarkdown(deltaRuns(opts.since, dir2), opts.since, dir2);
       writeArtifact(join33(dir2, "DELTA.md"), delta);
@@ -36305,11 +36455,11 @@ function promoted(store, dir2, docId, written, opts) {
 }
 
 // src/commands/report.ts
-import { existsSync as existsSync27, readFileSync as readFileSync29, writeFileSync as writeFileSync10 } from "fs";
+import { existsSync as existsSync28, readFileSync as readFileSync29, writeFileSync as writeFileSync10 } from "fs";
 import { join as join35, resolve as resolve7 } from "path";
 
 // src/report/html.ts
-import { existsSync as existsSync26, readdirSync as readdirSync12, readFileSync as readFileSync28 } from "fs";
+import { existsSync as existsSync27, readdirSync as readdirSync12, readFileSync as readFileSync28 } from "fs";
 import { join as join34 } from "path";
 var esc2 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 function inline(text2) {
@@ -36418,7 +36568,7 @@ svg{width:100%;height:auto;background:var(--card);border:1px solid var(--rule);m
 .meta{color:var(--muted);font-size:.9rem}details{border:1px solid var(--rule);border-radius:6px;padding:.4rem .8rem;margin:.5rem 0}summary{cursor:pointer;font-weight:600}tr:target{background:color-mix(in srgb,var(--line) 15%,transparent)}footer{color:var(--muted);font-size:.85rem;margin-top:3rem}`;
 function decisionHtml(runDir2) {
   const f3 = join34(runDir2, "decision.json");
-  if (!existsSync26(f3)) return "";
+  if (!existsSync27(f3)) return "";
   const d = JSON.parse(readFileSync28(f3, "utf8"));
   const row = (k, v) => v === void 0 || v === "" ? "" : `<tr><th>${esc2(k)}</th><td>${esc2(Array.isArray(v) ? v.join("; ") : String(v))}</td></tr>`;
   return `<h2>Decision</h2><table><tbody>${row("rating", d.rating)}${row("horizon", d.horizon)}${row("conviction", d.conviction)}${row("thesis", d.thesis)}${row("falsifiers", d.falsifiers)}${row("risks", d.risks)}${row("portfolio context", d.portfolioContext)}${d.plan ? row(
@@ -36428,7 +36578,7 @@ function decisionHtml(runDir2) {
 }
 function notesHtml(runDir2) {
   const dir2 = join34(runDir2, "notes");
-  if (!existsSync26(dir2)) return "";
+  if (!existsSync27(dir2)) return "";
   const order = ["market", "fundamentals", "news", "bull", "bear", "judge", "trader", "risk"];
   const files = readdirSync12(dir2).filter((f3) => f3.endsWith(".md")).sort((a, b) => (order.indexOf(a.replace(/\.md$/, "")) + 1 || 99) - (order.indexOf(b.replace(/\.md$/, "")) + 1 || 99) || a.localeCompare(b));
   if (!files.length) return "";
@@ -36440,7 +36590,7 @@ function renderReport(runDir2, answerMd, opts = {}) {
   const cited = new Set([...answerMd.matchAll(/\[(E\d+)\]/g)].map((m) => m[1]));
   const rows = store.items.filter((i) => cited.has(i.id));
   const barsFile = join34(runDir2, "bars.json");
-  const bars = existsSync26(barsFile) ? JSON.parse(readFileSync28(barsFile, "utf8")) : [];
+  const bars = existsSync27(barsFile) ? JSON.parse(readFileSync28(barsFile, "utf8")) : [];
   const title = opts.title ?? /^#\s+(.+)$/m.exec(answerMd)?.[1] ?? store.subject ?? "ultrastock report";
   const evidenceTable = rows.length ? `<h2>Evidence cited</h2><table><thead><tr><th>Id</th><th>What</th><th>Value</th><th>Source</th><th>As of</th></tr></thead><tbody>${rows.map(
     (i) => (
@@ -36467,7 +36617,7 @@ async function reportCommand(args, asJson) {
   if (!run3) throw new UsageError("usage: ultrastock report <run> [--answer <answer.md>] [--json]");
   const dir2 = resolve7(run3);
   const answerFile = resolve7(argValue(args, "answer") ?? join35(dir2, "answer.md"));
-  if (!existsSync27(answerFile)) throw new UsageError(`no answer at ${answerFile}: write it first (see RUNBOOK.md), or pass --answer`);
+  if (!existsSync28(answerFile)) throw new UsageError(`no answer at ${answerFile}: write it first (see RUNBOOK.md), or pass --answer`);
   const answer = readFileSync29(answerFile, "utf8");
   const check = checkAnswer(dir2, answer);
   if ("error" in check) throw new UsageError(check.error);
@@ -36490,7 +36640,7 @@ async function reportCommand(args, asJson) {
 import { join as join36 } from "path";
 
 // src/providers/macro/elections.ts
-var SOURCE24 = "wikipedia-elections";
+var SOURCE25 = "wikipedia-elections";
 var MONTHS6 = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 var ALIASES = {
   "czech republic": "CZ",
@@ -36625,7 +36775,7 @@ function parseElectionCalendar(wikitext, year) {
 async function electionCalendar(year) {
   if (year >= clockNow().getUTCFullYear()) return readElectionCalendar(year);
   const kept = await cachedJson(`elections:calendar:${year}`, TTL.reference, () => readElectionCalendar(year));
-  if (!kept) throw new ProviderError(SOURCE24, `no electoral calendar for ${year} (offline, and not read before)`, 0);
+  if (!kept) throw new ProviderError(SOURCE25, `no electoral calendar for ${year} (offline, and not read before)`, 0);
   return kept;
 }
 async function readElectionCalendar(year) {
@@ -36633,7 +36783,7 @@ async function readElectionCalendar(year) {
   const url = `https://en.wikipedia.org/w/api.php?action=parse&page=${page}&prop=wikitext&format=json&formatversion=2`;
   const res = await fetchJson(url, { userAgent: politeUa(), hostIntervalMs: 500 });
   const wikitext = res.data?.parse?.wikitext;
-  if (!res.ok || !wikitext) throw new ProviderError(SOURCE24, `no electoral calendar for ${year} (${res.data?.error?.info ?? res.status})`, res.status);
+  if (!res.ok || !wikitext) throw new ProviderError(SOURCE25, `no electoral calendar for ${year} (${res.data?.error?.info ?? res.status})`, res.status);
   return { events: parseElectionCalendar(wikitext, year), url: `https://en.wikipedia.org/wiki/${page}`, fetchedAt: res.fetchedAt };
 }
 
@@ -37607,7 +37757,7 @@ async function eventsCommand(args, asJson) {
 }
 
 // src/commands/research.ts
-import { existsSync as existsSync28, readFileSync as readFileSync30 } from "fs";
+import { existsSync as existsSync29, readFileSync as readFileSync30 } from "fs";
 import { join as join37, resolve as resolve9 } from "path";
 function oneOf(v, all, flag) {
   if (v === void 0) return void 0;
@@ -37693,7 +37843,7 @@ async function researchCommand2(args, asJson) {
     if (!webResults && !urls.length && !searches)
       throw new UsageError("nothing to ingest: pass --web-results <file|->, --urls a,b, --search-with claude|codex or --engine-search");
     dir2 = resolve9(out);
-    if (!existsSync28(dir2)) throw new UsageError(`no run at ${dir2}`);
+    if (!existsSync29(dir2)) throw new UsageError(`no run at ${dir2}`);
     const forTag = argValue(args, "for");
     todo = todoOf(dir2, forTag ? researchTag(forTag) : void 0);
   }
@@ -37811,7 +37961,7 @@ run: ${dir2}
 }
 
 // src/providers/macro/bls.ts
-var SOURCE25 = "bls";
+var SOURCE26 = "bls";
 var BASE24 = "https://api.bls.gov/publicAPI/v1/timeseries/data/";
 function parseBls(answer) {
   const out = /* @__PURE__ */ new Map();
@@ -37850,11 +38000,11 @@ async function fetchBls(ids) {
   const res = ids.length === 1 ? await fetchJson(`${BASE24}${encodeURIComponent(ids[0])}`, opts) : await fetchJson(BASE24, { ...opts, method: "POST", json: { seriesid: ids } });
   if (!res.ok || !res.data) {
     const hint = res.status === 403 || res.status === 503 ? " \u2014 BLS's edge refuses this network; FRED republishes these series (CPIAUCSL, CPILFESL, UNRATE, PAYEMS)" : "";
-    throw new ProviderError(SOURCE25, `API unavailable (HTTP ${res.status})${hint}`, res.status);
+    throw new ProviderError(SOURCE26, `API unavailable (HTTP ${res.status})${hint}`, res.status);
   }
   if (res.data.status !== "REQUEST_SUCCEEDED") {
     const msg = (res.data.message ?? []).join("; ").slice(0, 200);
-    throw new ProviderError(SOURCE25, `request not served: ${msg || res.data.status}`, /threshold|daily/i.test(msg) ? 429 : 400);
+    throw new ProviderError(SOURCE26, `request not served: ${msg || res.data.status}`, /threshold|daily/i.test(msg) ? 429 : 400);
   }
   return { series: parseBls(res.data), url: res.url, fetchedAt: res.fetchedAt };
 }
@@ -37894,13 +38044,13 @@ async function blsHeadlines(which = ["cpi", "coreCpi", "unemployment", "payrolls
       points.push(...seriesPoints(p.key, `${p.label}, employees`, "count", persons));
     } else points.push(...seriesPoints(p.key, p.label, "%", obs));
   }
-  if (!points.length) throw new ProviderError(SOURCE25, `no observations for ${presets.map((p) => p.id).join(", ")}`);
+  if (!points.length) throw new ProviderError(SOURCE26, `no observations for ${presets.map((p) => p.id).join(", ")}`);
   return {
     kind: "macro",
     title: "US labour and price statistics (BLS)",
     subject: "US",
     points,
-    provenance: { source: SOURCE25, url, fetchedAt, official: true },
+    provenance: { source: SOURCE26, url, fetchedAt, official: true },
     notes: [
       ...notes,
       "Monthly data; the latest month is the last release (no revisions history). Payroll changes are the first-difference of the published level."
@@ -37909,7 +38059,7 @@ async function blsHeadlines(which = ["cpi", "coreCpi", "unemployment", "payrolls
 }
 
 // src/providers/macro/cftc.ts
-var SOURCE26 = "cftc";
+var SOURCE27 = "cftc";
 var BASE25 = "https://publicreporting.cftc.gov/resource";
 var DATASETS = { legacy: "6dca-aqww", tff: "gpe5-46if" };
 var COT_MARKETS = {
@@ -38008,12 +38158,12 @@ async function findCotMarket(name, kind = "legacy") {
       $limit: "50"
     })
   );
-  requireOk(SOURCE26, res, `market search "${name}"`);
+  requireOk(SOURCE27, res, `market search "${name}"`);
   const rows = res.data ?? [];
   const latest2 = rows[0]?.report_date_as_yyyy_mm_dd;
   const current2 = rows.filter((r3) => r3.report_date_as_yyyy_mm_dd === latest2);
   const exact = current2.find((r3) => (r3.market_and_exchange_names ?? "").toUpperCase().startsWith(`${q} -`)) ?? current2[0];
-  if (!exact?.cftc_contract_market_code) throw new ProviderError(SOURCE26, `no COT market matching "${name}"`);
+  if (!exact?.cftc_contract_market_code) throw new ProviderError(SOURCE27, `no COT market matching "${name}"`);
   return { code: exact.cftc_contract_market_code, name: exact.market_and_exchange_names ?? name };
 }
 async function cotReport(market, opts = {}) {
@@ -38032,12 +38182,12 @@ async function cotReport(market, opts = {}) {
       $limit: String(weeks)
     })
   );
-  requireOk(SOURCE26, res, `COT ${kind} for ${target.code}`);
+  requireOk(SOURCE27, res, `COT ${kind} for ${target.code}`);
   const rows = res.data ?? [];
   const hist = parseCotRows(rows, kind);
   const last2 = hist[hist.length - 1];
   if (!last2)
-    throw new ProviderError(SOURCE26, `no ${kind} COT report for contract ${target.code}${kind === "tff" ? " (TFF covers financial futures only)" : ""}`);
+    throw new ProviderError(SOURCE27, `no ${kind} COT report for contract ${target.code}${kind === "tff" ? " (TFF covers financial futures only)" : ""}`);
   const prev = hist[hist.length - 2];
   const points = [];
   for (const g of Object.keys(GROUPS[kind])) {
@@ -38089,7 +38239,7 @@ async function cotReport(market, opts = {}) {
     subject,
     points,
     provenance: {
-      source: SOURCE26,
+      source: SOURCE27,
       url: res.url,
       fetchedAt: res.fetchedAt,
       delay: "weekly (Tuesday positions, published Friday)",
@@ -38103,7 +38253,7 @@ async function cotReport(market, opts = {}) {
 }
 
 // src/providers/macro/eurostat.ts
-var SOURCE27 = "eurostat";
+var SOURCE28 = "eurostat";
 var BASE26 = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data";
 var indexOf = (cat) => Array.isArray(cat.index) ? cat.index.map((c, i) => [c, i]) : Object.entries(cat.index);
 function parseJsonStat(js, timeDim = "time") {
@@ -38116,7 +38266,7 @@ function parseJsonStat(js, timeDim = "time") {
     return out;
   });
   const t = id.indexOf(timeDim);
-  if (t < 0) throw new ProviderError(SOURCE27, `JSON-stat answer has no "${timeDim}" dimension`);
+  if (t < 0) throw new ProviderError(SOURCE28, `JSON-stat answer has no "${timeDim}" dimension`);
   const series = /* @__PURE__ */ new Map();
   const entries = Array.isArray(js.value) ? js.value.map((v, i) => [i, v]) : Object.entries(js.value).map(([k, v]) => [Number(k), v]);
   for (const [flat, v] of entries) {
@@ -38140,9 +38290,9 @@ async function eurostatQuery(dataset3, filters, lastTimePeriod = 13) {
   qs.set("lastTimePeriod", String(lastTimePeriod));
   const url = `${BASE26}/${encodeURIComponent(dataset3)}?${qs}`;
   const res = await fetchJson(url);
-  if (res.status === 400 || res.status === 404) throw new ProviderError(SOURCE27, `no data for ${dataset3} with ${qs}`, res.status);
-  requireOk(SOURCE27, res, `dataset ${dataset3}`);
-  if (!res.data?.id) throw new ProviderError(SOURCE27, `dataset ${dataset3}: not a JSON-stat answer`);
+  if (res.status === 400 || res.status === 404) throw new ProviderError(SOURCE28, `no data for ${dataset3} with ${qs}`, res.status);
+  requireOk(SOURCE28, res, `dataset ${dataset3}`);
+  if (!res.data?.id) throw new ProviderError(SOURCE28, `dataset ${dataset3}: not a JSON-stat answer`);
   return { series: parseJsonStat(res.data), updated: res.data.updated, url: res.url, fetchedAt: res.fetchedAt };
 }
 var EUROSTAT_INDICATORS = {
@@ -38171,23 +38321,23 @@ var EUROSTAT_INDICATORS = {
 };
 async function eurostatIndicator(name, geo = "FR", n2 = 13) {
   const ind = EUROSTAT_INDICATORS[name];
-  if (!ind) throw new ProviderError(SOURCE27, `unknown indicator ${name}`);
+  if (!ind) throw new ProviderError(SOURCE28, `unknown indicator ${name}`);
   const g = geo.toUpperCase();
   const { series, updated, url, fetchedAt } = await eurostatQuery(ind.dataset, { ...ind.filters, geo: g }, n2);
   const obs = series.find((s) => s.dims.geo === g)?.obs ?? [];
-  if (!obs.length) throw new ProviderError(SOURCE27, `${ind.dataset}: no observation for ${g}`);
+  if (!obs.length) throw new ProviderError(SOURCE28, `${ind.dataset}: no observation for ${g}`);
   return {
     kind: "macro",
     title: `${g} ${ind.label} (Eurostat ${ind.dataset})`,
     subject: g,
     points: seriesPoints(`${g}.${ind.key}`, `${g} ${ind.label}`, ind.unit, obs, { history: true }),
-    provenance: { source: SOURCE27, url, fetchedAt, official: true, asOf: obs[obs.length - 1].date },
+    provenance: { source: SOURCE28, url, fetchedAt, official: true, asOf: obs[obs.length - 1].date },
     notes: updated ? [`dataset last updated ${updated.slice(0, 10)}`] : []
   };
 }
 
 // src/providers/macro/insee.ts
-var SOURCE28 = "insee";
+var SOURCE29 = "insee";
 var BASE27 = "https://bdm.insee.fr/series/sdmx/data/SERIES_BDM";
 function attrs(tag) {
   const out = {};
@@ -38215,10 +38365,10 @@ function parseInseeSdmx(xml) {
 async function fetchInsee(idbanks, n2 = 13) {
   const url = `${BASE27}/${idbanks.map(encodeURIComponent).join("+")}?lastNObservations=${n2}`;
   const res = await fetchText(url, { accept: "application/xml" });
-  if (res.status === 404) throw new ProviderError(SOURCE28, `no BDM series ${idbanks.join(", ")}`, 404);
-  requireOk(SOURCE28, res, `BDM series ${idbanks.join(", ")}`);
+  if (res.status === 404) throw new ProviderError(SOURCE29, `no BDM series ${idbanks.join(", ")}`, 404);
+  requireOk(SOURCE29, res, `BDM series ${idbanks.join(", ")}`);
   const series = parseInseeSdmx(res.body);
-  if (!series.some((s) => s.obs.length)) throw new ProviderError(SOURCE28, `BDM series ${idbanks.join(", ")} returned no observations`);
+  if (!series.some((s) => s.obs.length)) throw new ProviderError(SOURCE29, `BDM series ${idbanks.join(", ")} returned no observations`);
   return { series, url: res.url, fetchedAt: res.fetchedAt };
 }
 var INSEE_PRESETS = {
@@ -38230,7 +38380,7 @@ async function inseeSeries(idbankOrPreset, n2 = 13) {
   const preset = INSEE_PRESETS[idbankOrPreset];
   const idbank = preset?.idbank ?? idbankOrPreset;
   if (!/^\d{9}$/.test(idbank))
-    throw new ProviderError(SOURCE28, `"${idbankOrPreset}" is neither a preset (${Object.keys(INSEE_PRESETS).join(", ")}) nor a 9-digit idbank`);
+    throw new ProviderError(SOURCE29, `"${idbankOrPreset}" is neither a preset (${Object.keys(INSEE_PRESETS).join(", ")}) nor a 9-digit idbank`);
   const { series, url, fetchedAt } = await fetchInsee([idbank], n2);
   const s = series.find((x) => x.idbank === idbank) ?? series[0];
   const key = preset?.key ?? `FR.insee.${idbank}`;
@@ -38244,13 +38394,13 @@ async function inseeSeries(idbankOrPreset, n2 = 13) {
     title: label2,
     subject: "FR",
     points,
-    provenance: { source: SOURCE28, url, fetchedAt, official: true, asOf: last2?.date },
+    provenance: { source: SOURCE29, url, fetchedAt, official: true, asOf: last2?.date },
     notes: s.lastUpdate ? [`series last updated ${s.lastUpdate}`] : []
   };
 }
 
 // src/providers/macro/universe.ts
-var SOURCE29 = "wikipedia";
+var SOURCE30 = "wikipedia";
 var INDICES = {
   SPX: {
     name: "S&P 500",
@@ -38421,15 +38571,15 @@ function parseNamesList(wikitext) {
 async function fetchConstituents(index) {
   const id = indexId(index);
   const spec = id ? INDICES[id] : void 0;
-  if (!id || !spec) throw new ProviderError(SOURCE29, `unknown index "${index}" (known: ${Object.keys(INDICES).join(", ")})`);
+  if (!id || !spec) throw new ProviderError(SOURCE30, `unknown index "${index}" (known: ${Object.keys(INDICES).join(", ")})`);
   const list = await cachedJson(`wikipedia:constituents:${id}`, TTL.reference, async () => {
     const api = `https://${spec.wiki}.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(spec.page)}&prop=wikitext&format=json&formatversion=2&redirects=1${spec.section !== void 0 ? `&section=${spec.section}` : ""}`;
     const res = await fetchJson(api, { userAgent: politeUa() });
-    if (!res.ok) throw new ProviderError(SOURCE29, `page ${spec.page} unavailable (HTTP ${res.status})`, res.status);
+    if (!res.ok) throw new ProviderError(SOURCE30, `page ${spec.page} unavailable (HTTP ${res.status})`, res.status);
     const text2 = res.data?.parse?.wikitext;
-    if (!text2) throw new ProviderError(SOURCE29, `page ${spec.page}: ${res.data?.error?.info ?? "no wikitext"}`, 404);
+    if (!text2) throw new ProviderError(SOURCE30, `page ${spec.page}: ${res.data?.error?.info ?? "no wikitext"}`, 404);
     const constituents = spec.shape === "table" ? parseConstituentTable(text2) : spec.shape === "names-table" ? parseNamesTable(text2) : parseNamesList(text2);
-    if (!constituents.length) throw new ProviderError(SOURCE29, `no constituents table found on ${spec.page} \u2014 the page layout changed`);
+    if (!constituents.length) throw new ProviderError(SOURCE30, `no constituents table found on ${spec.page} \u2014 the page layout changed`);
     const notes = [
       "SURVIVORSHIP: current members only \u2014 a backtest over this list ignores every company that left the index, and is biased upward.",
       "Community-edited (Wikipedia), not the index provider's licensed list; check a recent membership change against the provider."
@@ -38447,7 +38597,7 @@ async function fetchConstituents(index) {
       notes
     };
   });
-  if (!list) throw new ProviderError(SOURCE29, `constituents of ${id} unavailable offline`);
+  if (!list) throw new ProviderError(SOURCE30, `constituents of ${id} unavailable offline`);
   return list;
 }
 function constituentsToDataset(list) {
@@ -38465,7 +38615,7 @@ function constituentsToDataset(list) {
     title: `${list.name} constituents (Wikipedia)`,
     subject: list.index,
     points,
-    provenance: { source: SOURCE29, url: list.url, fetchedAt: list.fetchedAt, official: false, asOf: list.fetchedAt.slice(0, 10) },
+    provenance: { source: SOURCE30, url: list.url, fetchedAt: list.fetchedAt, official: false, asOf: list.fetchedAt.slice(0, 10) },
     notes: list.notes
   };
 }
@@ -38474,7 +38624,7 @@ async function indexUniverse(index) {
 }
 
 // src/providers/macro/worldbank.ts
-var SOURCE30 = "worldbank";
+var SOURCE31 = "worldbank";
 var BASE28 = "https://api.worldbank.org/v2/country";
 var WB_INDICATORS = {
   gdpGrowth: { code: "NY.GDP.MKTP.KD.ZG", key: "macro.gdp.growth", label: "real GDP growth (annual)", unit: "%" },
@@ -38501,9 +38651,9 @@ async function worldBankIndicators(iso4, which = ["gdpGrowth", "inflation", "deb
   const defs2 = which.map((w) => WB_INDICATORS[w]);
   const url = `${BASE28}/${encodeURIComponent(c)}/indicator/${defs2.map((d) => d.code).join(";")}?format=json&mrnev=${n2}&source=2&per_page=500`;
   const res = await fetchJson(url);
-  requireOk(SOURCE30, res, `indicators for ${c}`);
+  requireOk(SOURCE31, res, `indicators for ${c}`);
   const msg = res.data?.[0]?.message?.[0]?.value;
-  if (msg) throw new ProviderError(SOURCE30, `${c}: ${msg.slice(0, 160)}`, 400);
+  if (msg) throw new ProviderError(SOURCE31, `${c}: ${msg.slice(0, 160)}`, 400);
   const series = parseWorldBank(res.data);
   const points = [];
   const missing = [];
@@ -38512,13 +38662,13 @@ async function worldBankIndicators(iso4, which = ["gdpGrowth", "inflation", "deb
     if (obs?.length) points.push(...seriesPoints(`${c}.${d.key}`, `${c} ${d.label}`, d.unit, obs, { history: true }));
     else missing.push(d.code);
   }
-  if (!points.length) throw new ProviderError(SOURCE30, `no data for ${c} (${defs2.map((d) => d.code).join(", ")}) \u2014 check the country code`);
+  if (!points.length) throw new ProviderError(SOURCE31, `no data for ${c} (${defs2.map((d) => d.code).join(", ")}) \u2014 check the country code`);
   return {
     kind: "macro",
     title: `${c} World Development Indicators (World Bank)`,
     subject: c,
     points,
-    provenance: { source: SOURCE30, url: res.url, fetchedAt: res.fetchedAt, official: true },
+    provenance: { source: SOURCE31, url: res.url, fetchedAt: res.fetchedAt, official: true },
     notes: [
       "Annual data compiled by the World Bank from national sources; usually a year or more behind national releases.",
       ...missing.length ? [`not reported for ${c}: ${missing.join(", ")}`] : []
@@ -38684,15 +38834,21 @@ async function calendarCommand(args, asJson) {
   const today2 = clockNow().toISOString().slice(0, 10);
   const year = argInt(args, "year", { min: 1990, max: 2100 }) ?? Number(today2.slice(0, 4));
   const spec = MARKETS[market];
+  const hours = marketHours(market, year);
   if (sub === "sessions") {
     const sessions = nextSessions(market, today2, argInt(args, "days", { min: 1, max: 260 }) ?? 10);
     const hol = holidays(market, year).filter((h) => h.date >= today2);
-    if (asJson) return void process.stdout.write(jsonLine({ market: spec, today: today2, sessions, upcomingHolidays: hol }));
+    const notes = [hoursNote(market, hours), sessionCountCaveat(market, today2, sessions.at(-1)?.date ?? today2)].filter((n2) => !!n2);
+    if (asJson)
+      return void process.stdout.write(
+        jsonLine({ market: { ...spec, open: hours.open, close: hours.close }, hours, today: today2, sessions, upcomingHolidays: hol, notes })
+      );
     process.stdout.write(
       [
-        `${spec.name} \u2014 ${spec.open}\u2013${spec.close} ${spec.timeZone}`,
+        `${spec.name} \u2014 ${hours.open}\u2013${hours.close} ${spec.timeZone}`,
         `next sessions: ${sessions.map((s) => `${s.date}${s.early ? ` (closes ${s.closeAt})` : ""}`).join(", ")}`,
         `upcoming holidays ${year}: ${hol.map((h) => `${h.date} ${h.name}${h.kind === "early-close" ? ` (early close ${h.closeAt})` : ""}`).join("; ") || "none left"}`,
+        ...notes.map((n2) => `note: ${n2}`),
         ""
       ].join("\n")
     );
@@ -38700,11 +38856,15 @@ async function calendarCommand(args, asJson) {
   }
   if (sub === "holidays") {
     const list = holidays(market, year);
-    if (asJson) return void process.stdout.write(jsonLine({ market: spec, year, holidays: list }));
+    const notes = market !== "CRYPTO" && !specialClosures(market, year).researched && `${year}-12-31` > CLOSURES_CHECKED_THROUGH ? [
+      `one-off closures after ${CLOSURES_CHECKED_THROUGH} are not researched for ${year}: this list may lack one \u2014 \`${researchCommand("calendar", MARKET_COUNTRY[market])}\``
+    ] : [];
+    if (asJson) return void process.stdout.write(jsonLine({ market: spec, year, holidays: list, notes }));
     process.stdout.write(
       `${spec.name} ${year}
 ${list.map((h) => `  ${h.date}  ${h.kind === "closed" ? "closed     " : `closes ${h.closeAt}`}  ${h.name}`).join("\n")}
-`
+${notes.map((n2) => `note: ${n2}
+`).join("")}`
     );
     return;
   }
@@ -38713,7 +38873,9 @@ ${list.map((h) => `  ${h.date}  ${h.kind === "closed" ? "closed     " : `closes 
     const items = [
       `Compare with the exchange's published ${year} calendar: ${market === "XNYS" ? "https://www.nyse.com/markets/hours-calendars" : "https://www.euronext.com/en/trade/trading-hours-holidays"}`,
       `Computed ${list.length} non-standard sessions: ${list.map((h) => h.date).join(", ")}`,
-      `One-off closures recorded: ${SPECIAL_CLOSURES.filter((s) => s.market === market).map((s) => `${s.date} ${s.name}`).join("; ") || "none"} \u2014 search "${spec.name} market closure ${year}" for new ones (a national day of mourning, an outage)`
+      `One-off closures ${specialClosures(market, year).researched ? "researched" : `recorded (checked through ${CLOSURES_CHECKED_THROUGH}, not researched for ${year})`}: ${specialClosures(market, year).closures.map((s) => `${s.date} ${s.name}`).join("; ") || "none"} \u2014 search "${spec.name} market closure ${year}" for new ones (a national day of mourning, an outage)`,
+      `Trading hours ${hours.open}\u2013${hours.close} ${spec.timeZone} (${hours.origin === "researched" ? `researched, verified ${hours.asOf}` : `built-in, as published on ${hours.asOf}`})`,
+      ...market === "CRYPTO" ? [] : [`Store the year's hours and one-off closures: \`${researchCommand("calendar", MARKET_COUNTRY[market])}\``]
     ];
     if (asJson) return void process.stdout.write(jsonLine({ market, year, computed: list, checklist: items }));
     process.stdout.write(`${items.map((i) => `- ${i}`).join("\n")}
@@ -38725,7 +38887,7 @@ ${list.map((h) => `  ${h.date}  ${h.kind === "closed" ? "closed     " : `closes 
 
 // src/providers/crypto/dexscreener.ts
 var BASE29 = "https://api.dexscreener.com";
-var SOURCE31 = "dexscreener";
+var SOURCE32 = "dexscreener";
 var PACE8 = { hostIntervalMs: 250 };
 var LOW_LIQUIDITY_USD = 1e5;
 var YOUNG_PAIR_DAYS = 7;
@@ -38807,23 +38969,23 @@ function toDataset(pairs, title, res, extra) {
     kind: "crypto-dex",
     title,
     points: dexPairPoints(pairs, asOf),
-    provenance: { source: SOURCE31, url: res.url, fetchedAt: res.fetchedAt, delay: "~1min", official: false, asOf },
+    provenance: { source: SOURCE32, url: res.url, fetchedAt: res.fetchedAt, delay: "~1min", official: false, asOf },
     notes: [...extra, ...dexRiskNotes(pairs), "anyone can deploy a token with any name: match the contract address, not the symbol"]
   };
 }
 async function dexSearchPairs(query2, opts = {}) {
   const now = opts.now ?? clockNow();
   const res = await fetchJson(`${BASE29}/latest/dex/search?q=${encodeURIComponent(query2)}`, PACE8);
-  if (!res.ok || !res.data) throw new ProviderError(SOURCE31, `search failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+  if (!res.ok || !res.data) throw new ProviderError(SOURCE32, `search failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   const pairs = parseDexPairs(res.data.pairs ?? [], now).sort((a, b) => (b.liquidityUsd ?? 0) - (a.liquidityUsd ?? 0)).slice(0, opts.limit ?? 10);
-  if (!pairs.length) throw new ProviderError(SOURCE31, "no DEX pair matches the query", 404);
+  if (!pairs.length) throw new ProviderError(SOURCE32, "no DEX pair matches the query", 404);
   return toDataset(pairs, `DEX pairs matching a search (top ${pairs.length} by liquidity)`, res, [
     "search results can mix unrelated tokens that share a ticker"
   ]);
 }
 
 // src/providers/crypto/solana.ts
-var SOURCE32 = "solana-rpc";
+var SOURCE33 = "solana-rpc";
 var PUBLIC_RPC = "https://api.mainnet-beta.solana.com";
 function rpcUrl() {
   const env2 = process.env.ULTRASTOCK_SOLANA_RPC;
@@ -38849,9 +39011,9 @@ function holderConcentration(largest, supply, n2 = 10) {
 function rpcResult(method, status2, body) {
   const code = body?.error?.code;
   if (status2 === 429 || code === 429)
-    throw new ProviderError(SOURCE32, `${method}: the RPC throttles this call (429) \u2014 set ULTRASTOCK_SOLANA_RPC to your own RPC URL`, 429);
-  if (body?.error) throw new ProviderError(SOURCE32, `${method}: RPC error ${code ?? "?"}`, code !== void 0 && code <= -32e3 && code > -32100 ? 503 : 400);
-  if (status2 >= 400 || status2 === 0 || body?.result === void 0) throw new ProviderError(SOURCE32, `${method} failed (${status2})`, status2 || 0);
+    throw new ProviderError(SOURCE33, `${method}: the RPC throttles this call (429) \u2014 set ULTRASTOCK_SOLANA_RPC to your own RPC URL`, 429);
+  if (body?.error) throw new ProviderError(SOURCE33, `${method}: RPC error ${code ?? "?"}`, code !== void 0 && code <= -32e3 && code > -32100 ? 503 : 400);
+  if (status2 >= 400 || status2 === 0 || body?.result === void 0) throw new ProviderError(SOURCE33, `${method} failed (${status2})`, status2 || 0);
   return body.result;
 }
 async function rpc2(method, params) {
@@ -38896,11 +39058,11 @@ function concentrationPoints(mint, c, asOf) {
   ];
 }
 async function solanaTokenConcentration(mint, n2 = 10) {
-  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) throw new ProviderError(SOURCE32, "not a base58 Solana mint address", 400);
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) throw new ProviderError(SOURCE33, "not a base58 Solana mint address", 400);
   const supply = await rpc2("getTokenSupply", [mint]);
   const largest = await rpc2("getTokenLargestAccounts", [mint]);
   const c = holderConcentration(largest.result.value, supply.result.value, n2);
-  if (!c) throw new ProviderError(SOURCE32, `mint ${mint} reports no supply`, 404);
+  if (!c) throw new ProviderError(SOURCE33, `mint ${mint} reports no supply`, 404);
   const asOf = largest.fetchedAt.slice(0, 10);
   const notes = [
     "largest token ACCOUNTS, not owners: exchange wallets, liquidity pools, vesting and burn accounts each count as one holder",
@@ -38912,7 +39074,7 @@ async function solanaTokenConcentration(mint, n2 = 10) {
     title: `SPL token ${mint.slice(0, 8)}\u2026 holder concentration`,
     subject: mint,
     points: concentrationPoints(mint, c, asOf),
-    provenance: { source: SOURCE32, url: largest.url, fetchedAt: largest.fetchedAt, delay: "realtime", official: false, asOf },
+    provenance: { source: SOURCE33, url: largest.url, fetchedAt: largest.fetchedAt, delay: "realtime", official: false, asOf },
     notes
   };
 }
@@ -38920,7 +39082,7 @@ async function solanaTokenConcentration(mint, n2 = 10) {
 // src/providers/prediction/polymarket.ts
 var GAMMA = "https://gamma-api.polymarket.com";
 var CLOB = "https://clob.polymarket.com";
-var SOURCE33 = "polymarket";
+var SOURCE34 = "polymarket";
 var PACE9 = { hostIntervalMs: 200 };
 var NOTE_UNITS2 = "prices in USDC per outcome token paying 1 USDC (price \xD7 100 = implied probability %); volume and liquidity in USDC";
 function gammaList(v) {
@@ -38997,17 +39159,17 @@ function parseClobBook(raw) {
 function polymarketFailure(res, what) {
   if (res.status === 0)
     return new ProviderError(
-      SOURCE33,
+      SOURCE34,
       `${what}: Polymarket unreachable (${res.error ?? "no answer"}) \u2014 its domains are DNS-blocked in some jurisdictions (e.g. France, by ANJ order); not circumvented`,
       0
     );
   if (res.status === 403 || res.status === 451)
-    return new ProviderError(SOURCE33, `${what}: Polymarket refuses requests from this location (HTTP ${res.status}) \u2014 not circumvented`, res.status);
-  if (res.status === 404) return new ProviderError(SOURCE33, `${what}: not found`, 404);
-  return new ProviderError(SOURCE33, `${what} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+    return new ProviderError(SOURCE34, `${what}: Polymarket refuses requests from this location (HTTP ${res.status}) \u2014 not circumvented`, res.status);
+  if (res.status === 404) return new ProviderError(SOURCE34, `${what}: not found`, 404);
+  return new ProviderError(SOURCE34, `${what} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
 }
 var prov4 = (res) => ({
-  source: SOURCE33,
+  source: SOURCE34,
   url: res.url,
   fetchedAt: res.fetchedAt,
   delay: "realtime",
@@ -39029,7 +39191,7 @@ async function polymarketMarkets(q = {}) {
   const res = await fetchJson(`${GAMMA}/markets?${gammaParams(q)}`, PACE9);
   if (!res.ok || !Array.isArray(res.data)) throw polymarketFailure(res, "market list");
   const markets = res.data.map(parseGammaMarket);
-  if (!markets.length) throw new ProviderError(SOURCE33, "no market matches the query", 404);
+  if (!markets.length) throw new ProviderError(SOURCE34, "no market matches the query", 404);
   return {
     markets,
     dataset: {
@@ -39042,11 +39204,11 @@ async function polymarketMarkets(q = {}) {
   };
 }
 async function polymarketBook(tokenId, levels = 10) {
-  if (!/^\d+$/.test(tokenId)) throw new ProviderError(SOURCE33, "a CLOB token id is a decimal number (see clobTokenIds on the market)", 400);
+  if (!/^\d+$/.test(tokenId)) throw new ProviderError(SOURCE34, "a CLOB token id is a decimal number (see clobTokenIds on the market)", 400);
   const res = await fetchJson(`${CLOB}/book?token_id=${tokenId}`, PACE9);
   if (!res.ok || !res.data) throw polymarketFailure(res, "order book");
   const book2 = parseClobBook(res.data);
-  if (!book2.bids.length && !book2.asks.length) throw new ProviderError(SOURCE33, "order book is empty", 404);
+  if (!book2.bids.length && !book2.asks.length) throw new ProviderError(SOURCE34, "order book is empty", 404);
   const ts = num5(res.data.timestamp);
   const short = `${tokenId.slice(0, 8)}\u2026`;
   return {
@@ -40408,7 +40570,7 @@ async function predictOrder(args, asJson) {
 }
 
 // src/commands/backtest.ts
-import { existsSync as existsSync30, mkdirSync as mkdirSync23, readFileSync as readFileSync34, writeFileSync as writeFileSync11 } from "fs";
+import { existsSync as existsSync31, mkdirSync as mkdirSync23, readFileSync as readFileSync34, writeFileSync as writeFileSync11 } from "fs";
 import { join as join45, resolve as resolve11 } from "path";
 
 // src/analytics/portfolio.ts
@@ -40746,7 +40908,7 @@ function allocationBacktest(kind, bars, dates, opts) {
 }
 
 // src/backtest/catalog.ts
-import { existsSync as existsSync29, readdirSync as readdirSync13, readFileSync as readFileSync32 } from "fs";
+import { existsSync as existsSync30, readdirSync as readdirSync13, readFileSync as readFileSync32 } from "fs";
 import { join as join41 } from "path";
 
 // assets/strategies/adaptive-momentum-reversal.json
@@ -42879,7 +43041,7 @@ function listStrategies() {
     out.set(o.name, { name: o.name, description: o.description, origin: "builtin", valid: v.valid, errors: v.errors });
   }
   const dir2 = userStrategyDir();
-  if (existsSync29(dir2))
+  if (existsSync30(dir2))
     for (const f3 of readdirSync13(dir2).filter((x) => x.endsWith(".json"))) {
       const path2 = join41(dir2, f3);
       try {
@@ -42894,11 +43056,11 @@ function listStrategies() {
 }
 function findStrategy(ref) {
   if (ref.endsWith(".json") || ref.includes("/")) {
-    if (!existsSync29(ref)) return void 0;
+    if (!existsSync30(ref)) return void 0;
     return { raw: JSON.parse(readFileSync32(ref, "utf8")), origin: ref };
   }
   const user = join41(userStrategyDir(), `${ref}.json`);
-  if (existsSync29(user)) return { raw: JSON.parse(readFileSync32(user, "utf8")), origin: user };
+  if (existsSync30(user)) return { raw: JSON.parse(readFileSync32(user, "utf8")), origin: user };
   const b = BUILTIN_STRATEGIES.find((s) => s.name === ref);
   return b ? { raw: structuredClone(b), origin: "builtin" } : void 0;
 }
@@ -42997,7 +43159,7 @@ import { join as join43 } from "path";
 import { mkdtempSync as mkdtempSync4, readdirSync as readdirSync14, readFileSync as readFileSync33, rmSync as rmSync10 } from "fs";
 import { tmpdir as tmpdir5 } from "os";
 import { join as join42 } from "path";
-var SOURCE34 = "binance-historical";
+var SOURCE35 = "binance-historical";
 function binanceHistoricalInfo() {
   if (!have("binance-historical")) return { installed: false, compatible: false };
   const r3 = sh("binance-historical", ["describe", "--json"], { timeoutMs: 15e3 });
@@ -43019,12 +43181,12 @@ async function bulkKlines(req) {
   const info2 = binanceHistoricalInfo();
   if (!info2.installed)
     throw new ProviderError(
-      SOURCE34,
+      SOURCE35,
       "binance-historical is not installed \u2014 npm install -g binance-historical, or brew install maxgfr/tap/binance-historical",
       0
     );
   if (!info2.compatible)
-    throw new ProviderError(SOURCE34, `binance-historical ${info2.version ?? "?"} does not speak the expected describe contract (schemaVersion 1)`, 0);
+    throw new ProviderError(SOURCE35, `binance-historical ${info2.version ?? "?"} does not speak the expected describe contract (schemaVersion 1)`, 0);
   const out = mkdtempSync4(join42(tmpdir5(), "ultrastock-bh-"));
   try {
     const args = [
@@ -43052,12 +43214,12 @@ async function bulkKlines(req) {
     try {
       report2 = JSON.parse(r3.stdout);
     } catch {
-      throw new ProviderError(SOURCE34, `no report from binance-historical: ${(r3.stderr || r3.stdout).slice(0, 300)}`, 0);
+      throw new ProviderError(SOURCE35, `no report from binance-historical: ${(r3.stderr || r3.stdout).slice(0, 300)}`, 0);
     }
     const res = report2.results?.[0];
     if (!res || res.status === "failed" || res.error) {
       const e = res?.error;
-      throw new ProviderError(SOURCE34, `${req.pair}: ${e?.code ?? "FAILED"} ${e?.message ?? ""}`.trim(), e?.httpStatus ?? 0);
+      throw new ProviderError(SOURCE35, `${req.pair}: ${e?.code ?? "FAILED"} ${e?.message ?? ""}`.trim(), e?.httpStatus ?? 0);
     }
     const file = res.outputPath ?? join42(out, readdirSync14(out).find((f3) => f3.endsWith(".jsonl")) ?? "");
     const bars = readFileSync33(file, "utf8").split("\n").filter(Boolean).map((line) => {
@@ -44612,6 +44774,7 @@ async function settleDecisions(now = clockNow()) {
   let unresolved = [];
   const waiting = [];
   const errors = [];
+  const notes = /* @__PURE__ */ new Set();
   let pending = 0;
   const today2 = now.toISOString().slice(0, 10);
   for (const d of readDecisions()) {
@@ -44630,6 +44793,8 @@ async function settleDecisions(now = clockNow()) {
       const bench = benchSym ? await getHistory(await resolveSymbol(benchSym), { from, to: now }).catch(() => void 0) : void 0;
       for (const h of matured) {
         const endDate = horizonEnd(market, start, h);
+        const caveat = sessionCountCaveat(market, start, endDate);
+        if (caveat) notes.add(caveat);
         const unresolvable = new Date(Date.parse(endDate) + UNRESOLVED_AFTER_DAYS * 864e5).toISOString().slice(0, 10) < today2;
         const giveUp = (reason) => unresolved.push({
           decisionId: d.id,
@@ -44735,7 +44900,7 @@ async function settleDecisions(now = clockNow()) {
       return [fresh, freshUnresolved];
     });
   }
-  return { settled, unresolved, pending, waiting, errors };
+  return { settled, unresolved, pending, waiting, errors, notes: [...notes] };
 }
 function hitRates(settlements) {
   const groups = /* @__PURE__ */ new Map();
@@ -45303,7 +45468,7 @@ ${v.warnings.map((w) => `warning: ${w}
       const def2 = { ...base2, name: ref };
       const dir2 = userStrategyDir();
       const path2 = join45(dir2, `${ref}.json`);
-      if (existsSync30(path2)) throw new UsageError(`${path2} already exists \u2014 edit it, or pick another name`);
+      if (existsSync31(path2)) throw new UsageError(`${path2} already exists \u2014 edit it, or pick another name`);
       mkdirSync23(dir2, { recursive: true });
       writeFileSync11(path2, `${JSON.stringify(def2, null, 2)}
 `);
@@ -45319,7 +45484,7 @@ edit it, then: ultrastock strategy validate ${ref} && ultrastock backtest run ${
 }
 
 // src/commands/broker.ts
-import { existsSync as existsSync34, mkdirSync as mkdirSync27, writeFileSync as writeFileSync12 } from "fs";
+import { existsSync as existsSync35, mkdirSync as mkdirSync27, writeFileSync as writeFileSync12 } from "fs";
 import { dirname as dirname7 } from "path";
 
 // src/trading/brokers/binance.ts
@@ -46550,7 +46715,7 @@ function krakenAdapter(opts) {
 }
 
 // src/trading/limits.ts
-import { existsSync as existsSync31, mkdirSync as mkdirSync24, readFileSync as readFileSync36 } from "fs";
+import { existsSync as existsSync32, mkdirSync as mkdirSync24, readFileSync as readFileSync36 } from "fs";
 import { join as join46 } from "path";
 var LOOSEN_DELAY_MS = 24 * 36e5;
 var TIERS = [
@@ -46564,7 +46729,7 @@ function tierFor(liveFills) {
 var path = () => join46(homeDir(), "state", "live-limits.json");
 var DEFAULT = { maxOrder: TIERS[0].maxOrder, maxDaily: TIERS[0].maxDaily, venues: [], attestedNoWithdraw: [] };
 function load() {
-  if (!existsSync31(path())) return { current: { ...DEFAULT }, history: [] };
+  if (!existsSync32(path())) return { current: { ...DEFAULT }, history: [] };
   return JSON.parse(readFileSync36(path(), "utf8"));
 }
 function save2(s) {
@@ -46671,7 +46836,7 @@ function liveEverApproved() {
 }
 
 // src/trading/live.ts
-import { existsSync as existsSync33, mkdirSync as mkdirSync26, readFileSync as readFileSync38, rmSync as rmSync12 } from "fs";
+import { existsSync as existsSync34, mkdirSync as mkdirSync26, readFileSync as readFileSync38, rmSync as rmSync12 } from "fs";
 import { dirname as dirname6, join as join49 } from "path";
 import { createHash as createHash5 } from "crypto";
 
@@ -47413,7 +47578,7 @@ function chronological(txs) {
 // src/trading/otp.ts
 import { execFileSync as execFileSync2 } from "child_process";
 import { randomBytes as randomBytes3, randomInt, scryptSync, timingSafeEqual as timingSafeEqual3 } from "crypto";
-import { closeSync as closeSync7, existsSync as existsSync32, mkdirSync as mkdirSync25, openSync as openSync7, readFileSync as readFileSync37, rmSync as rmSync11, writeSync as writeSync4 } from "fs";
+import { closeSync as closeSync7, existsSync as existsSync33, mkdirSync as mkdirSync25, openSync as openSync7, readFileSync as readFileSync37, rmSync as rmSync11, writeSync as writeSync4 } from "fs";
 import { join as join47 } from "path";
 
 // src/trading/secrets.ts
@@ -47592,7 +47757,7 @@ function verifyCode(subject, binding, code, now = /* @__PURE__ */ new Date()) {
   return codesLock(() => verifyLocked(f3, binding, code, now));
 }
 function verifyLocked(f3, binding, code, now) {
-  if (!existsSync32(f3)) return { ok: false, reason: "no code was issued for this \u2014 run the code step first" };
+  if (!existsSync33(f3)) return { ok: false, reason: "no code was issued for this \u2014 run the code step first" };
   const p = JSON.parse(readFileSync37(f3, "utf8"));
   if (now.getTime() > Date.parse(p.expiresAt)) {
     rmSync11(f3, { force: true });
@@ -48015,7 +48180,7 @@ async function preconditions(p) {
     const g = await cryptoVenueGate(p.venue, profile.jurisdiction, { micaAuthorised: p.micaAuthorised });
     if (!g.ok) no("BLOCKED_JURISDICTION", g.reason);
   }
-  if (existsSync33(killSwitchPath())) no("KILL_SWITCH", `the kill switch is on (${killSwitchPath()})`);
+  if (existsSync34(killSwitchPath())) no("KILL_SWITCH", `the kill switch is on (${killSwitchPath()})`);
   if (profile) {
     const book3 = p.env === "live" ? "real" : "live-test";
     const b = breakerState(readEquity(book3), closedTradeResults(readLedger(book3)), profile.limits, now);
@@ -48224,7 +48389,7 @@ async function submitLocked(p, now) {
     at: now.toISOString()
   };
   const killed = () => {
-    if (!existsSync33(killSwitchPath())) return void 0;
+    if (!existsSync34(killSwitchPath())) return void 0;
     const refusals2 = [{ code: "KILL_SWITCH", reason: `the kill switch was set while the order was being checked (${killSwitchPath()}): nothing was sent` }];
     audit({ event: "live-refused", ticket: t.id, venue: p.venue, env: p.env, refusals: refusals2 });
     return { ticket: loadTicket(t.id), refusals: refusals2 };
@@ -48242,7 +48407,7 @@ async function submitLocked(p, now) {
     void 0,
     ["checked"]
   );
-  if (existsSync33(killSwitchPath())) {
+  if (existsSync34(killSwitchPath())) {
     await transition(
       t.id,
       "blocked",
@@ -48556,7 +48721,7 @@ async function brokerCommand(args, asJson) {
   }
   if (sub === "panic") {
     mkdirSync27(dirname7(killSwitchPath()), { recursive: true });
-    if (!existsSync34(killSwitchPath())) writeFileSync12(killSwitchPath(), `kill switch set by \`broker panic\` at ${now.toISOString()}
+    if (!existsSync35(killSwitchPath())) writeFileSync12(killSwitchPath(), `kill switch set by \`broker panic\` at ${now.toISOString()}
 `);
     audit({ event: "panic" });
     const results = [];
@@ -48605,7 +48770,7 @@ async function brokerCommand(args, asJson) {
       asJson,
       {
         env: env3,
-        kill: existsSync34(killSwitchPath()),
+        kill: existsSync35(killSwitchPath()),
         limits: lim,
         liveFills: fills,
         todayNotional,
@@ -48614,7 +48779,7 @@ async function brokerCommand(args, asJson) {
         liveEnv: process.env.ULTRASTOCK_LIVE === "1"
       },
       [
-        `env ${env3} \xB7 kill switch ${existsSync34(killSwitchPath()) ? "ON" : "off"} \xB7 live switch ${liveSwitchOn() ? "on" : "off"} \xB7 ULTRASTOCK_LIVE ${process.env.ULTRASTOCK_LIVE === "1" ? "on" : "off"} \xB7 tier "${lim.tier}" (${lim.limits.maxOrder}/order, ${lim.limits.maxDaily}/day, ${todayNotional.toFixed(2)} used today)`,
+        `env ${env3} \xB7 kill switch ${existsSync35(killSwitchPath()) ? "ON" : "off"} \xB7 live switch ${liveSwitchOn() ? "on" : "off"} \xB7 ULTRASTOCK_LIVE ${process.env.ULTRASTOCK_LIVE === "1" ? "on" : "off"} \xB7 tier "${lim.tier}" (${lim.limits.maxOrder}/order, ${lim.limits.maxDaily}/day, ${todayNotional.toFixed(2)} used today)`,
         ...rows.map(
           (r3) => `  ${String(r3.venue).padEnd(9)} key: ${r3.key}${r3.on ? "" : " \xB7 not switched on"}${r3.authorisation ? ` \xB7 jurisdiction: ${r3.authorisation}` : ""}${r3.permissions ? ` \xB7 ${r3.permissions}` : ""}`
         )
@@ -48714,7 +48879,7 @@ function pendingLive() {
 // src/mcp.ts
 import { execFile } from "child_process";
 import { randomBytes as randomBytes4 } from "crypto";
-import { mkdtempSync as mkdtempSync5, readFileSync as readFileSync39, realpathSync as realpathSync4, rmSync as rmSync13, statSync as statSync12, writeFileSync as writeFileSync13 } from "fs";
+import { mkdtempSync as mkdtempSync5, readFileSync as readFileSync39, realpathSync as realpathSync4, rmSync as rmSync13, statSync as statSync13, writeFileSync as writeFileSync13 } from "fs";
 import { homedir as homedir5, tmpdir as tmpdir6 } from "os";
 import { basename as basename3, dirname as dirname8, isAbsolute as isAbsolute4, join as join50, relative as relative3, resolve as resolve12 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
@@ -49223,7 +49388,7 @@ function checkGuard(run3, answer) {
     throw refusal2(`the answer must be a .md or .txt file at the top of the run directory ${run3}`);
   let written;
   try {
-    written = statSync12(file).mtimeMs;
+    written = statSync13(file).mtimeMs;
   } catch {
     throw refusal2(`cannot read ${answer}`);
   }
@@ -49446,9 +49611,9 @@ function peaDeposits(txs, peaAccounts) {
 }
 
 // src/analyze/portfolio/rebalance.ts
-import { existsSync as existsSync35, readFileSync as readFileSync40 } from "fs";
+import { existsSync as existsSync36, readFileSync as readFileSync40 } from "fs";
 function parseTargets(raw) {
-  const text2 = raw.trim().startsWith("{") ? raw : existsSync35(raw) ? readFileSync40(raw, "utf8") : void 0;
+  const text2 = raw.trim().startsWith("{") ? raw : existsSync36(raw) ? readFileSync40(raw, "utf8") : void 0;
   if (text2 === void 0) throw new UsageError(`--targets is a JSON object of weights in % or a path to one, not "${raw}"`);
   let parsed;
   try {
@@ -50094,11 +50259,11 @@ async function incomeAnalysis(m, f3) {
 }
 
 // src/alerts/alerts.ts
-import { existsSync as existsSync36, mkdirSync as mkdirSync28, readFileSync as readFileSync41 } from "fs";
+import { existsSync as existsSync37, mkdirSync as mkdirSync28, readFileSync as readFileSync41 } from "fs";
 import { join as join51 } from "path";
 var statePath = () => join51(homeDir(), "state", "alerts.json");
 function loadRules2() {
-  return existsSync36(statePath()) ? JSON.parse(readFileSync41(statePath(), "utf8")) : [];
+  return existsSync37(statePath()) ? JSON.parse(readFileSync41(statePath(), "utf8")) : [];
 }
 function saveRules2(rules) {
   mkdirSync28(join51(homeDir(), "state"), { recursive: true });
@@ -50380,7 +50545,7 @@ async function notify(events) {
 }
 
 // src/commands/import.ts
-import { existsSync as existsSync37, readFileSync as readFileSync42 } from "fs";
+import { existsSync as existsSync38, readFileSync as readFileSync42 } from "fs";
 import { resolve as resolve13 } from "path";
 
 // src/portfolio/import/shared.ts
@@ -51766,7 +51931,7 @@ async function importCommand(args, asJson) {
   const feeSign = argOneOf(args, "fee-sign", FEE_SIGNS);
   if (feeSign && format !== "generic") throw new UsageError("--fee-sign applies to --format generic (the other formats know their own signs)");
   let mapRaw = argValue(args, "map");
-  if (mapRaw !== void 0 && !mapRaw.trim().startsWith("{") && /\.json$/i.test(mapRaw) && existsSync37(resolve13(mapRaw)))
+  if (mapRaw !== void 0 && !mapRaw.trim().startsWith("{") && /\.json$/i.test(mapRaw) && existsSync38(resolve13(mapRaw)))
     mapRaw = readFileSync42(resolve13(mapRaw), "utf8");
   let mapOpt;
   try {
@@ -51777,7 +51942,7 @@ async function importCommand(args, asJson) {
   if (format === "generic" && !mapOpt.map)
     throw new UsageError("--format generic needs --map (a JSON column map, a .json file holding one, or boursorama|fortuneo|trade-republic)");
   const path2 = resolve13(file);
-  if (!existsSync37(path2)) throw new Error(`no such file: ${path2}`);
+  if (!existsSync38(path2)) throw new Error(`no such file: ${path2}`);
   const { text: text2, warning } = readStatement(path2);
   const res = parseStatement(format, text2, { account, quote: mapOpt.quote, map: mapOpt.map, presetName: mapOpt.presetName, feeSign });
   const warnings = [...warning ? [warning] : [], ...res.warnings];
@@ -52289,11 +52454,11 @@ async function portfolioAnalyticsCommand(args, asJson) {
 import { resolve as resolve14 } from "path";
 
 // src/portfolio/store.ts
-import { existsSync as existsSync38, mkdirSync as mkdirSync29, readdirSync as readdirSync15, statSync as statSync13 } from "fs";
+import { existsSync as existsSync39, mkdirSync as mkdirSync29, readdirSync as readdirSync15, statSync as statSync14 } from "fs";
 import { join as join52 } from "path";
 function jsonlBooks() {
   const dir2 = join52(homeDir(), "ledger");
-  if (!existsSync38(dir2)) return [];
+  if (!existsSync39(dir2)) return [];
   return readdirSync15(dir2).filter((f3) => /^[a-z0-9-]{1,40}\.jsonl$/.test(f3)).map((f3) => f3.replace(/\.jsonl$/, "")).sort();
 }
 function storeBooks() {
@@ -52324,7 +52489,7 @@ async function exportBook(book2) {
     const file = readJsonlLedger(book2);
     const have2 = new Set(file.map((t) => t.id));
     const missing = stored.filter((t) => !have2.has(t.id));
-    if (missing.length || !existsSync38(path2)) writeFileAtomic(path2, [...file, ...missing].map((t) => `${JSON.stringify(t)}
+    if (missing.length || !existsSync39(path2)) writeFileAtomic(path2, [...file, ...missing].map((t) => `${JSON.stringify(t)}
 `).join(""), 384);
     return { book: book2, path: path2, inStore: stored.length, inFileBefore: file.length, appended: missing.length };
   });
@@ -52336,24 +52501,24 @@ async function exportStore(book2) {
   return out;
 }
 async function storeOff(now = /* @__PURE__ */ new Date()) {
-  const exported = existsSync38(storePath()) ? await exportStore() : [];
+  const exported = existsSync39(storePath()) ? await exportStore() : [];
   setLedgerBackend("jsonl", now);
   return { backend: "jsonl", exported };
 }
 function storeStatus() {
   const path2 = storePath();
-  const exists = existsSync38(path2);
+  const exists = existsSync39(path2);
   const base2 = { backend: ledgerBackend(), path: path2, exists, expectedSchemaVersion: SCHEMA_VERSION, jsonlBooks: jsonlBooks() };
   if (!sqliteSupported()) return { ...base2, unavailable: new StoreUnavailableError().message };
   if (!exists) return base2;
   return withStore(
     (db) => {
       const schemaVersion = schemaVersionOf(db);
-      if (schemaVersion < 1) return { ...base2, bytes: statSync13(path2).size, schemaVersion };
+      if (schemaVersion < 1) return { ...base2, bytes: statSync14(path2).size, schemaVersion };
       const count = (t) => Number(db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get()?.n ?? 0);
       return {
         ...base2,
-        bytes: statSync13(path2).size,
+        bytes: statSync14(path2).size,
         schemaVersion,
         counts: { transactions: count("transactions"), snapshots: count("snapshots"), news_items: count("news_items"), events_seen: count("events_seen") },
         books: db.prepare("SELECT book, COUNT(*) AS n FROM transactions GROUP BY book ORDER BY book").all().map((r3) => ({ book: String(r3.book), transactions: Number(r3.n) }))
@@ -53493,11 +53658,11 @@ async function paperCommand(args, asJson) {
 }
 
 // src/portfolio/watchlist.ts
-import { existsSync as existsSync39, mkdirSync as mkdirSync30, readFileSync as readFileSync43 } from "fs";
+import { existsSync as existsSync40, mkdirSync as mkdirSync30, readFileSync as readFileSync43 } from "fs";
 import { join as join53 } from "path";
 var statePath2 = () => join53(homeDir(), "state", "watchlist.json");
 function loadWatchlist() {
-  return existsSync39(statePath2()) ? JSON.parse(readFileSync43(statePath2(), "utf8")) : [];
+  return existsSync40(statePath2()) ? JSON.parse(readFileSync43(statePath2(), "utf8")) : [];
 }
 function saveWatchlist(items) {
   mkdirSync30(join53(homeDir(), "state"), { recursive: true });
@@ -54185,7 +54350,8 @@ async function journalCommand(args, asJson) {
         ...r3.waiting.map(
           (w) => `  waiting: ${w.symbol} +${w.horizon} (${w.decisionId}) ends ${w.endDate}, but ${w.series === w.symbol ? "its" : `the benchmark ${w.series}'s`} history ${w.lastBar ? `stops at ${w.lastBar}` : "is empty"} \u2014 pending until it holds a bar on or after ${w.endDate}; ${w.then === "unresolved" ? `${UNRESOLVED_AFTER_DAYS} days past that day with no close after the decision, it is recorded unresolved and not scored` : `${SETTLE_GRACE_SESSIONS} sessions past that day (calendar days for crypto), it settles on the last close there is, marked partial`}`
         ),
-        ...r3.errors.map((e) => `  error: ${e}`)
+        ...r3.errors.map((e) => `  error: ${e}`),
+        ...r3.notes.map((n2) => `  note: ${n2}`)
       ].join("\n")
     );
   }
@@ -54352,11 +54518,11 @@ async function watchlistCommand(args, asJson) {
 }
 
 // src/analyze/morning/run.ts
-import { existsSync as existsSync41, readFileSync as readFileSync46 } from "fs";
+import { existsSync as existsSync42, readFileSync as readFileSync46 } from "fs";
 import { join as join55 } from "path";
 
 // src/analyze/morning/confirm.ts
-import { existsSync as existsSync40, readFileSync as readFileSync45 } from "fs";
+import { existsSync as existsSync41, readFileSync as readFileSync45 } from "fs";
 import { join as join54 } from "path";
 var RESULTS_LINE = /r[ée]sultats?|results?|earnings|chiffre d'affaires|revenues?|sales|ventes|trading update|publication/i;
 var NEAR_LINES2 = 3;
@@ -54367,7 +54533,7 @@ function confirmDates(dir2, items, today2) {
   if (!store) return items.map((i) => ({ ...i, status: "not-searched", sources: 0, stating: [] }));
   for (const it of items) {
     const path2 = join54(dir2, researchFiles(it.tag).index);
-    const entries = existsSync40(path2) ? JSON.parse(readFileSync45(path2, "utf8")) : [];
+    const entries = existsSync41(path2) ? JSON.parse(readFileSync45(path2, "utf8")) : [];
     if (!entries.length) {
       out.push({ ...it, status: "not-searched", sources: 0, stating: [] });
       continue;
@@ -54886,7 +55052,10 @@ async function morningRun(dir2, opts = {}) {
   if (markets.includes("us")) venues.add("XNYS");
   const sessionPoints = [];
   const closures = [];
+  const sessionNotes = [];
   for (const v of [...venues].sort()) {
+    const caveat = sessionCountCaveat(v, today2, end);
+    if (caveat) sessionNotes.push(caveat);
     const next2 = nextSessions(v, today2, 1)[0];
     if (next2)
       sessionPoints.push({
@@ -54913,7 +55082,7 @@ async function morningRun(dir2, opts = {}) {
       subject: "sessions",
       points: sessionPoints,
       provenance: { source: "exchange-calendar", fetchedAt: now.toISOString(), official: false, asOf: today2 },
-      notes: ["computed from the exchanges' published rules (src/core/calendar.ts); `ultrastock calendar verify` lists what to check"]
+      notes: ["computed from the exchanges' published rules (src/core/calendar.ts); `ultrastock calendar verify` lists what to check", ...sessionNotes]
     });
   const currencies = [.../* @__PURE__ */ new Set([base2, ...instruments2.map(currencyOf)])];
   const agenda = await macroAgenda(currencies, today2, tomorrow, now, "MORNING");
@@ -55146,7 +55315,7 @@ function webDatesSection(dir2, cs, store) {
 }
 function confirmMorning(dir2) {
   const statePath3 = join55(dir2, MORNING_STATE);
-  if (!existsSync41(statePath3)) throw new UsageError(`${dir2} holds no ${MORNING_STATE} \u2014 run \`ultrastock morning --out ${dir2}\` first`);
+  if (!existsSync42(statePath3)) throw new UsageError(`${dir2} holds no ${MORNING_STATE} \u2014 run \`ultrastock morning --out ${dir2}\` first`);
   const state = JSON.parse(readFileSync46(statePath3, "utf8"));
   const confirmations = confirmDates(dir2, state.toConfirm, state.today);
   const store = EvidenceStore.load(dir2);
@@ -55808,7 +55977,7 @@ ${checklist.map((c) => `- ${c.rule}: ${c.current}${c.verifiedAt ? ` (researched 
 }
 
 // src/commands/tax.ts
-import { existsSync as existsSync42, mkdirSync as mkdirSync31, readFileSync as readFileSync48, writeFileSync as writeFileSync14 } from "fs";
+import { existsSync as existsSync43, mkdirSync as mkdirSync31, readFileSync as readFileSync48, writeFileSync as writeFileSync14 } from "fs";
 import { join as join56, resolve as resolve18 } from "path";
 
 // src/tax/export.ts
@@ -57862,7 +58031,7 @@ async function rulesCommand(args, asJson, sub, country2, year) {
     const f3 = argValue(args, "file");
     if (!f3) throw new UsageError("tax rules set needs --file <rules.json> (fill the skeleton of `tax rules template`)");
     const path2 = resolve18(f3);
-    if (!existsSync42(path2)) throw new UsageError(`no such file: ${path2}`);
+    if (!existsSync43(path2)) throw new UsageError(`no such file: ${path2}`);
     let raw;
     try {
       raw = JSON.parse(readFileSync48(path2, "utf8"));
@@ -58056,7 +58225,7 @@ ${pn.join("\n")}` : ""}`
 }
 
 // src/commands/facts.ts
-import { existsSync as existsSync43, readFileSync as readFileSync49 } from "fs";
+import { existsSync as existsSync44, readFileSync as readFileSync49 } from "fs";
 import { resolve as resolve19 } from "path";
 
 // src/research/facts.ts
@@ -58258,7 +58427,7 @@ function periodOf(d, args) {
 }
 function readJson3(file) {
   const path2 = resolve19(file);
-  if (!existsSync43(path2)) throw new UsageError(`no such file: ${path2}`);
+  if (!existsSync44(path2)) throw new UsageError(`no such file: ${path2}`);
   try {
     return JSON.parse(readFileSync49(path2, "utf8"));
   } catch (e) {

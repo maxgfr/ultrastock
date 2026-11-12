@@ -20,7 +20,7 @@ import { readJsonl, sealJsonlTail, type Warn } from "../portfolio/jsonl.js";
 import { join } from "node:path";
 import { type Decision, journalDir } from "../analyze/decision.js";
 import { defaultBenchmark } from "../analyze/technicals.js";
-import { addSessions, type CalendarMarket, calendarFor } from "../core/calendar.js";
+import { addSessions, type CalendarMarket, calendarFor, sessionCountCaveat } from "../core/calendar.js";
 import { clockNow } from "../core/net.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
 import type { Bar } from "../providers/types.js";
@@ -150,12 +150,14 @@ export interface Waiting {
 /** Settle every decision horizon that has matured and is not settled yet. */
 export async function settleDecisions(
   now = clockNow(),
-): Promise<{ settled: Settlement[]; unresolved: Unresolved[]; pending: number; waiting: Waiting[]; errors: string[] }> {
+): Promise<{ settled: Settlement[]; unresolved: Unresolved[]; pending: number; waiting: Waiting[]; errors: string[]; notes: string[] }> {
   const done = new Set(readSettlementLines().map(settlementKey));
   let settled: Settlement[] = [];
   let unresolved: Unresolved[] = [];
   const waiting: Waiting[] = [];
   const errors: string[] = [];
+  // What a horizon counted in sessions cannot know (one-off closures not researched), once per venue.
+  const notes = new Set<string>();
   let pending = 0;
   const today = now.toISOString().slice(0, 10);
   for (const d of readDecisions()) {
@@ -175,6 +177,8 @@ export async function settleDecisions(
       const bench = benchSym ? await getHistory(await resolveSymbol(benchSym), { from, to: now }).catch(() => undefined) : undefined;
       for (const h of matured) {
         const endDate = horizonEnd(market, start, h);
+        const caveat = sessionCountCaveat(market, start, endDate);
+        if (caveat) notes.add(caveat);
         const unresolvable = new Date(Date.parse(endDate) + UNRESOLVED_AFTER_DAYS * 86_400_000).toISOString().slice(0, 10) < today;
         const giveUp = (reason: string) =>
           unresolved.push({
@@ -291,7 +295,7 @@ export async function settleDecisions(
       return [fresh, freshUnresolved] as const;
     });
   }
-  return { settled, unresolved, pending, waiting, errors };
+  return { settled, unresolved, pending, waiting, errors, notes: [...notes] };
 }
 
 /** Hit rate and mean alpha by rating and horizon — how good the calls have been. */

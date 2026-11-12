@@ -33,6 +33,7 @@ import { homeDir } from "../../core/paths.js";
 import { UsageError, writeFileAtomic } from "../../engine.js";
 import type { OptionChain } from "../../providers/options/chain.js";
 import { fmt, moveKey, type PointList } from "./common.js";
+import { localTimeToUtc, MARKETS, marketHours } from "../../core/calendar.js";
 
 const DAY = 86_400_000;
 const YEAR = 365 * DAY;
@@ -62,8 +63,15 @@ export interface QuantChain {
   notes: string[];
 }
 
-/** Settlement hour (UTC) of an expiry day: US equity options at the 16:00 New York close (~20:00 UTC), Deribit at 08:00 UTC. */
-const SETTLE_HOUR: Record<OptionVenue, string> = { cboe: "20", deribit: "08" };
+/**
+ * The settlement instant of an expiry day: US equity options at the New York close (the XNYS hours of
+ * core/calendar.ts, in New York time, daylight saving included); Deribit at 08:00 UTC, the time its contract
+ * specifications fix for every expiry.
+ */
+export function settlementAt(venue: OptionVenue, expiry: string): Date {
+  if (venue === "deribit") return new Date(`${expiry}T08:00:00Z`);
+  return localTimeToUtc(expiry, marketHours("XNYS", Number(expiry.slice(0, 4))).close, MARKETS.XNYS.timeZone);
+}
 
 /**
  * A provider chain → the analytics' shape: IV as a fraction, T in years,
@@ -78,7 +86,7 @@ export function toQuantChain(chain: OptionChain, venue: OptionVenue, now: Date, 
   let filled = 0;
   const options: QuantOption[] = [];
   for (const c of chain.contracts) {
-    const t = Math.max(0, (Date.parse(`${c.expiry}T${SETTLE_HOUR[venue]}:00:00Z`) - now.getTime()) / YEAR);
+    const t = Math.max(0, (settlementAt(venue, c.expiry).getTime() - now.getTime()) / YEAR);
     const forward = c.underlyingPrice ?? chain.underlyingPrice;
     const iv = c.iv !== undefined && c.iv > 0 ? c.iv / 100 : undefined;
     let { delta, gamma } = c;

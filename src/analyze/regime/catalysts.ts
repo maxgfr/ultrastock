@@ -22,7 +22,7 @@
 // Two or more catalysts (earnings, an ex-date, a macro day) within three
 // sessions are flagged as an event cluster: moves compound when news stacks.
 import { type ChainOption, expectedMove } from "../../analytics/options.js";
-import { type CalendarMarket, calendarFor, holidays, isTradingDay, MARKETS } from "../../core/calendar.js";
+import { type CalendarMarket, calendarFor, holidays, isTradingDay, MARKETS, sessionCountCaveat } from "../../core/calendar.js";
 import type { Dataset, Point } from "../../core/datasets.js";
 import { clockNow, fetchJson, netMode } from "../../core/net.js";
 import { mapLimit, sleep } from "../../engine.js";
@@ -695,7 +695,9 @@ export async function catalystsReport(raw: string, days: number, now: Date = clo
   } else if (full && inst.kind === "equity" && !us)
     notes.push("past results reactions: SEC registrants only — no keyless history of other issuers' results dates");
 
-  // Clusters
+  // Clusters (counted in sessions: one-off closures not researched are said to be unknown)
+  const caveat = sessionCountCaveat(market, today, end);
+  if (caveat) notes.push(caveat);
   const clusters = eventClusters(
     catalysts.filter((c) => inWindow(c.date)),
     today,

@@ -21,7 +21,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { carriesStop, filledSinceOpened, loadRules, type PeekedAlert, peekAlerts } from "../../alerts/alerts.js";
-import { type CalendarMarket, calendarFor, holidays, MARKETS, nextSessions } from "../../core/calendar.js";
+import { type CalendarMarket, calendarFor, holidays, MARKETS, nextSessions, sessionCountCaveat } from "../../core/calendar.js";
 import type { Point } from "../../core/datasets.js";
 import { EvidenceStore } from "../../core/evidence.js";
 import { clockNow } from "../../core/net.js";
@@ -656,7 +656,10 @@ export async function morningRun(dir: string, opts: MorningOptions = {}): Promis
   if (markets.includes("us")) venues.add("XNYS");
   const sessionPoints: Point[] = [];
   const closures: MorningFacts["closures"] = [];
+  const sessionNotes: string[] = [];
   for (const v of [...venues].sort()) {
+    const caveat = sessionCountCaveat(v, today, end);
+    if (caveat) sessionNotes.push(caveat);
     const next = nextSessions(v, today, 1)[0];
     if (next)
       sessionPoints.push({
@@ -683,7 +686,7 @@ export async function morningRun(dir: string, opts: MorningOptions = {}): Promis
       subject: "sessions",
       points: sessionPoints,
       provenance: { source: "exchange-calendar", fetchedAt: now.toISOString(), official: false, asOf: today },
-      notes: ["computed from the exchanges' published rules (src/core/calendar.ts); `ultrastock calendar verify` lists what to check"],
+      notes: ["computed from the exchanges' published rules (src/core/calendar.ts); `ultrastock calendar verify` lists what to check", ...sessionNotes],
     });
 
   // High-impact macro today and on the next weekday, for the currencies in play.
