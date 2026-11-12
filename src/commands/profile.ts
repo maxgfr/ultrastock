@@ -6,6 +6,7 @@ import { checkDnsBlock, cryptoVenueGate, JURISDICTION, rulesFor, verifyChecklist
 import { researchCommand } from "../core/researched.js";
 import { withFileLockSync } from "../core/lock.js";
 import {
+  countryCodeProblem,
   defaultProfile,
   type EnvelopeType,
   loadProfile,
@@ -200,6 +201,8 @@ export function initResidence(
       "profile init needs --jurisdiction <CC>: the ISO 3166 alpha-2 code of the country whose rules apply to you (FR, US, DE…) — ultrastock assumes none",
     );
   const jurisdiction = countryCode(jurisdictionArg);
+  const problem = countryCodeProblem(jurisdiction);
+  if (problem) throw new UsageError(`--jurisdiction: ${problem}`);
   if (currencyArg?.trim()) {
     const c = currencyArg.trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(c)) throw new UsageError(`--currency is an ISO 4217 code such as EUR or USD, not "${currencyArg}"`);
@@ -223,6 +226,8 @@ export async function jurisdictionCommand(args: CommandArgs, asJson: boolean): P
       "jurisdiction: pass --jurisdiction <CC> or create a profile (`ultrastock profile init --jurisdiction <CC>`) — no jurisdiction is assumed",
     );
   const code = given.toUpperCase();
+  const problem = countryCodeProblem(code);
+  if (problem) throw new UsageError(`jurisdiction: ${problem}`);
   const rules = rulesFor(code);
   const flow = `ultrastock holds no jurisdiction rule: research them (\`${researchCommand("jurisdiction", code)}\` gathers the official documents and prints the worklist), store the conclusions (\`${JURISDICTION.setCommand}\`); until then each rule reads as unknown and fails closed`;
   if (sub === "show") {

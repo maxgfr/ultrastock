@@ -197,7 +197,28 @@ export const SETTABLE_PATHS = Object.keys(SETTERS);
 
 function country(v: string): string {
   if (!/^[A-Z]{2}$/i.test(v)) throw new Error(`a country is an ISO two-letter code (FR, US, BE), not "${v}"`);
+  const problem = countryCodeProblem(v);
+  if (problem) throw new Error(problem);
   return v.toUpperCase();
+}
+
+/** Two letters that are not the ISO 3166 code people mean by them: the code to use instead. */
+const NOT_ISO: Readonly<Record<string, string>> = { UK: "GB (the United Kingdom)", EL: "GR (Greece)", EU: "the member state's own code (FR, DE…)" };
+
+/**
+ * Why two letters are not an ISO 3166 alpha-2 country code — UK for GB, EL for GR, a code assigned to no country —
+ * or undefined when they are one. Read from the runtime's own region names (Intl), without the network.
+ */
+export function countryCodeProblem(raw: string): string | undefined {
+  const c = raw.trim().toUpperCase();
+  if (NOT_ISO[c]) return `"${c}" is not an ISO 3166 alpha-2 country code — use ${NOT_ISO[c]}`;
+  let name: string | undefined;
+  try {
+    name = new Intl.DisplayNames(["en"], { type: "region", fallback: "none" }).of(c);
+  } catch {
+    return undefined; // a runtime without region names: the two letters are taken as given
+  }
+  return !name || name === "Unknown Region" ? `"${c}" is not an ISO 3166 alpha-2 country code (FR, US, GB, DE…)` : undefined;
 }
 function num(v: string, min: number, max: number, integer = false): number {
   const n = Number(v);

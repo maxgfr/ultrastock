@@ -18333,7 +18333,21 @@ var SETTERS = {
 var SETTABLE_PATHS = Object.keys(SETTERS);
 function country(v) {
   if (!/^[A-Z]{2}$/i.test(v)) throw new Error(`a country is an ISO two-letter code (FR, US, BE), not "${v}"`);
+  const problem = countryCodeProblem(v);
+  if (problem) throw new Error(problem);
   return v.toUpperCase();
+}
+var NOT_ISO = { UK: "GB (the United Kingdom)", EL: "GR (Greece)", EU: "the member state's own code (FR, DE\u2026)" };
+function countryCodeProblem(raw) {
+  const c = raw.trim().toUpperCase();
+  if (NOT_ISO[c]) return `"${c}" is not an ISO 3166 alpha-2 country code \u2014 use ${NOT_ISO[c]}`;
+  let name;
+  try {
+    name = new Intl.DisplayNames(["en"], { type: "region", fallback: "none" }).of(c);
+  } catch {
+    return void 0;
+  }
+  return !name || name === "Unknown Region" ? `"${c}" is not an ISO 3166 alpha-2 country code (FR, US, GB, DE\u2026)` : void 0;
 }
 function num3(v, min, max, integer = false) {
   const n2 = Number(v);
@@ -56367,6 +56381,8 @@ function initResidence(jurisdictionArg, currencyArg) {
       "profile init needs --jurisdiction <CC>: the ISO 3166 alpha-2 code of the country whose rules apply to you (FR, US, DE\u2026) \u2014 ultrastock assumes none"
     );
   const jurisdiction = countryCode(jurisdictionArg);
+  const problem = countryCodeProblem(jurisdiction);
+  if (problem) throw new UsageError(`--jurisdiction: ${problem}`);
   if (currencyArg?.trim()) {
     const c = currencyArg.trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(c)) throw new UsageError(`--currency is an ISO 4217 code such as EUR or USD, not "${currencyArg}"`);
@@ -56389,6 +56405,8 @@ async function jurisdictionCommand(args, asJson) {
       "jurisdiction: pass --jurisdiction <CC> or create a profile (`ultrastock profile init --jurisdiction <CC>`) \u2014 no jurisdiction is assumed"
     );
   const code = given.toUpperCase();
+  const problem = countryCodeProblem(code);
+  if (problem) throw new UsageError(`jurisdiction: ${problem}`);
   const rules = rulesFor(code);
   const flow = `ultrastock holds no jurisdiction rule: research them (\`${researchCommand("jurisdiction", code)}\` gathers the official documents and prints the worklist), store the conclusions (\`${JURISDICTION.setCommand}\`); until then each rule reads as unknown and fails closed`;
   if (sub === "show") {

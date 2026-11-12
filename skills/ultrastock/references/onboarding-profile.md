@@ -6,7 +6,9 @@
    currency they count their wealth in, then
    `ultrastock profile init --jurisdiction <CC> [--currency <ISO 4217>]` — a
    conservative default profile in `ULTRASTOCK_HOME/profile.json` (mode 600).
-   `--jurisdiction` is required: no country is assumed. Without `--currency`
+   `--jurisdiction` is required: no country is assumed. It is an ISO 3166
+   alpha-2 code — GB for the United Kingdom (UK is refused, with that hint),
+   GR for Greece. Without `--currency`
    the euro is taken for a euro-area country, else the currency of the
    country's market, and the output says so; otherwise it asks for one.
 2. `ultrastock profile suitability` prints the questionnaire. Ask the user each
