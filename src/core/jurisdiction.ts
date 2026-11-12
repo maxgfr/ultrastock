@@ -187,7 +187,7 @@ export const JURISDICTION = defineDomain<FactSpec>({
         `${v} authorised crypto-asset service provider ${n} register`,
         "the register named in crypto-register",
         180,
-        `${STATUS_NOTE} Read when crypto-register is "other": ultrastock cannot query that register itself.`,
+        `${STATUS_NOTE} Always read: "blocked" or "restricted" refuses live orders on ${v} whatever the register says. When crypto-register is "other" (a register ultrastock cannot query itself), "allowed" is what lets them through.`,
       );
     const coin = STABLECOIN_KEY.exec(key)?.[1];
     if (coin)
@@ -339,10 +339,16 @@ export interface CryptoVenueGate {
 /**
  * May a live order go to a crypto venue for a resident of `code`? The researched regime decides; when it says only
  * authorised platforms may serve the country, the register the research names is checked: ESMA's MiCA register is read
- * here; another register needs the venue's own researched fact. Anything unresearched refuses, naming the command.
+ * here; another register needs the venue's own researched fact. A venue researched as blocked or restricted is refused
+ * whatever the regime and the register say. Anything unresearched refuses, naming the command.
  */
 export async function cryptoVenueGate(venue: string, code: string, opts: { micaAuthorised?: boolean } = {}): Promise<CryptoVenueGate> {
   const c = code.toUpperCase();
+  // The venue's own researched fact first, whatever the regime or the register: a venue the research concluded is
+  // blocked or restricted for the country (a regulator's decision against it, say) gets no live order.
+  const v = ruleFact(c, `cryptoVenue.${venue}`);
+  if (v.status === "blocked" || v.status === "restricted")
+    return { ok: false, reason: `${venue} is ${v.status} for residents of ${c} per the research: ${ruleWhy(v, c)}` };
   const casp = ruleFact(c, "crypto-casp");
   if (casp.status === "blocked") return { ok: false, reason: `crypto-asset services are blocked for residents of ${c}: ${ruleWhy(casp, c)}` };
   if (casp.status === "unknown") return { ok: false, reason: `the authorisation crypto platforms need in ${c} is unknown: ${ruleWhy(casp, c)}` };
@@ -398,7 +404,6 @@ export async function cryptoVenueGate(venue: string, code: string, opts: { micaA
       ok: false,
       reason: `the ${c} research says authorisation is needed (crypto-casp restricted) but no register applies (crypto-register none): settle it — \`${researchCommand("jurisdiction", c, { key: "crypto-casp" })}\``,
     };
-  const v = ruleFact(c, `cryptoVenue.${venue}`);
   if (v.status === "allowed") return { ok: true, reason: `${venue} is authorised for ${c} per the research: ${ruleWhy(v, c)}` };
   return {
     ok: false,

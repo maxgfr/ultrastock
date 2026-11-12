@@ -84,7 +84,9 @@ each venue also needs `cryptoVenue.<venue>.lei`, the LEI of the entity that
 serves the country (GLEIF): the register is matched on that LEI only. Without
 it — or once it is stale — live crypto orders on the venue are refused; a
 reading still lists the entries whose name contains the venue's, labelled
-unverified, as leads for the research.
+unverified, as leads for the research. A `cryptoVenue.<venue>` researched as
+`blocked` or `restricted` refuses live orders on that venue whatever the
+regime and the register say.
 `jurisdiction verify --out <dir>` runs that check for Binance, Kraken and
 Coinbase (or `--venues …`) and registers the result as evidence.
 

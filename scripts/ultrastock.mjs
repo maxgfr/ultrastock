@@ -17923,7 +17923,7 @@ var JURISDICTION = defineDomain({
         `${v} authorised crypto-asset service provider ${n2} register`,
         "the register named in crypto-register",
         180,
-        `${STATUS_NOTE} Read when crypto-register is "other": ultrastock cannot query that register itself.`
+        `${STATUS_NOTE} Always read: "blocked" or "restricted" refuses live orders on ${v} whatever the register says. When crypto-register is "other" (a register ultrastock cannot query itself), "allowed" is what lets them through.`
       );
     const coin = STABLECOIN_KEY.exec(key)?.[1];
     if (coin)
@@ -18035,6 +18035,9 @@ function verifyChecklist(code) {
 }
 async function cryptoVenueGate(venue, code, opts = {}) {
   const c = code.toUpperCase();
+  const v = ruleFact(c, `cryptoVenue.${venue}`);
+  if (v.status === "blocked" || v.status === "restricted")
+    return { ok: false, reason: `${venue} is ${v.status} for residents of ${c} per the research: ${ruleWhy(v, c)}` };
   const casp = ruleFact(c, "crypto-casp");
   if (casp.status === "blocked") return { ok: false, reason: `crypto-asset services are blocked for residents of ${c}: ${ruleWhy(casp, c)}` };
   if (casp.status === "unknown") return { ok: false, reason: `the authorisation crypto platforms need in ${c} is unknown: ${ruleWhy(casp, c)}` };
@@ -18086,7 +18089,6 @@ async function cryptoVenueGate(venue, code, opts = {}) {
       ok: false,
       reason: `the ${c} research says authorisation is needed (crypto-casp restricted) but no register applies (crypto-register none): settle it \u2014 \`${researchCommand("jurisdiction", c, { key: "crypto-casp" })}\``
     };
-  const v = ruleFact(c, `cryptoVenue.${venue}`);
   if (v.status === "allowed") return { ok: true, reason: `${venue} is authorised for ${c} per the research: ${ruleWhy(v, c)}` };
   return {
     ok: false,

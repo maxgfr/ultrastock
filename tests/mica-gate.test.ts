@@ -132,3 +132,32 @@ describe("a venue is matched on who it is, not on a word in someone else's name"
     expect(g.reason).toContain("--key cryptoVenue.kraken.lei");
   });
 });
+
+describe("a venue the research itself concluded is blocked", () => {
+  const COINBASE =
+    "CSSF,LU,Coinbase Luxembourg S.A.,984500F14CA4571AAC11,LU,Coinbase,Luxembourg,https://coinbase.com,,20/06/2025,,c. exchange,AT|BE|FR|DE,,20/06/2025,,,,";
+  const LEI = { "cryptoVenue.coinbase.lei": "984500F14CA4571AAC11" };
+
+  it("stays blocked when the register is ESMA's: a stored cryptoVenue.<venue> = blocked is not ignored", async () => {
+    setNetMode({ kind: "fixture", dir: register([COINBASE]) });
+    // Control: the same register and LEI, no venue fact — the venue is authorised for FR.
+    installJurisdictionTestFacts({ FR: { ...FR_ESMA, ...LEI } });
+    expect((await cryptoVenueGate("coinbase", "FR")).ok).toBe(true);
+    // The agent researched the venue itself (a regulator's decision against it, say) and stored the conclusion.
+    installJurisdictionTestFacts({ FR: { ...FR_ESMA, ...LEI, "cryptoVenue.coinbase": "blocked" } });
+    const g = await cryptoVenueGate("coinbase", "FR");
+    expect(g.ok).toBe(false);
+    expect(g.reason).toMatch(/coinbase is blocked for residents of FR per the research/);
+  });
+
+  it("stays blocked when the regime needs no authorisation (crypto-casp allowed)", async () => {
+    installJurisdictionTestFacts({ US: { "crypto-casp": "allowed", "crypto-register": "none", "cryptoVenue.coinbase": "blocked" } });
+    const g = await cryptoVenueGate("coinbase", "US");
+    expect(g.ok).toBe(false);
+  });
+
+  it("refuses a venue researched as restricted, even with the test answer for the register", async () => {
+    installJurisdictionTestFacts({ FR: { ...FR_ESMA, "cryptoVenue.coinbase": "restricted" } });
+    expect((await cryptoVenueGate("coinbase", "FR", { micaAuthorised: true })).ok).toBe(false);
+  });
+});
