@@ -39,6 +39,7 @@ import { breakerState, closedTradeResults, readEquity } from "./breaker.js";
 import { gridRefusals } from "./brokers/rules.js";
 import type { BrokerAdapter, Environment, LiveOrder, OrderResult, Venue } from "./brokers/types.js";
 import { attemptKey, fxToBase, unplacedAttempts } from "./context.js";
+import { isDollarStablecoin, PEG_DEVIATION_PCT, type PegReading, readPegs } from "./stablecoins.js";
 import { effectiveLimits } from "./limits.js";
 import { verifyCode } from "./otp.js";
 import { paperRecord, readiness } from "./paper.js";
@@ -232,11 +233,24 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
 
   // Notional in the base currency against the tier's limits.
   let notional = o.quantity * o.price;
+  let pegs: PegReading[] | undefined;
   if (profile && o.currency !== profile.baseCurrency) {
     const fx = await fxToBase([o.currency], profile.baseCurrency).catch(() => undefined);
+    pegs = fx?.pegs;
     const rate = fx?.rates[o.currency];
     if (!rate) no("FX", `no ${o.currency}→${profile.baseCurrency} rate to size the order against the limits`);
     else notional *= rate;
+  }
+  // A dollar stablecoin is priced live: off its peg beyond the threshold, or unreadable, no real order is priced in it.
+  if (isDollarStablecoin(o.currency)) {
+    const peg = pegs?.find((r) => r.coin === o.currency.toUpperCase()) ?? (await readPegs([o.currency]))[0];
+    if (peg?.usd === undefined)
+      no("PEG", `${o.currency}'s USD rate could not be read (${peg?.unread ?? "no reading"}): an order priced in it is not sent on its peg`);
+    else if (peg.depegged)
+      no(
+        "PEG",
+        `${o.currency} trades at ${peg.usd} USD, ${peg.deviationPct!.toFixed(2)} % off its peg — beyond the ${PEG_DEVIATION_PCT} % treated as a depeg (an assumption)`,
+      );
   }
   if (notional > limits.maxOrder) no("ORDER_LIMIT", `the order is ${notional.toFixed(2)} — above the per-order limit ${limits.maxOrder} (tier "${tier}")`);
   if (todayNotional + notional > limits.maxDaily)

@@ -15,10 +15,8 @@ import { yahooFxRates } from "../../providers/markets/yahoo.js";
 import { getQuote, type Resolved, resolveSymbol } from "../../providers/router.js";
 import type { AssetKind, Instrument } from "../../providers/types.js";
 import { parsePredictionSymbol, predictionQuote } from "../../trading/prediction.js";
+import { isDollarStablecoin, pegDatasets, pegNotes, readPegs } from "../../trading/stablecoins.js";
 import type { Findings } from "./findings.js";
-
-/** Stablecoins are converted at the US dollar rate (said in the notes). */
-const AS_USD = new Set(["USDT", "USDC", "FDUSD"]);
 
 /** At most this many symbols are priced per run (polite fan-out; the rest are reported). */
 export const MAX_SYMBOLS = 30;
@@ -118,9 +116,22 @@ export async function referenceRates(
   const rates: Record<string, number> = { [base]: 1 };
   const keys: Record<string, string> = {};
   const datasets: Dataset[] = [];
-  const want = [...new Set(currencies.map((c) => (AS_USD.has(c) ? "USD" : c)).filter((c) => c !== base))];
-  if (currencies.some((c) => AS_USD.has(c))) notes.push("stablecoin amounts converted at the US dollar rate");
-  if (!want.length) return { datasets, rates, keys, notes };
+  const want = [...new Set(currencies.map((c) => (isDollarStablecoin(c) ? "USD" : c)).filter((c) => c !== base))];
+  // A dollar stablecoin at its live USD price × the dollar's rate; unread, at its peg — said either way.
+  const pegs = await readPegs(currencies.filter(isDollarStablecoin));
+  notes.push(...pegNotes(pegs));
+  datasets.push(...pegDatasets(pegs));
+  const convertPegs = () => {
+    for (const r of pegs)
+      if (rates.USD) {
+        rates[r.coin] = rates.USD * (r.usd ?? 1);
+        keys[r.coin] = r.usd !== undefined ? `${r.coin}.usd` : keys.USD!;
+      }
+  };
+  if (!want.length) {
+    convertPegs();
+    return { datasets, rates, keys, notes };
+  }
   if (base !== "EUR") throw new Error(`only a EUR base currency is supported for now (profile says ${base})`);
   const take = (ds: Dataset) => {
     for (const p of ds.points) {
@@ -148,11 +159,7 @@ export async function referenceRates(
       notes.push(`no ECB reference rate for ${unfixed.filter((c) => rates[c]).join(", ")}: Yahoo's EUR cross rate stood in (unofficial)`);
     }
   }
-  for (const c of currencies)
-    if (AS_USD.has(c) && rates.USD) {
-      rates[c] = rates.USD;
-      keys[c] = keys.USD!;
-    }
+  convertPegs();
   for (const c of want) if (!rates[c]) notes.push(`no ${c}→${base} rate: positions in ${c} are left out of the total`);
   return { datasets, rates, keys, notes };
 }

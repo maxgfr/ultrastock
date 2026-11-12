@@ -15,29 +15,34 @@ import { tradingviewSnapshot } from "../providers/markets/tradingview.js";
 import { getQuote, resolveSymbol } from "../providers/router.js";
 import type { Instrument, QuoteResult } from "../providers/types.js";
 import { parsePredictionSymbol, predictionQuote } from "./prediction.js";
+import { isDollarStablecoin, type PegReading, pegNotes, readPegs } from "./stablecoins.js";
 import { breakerState, closedTradeResults, contributions, INCOMPLETE_VALUATION, readEquity, recordEquity } from "./breaker.js";
 import type { GateContext, Order } from "./riskgate.js";
 import { listTickets, readAudit, type Ticket } from "./tickets.js";
 
-/** Stablecoins are priced as their dollar: said in the notes. */
-const AS_USD = new Set(["USDT", "USDC", "FDUSD"]);
-
-/** Units of `base` per one unit of each currency (ECB reference rates, Frankfurter as fallback). */
-export async function fxToBase(currencies: readonly string[], base: string): Promise<{ rates: Record<string, number>; notes: string[] }> {
+/**
+ * Units of `base` per one unit of each currency (ECB reference rates, Frankfurter as fallback). A dollar stablecoin
+ * is converted at its live USD price × the dollar's rate (trading/stablecoins.ts); `pegs` says what was read — an
+ * unread one is converted at its peg, said in the notes, and refused by the live gate.
+ */
+export async function fxToBase(currencies: readonly string[], base: string): Promise<{ rates: Record<string, number>; notes: string[]; pegs: PegReading[] }> {
   const notes: string[] = [];
-  const want = [...new Set(currencies.map((c) => (AS_USD.has(c) ? "USD" : c)).filter((c) => c !== base))];
+  const coins = [...new Set(currencies.filter(isDollarStablecoin))];
+  const want = [...new Set(currencies.map((c) => (isDollarStablecoin(c) ? "USD" : c)).filter((c) => c !== base))];
   const rates: Record<string, number> = { [base]: 1 };
-  if (currencies.some((c) => AS_USD.has(c))) notes.push("stablecoin amounts converted at the US dollar rate");
-  if (!want.length) return { rates, notes };
-  if (base !== "EUR") throw new Error(`only a EUR base currency is supported for now (profile says ${base})`);
-  const ds = await ecbFx(want).catch(() => frankfurterLatest("EUR", want));
-  for (const p of ds.points) {
-    const m = /\.fx\.([A-Z]{3})$/.exec(p.key);
-    if (m && typeof p.value === "number" && p.value > 0) rates[m[1]!] = 1 / p.value;
+  const pegs = coins.length ? await readPegs(coins) : [];
+  notes.push(...pegNotes(pegs));
+  if (want.length) {
+    if (base !== "EUR") throw new Error(`only a EUR base currency is supported for now (profile says ${base})`);
+    const ds = await ecbFx(want).catch(() => frankfurterLatest("EUR", want));
+    for (const p of ds.points) {
+      const m = /\.fx\.([A-Z]{3})$/.exec(p.key);
+      if (m && typeof p.value === "number" && p.value > 0) rates[m[1]!] = 1 / p.value;
+    }
   }
-  for (const c of currencies) if (AS_USD.has(c) && rates.USD) rates[c] = rates.USD;
+  for (const r of pegs) if (rates.USD) rates[r.coin] = rates.USD * (r.usd ?? 1);
   for (const c of want) if (!rates[c]) notes.push(`no ${c}→${base} rate`);
-  return { rates, notes };
+  return { rates, notes, pegs };
 }
 
 /** The book an order's venue settles in: paper orders in "paper", every live venue in the one "real" book. */
@@ -130,6 +135,8 @@ export interface BuiltContext {
   profile: Profile;
   notes: string[];
   equityBase: number;
+  /** The dollar stablecoins' live USD rates read for this context (trading/stablecoins.ts). */
+  pegs: PegReading[];
 }
 
 /**
@@ -250,5 +257,5 @@ export async function gateContextFor(
     events: opts.events,
   };
   if (eod) notes.push(`${order.symbol}: end-of-day prices — the order is checked against the last official close of ${quote.at.slice(0, 10)}`);
-  return { ctx, quote, profile, notes, equityBase: valued.totalBase };
+  return { ctx, quote, profile, notes, equityBase: valued.totalBase, pegs: fx.pegs };
 }

@@ -28706,6 +28706,61 @@ async function resultsReactionsDataset(sym3, now = clockNow()) {
   };
 }
 
+// src/trading/stablecoins.ts
+var DOLLAR_STABLECOINS = /* @__PURE__ */ new Set(["USDT", "USDC", "FDUSD", "BUSD"]);
+var isDollarStablecoin = (c) => DOLLAR_STABLECOINS.has(c.toUpperCase());
+var PEG_DEVIATION_PCT = 0.5;
+async function stablecoinUsd(coin) {
+  const pair = `${coin.toUpperCase()}-USD`;
+  const errors = [];
+  try {
+    return await krakenQuote(await resolveKraken(pair));
+  } catch (e) {
+    errors.push(`kraken: ${e.message}`);
+  }
+  try {
+    return await coinbaseQuote(resolveCoinbase(pair));
+  } catch (e) {
+    errors.push(`coinbase: ${e.message}`);
+  }
+  throw new Error(errors.join("; "));
+}
+async function readPegs(coins) {
+  const out = [];
+  for (const coin of [...new Set(coins.map((c) => c.toUpperCase()))].filter(isDollarStablecoin)) {
+    try {
+      const quote2 = await stablecoinUsd(coin);
+      const deviationPct = (quote2.price - 1) * 100;
+      out.push({ coin, usd: quote2.price, deviationPct, depegged: Math.abs(deviationPct) > PEG_DEVIATION_PCT, quote: quote2 });
+    } catch (e) {
+      out.push({ coin, unread: e.message });
+    }
+  }
+  return out;
+}
+function pegNotes(readings) {
+  return readings.map((r3) => {
+    if (r3.usd === void 0)
+      return `${r3.coin}'s USD rate could not be read (${r3.unread}): ${r3.coin} amounts are converted at its 1 USD peg, unverified \u2014 a live order in ${r3.coin} is refused until it can be read`;
+    const at = `${r3.usd} USD (${r3.quote.provenance.source} ${r3.coin}/USD, ${r3.quote.at})`;
+    return r3.depegged ? `${r3.coin} trades at ${at}: ${r3.deviationPct.toFixed(2)} % off its 1 USD peg, beyond the ${PEG_DEVIATION_PCT} % treated as a depeg (an assumption) \u2014 amounts in ${r3.coin} are converted at that rate, and a live order in it is refused` : `${r3.coin} amounts converted at its live rate ${at}, ${r3.deviationPct.toFixed(2)} % from its peg`;
+  });
+}
+function pegDatasets(readings) {
+  return readings.filter((r3) => r3.quote).map((r3) => {
+    const p = r3.quote.provenance;
+    const point = { key: `${r3.coin}.usd`, label: `${r3.coin} price in US dollars`, value: r3.usd, unit: "USD" };
+    return {
+      kind: "fx",
+      title: `${r3.coin} against the US dollar`,
+      subject: r3.coin,
+      points: [point],
+      provenance: { ...p, asOf: p.fetchedAt.slice(0, 10) },
+      notes: pegNotes([r3])
+    };
+  });
+}
+
 // src/analyze/regime/catalysts.ts
 var MAX_MACRO_DAYS = 10;
 var CLUSTER_SESSIONS = 3;
@@ -28729,7 +28784,7 @@ var MACRO_REGIONS = {
   DKK: { countries: ["Denmark"], ff: "DKK", events: HEADLINE },
   CAD: { countries: ["Canada"], ff: "CAD", events: HEADLINE }
 };
-var currencyOf = (i) => i.market === "crypto" ? "USD" : /^(USDT|USDC|FDUSD|BUSD)$/.test(i.currency) ? "USD" : i.currency;
+var currencyOf = (i) => i.market === "crypto" ? "USD" : isDollarStablecoin(i.currency) ? "USD" : i.currency;
 function parseNasdaqEarningsDate(data) {
   const text2 = data?.reportText ?? "";
   const m = /report earnings on\s+(\d{2})\/(\d{2})\/(\d{4})/i.exec(text2);
@@ -34528,7 +34583,6 @@ async function simulatePredictionFill(o, now) {
 }
 
 // src/analyze/portfolio/book.ts
-var AS_USD = /* @__PURE__ */ new Set(["USDT", "USDC", "FDUSD"]);
 var MAX_SYMBOLS = 30;
 var kindToClass = (k) => k === "index" ? "index" : k ?? "unknown";
 function envelopeOf(profile, account) {
@@ -34563,9 +34617,21 @@ async function referenceRates(currencies, base2) {
   const rates = { [base2]: 1 };
   const keys = {};
   const datasets = [];
-  const want = [...new Set(currencies.map((c) => AS_USD.has(c) ? "USD" : c).filter((c) => c !== base2))];
-  if (currencies.some((c) => AS_USD.has(c))) notes.push("stablecoin amounts converted at the US dollar rate");
-  if (!want.length) return { datasets, rates, keys, notes };
+  const want = [...new Set(currencies.map((c) => isDollarStablecoin(c) ? "USD" : c).filter((c) => c !== base2))];
+  const pegs = await readPegs(currencies.filter(isDollarStablecoin));
+  notes.push(...pegNotes(pegs));
+  datasets.push(...pegDatasets(pegs));
+  const convertPegs = () => {
+    for (const r3 of pegs)
+      if (rates.USD) {
+        rates[r3.coin] = rates.USD * (r3.usd ?? 1);
+        keys[r3.coin] = r3.usd !== void 0 ? `${r3.coin}.usd` : keys.USD;
+      }
+  };
+  if (!want.length) {
+    convertPegs();
+    return { datasets, rates, keys, notes };
+  }
   if (base2 !== "EUR") throw new Error(`only a EUR base currency is supported for now (profile says ${base2})`);
   const take = (ds2) => {
     for (const p of ds2.points) {
@@ -34593,11 +34659,7 @@ async function referenceRates(currencies, base2) {
       notes.push(`no ECB reference rate for ${unfixed.filter((c) => rates[c]).join(", ")}: Yahoo's EUR cross rate stood in (unofficial)`);
     }
   }
-  for (const c of currencies)
-    if (AS_USD.has(c) && rates.USD) {
-      rates[c] = rates.USD;
-      keys[c] = keys.USD;
-    }
+  convertPegs();
   for (const c of want) if (!rates[c]) notes.push(`no ${c}\u2192${base2} rate: positions in ${c} are left out of the total`);
   return { datasets, rates, keys, notes };
 }
@@ -39958,22 +40020,24 @@ function breakerState(curve, trades2, limits, now) {
 }
 
 // src/trading/context.ts
-var AS_USD2 = /* @__PURE__ */ new Set(["USDT", "USDC", "FDUSD"]);
 async function fxToBase(currencies, base2) {
   const notes = [];
-  const want = [...new Set(currencies.map((c) => AS_USD2.has(c) ? "USD" : c).filter((c) => c !== base2))];
+  const coins = [...new Set(currencies.filter(isDollarStablecoin))];
+  const want = [...new Set(currencies.map((c) => isDollarStablecoin(c) ? "USD" : c).filter((c) => c !== base2))];
   const rates = { [base2]: 1 };
-  if (currencies.some((c) => AS_USD2.has(c))) notes.push("stablecoin amounts converted at the US dollar rate");
-  if (!want.length) return { rates, notes };
-  if (base2 !== "EUR") throw new Error(`only a EUR base currency is supported for now (profile says ${base2})`);
-  const ds = await ecbFx(want).catch(() => frankfurterLatest("EUR", want));
-  for (const p of ds.points) {
-    const m = /\.fx\.([A-Z]{3})$/.exec(p.key);
-    if (m && typeof p.value === "number" && p.value > 0) rates[m[1]] = 1 / p.value;
+  const pegs = coins.length ? await readPegs(coins) : [];
+  notes.push(...pegNotes(pegs));
+  if (want.length) {
+    if (base2 !== "EUR") throw new Error(`only a EUR base currency is supported for now (profile says ${base2})`);
+    const ds = await ecbFx(want).catch(() => frankfurterLatest("EUR", want));
+    for (const p of ds.points) {
+      const m = /\.fx\.([A-Z]{3})$/.exec(p.key);
+      if (m && typeof p.value === "number" && p.value > 0) rates[m[1]] = 1 / p.value;
+    }
   }
-  for (const c of currencies) if (AS_USD2.has(c) && rates.USD) rates[c] = rates.USD;
+  for (const r3 of pegs) if (rates.USD) rates[r3.coin] = rates.USD * (r3.usd ?? 1);
   for (const c of want) if (!rates[c]) notes.push(`no ${c}\u2192${base2} rate`);
-  return { rates, notes };
+  return { rates, notes, pegs };
 }
 var bookOf = (venue) => venue === "paper" ? "paper" : "real";
 function pendingBuys(tickets, book2, ticketId) {
@@ -40117,7 +40181,7 @@ async function gateContextFor(order, opts = {}) {
     events: opts.events
   };
   if (eod) notes.push(`${order.symbol}: end-of-day prices \u2014 the order is checked against the last official close of ${quote2.at.slice(0, 10)}`);
-  return { ctx, quote: quote2, profile, notes, equityBase: valued2.totalBase };
+  return { ctx, quote: quote2, profile, notes, equityBase: valued2.totalBase, pegs: fx.pegs };
 }
 
 // src/commands/markets.ts
@@ -47896,11 +47960,23 @@ async function preconditions(p) {
   } else if (!["crypto", "equity", "etf"].includes(o.assetKind))
     no("ASSET", `${o.assetKind} is not tradable live in this version (spot shares, ETFs and crypto only)`);
   let notional = o.quantity * o.price;
+  let pegs;
   if (profile && o.currency !== profile.baseCurrency) {
     const fx = await fxToBase([o.currency], profile.baseCurrency).catch(() => void 0);
+    pegs = fx?.pegs;
     const rate2 = fx?.rates[o.currency];
     if (!rate2) no("FX", `no ${o.currency}\u2192${profile.baseCurrency} rate to size the order against the limits`);
     else notional *= rate2;
+  }
+  if (isDollarStablecoin(o.currency)) {
+    const peg = pegs?.find((r3) => r3.coin === o.currency.toUpperCase()) ?? (await readPegs([o.currency]))[0];
+    if (peg?.usd === void 0)
+      no("PEG", `${o.currency}'s USD rate could not be read (${peg?.unread ?? "no reading"}): an order priced in it is not sent on its peg`);
+    else if (peg.depegged)
+      no(
+        "PEG",
+        `${o.currency} trades at ${peg.usd} USD, ${peg.deviationPct.toFixed(2)} % off its peg \u2014 beyond the ${PEG_DEVIATION_PCT} % treated as a depeg (an assumption)`
+      );
   }
   if (notional > limits.maxOrder) no("ORDER_LIMIT", `the order is ${notional.toFixed(2)} \u2014 above the per-order limit ${limits.maxOrder} (tier "${tier}")`);
   if (todayNotional + notional > limits.maxDaily)
@@ -52648,6 +52724,11 @@ async function planTrade(input) {
   };
   const built = await gateContextFor(draft, { now });
   notes.push(...built.notes);
+  const peg = built.pegs.find((r3) => r3.coin === inst.currency.toUpperCase());
+  if (peg && (peg.depegged || peg.usd === void 0 && venue !== "paper"))
+    conditions.push(
+      `PEG: ${peg.usd === void 0 ? `${peg.coin}'s USD rate could not be read \u2014 the order is valued at its peg, unverified` : `${peg.coin} is ${peg.deviationPct.toFixed(2)} % off its 1 USD peg`}; a live order in ${peg.coin} is refused until it holds its peg`
+    );
   const { ctx } = built;
   const buffer = ctx.profile.limits.cashBufferPct / 100 * ctx.equityBase;
   const avgVol = bars.slice(-20).reduce((s, b) => s + (b.volume ?? 0), 0) / Math.min(20, bars.length);

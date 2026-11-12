@@ -176,6 +176,12 @@ export async function planTrade(input: PlanInput): Promise<TradePlanResult> {
   };
   const built = await gateContextFor(draft, { now });
   notes.push(...built.notes);
+  // The order's own stablecoin, unread or off its peg: a condition here, a refusal at the venue (PEG).
+  const peg = built.pegs.find((r) => r.coin === inst.currency.toUpperCase());
+  if (peg && (peg.depegged || (peg.usd === undefined && venue !== "paper")))
+    conditions.push(
+      `PEG: ${peg.usd === undefined ? `${peg.coin}'s USD rate could not be read — the order is valued at its peg, unverified` : `${peg.coin} is ${peg.deviationPct!.toFixed(2)} % off its 1 USD peg`}; a live order in ${peg.coin} is refused until it holds its peg`,
+    );
   const { ctx } = built;
   const buffer = (ctx.profile.limits.cashBufferPct / 100) * ctx.equityBase;
   const avgVol = bars.slice(-20).reduce((s, b) => s + (b.volume ?? 0), 0) / Math.min(20, bars.length);

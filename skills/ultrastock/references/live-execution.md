@@ -91,6 +91,7 @@ either switch for the user.
 | `PRICE_BAND` | the limit is more than 1 % beyond the venue's best price right now |
 | `GRID_PRICE`, `GRID_QUANTITY` | the limit is not a multiple of the venue's price tick, or the quantity of its lot step — read live from the venue (Binance `exchangeInfo`, Kraken `AssetPairs`, Coinbase product, IBKR contract rules, Kalshi market). ultrastock never rounds an approved order: plan it again |
 | `MIN_QUANTITY`, `MAX_QUANTITY`, `MIN_NOTIONAL`, `NOT_TRADING` | under the venue's minimum size or order value, above its maximum, or the instrument takes no limit order now (halted, cancel-only) |
+| `PEG` | the order is priced in a dollar stablecoin (USDT, USDC, FDUSD) whose live USD price (Kraken, else Coinbase) is more than 0.5 % off its peg — a threshold that is an assumption — or could not be read. Elsewhere a stablecoin is converted at that live rate, never at one dollar; an unread one at its peg, said in the notes |
 | `RULES_UNREAD`, `GRID_UNKNOWN` | the venue's price and quantity rules could not be read, or give no tick: the order is not sent unchecked |
 | `CODE` | no code, an expired code, a wrong code, or a code issued for a different order |
 | `PENDING` | this ticket already went out: reconcile it first |

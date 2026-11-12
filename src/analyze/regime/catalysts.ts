@@ -37,6 +37,7 @@ import { resultsReactionsDataset } from "../events/earnings.js";
 import type { OptionContract } from "../../providers/options/chain.js";
 import { resolveSymbol } from "../../providers/router.js";
 import { type Instrument, ProviderError } from "../../providers/types.js";
+import { isDollarStablecoin } from "../../trading/stablecoins.js";
 import { type DatasetProvenance, derivedProvenance, fmt, isoDay, pickPoints, pointNumber, type Report, round4, settle, shiftDay } from "./common.js";
 
 /** Nasdaq's economic calendar is read one day per call: at most this many weekdays per run. */
@@ -74,8 +75,8 @@ export const MACRO_REGIONS: Record<string, { countries: string[]; ff: string; ev
   DKK: { countries: ["Denmark"], ff: "DKK", events: HEADLINE },
   CAD: { countries: ["Canada"], ff: "CAD", events: HEADLINE },
 };
-/** Stablecoin quotes move with the dollar's calendar. */
-export const currencyOf = (i: Instrument) => (i.market === "crypto" ? "USD" : /^(USDT|USDC|FDUSD|BUSD)$/.test(i.currency) ? "USD" : i.currency);
+/** A dollar stablecoin's quotes move with the dollar's calendar (what it is pegged to, not what it is worth). */
+export const currencyOf = (i: Instrument) => (i.market === "crypto" ? "USD" : isDollarStablecoin(i.currency) ? "USD" : i.currency);
 
 export interface EarningsDate {
   date: string;
