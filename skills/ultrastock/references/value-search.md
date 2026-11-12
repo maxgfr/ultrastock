@@ -32,7 +32,7 @@ crible's own `region` field is not geography (`world` there means "the rest");
 and an EU/EEA ISIN prefix — VALUE.md marks it "to be confirmed security by
 security": the broker and the issuer's documents decide, not a screen. The
 EU/EEA list is the researched `geo` fact (`ultrastock facts research geo
---country EU --out <run>`); without a current one VALUE.md's notes say the built-in list
+--country EU --out <run>`); without a current one — or with one verified before the built-in list's date, set aside as older — VALUE.md's notes say the built-in list
 (as of 2026-01-01) was used.
 
 ## What keeps a name out

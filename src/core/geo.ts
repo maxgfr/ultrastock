@@ -11,7 +11,9 @@
 // not their member lists as data), so when nothing current is stored the
 // readers fall back to ONE built-in list, dated and sourced below, and say so:
 // every caller passes `membershipNote()` on to its output. A stale stored list
-// (older than a year) is not used either — the built-in one is, with the note.
+// (older than a year) is not used either — the built-in one is, with the note —
+// nor one verified before the built-in list's own date: the newer of the two
+// wins, and the note says the stored one was set aside as older.
 //
 // The English names are how TradingView's scanner writes a company's country
 // (protocol data, not a fact that changes): they also give the order the
@@ -156,6 +158,8 @@ export interface Membership {
   origin: "researched" | "built-in";
   asOf: string;
   sources: readonly string[];
+  /** The built-in list is used although a list is stored: the stored one's verification date, older than the built-in's. */
+  olderStored?: string;
 }
 
 const byName = (a: string, b: string) => {
@@ -171,8 +175,16 @@ function read(key: "eu.members" | "eea.nonEuMembers" | "euroArea.members", fallb
     stored = undefined; // an invalid file is reported by `facts research geo`, never used
   }
   const f = stored?.current[key];
-  if (f) return { codes: [...(f.value as string[])].sort(byName), origin: "researched", asOf: f.verifiedAt, sources: f.sources };
-  return { codes: [...fallback].sort(byName), origin: "built-in", asOf: BUILT_IN_MEMBERSHIP.asOf, sources: BUILT_IN_MEMBERSHIP.sources };
+  // The newer of the two lists: one researched before the built-in list's date does not undo a change it records.
+  if (f && f.verifiedAt >= BUILT_IN_MEMBERSHIP.asOf)
+    return { codes: [...(f.value as string[])].sort(byName), origin: "researched", asOf: f.verifiedAt, sources: f.sources };
+  return {
+    codes: [...fallback].sort(byName),
+    origin: "built-in",
+    asOf: BUILT_IN_MEMBERSHIP.asOf,
+    sources: BUILT_IN_MEMBERSHIP.sources,
+    ...(f ? { olderStored: f.verifiedAt } : {}),
+  };
 }
 
 /** EU member states, in the order of their English names. */
@@ -187,6 +199,7 @@ export function euEeaMembers(): Membership {
     origin: eu.origin === "researched" && rest.origin === "researched" ? "researched" : "built-in",
     asOf: [eu.asOf, rest.asOf].sort()[0]!,
     sources: [...new Set([...eu.sources, ...rest.sources])],
+    ...(eu.olderStored || rest.olderStored ? { olderStored: [eu.olderStored, rest.olderStored].filter((x): x is string => !!x).sort()[0] } : {}),
   };
 }
 
@@ -210,5 +223,6 @@ export const tradingViewCountry = (iso: string): string | undefined => NAMES[iso
 /** What an output using `m` must say: nothing when it is a current researched list, the fallback's date and sources otherwise. */
 export function membershipNote(m: Membership, what = "EU / EEA membership"): string | undefined {
   if (m.origin === "researched") return undefined;
-  return `${what}: ultrastock's built-in list as of ${m.asOf} (${m.sources.join(", ")}), not a current research — run \`${researchCommand("geo", "EU")}\` and store the result to read a current one`;
+  const setAside = m.olderStored ? ` (the stored list, verified ${m.olderStored}, is older and set aside)` : "";
+  return `${what}: ultrastock's built-in list as of ${m.asOf}${setAside} (${m.sources.join(", ")}), not a current research — run \`${researchCommand("geo", "EU")}\` and store the result to read a current one`;
 }

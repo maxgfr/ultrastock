@@ -27,7 +27,7 @@ import { clockNow } from "../core/net.js";
 import { argValue, type CommandArgs, UsageError } from "../engine.js";
 import { printResult as out } from "./emit.js";
 import { COUNTRY_MARKETS } from "../analyze/events/markets.js";
-import { euroAreaMembers } from "../core/geo.js";
+import { euroAreaMembers, membershipNote } from "../core/geo.js";
 import { countryCode } from "../core/researched.js";
 
 const ENVELOPES: EnvelopeType[] = ["PEA", "PEA-PME", "CTO", "AV", "PER", "CRYPTO", "TAXABLE", "IRA", "ROTH-IRA", "401K", "OTHER"];
@@ -205,8 +205,11 @@ export function initResidence(
     if (!/^[A-Z]{3}$/.test(c)) throw new UsageError(`--currency is an ISO 4217 code such as EUR or USD, not "${currencyArg}"`);
     return { jurisdiction, currency: c, currencyWhy: "--currency" };
   }
-  if (euroAreaMembers().codes.includes(jurisdiction))
-    return { jurisdiction, currency: "EUR", currencyWhy: `${jurisdiction} is in the euro area; --currency to change it` };
+  const euroArea = euroAreaMembers();
+  if (euroArea.codes.includes(jurisdiction)) {
+    const note = membershipNote(euroArea, "euro-area membership");
+    return { jurisdiction, currency: "EUR", currencyWhy: `${jurisdiction} is in the euro area; --currency to change it${note ? ` — ${note}` : ""}` };
+  }
   const market = COUNTRY_MARKETS[jurisdiction]?.currency;
   if (market) return { jurisdiction, currency: market, currencyWhy: `the currency of ${jurisdiction}'s market; --currency to change it` };
   throw new UsageError(`profile init: no base currency known for ${jurisdiction} — pass --currency <ISO 4217> (the currency you count your wealth in)`);

@@ -27045,8 +27045,15 @@ function read2(key, fallback) {
     stored = void 0;
   }
   const f3 = stored?.current[key];
-  if (f3) return { codes: [...f3.value].sort(byName), origin: "researched", asOf: f3.verifiedAt, sources: f3.sources };
-  return { codes: [...fallback].sort(byName), origin: "built-in", asOf: BUILT_IN_MEMBERSHIP.asOf, sources: BUILT_IN_MEMBERSHIP.sources };
+  if (f3 && f3.verifiedAt >= BUILT_IN_MEMBERSHIP.asOf)
+    return { codes: [...f3.value].sort(byName), origin: "researched", asOf: f3.verifiedAt, sources: f3.sources };
+  return {
+    codes: [...fallback].sort(byName),
+    origin: "built-in",
+    asOf: BUILT_IN_MEMBERSHIP.asOf,
+    sources: BUILT_IN_MEMBERSHIP.sources,
+    ...f3 ? { olderStored: f3.verifiedAt } : {}
+  };
 }
 var euMembers = () => read2("eu.members", BUILT_IN_MEMBERSHIP.eu);
 function euEeaMembers() {
@@ -27056,7 +27063,8 @@ function euEeaMembers() {
     codes: [...eu.codes, ...rest.codes.filter((c) => !eu.codes.includes(c))],
     origin: eu.origin === "researched" && rest.origin === "researched" ? "researched" : "built-in",
     asOf: [eu.asOf, rest.asOf].sort()[0],
-    sources: [.../* @__PURE__ */ new Set([...eu.sources, ...rest.sources])]
+    sources: [.../* @__PURE__ */ new Set([...eu.sources, ...rest.sources])],
+    ...eu.olderStored || rest.olderStored ? { olderStored: [eu.olderStored, rest.olderStored].filter((x) => !!x).sort()[0] } : {}
   };
 }
 var euroAreaMembers = () => {
@@ -27071,7 +27079,8 @@ var isEuEea = (iso4) => !!iso4 && euEeaMembers().codes.includes(iso4.toUpperCase
 var tradingViewCountry = (iso4) => NAMES[iso4.toUpperCase()];
 function membershipNote(m, what = "EU / EEA membership") {
   if (m.origin === "researched") return void 0;
-  return `${what}: ultrastock's built-in list as of ${m.asOf} (${m.sources.join(", ")}), not a current research \u2014 run \`${researchCommand("geo", "EU")}\` and store the result to read a current one`;
+  const setAside = m.olderStored ? ` (the stored list, verified ${m.olderStored}, is older and set aside)` : "";
+  return `${what}: ultrastock's built-in list as of ${m.asOf}${setAside} (${m.sources.join(", ")}), not a current research \u2014 run \`${researchCommand("geo", "EU")}\` and store the result to read a current one`;
 }
 
 // src/analyze/screen/presets.ts
@@ -56363,8 +56372,11 @@ function initResidence(jurisdictionArg, currencyArg) {
     if (!/^[A-Z]{3}$/.test(c)) throw new UsageError(`--currency is an ISO 4217 code such as EUR or USD, not "${currencyArg}"`);
     return { jurisdiction, currency: c, currencyWhy: "--currency" };
   }
-  if (euroAreaMembers().codes.includes(jurisdiction))
-    return { jurisdiction, currency: "EUR", currencyWhy: `${jurisdiction} is in the euro area; --currency to change it` };
+  const euroArea = euroAreaMembers();
+  if (euroArea.codes.includes(jurisdiction)) {
+    const note = membershipNote(euroArea, "euro-area membership");
+    return { jurisdiction, currency: "EUR", currencyWhy: `${jurisdiction} is in the euro area; --currency to change it${note ? ` \u2014 ${note}` : ""}` };
+  }
   const market = COUNTRY_MARKETS[jurisdiction]?.currency;
   if (market) return { jurisdiction, currency: market, currencyWhy: `the currency of ${jurisdiction}'s market; --currency to change it` };
   throw new UsageError(`profile init: no base currency known for ${jurisdiction} \u2014 pass --currency <ISO 4217> (the currency you count your wealth in)`);
