@@ -1,3 +1,4 @@
+import { testGrid } from "./helpers/venue-rules.js";
 // Two tickets carrying the same order, whose fills are booked in the same second, must each reach the ledger.
 import { rmSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -42,6 +43,7 @@ function venue(): BrokerAdapter {
     venue: "kraken",
     env: "test",
     bookTop: async () => ({ bid: 99.9, ask: 100, at: new Date().toISOString() }),
+    instrumentRules: testGrid,
     permissions: async () => ({ canTrade: true, canWithdraw: false, source: "apiRestrictions" }),
     balances: async () => [],
     preview: async () => ({ ok: true }),

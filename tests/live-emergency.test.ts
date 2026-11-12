@@ -1,3 +1,4 @@
+import { testGrid } from "./helpers/venue-rules.js";
 // The emergency paths of live trading: a cancel never waits on another ticket's operation, the kill switch is read again
 // right before the one request, and a cancel whose fills could not be read is settled by a later reconcile.
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -19,6 +20,7 @@ function fakeVenue(over: Partial<BrokerAdapter> = {}) {
     venue: "kraken",
     env: "test",
     bookTop: async () => ({ bid: 99.9, ask: 100, at: new Date().toISOString() }),
+    instrumentRules: testGrid,
     permissions: async () => ({ canTrade: true, canWithdraw: false, source: "apiRestrictions" }),
     balances: async () => [{ asset: "SOL", free: 0, locked: 0 }],
     preview: async () => ({ ok: true }),

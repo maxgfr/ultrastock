@@ -12,7 +12,10 @@ import { sizePosition } from "../analytics/sizing.js";
 import { etfFundDomicile } from "../analyze/etf.js";
 import { clockNow } from "../core/net.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
+import { gridRefusals, type InstrumentRules, publicInstrumentRules, snap, tickAt } from "./brokers/rules.js";
+import type { HttpFn, Venue } from "./brokers/types.js";
 import { gateContextFor } from "./context.js";
+import { venueSymbol } from "./live.js";
 import { type GateResult, type Order, riskGate } from "./riskgate.js";
 
 export interface PlanInput {
@@ -28,6 +31,8 @@ export interface PlanInput {
   /** Reward multiples of the risk for the default targets (default 2R and 3R). */
   rMultiples?: number[];
   now?: Date;
+  /** For tests: the transport the venue's public rules are read with. */
+  rulesHttp?: HttpFn;
 }
 
 export interface TradePlanResult {
@@ -54,11 +59,48 @@ export interface TradePlanResult {
   conditions: string[];
   notes: string[];
   equityBase: number;
+  /** The venue's price and quantity grid the plan was rounded to, or why none was checked. */
+  grid: PlanGrid;
 }
 
-/** Round to a price tick without floating-point residue (365.95, not 365.95000000000005). */
-const round = (x: number, step: number) => Number((Math.round(x / step) * step).toFixed(Math.max(0, -Math.floor(Math.log10(step)))));
-const tickOf = (p: number) => (p >= 1000 ? 0.5 : p >= 100 ? 0.05 : p >= 10 ? 0.01 : p >= 1 ? 0.001 : 0.0001);
+/**
+ * Paper only: a display rounding of computed prices (no venue grid applies to a paper fill). It is a readability
+ * convention, not any venue's tick — a live venue's own grid is read instead (trading/brokers/rules.ts).
+ */
+const displayTick = (p: number) => (p >= 1000 ? 0.5 : p >= 100 ? 0.05 : p >= 10 ? 0.01 : p >= 1 ? 0.001 : 0.0001);
+/** Paper only: the quantity step of a paper crypto fill (fractional), and whole units elsewhere — a convention, said in the plan. */
+const PAPER_CRYPTO_LOT = 0.00001;
+
+/** Where the plan's grid came from: the venue (read live), or none (paper, or not readable). */
+export interface PlanGrid {
+  checked: boolean;
+  rules?: InstrumentRules;
+  note: string;
+}
+
+async function planGrid(venue: string, inst: { symbol: string; currency: string }, now: Date, http?: HttpFn): Promise<PlanGrid> {
+  if (venue === "paper")
+    return {
+      checked: false,
+      note: "paper venue: no venue's price grid or lot step is checked — computed prices are rounded for display and quantities to a generic lot",
+    };
+  let sym: string;
+  try {
+    sym = venueSymbol(venue as Venue, inst.symbol, inst.currency);
+  } catch (e) {
+    return {
+      checked: false,
+      note: `${venue}: the price grid is not checked in the plan (${(e as Error).message}); \`broker preview\` reads it from the venue`,
+    };
+  }
+  try {
+    const rules = await publicInstrumentRules(venue, sym, { now, http });
+    if (!rules) return { checked: false, note: `${venue}: the price grid is read through the user's session at \`broker preview\`, not in the plan` };
+    return { checked: true, rules, note: `${venue} ${sym} grid read live (${rules.source})` };
+  } catch (e) {
+    return { checked: false, note: `${venue} ${sym}: the venue's price and quantity rules could not be read (${(e as Error).message})` };
+  }
+}
 
 export async function planTrade(input: PlanInput): Promise<TradePlanResult> {
   const now = input.now ?? clockNow();
@@ -70,9 +112,26 @@ export async function planTrade(input: PlanInput): Promise<TradePlanResult> {
   const last = bars[bars.length - 1]!;
   const a = atr(bars, 14)[bars.length - 1];
   const notes: string[] = [...series.notes];
-  const entry = input.entry ?? last.close;
-  const tick = tickOf(entry);
-  let stop = input.stop;
+  const venue = input.venue ?? "paper";
+  const grid = await planGrid(venue, inst, now, input.rulesHttp);
+  notes.push(grid.note);
+  const conditions: string[] = [];
+  if (venue !== "paper" && !grid.checked)
+    conditions.push(`GRID: ${grid.note} — \`broker preview\` refuses an order off the venue's grid; check it there before approving`);
+  const rules = grid.rules;
+  // On a venue grid every price is rounded DOWN to its tick: a buy limit never above the price planned, a long's stop
+  // never closer (the risk per unit, hence the size, never understated), a target never above the one computed.
+  const toTick = (x: number, what: string): number => {
+    const t = rules ? tickAt(rules, x) : undefined;
+    if (!t) return x;
+    const y = snap(x, t, "down");
+    if (y !== x && what) notes.push(`${what} ${x} rounded down to ${rules!.venue}'s tick ${t}: ${y}`);
+    return y;
+  };
+  const entry = rules ? toTick(input.entry ?? last.close, input.entry !== undefined ? "the entry" : "") : (input.entry ?? last.close);
+  const tick = displayTick(entry);
+  const round = (x: number) => (rules ? toTick(x, "") : snap(x, tick, "nearest"));
+  let stop = input.stop === undefined ? undefined : rules ? toTick(input.stop, "the stop") : input.stop;
   let stopMethod = "given";
   if (stop === undefined) {
     if (a === undefined) throw new Error("not enough history for an ATR stop: give --stop");
@@ -87,11 +146,13 @@ export async function planTrade(input: PlanInput): Promise<TradePlanResult> {
       stop = atrStop;
       stopMethod = `${input.atrMultiple ?? 2} ATR(14) below the entry (ATR ${a.toFixed(4)})`;
     }
-    stop = round(stop, tick);
+    stop = round(stop);
   }
   if (!(stop < entry)) throw new Error(`the stop ${stop} must be below the entry ${entry} for a buy`);
   const riskPerUnit = entry - stop;
-  const targets = input.targets ?? (input.rMultiples ?? [2, 3]).map((r) => round(entry + r * riskPerUnit, tick));
+  const targets = input.targets
+    ? input.targets.map((t) => (rules ? toTick(t, "the target") : t))
+    : (input.rMultiples ?? [2, 3]).map((r) => round(entry + r * riskPerUnit));
   const sr = supportResistance(bars);
   const wall = sr?.levels.filter((l) => l.kind === "resistance" && l.price > entry).sort((x, y) => x.price - y.price)[0];
   if (wall && targets[0]! > wall.price)
@@ -110,7 +171,7 @@ export async function planTrade(input: PlanInput): Promise<TradePlanResult> {
     currency: inst.currency,
     stop,
     assetKind: inst.kind === "crypto" ? "crypto" : inst.kind === "etf" ? "etf" : inst.kind === "fund" ? "fund" : "equity",
-    venue: input.venue ?? "paper",
+    venue,
     ...(domicile?.code ? { domicile: domicile.code } : {}),
   };
   const built = await gateContextFor(draft, { now });
@@ -125,16 +186,28 @@ export async function planTrade(input: PlanInput): Promise<TradePlanResult> {
     riskPct: ctx.profile.limits.riskPerTradePct * ctx.breaker.sizeMultiplier,
     maxPositionPct: ctx.profile.limits.maxPositionPct,
     cash: Math.max(0, (ctx.cashBase - buffer) / ctx.fxToBase),
-    lot: crypto ? 0.00001 : 1,
-    fractional: crypto,
+    // The venue's step when it was read (fractional when under one unit); paper: a generic lot, said in the notes.
+    lot: rules?.step ?? (crypto ? PAPER_CRYPTO_LOT : 1),
+    fractional: rules?.step !== undefined ? rules.step < 1 : crypto,
     adv: avgVol > 0 ? avgVol : undefined,
     maxAdvPct: 5,
   });
+  // Under the venue's minimum quantity or order value, there is no order to place: zero, said why.
+  if (rules && size.quantity > 0) {
+    const small = gridRefusals(rules, { price: entry, quantity: size.quantity }).filter((g) => g.code === "MIN_QUANTITY" || g.code === "MIN_NOTIONAL");
+    if (small.length) {
+      size.reasons.push(...small.map((g) => `${g.code}: ${g.reason} — no order`));
+      size.quantity = 0;
+      size.notional = 0;
+    }
+  }
+  if (rules && !rules.tradable) conditions.push(`NOT_TRADING: ${rules.venue} ${rules.symbol} takes no limit order now (status ${rules.status ?? "unknown"})`);
   const order: Order = { ...draft, quantity: size.quantity };
   const gate = size.quantity > 0 ? riskGate(order, ctx) : riskGate({ ...order, quantity: Number.MIN_VALUE }, ctx);
   const blocks = gate.checks.filter((c) => c.status === "block");
   const warns = gate.checks.filter((c) => c.status === "warn");
-  const verdict: TradePlanResult["verdict"] = size.quantity === 0 ? "not ready" : blocks.length ? "reject" : warns.length ? "ready with conditions" : "ready";
+  const verdict: TradePlanResult["verdict"] =
+    size.quantity === 0 ? "not ready" : blocks.length ? "reject" : warns.length || conditions.length ? "ready with conditions" : "ready";
   return {
     symbol: inst.symbol,
     name: inst.name,
@@ -156,8 +229,9 @@ export async function planTrade(input: PlanInput): Promise<TradePlanResult> {
     sizingReasons: size.reasons,
     gate,
     verdict,
-    conditions: [...blocks.map((b) => `${b.code}: ${b.reason}`), ...warns.map((w) => `${w.code}: ${w.reason}`)],
+    conditions: [...blocks.map((b) => `${b.code}: ${b.reason}`), ...warns.map((w) => `${w.code}: ${w.reason}`), ...conditions],
     notes,
+    grid: { checked: grid.checked, ...(rules ? { rules } : {}), note: grid.note },
     equityBase: built.equityBase,
   };
 }

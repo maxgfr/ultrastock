@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { request as httpsRequest } from "node:https";
 import { timingSafeEqual, X509Certificate } from "node:crypto";
 import { type AdapterOptions, BrokerError, DEFAULT_TIMEOUT_MS, MAX_BODY_BYTES, notSent, parseBody, ResponseTooLarge, toNumber } from "./http.js";
+import { ibkrRules } from "./rules.js";
 import type { Balance, BrokerAdapter, Environment, HttpFn, LiveOrder, OrderResult, OrderState } from "./types.js";
 
 export const IBKR_DEFAULT_BASE = "https://localhost:5000/v1/api";
@@ -227,6 +228,11 @@ export function ibkrAdapter(opts: IbkrOptions): BrokerAdapter {
       if (bid === undefined || ask === undefined)
         throw new BrokerError("ibkr", `no bid/ask yet for conid ${symbol} (the first snapshot is often empty: ask again)`);
       return { bid, ask, at: new Date(now()).toISOString() };
+    },
+
+    async instrumentRules(symbol) {
+      if (!/^\d+$/.test(symbol)) throw new BrokerError("ibkr", `IBKR contract rules need a conid, not ${symbol}`);
+      return ibkrRules(base, symbol, { http: send, timeoutMs, at: new Date(now()).toISOString() });
     },
 
     async permissions() {

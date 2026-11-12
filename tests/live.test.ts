@@ -1,3 +1,4 @@
+import { testGrid } from "./helpers/venue-rules.js";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -50,6 +51,7 @@ function fakeVenue(
     venue: "kraken",
     env: opts.env ?? "test",
     bookTop: async () => ({ bid: opts.bid ?? 99.9, ask: opts.ask ?? 100, at: new Date().toISOString() }),
+    instrumentRules: testGrid,
     permissions: async () => ({ canTrade: true, canWithdraw: opts.canWithdraw ?? false, source: "apiRestrictions" }),
     balances: async () => [{ asset: "SOL", free: opts.free ?? 0, locked: 0 }],
     preview: async () => ({ ok: true }),

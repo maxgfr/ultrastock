@@ -22,6 +22,7 @@ import {
   scrubSecrets,
   toNumber,
 } from "./http.js";
+import { coinbaseRules } from "./rules.js";
 import type { Balance, BrokerAdapter, LiveOrder, OrderResult, OrderState } from "./types.js";
 
 const COINBASE_HOST = "api.coinbase.com";
@@ -184,6 +185,10 @@ export function coinbaseAdapter(opts: AdapterOptions): BrokerAdapter {
       if (res.status !== 200 || bid === undefined || ask === undefined)
         throw new BrokerError("coinbase", `no book for ${symbol} (HTTP ${res.status})`, res.status);
       return { bid, ask, at: new Date(now()).toISOString() };
+    },
+
+    async instrumentRules(symbol) {
+      return coinbaseRules(symbol, { http, timeoutMs, at: new Date(now()).toISOString() });
     },
 
     async permissions() {

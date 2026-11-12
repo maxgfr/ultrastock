@@ -11,6 +11,7 @@
 // the case for France today.
 import { constants, createPrivateKey, sign } from "node:crypto";
 import { type AdapterOptions, BrokerError, credentialStrings, DEFAULT_TIMEOUT_MS, fetchHttp, scrubSecrets } from "./http.js";
+import { kalshiRules } from "./rules.js";
 import type { BrokerAdapter, OrderResult } from "./types.js";
 
 const LIVE = "https://api.elections.kalshi.com";
@@ -159,6 +160,10 @@ export function kalshiAdapter(opts: AdapterOptions): BrokerAdapter {
       const ask = side === "yes" ? 1 - noBid : 1 - yesBid;
       if (!Number.isFinite(bid) || !Number.isFinite(ask)) throw new BrokerError("kalshi", `orderbook ${ticker} is one-sided or empty`);
       return { bid, ask, at: new Date(now()).toISOString() };
+    },
+    async instrumentRules(symbol) {
+      const { ticker, side } = splitSym(symbol);
+      return kalshiRules(base, `${ticker}:${side.toUpperCase()}`, { http, timeoutMs, at: new Date(now()).toISOString() });
     },
     async permissions() {
       // Kalshi's API has no withdrawal endpoint for keys: an API key cannot move money out.

@@ -1,3 +1,4 @@
+import { testGrid } from "./helpers/venue-rules.js";
 // A ticket tried on the testnet first (refused there), then sent for real, is a real order of the day.
 import { rmSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -39,6 +40,7 @@ function venue(env: Environment, submit: (o: LiveOrder) => OrderResult): BrokerA
     venue: "kraken",
     env,
     bookTop: async () => ({ bid: 99.9, ask: 100, at: new Date().toISOString() }),
+    instrumentRules: testGrid,
     permissions: async () => ({ canTrade: true, canWithdraw: false, source: "apiRestrictions" }),
     balances: async () => [],
     preview: async () => ({ ok: true }),

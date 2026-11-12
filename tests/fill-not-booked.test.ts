@@ -1,3 +1,4 @@
+import { testGrid } from "./helpers/venue-rules.js";
 // A fill the ledger keeps out as a duplicate is never dropped in silence: a paper fill is then not made at all (the
 // ticket stays as it was), a venue fill — real, already done — leaves an audit line saying it is missing.
 import { rmSync } from "node:fs";
@@ -70,6 +71,7 @@ describe("a fill the ledger refuses as a duplicate", () => {
       venue: "kraken",
       env: "test",
       bookTop: async () => ({ bid: 99.9, ask: 100, at: new Date().toISOString() }),
+      instrumentRules: testGrid,
       permissions: async () => ({ canTrade: true, canWithdraw: false, source: "apiRestrictions" }),
       balances: async () => [],
       preview: async () => ({ ok: true }),

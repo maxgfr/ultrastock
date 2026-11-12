@@ -25,6 +25,7 @@ import {
   scrubSecrets,
   toNumber,
 } from "./http.js";
+import { krakenRules } from "./rules.js";
 import type { Balance, BrokerAdapter, LiveOrder, OrderResult } from "./types.js";
 
 const KRAKEN_BASE = "https://api.kraken.com";
@@ -184,6 +185,10 @@ export function krakenAdapter(opts: AdapterOptions): BrokerAdapter {
       if (bid === undefined || ask === undefined)
         throw new BrokerError("kraken", `no book for ${symbol}: ${body?.error?.join("; ") || `HTTP ${res.status}`}`, res.status);
       return { bid, ask, at: new Date(now()).toISOString() };
+    },
+
+    async instrumentRules(symbol) {
+      return krakenRules(symbol, { http, timeoutMs, at: new Date(now()).toISOString() });
     },
 
     async permissions() {

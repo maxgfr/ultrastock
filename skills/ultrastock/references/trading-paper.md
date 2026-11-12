@@ -13,6 +13,12 @@ Given a view, `plan` proposes the trade:
 - targets at 2R and 3R (`--target a,b` overrides them);
 - the size, from the profile's risk per trade, then cut by every cap: largest
   position, sector, crypto share, the cash buffer, lot size and tick.
+- on a live venue (`--venue binance|kraken|coinbase|kalshi`) the tick, lot
+  step and minimums are read live from the venue, and every price is rounded
+  DOWN to its tick (a buy limit never above the plan, a stop never closer, a
+  target never higher), the quantity down to its step; under the venue's
+  minimum the size is zero. IBKR's grid is read through the gateway at
+  `broker preview`. On paper no venue grid is checked, and the plan says so.
 
 It then dry-runs the risk gate and gives a verdict:
 - **ready**;

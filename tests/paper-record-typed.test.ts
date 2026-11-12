@@ -1,3 +1,4 @@
+import { testGrid } from "./helpers/venue-rules.js";
 // live.ts condition 1 — "the paper record is ready" (20 closed paper trades over 30 days, a positive
 // expectancy…). `readiness` is fed `closedTradeResults(readLedger("paper"))` and the first buy's date: any row of the
 // paper ledger, wherever it came from. `portfolio add buy|sell --book paper --date …` writes such rows with no ticket,
@@ -20,6 +21,7 @@ const venue: BrokerAdapter = {
   venue: "kraken",
   env: "live",
   bookTop: async () => ({ bid: 99.9, ask: 100, at: new Date().toISOString() }),
+  instrumentRules: testGrid,
   permissions: async () => ({ canTrade: true, canWithdraw: false, source: "apiRestrictions" }),
   balances: async () => [],
   preview: async () => ({ ok: true }),

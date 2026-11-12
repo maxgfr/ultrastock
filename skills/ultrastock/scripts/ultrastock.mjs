@@ -2564,9 +2564,9 @@ function whisperBudgetLeft() {
 function whisperModel() {
   return env("WHISPER_MODEL") ?? DEFAULT_MODEL;
 }
-function whisperSegments(json2) {
+function whisperSegments(json22) {
   try {
-    const parsed = JSON.parse(json2);
+    const parsed = JSON.parse(json22);
     return (parsed.segments ?? []).map((s) => ({
       start: Number(s.start),
       end: Number(s.end),
@@ -7510,10 +7510,10 @@ function serverReason(data) {
   const line = cleanInline(raw).slice(0, 200);
   return line || void 0;
 }
-function mapScrapeResponse(json2) {
-  if (!json2 || typeof json2 !== "object" || Array.isArray(json2)) return null;
-  if (json2.success === false) return null;
-  const data = json2.data;
+function mapScrapeResponse(json22) {
+  if (!json22 || typeof json22 !== "object" || Array.isArray(json22)) return null;
+  if (json22.success === false) return null;
+  const data = json22.data;
   if (!data || typeof data !== "object" || Array.isArray(data)) return null;
   const markdown = typeof data.markdown === "string" ? data.markdown.trim() : "";
   if (!markdown) return null;
@@ -7532,10 +7532,10 @@ function mapScrapeResponse(json2) {
     ...status2 !== void 0 ? { statusCode: status2 } : {}
   };
 }
-function mapSearchResponse(json2) {
-  if (!json2 || typeof json2 !== "object") return [];
-  if (json2.success === false) return [];
-  const data = json2.data;
+function mapSearchResponse(json22) {
+  if (!json22 || typeof json22 !== "object") return [];
+  if (json22.success === false) return [];
+  const data = json22.data;
   const web = Array.isArray(data) ? data : Array.isArray(data?.web) ? data.web : Array.isArray(data?.results) ? data.results : [];
   const out = [];
   for (const x of web) {
@@ -7889,25 +7889,25 @@ function dispositionFilename(header2) {
 }
 async function authorizedGet(url, init, authorize) {
   let target = url;
-  const fail2 = (error, redirectFailed) => ({
+  const fail3 = (error, redirectFailed) => ({
     failure: { ok: false, status: 0, body: "", contentType: "", url: target, error, ...redirectFailed ? { redirectFailed } : {} }
   });
   const headers = { ...init.headers };
   for (let redirects = 0; ; redirects++) {
     try {
-      if (!await authorize(target)) return fail2(`URL not authorized: ${target}`);
+      if (!await authorize(target)) return fail3(`URL not authorized: ${target}`);
     } catch (e) {
-      return fail2(`URL authorization failed for ${target}: ${e.message}`);
+      return fail3(`URL authorization failed for ${target}: ${e.message}`);
     }
     const response = await fetch(target, { ...init, headers, redirect: "manual" });
     const location = response.headers.get("location");
     if (!REDIRECT_STATUS.has(response.status) || !location) return { response };
     await response.body?.cancel().catch(() => {
     });
-    if (redirects >= 20) return fail2("Too many redirects (maximum 20)", true);
+    if (redirects >= 20) return fail3("Too many redirects (maximum 20)", true);
     try {
       const next2 = new URL(location, target);
-      if (!/^https?:$/.test(next2.protocol)) return fail2(`Unsupported redirect protocol: ${next2.protocol}`, true);
+      if (!/^https?:$/.test(next2.protocol)) return fail3(`Unsupported redirect protocol: ${next2.protocol}`, true);
       if (next2.origin !== new URL(target).origin) {
         delete headers.authorization;
         delete headers.cookie;
@@ -7915,7 +7915,7 @@ async function authorizedGet(url, init, authorize) {
       }
       target = next2.href;
     } catch {
-      return fail2(`Invalid redirect URL from ${target}`, true);
+      return fail3(`Invalid redirect URL from ${target}`, true);
     }
   }
 }
@@ -8615,11 +8615,11 @@ async function rescueViaWayback(url, opts = {}) {
   if (opts.authorizeUrl || envFlag("NO_WAYBACK")) return void 0;
   const api = `https://archive.org/wayback/available?url=${encodeURIComponent(url)}`;
   const r3 = await httpJson("GET", api, void 0, { timeoutMs: 1e4, userAgent: contactUa(), signal: opts.signal });
-  const snap = r3.ok ? r3.data?.archived_snapshots?.closest : void 0;
-  if (snap?.available !== true || typeof snap.url !== "string") return void 0;
-  const got = await fetchAndExtract(snap.url, opts);
+  const snap2 = r3.ok ? r3.data?.archived_snapshots?.closest : void 0;
+  if (snap2?.available !== true || typeof snap2.url !== "string") return void 0;
+  const got = await fetchAndExtract(snap2.url, opts);
   if (!got.text?.trim() || looksLikeJunkExtraction(got.text)) return void 0;
-  return { text: got.text, title: got.title, snapshotUrl: snap.url, timestamp: String(snap.timestamp ?? "") };
+  return { text: got.text, title: got.title, snapshotUrl: snap2.url, timestamp: String(snap2.timestamp ?? "") };
 }
 function stripConsentBoilerplate(text2, opts = {}) {
   if (opts.markdown) return stripConsentMarkdown(text2);
@@ -14944,10 +14944,10 @@ function mcpToolCall(child, tool, toolArgs, timeoutMs) {
       child.kill();
       settle3();
     };
-    const fail2 = (message, status2 = 0) => finish2(() => reject(new ProviderError(SOURCE8, message, status2)));
+    const fail3 = (message, status2 = 0) => finish2(() => reject(new ProviderError(SOURCE8, message, status2)));
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      fail2(`crible mcp did not answer ${tool} within ${timeoutMs} ms`);
+      fail3(`crible mcp did not answer ${tool} within ${timeoutMs} ms`);
     }, timeoutMs);
     const answer = (line) => {
       const msg = JSON.parse(line);
@@ -14955,9 +14955,9 @@ function mcpToolCall(child, tool, toolArgs, timeoutMs) {
         send2({ jsonrpc: "2.0", method: "notifications/initialized" });
         send2({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: tool, arguments: toolArgs } });
       } else if (msg.id === 2) {
-        if (msg.error) return fail2(`crible ${tool}: ${msg.error.message}`, 400);
+        if (msg.error) return fail3(`crible ${tool}: ${msg.error.message}`, 400);
         const r3 = msg.result ?? {};
-        if (r3.isError) return fail2(`crible ${tool}: ${r3.content?.[0]?.text ?? "error"}`, 400);
+        if (r3.isError) return fail3(`crible ${tool}: ${r3.content?.[0]?.text ?? "error"}`, 400);
         const text2 = r3.content?.[0]?.text;
         const value2 = r3.structuredContent !== void 0 ? r3.structuredContent.result ?? r3.structuredContent : text2 === void 0 ? null : JSON.parse(text2);
         finish2(() => resolve22(value2));
@@ -14974,7 +14974,7 @@ function mcpToolCall(child, tool, toolArgs, timeoutMs) {
         try {
           answer(line);
         } catch {
-          fail2(`crible mcp sent an answer to ${tool} that is not JSON: ${line.slice(0, 120)}`);
+          fail3(`crible mcp sent an answer to ${tool} that is not JSON: ${line.slice(0, 120)}`);
         }
       }
     });
@@ -14983,10 +14983,10 @@ function mcpToolCall(child, tool, toolArgs, timeoutMs) {
     });
     child.stdin.on("error", () => {
     });
-    child.on("error", (e) => fail2(`cannot start crible: ${e.message}`));
+    child.on("error", (e) => fail3(`cannot start crible: ${e.message}`));
     child.on("exit", (code, signal) => {
       const last2 = errors.trim().split("\n").at(-1)?.slice(0, 200);
-      fail2(`crible mcp stopped before answering ${tool} (${signal ?? `exit ${code}`})${last2 ? `: ${last2}` : ""}`);
+      fail3(`crible mcp stopped before answering ${tool} (${signal ?? `exit ${code}`})${last2 ? `: ${last2}` : ""}`);
     });
     send2({
       jsonrpc: "2.0",
@@ -15059,8 +15059,8 @@ async function fetchBinary(url, opts = {}) {
 // src/providers/fundamentals/amf.ts
 var AMF_SOURCE = "amf-bdif";
 var BASE7 = "https://bdif.amf-france.org/back/api/v1";
-function parseBdifSearch(json2) {
-  return (json2.result ?? []).flatMap((r3) => {
+function parseBdifSearch(json3) {
+  return (json3.result ?? []).flatMap((r3) => {
     if (!r3.numero) return [];
     const doc = r3.documents?.find((d) => d.accessible !== false && d.path?.toLowerCase().endsWith(".pdf"));
     return [
@@ -15253,8 +15253,8 @@ async function amfInsiderDeclarations(issuer, opts = {}) {
 // src/providers/fundamentals/gleif.ts
 var GLEIF_SOURCE = "gleif";
 var BASE8 = "https://api.gleif.org/api/v1/lei-records";
-function parseLeiRecords(json2) {
-  return (json2.data ?? []).flatMap((d) => {
+function parseLeiRecords(json3) {
+  return (json3.data ?? []).flatMap((d) => {
     const a = d.attributes;
     if (!d.id || !a) return [];
     return [
@@ -15330,8 +15330,8 @@ async function gleifSearch(name, opts = {}) {
 // src/providers/fundamentals/esef.ts
 var ESEF_SOURCE = "esef";
 var BASE9 = "https://filings.xbrl.org";
-function parseEsefFilings(json2) {
-  return (json2.data ?? []).flatMap((d) => {
+function parseEsefFilings(json3) {
+  return (json3.data ?? []).flatMap((d) => {
     const a = d.attributes;
     if (!d.id || !a?.period_end) return [];
     return [
@@ -15408,9 +15408,9 @@ var ESEF_METRICS = [
 ];
 var CORE_DIMS = /* @__PURE__ */ new Set(["concept", "entity", "period", "unit", "language", "noteId"]);
 var dayOf = (s) => /T00:00:00/.test(s) ? shiftIsoDay(s.slice(0, 10), -1) : s.slice(0, 10);
-function consolidatedFacts(json2) {
+function consolidatedFacts(json3) {
   const out = /* @__PURE__ */ new Map();
-  for (const f3 of Object.values(json2.facts ?? {})) {
+  for (const f3 of Object.values(json3.facts ?? {})) {
     const d = f3.dimensions ?? {};
     if (!d.concept || !d.period || !d.unit || Object.keys(d).some((k) => !CORE_DIMS.has(k))) continue;
     const value2 = typeof f3.value === "number" ? f3.value : Number(f3.value);
@@ -15430,8 +15430,8 @@ function consolidatedFacts(json2) {
   return [...out.values()];
 }
 var unitName = (u) => u.endsWith("/shares") ? u.slice(0, -"/shares".length) : u;
-function parseEsefReport(json2) {
-  const facts = consolidatedFacts(json2);
+function parseEsefReport(json3) {
+  const facts = consolidatedFacts(json3);
   const notes = [];
   const metrics = [];
   const pick3 = (concepts, kind) => {
@@ -16121,9 +16121,9 @@ function figiJobFor(id, exchCode) {
   if (/^BBG[0-9A-Z]{9}$/.test(v)) return { idType: "ID_BB_GLOBAL", idValue: v };
   return { idType: "TICKER", idValue: v, exchCode: exchCode ?? "US" };
 }
-function parseFigiResponse(json2) {
-  if (!Array.isArray(json2)) return [];
-  return json2.map((r3) => {
+function parseFigiResponse(json3) {
+  if (!Array.isArray(json3)) return [];
+  return json3.map((r3) => {
     const data = r3?.data;
     if (!Array.isArray(data)) return void 0;
     return data.map((d) => {
@@ -16238,10 +16238,10 @@ async function secText(url) {
 }
 var padCik = (cik) => String(cik).padStart(10, "0");
 var archiveBase = (cik, accession) => `https://www.sec.gov/Archives/edgar/data/${cik}/${accession.replace(/-/g, "")}`;
-function parseSecTickerMap(json2) {
+function parseSecTickerMap(json3) {
   const out = {};
-  if (!json2 || typeof json2 !== "object") return out;
-  for (const row of Object.values(json2)) {
+  if (!json3 || typeof json3 !== "object") return out;
+  for (const row of Object.values(json3)) {
     if (typeof row?.cik_str !== "number" || !row.ticker) continue;
     const ticker = row.ticker.toUpperCase();
     if (!out[ticker]) out[ticker] = { cik: row.cik_str, ticker, title: row.title ?? "" };
@@ -16522,10 +16522,10 @@ var minus = (a, b, period2) => ({
   accn: a.accn,
   formula: "operatingCashFlow \u2212 capex"
 });
-function parseCompanyFacts(json2, opts = {}) {
+function parseCompanyFacts(json3, opts = {}) {
   const years = opts.years ?? 4;
   const quarters = opts.quarters ?? 4;
-  const facts = json2.facts;
+  const facts = json3.facts;
   const labels = fiscalLabels(facts, opts.asOf);
   const notes = [];
   const metrics = [];
@@ -16569,7 +16569,7 @@ function parseCompanyFacts(json2, opts = {}) {
     });
   else notes.push("shares outstanding: not reported in the cover page (multi-class issuers report per class)");
   if (facts?.["ifrs-full"]) notes.push("this registrant files IFRS (20-F/40-F): us-gaap metrics may be missing \u2014 the ifrs-full namespace is not mapped here");
-  return { cik: json2.cik ?? 0, entityName: json2.entityName ?? "", ...opts.asOf ? { asOf: opts.asOf } : {}, metrics, notes };
+  return { cik: json3.cik ?? 0, entityName: json3.entityName ?? "", ...opts.asOf ? { asOf: opts.asOf } : {}, metrics, notes };
 }
 var unitOf = (u) => u === "USD/shares" ? "USD" : u;
 function secFundamentalsPoints(f3, subject) {
@@ -16613,9 +16613,9 @@ async function secFundamentals(tickerOrCik, opts = {}) {
     ]
   };
 }
-function parseSubmissions(json2) {
-  const cik = Number(json2.cik ?? 0);
-  const r3 = json2.filings?.recent ?? {};
+function parseSubmissions(json3) {
+  const cik = Number(json3.cik ?? 0);
+  const r3 = json3.filings?.recent ?? {};
   const col = (k, i) => String(r3[k]?.[i] ?? "");
   const n2 = r3.accessionNumber?.length ?? 0;
   const filings = [];
@@ -16635,7 +16635,7 @@ function parseSubmissions(json2) {
     });
   }
   filings.sort((a, b) => b.filingDate.localeCompare(a.filingDate));
-  return { cik, name: json2.name ?? "", tickers: json2.tickers ?? [], filings };
+  return { cik, name: json3.name ?? "", tickers: json3.tickers ?? [], filings };
 }
 async function secSubmissions(cik) {
   const url = `https://data.sec.gov/submissions/CIK${padCik(cik)}.json`;
@@ -16733,9 +16733,9 @@ async function secFilings(tickerOrCik, opts = {}) {
     notes: [`important 8-K items: ${[...IMPORTANT_8K_ITEMS].join(", ")}`]
   };
 }
-function parseFullTextSearch(json2) {
+function parseFullTextSearch(json3) {
   const hits = [];
-  for (const h of json2.hits?.hits ?? []) {
+  for (const h of json3.hits?.hits ?? []) {
     const [accession, file] = (h._id ?? "").split(":");
     const s = h._source;
     const cik = Number(s?.ciks?.[0] ?? 0);
@@ -16750,7 +16750,7 @@ function parseFullTextSearch(json2) {
       url: `${archiveBase(cik, accession)}/${file}`
     });
   }
-  return { total: json2.hits?.total?.value ?? hits.length, hits };
+  return { total: json3.hits?.total?.value ?? hits.length, hits };
 }
 async function secFullTextSearch(query2, opts = {}) {
   const now = opts.now ?? clockNow();
@@ -17479,13 +17479,13 @@ var TEMPLATE_FACT_FIELDS = /* @__PURE__ */ new Set(["type", "unit", "fields", "v
 var FACT_FIELDS = /* @__PURE__ */ new Set(["value", "label", "sources", "verifiedAt", "confidence", "expiresAt", "note"]);
 var TEMPLATE_TOP_FIELDS = /* @__PURE__ */ new Set(["_about", "formLines"]);
 function typeProblem(spec, v) {
-  const num16 = (x) => typeof x === "number" && Number.isFinite(x);
+  const num17 = (x) => typeof x === "number" && Number.isFinite(x);
   switch (spec.type) {
     case "rate":
-      return num16(v) && v >= 0 && v <= 1 ? void 0 : "a rate is a number between 0 and 1 (a fraction, not a percent)";
+      return num17(v) && v >= 0 && v <= 1 ? void 0 : "a rate is a number between 0 and 1 (a fraction, not a percent)";
     case "amount":
     case "number":
-      return num16(v) && v >= 0 ? void 0 : `a ${spec.type} is a number \u2265 0`;
+      return num17(v) && v >= 0 ? void 0 : `a ${spec.type} is a number \u2265 0`;
     case "date":
       return isIsoDate(v) ? void 0 : "a date is written YYYY-MM-DD";
     case "text":
@@ -17499,7 +17499,7 @@ function typeProblem(spec, v) {
       const want = new Set(spec.fields ?? []);
       const missing = [...want].filter((f3) => !(f3 in v));
       const extra = Object.keys(v).filter((f3) => !want.has(f3));
-      const bad = Object.entries(v).filter(([, x]) => !num16(x) || x < 0 || spec.type === "rates" && x > 1);
+      const bad = Object.entries(v).filter(([, x]) => !num17(x) || x < 0 || spec.type === "rates" && x > 1);
       const parts = [
         missing.length ? `missing field(s) ${missing.join(", ")}` : "",
         extra.length ? `unknown field(s) ${extra.join(", ")}` : "",
@@ -25547,9 +25547,9 @@ async function isharesHoldings(isin) {
 
 // src/providers/funds/nport.ts
 var NPORT_SOURCE = "sec-edgar";
-function parseMfTickers(json2) {
+function parseMfTickers(json3) {
   const out = {};
-  const data = json2?.data;
+  const data = json3?.data;
   if (!Array.isArray(data)) return out;
   for (const r3 of data) {
     const [cik, series, cls, sym3] = r3;
@@ -28292,7 +28292,7 @@ function parseNasdaqDividends2(rows) {
   return rows.flatMap((r3) => {
     const symbol = clean2(r3.symbol);
     if (!symbol) return [];
-    const num16 = (v) => typeof v === "number" ? v : parseLooseNumber(clean2(v));
+    const num17 = (v) => typeof v === "number" ? v : parseLooseNumber(clean2(v));
     return [
       {
         symbol,
@@ -28301,8 +28301,8 @@ function parseNasdaqDividends2(rows) {
         payDate: mdyToIso(clean2(r3.payment_Date)),
         recordDate: mdyToIso(clean2(r3.record_Date)),
         announced: mdyToIso(clean2(r3.announcement_Date)),
-        amount: num16(r3.dividend_Rate),
-        annual: num16(r3.indicated_Annual_Dividend)
+        amount: num17(r3.dividend_Rate),
+        annual: num17(r3.indicated_Annual_Dividend)
       }
     ];
   });
@@ -31718,16 +31718,16 @@ function rvi(bars, n2 = 10) {
   const sym3 = (xs, i) => (xs[i] + 2 * xs[i - 1] + 2 * xs[i - 2] + xs[i - 3]) / 6;
   const co = bars.map((b) => b.close - b.open);
   const hl = bars.map((b) => b.high - b.low);
-  const num16 = new Array(bars.length).fill(0);
+  const num17 = new Array(bars.length).fill(0);
   const den = new Array(bars.length).fill(0);
   for (let i = 3; i < bars.length; i++) {
-    num16[i] = sym3(co, i);
+    num17[i] = sym3(co, i);
     den[i] = sym3(hl, i);
   }
   const line = blank(bars.length);
   for (let i = n2 + 2; i < bars.length; i++) {
     const d = windowSum(den, i, n2);
-    line[i] = d === 0 ? 0 : windowSum(num16, i, n2) / d;
+    line[i] = d === 0 ? 0 : windowSum(num17, i, n2) / d;
   }
   const out = blank(bars.length);
   for (let i = n2 + 5; i < bars.length; i++) {
@@ -35607,10 +35607,10 @@ function tokenize2(src2) {
       i++;
       continue;
     }
-    const num16 = /^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(src2.slice(i));
-    if (num16) {
-      out.push({ k: "num", v: Number(num16[0]) });
-      i += num16[0].length;
+    const num17 = /^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(src2.slice(i));
+    if (num17) {
+      out.push({ k: "num", v: Number(num17[0]) });
+      i += num17[0].length;
       continue;
     }
     const id = /^[A-Za-z_][A-Za-z0-9_.]*/.exec(src2.slice(i));
@@ -36223,9 +36223,9 @@ function entry(raw, when) {
   const rest = text2.slice((first.index ?? 0) + first[0].length).replace(/^\s*,\s*/, "");
   const office = plain2(rest);
   if (!office) return void 0;
-  const round6 = /\b(1st|first)\s+round/i.test(office) ? 1 : /\b(2nd|second)\s+round|run-?off/i.test(office) ? 2 : void 0;
+  const round5 = /\b(1st|first)\s+round/i.test(office) ? 1 : /\b(2nd|second)\s+round|run-?off/i.test(office) ? 2 : void 0;
   const article = links.find((l) => /\d{4}.*(?:election|referendum)/i.test(l[1]))?.[1];
-  return { ...when, country: country2, iso: countryIso(country2), office, kind: electionKind(office), ...round6 ? { round: round6 } : {}, ...article ? { article } : {} };
+  return { ...when, country: country2, iso: countryIso(country2), office, kind: electionKind(office), ...round5 ? { round: round5 } : {}, ...article ? { article } : {} };
 }
 function parseElectionCalendar(wikitext, year) {
   const text2 = wikitext.replace(/<ref[^>]*\/>|<ref[\s\S]*?<\/ref>|<!--[\s\S]*?-->/g, "");
@@ -38714,8 +38714,8 @@ function portfolioReturns(weights, returns) {
 function diversificationRatio(weights, returns) {
   const p = portfolioReturns(weights, returns);
   const sp = stdev(p);
-  const num16 = returns.reduce((s, r3, i) => s + weights[i] * stdev(r3), 0);
-  return sp > 0 ? num16 / sp : Number.NaN;
+  const num17 = returns.reduce((s, r3, i) => s + weights[i] * stdev(r3), 0);
+  return sp > 0 ? num17 / sp : Number.NaN;
 }
 function pairwiseCorrelations(names2, returns) {
   const m = correlationMatrix(returns);
@@ -39142,13 +39142,13 @@ async function riskAnalysis(m, f3, opts = {}) {
     }
   });
   equities.forEach((h, i) => {
-    const snap = snapshots[i];
+    const snap2 = snapshots[i];
     let sector;
     let sectorKey;
     let isin = h.isin;
     let isinKey = h.isin ? `${h.symbol}.instrument.isin` : void 0;
-    if (snap.ds) {
-      const ds = snap.ds;
+    if (snap2.ds) {
+      const ds = snap2.ds;
       f3.input({ ...ds, title: `${h.symbol} sector and ISIN (TradingView snapshot)`, subject: h.symbol });
       const sp = ds.points.find((p) => p.key.endsWith(".tv.sector"));
       sector = knownSector(sp?.value);
@@ -39159,7 +39159,7 @@ async function riskAnalysis(m, f3, opts = {}) {
         isinKey = ip.key;
       }
       if (sp && !sector) f3.note(`${h.symbol}: TradingView's sector label is not one of its known sectors \u2014 counted as unclassified`);
-    } else f3.note(`${h.symbol}: no sector (${snap.error})`);
+    } else f3.note(`${h.symbol}: no sector (${snap2.error})`);
     sectorRows.push({ label: sector ?? "unclassified", weight: h.weightPct, from: [h.keys.weight, ...sectorKey ? [sectorKey] : []] });
     const country2 = isinCountry(isin) ?? (h.instrument?.market === "us" ? "US" : void 0);
     if (!isinCountry(isin) && country2 === "US") f3.note(`${h.symbol}: country taken from its US listing (no ISIN read)`);
@@ -45055,6 +45055,229 @@ function notSent(clientOrderId, message) {
   return { state: "rejected", clientOrderId, message };
 }
 
+// src/trading/brokers/rules.ts
+function decimalsOf(x) {
+  const s = plainDecimal(x);
+  const i = s.indexOf(".");
+  return i < 0 ? 0 : s.length - i - 1;
+}
+function snap(x, step, dir2) {
+  if (!(step > 0)) throw new RangeError(`a grid step is > 0 (got ${step})`);
+  const n2 = x / step;
+  const tol = 1e-9 * Math.max(1, Math.abs(n2));
+  const k = dir2 === "down" ? Math.floor(n2 + tol) : dir2 === "up" ? Math.ceil(n2 - tol) : Math.round(n2);
+  return Number((k * step).toFixed(Math.min(20, decimalsOf(step))));
+}
+function onGrid(x, step) {
+  const n2 = x / step;
+  return Math.abs(n2 - Math.round(n2)) <= 1e-9 * Math.max(1, Math.abs(n2));
+}
+function tickAt(r3, price) {
+  let t;
+  for (const b of [...r3.ticks].sort((x, y) => x.from - y.from)) if (price + 1e-12 >= b.from) t = b.tick;
+  return t;
+}
+function gridRefusals(r3, o) {
+  const out = [];
+  const at = `${r3.venue} ${r3.symbol}`;
+  if (!r3.tradable) out.push({ code: "NOT_TRADING", reason: `${at} takes no limit order now (status ${r3.status ?? "unknown"}, ${r3.source})` });
+  const tick = tickAt(r3, o.price);
+  if (tick === void 0) out.push({ code: "GRID_UNKNOWN", reason: `${r3.source} gives no price tick for ${at}: the limit cannot be checked against the grid` });
+  else if (!onGrid(o.price, tick))
+    out.push({
+      code: "GRID_PRICE",
+      reason: `the limit ${o.price} is not on ${at}'s price grid (tick ${plainDecimal(tick)}): ${snap(o.price, tick, "down")} or ${snap(o.price, tick, "up")} \u2014 plan it again`
+    });
+  if (r3.step !== void 0 && r3.step > 0 && !onGrid(o.quantity, r3.step))
+    out.push({
+      code: "GRID_QUANTITY",
+      reason: `the quantity ${o.quantity} is not a multiple of ${at}'s step ${plainDecimal(r3.step)} (${snap(o.quantity, r3.step, "down")} fits) \u2014 plan it again`
+    });
+  if (r3.minQuantity !== void 0 && o.quantity + 1e-12 < r3.minQuantity)
+    out.push({ code: "MIN_QUANTITY", reason: `the quantity ${o.quantity} is under ${at}'s minimum ${plainDecimal(r3.minQuantity)}` });
+  if (r3.maxQuantity !== void 0 && r3.maxQuantity > 0 && o.quantity > r3.maxQuantity + 1e-12)
+    out.push({ code: "MAX_QUANTITY", reason: `the quantity ${o.quantity} is above ${at}'s maximum ${plainDecimal(r3.maxQuantity)}` });
+  if (r3.minNotional !== void 0 && o.price * o.quantity + 1e-9 < r3.minNotional)
+    out.push({
+      code: "MIN_NOTIONAL",
+      reason: `the order is worth ${plainDecimal(Number((o.price * o.quantity).toFixed(8)))} \u2014 under ${at}'s minimum order value ${plainDecimal(r3.minNotional)}`
+    });
+  return out;
+}
+var num12 = (v) => {
+  if (v === null || v === void 0 || v === "") return void 0;
+  const n2 = typeof v === "number" ? v : Number(String(v));
+  return Number.isFinite(n2) ? n2 : void 0;
+};
+var positive = (v) => {
+  const n2 = num12(v);
+  return n2 !== void 0 && n2 > 0 ? n2 : void 0;
+};
+var json2 = (body) => {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return void 0;
+  }
+};
+var fail = (venue, what) => {
+  throw new Error(`${venue}: ${what}`);
+};
+function parseBinanceRules(body, symbol, source2, at) {
+  const s = body?.symbols?.find(
+    (x) => x.symbol === symbol
+  );
+  if (!s) return fail("binance", `exchangeInfo lists no ${symbol}`);
+  const filter = (t) => s.filters?.find((f3) => f3.filterType === t);
+  const price = filter("PRICE_FILTER");
+  const lot = filter("LOT_SIZE");
+  const notional = filter("NOTIONAL") ?? filter("MIN_NOTIONAL");
+  const tick = positive(price?.tickSize);
+  return {
+    venue: "binance",
+    symbol,
+    ticks: tick ? [{ from: 0, tick }] : [],
+    step: positive(lot?.stepSize),
+    minQuantity: positive(lot?.minQty),
+    maxQuantity: positive(lot?.maxQty),
+    minNotional: positive(notional?.minNotional),
+    tradable: s.status === "TRADING",
+    status: s.status,
+    source: source2,
+    at
+  };
+}
+async function binanceRules(base2, symbol, r3) {
+  const url = `${base2}/api/v3/exchangeInfo?symbol=${encodeURIComponent(symbol)}`;
+  const res = await r3.http({ method: "GET", url, timeoutMs: r3.timeoutMs });
+  if (res.status !== 200) fail("binance", `exchangeInfo for ${symbol} answered HTTP ${res.status}`);
+  return parseBinanceRules(json2(res.body), symbol, url, r3.at);
+}
+function parseKrakenRules(body, symbol, source2, at) {
+  const b = body;
+  if (b?.error?.length) fail("kraken", `AssetPairs ${symbol}: ${b.error.join("; ")}`);
+  const entries = Object.entries(b?.result ?? {});
+  const hit = entries.find(([k, v]) => k === symbol || v.altname === symbol) ?? (entries.length === 1 ? entries[0] : void 0);
+  if (!hit) return fail("kraken", `AssetPairs lists no ${symbol}`);
+  const p = hit[1];
+  const pairDecimals = num12(p.pair_decimals);
+  const lotDecimals = num12(p.lot_decimals);
+  const tick = positive(p.tick_size) ?? (pairDecimals !== void 0 ? 10 ** -pairDecimals : void 0);
+  const status2 = typeof p.status === "string" ? p.status : void 0;
+  return {
+    venue: "kraken",
+    symbol,
+    ticks: tick ? [{ from: 0, tick: Number(tick.toPrecision(12)) }] : [],
+    step: lotDecimals !== void 0 ? Number((10 ** -lotDecimals).toPrecision(12)) : void 0,
+    minQuantity: positive(p.ordermin),
+    minNotional: positive(p.costmin),
+    // "online" and "limit_only" take a limit order; "cancel_only", "post_only", "reduce_only" and "delisted" do not take ours.
+    tradable: status2 === void 0 || status2 === "online" || status2 === "limit_only",
+    status: status2,
+    source: source2,
+    at
+  };
+}
+async function krakenRules(symbol, r3) {
+  const url = `https://api.kraken.com/0/public/AssetPairs?pair=${encodeURIComponent(symbol)}`;
+  const res = await r3.http({ method: "GET", url, timeoutMs: r3.timeoutMs });
+  if (res.status !== 200) fail("kraken", `AssetPairs for ${symbol} answered HTTP ${res.status}`);
+  return parseKrakenRules(json2(res.body), symbol, url, r3.at);
+}
+function parseCoinbaseRules(body, symbol, source2, at) {
+  const p = body;
+  if (!p || p.product_id !== void 0 && p.product_id !== symbol) return fail("coinbase", `no product ${symbol}`);
+  const tick = positive(p.price_increment) ?? positive(p.quote_increment);
+  const disabled = p.trading_disabled === true || p.is_disabled === true || p.cancel_only === true || p.view_only === true;
+  const status2 = typeof p.status === "string" ? p.status : void 0;
+  return {
+    venue: "coinbase",
+    symbol,
+    ticks: tick ? [{ from: 0, tick }] : [],
+    step: positive(p.base_increment),
+    minQuantity: positive(p.base_min_size),
+    maxQuantity: positive(p.base_max_size),
+    minNotional: positive(p.quote_min_size),
+    tradable: !disabled && (status2 === void 0 || status2 === "online"),
+    status: disabled ? `${status2 ?? "?"} (trading disabled)` : status2,
+    source: source2,
+    at
+  };
+}
+async function coinbaseRules(symbol, r3) {
+  const url = `https://api.coinbase.com/api/v3/brokerage/market/products/${encodeURIComponent(symbol)}`;
+  const res = await r3.http({ method: "GET", url, timeoutMs: r3.timeoutMs });
+  if (res.status !== 200) fail("coinbase", `product ${symbol} answered HTTP ${res.status}`);
+  return parseCoinbaseRules(json2(res.body), symbol, url, r3.at);
+}
+function parseIbkrRules(body, conid, source2, at) {
+  const b = body;
+  const rules = b?.rules ?? b;
+  if (!rules || typeof rules !== "object") return fail("ibkr", `no contract rules for conid ${conid}`);
+  if (typeof rules.error === "string" && rules.error) fail("ibkr", `contract rules for conid ${conid}: ${rules.error}`);
+  const bands = Array.isArray(rules.incrementRules) ? rules.incrementRules.map((x) => ({ from: num12(x.lowerEdge) ?? 0, tick: positive(x.increment) })).filter((x) => x.tick !== void 0) : [];
+  const flat = positive(rules.increment);
+  const ticks = bands.length ? bands : flat ? [{ from: 0, tick: flat }] : [];
+  const step = positive(rules.sizeIncrement);
+  return { venue: "ibkr", symbol: conid, ticks, step, minQuantity: step, tradable: true, source: source2, at };
+}
+async function ibkrRules(base2, conid, r3) {
+  const url = `${base2}/iserver/contract/rules`;
+  const res = await r3.http({
+    method: "POST",
+    url,
+    headers: { "Content-Type": "application/json", "User-Agent": "ultrastock" },
+    body: JSON.stringify({ conid: Number(conid), isBuy: true }),
+    timeoutMs: r3.timeoutMs
+  });
+  if (res.status !== 200) fail("ibkr", `contract rules for conid ${conid} answered HTTP ${res.status}`);
+  return parseIbkrRules(json2(res.body), conid, "IBKR gateway /iserver/contract/rules", r3.at);
+}
+function parseKalshiRules(body, symbol, source2, at) {
+  const m = body?.market;
+  if (!m) return fail("kalshi", `no market for ${symbol}`);
+  const outcome = /:NO$/i.test(symbol) ? "no" : "yes";
+  const ranges = Array.isArray(m.price_ranges) ? m.price_ranges.map((x) => ({ start: num12(x.start), end: num12(x.end), step: positive(x.step) })).filter((x) => x.start !== void 0 && x.end !== void 0 && x.step !== void 0) : [];
+  const legacy = positive(m.tick_size);
+  let ticks;
+  if (ranges.length)
+    ticks = outcome === "yes" ? ranges.map((x) => ({ from: x.start, tick: x.step })) : ranges.map((x) => ({ from: Number((1 - x.end).toFixed(6)), tick: x.step }));
+  else ticks = legacy ? [{ from: 0, tick: legacy / 100 }] : [];
+  const status2 = typeof m.status === "string" ? m.status : void 0;
+  const step = m.fractional_trading_enabled === true ? 0.01 : 1;
+  return {
+    venue: "kalshi",
+    symbol,
+    ticks,
+    step,
+    minQuantity: step,
+    tradable: status2 === void 0 || status2 === "active" || status2 === "open",
+    status: status2,
+    source: source2,
+    at
+  };
+}
+async function kalshiRules(base2, symbol, r3) {
+  const ticker = symbol.split(":")[0];
+  const url = `${base2}/trade-api/v2/markets/${encodeURIComponent(ticker)}`;
+  const res = await r3.http({ method: "GET", url, timeoutMs: r3.timeoutMs });
+  if (res.status !== 200) fail("kalshi", `market ${ticker} answered HTTP ${res.status}`);
+  return parseKalshiRules(json2(res.body), symbol, url, r3.at);
+}
+var netHttp = async (req) => {
+  if (req.method !== "GET") throw new Error("the public rules reader sends GET requests only");
+  const res = await fetchText(req.url, { headers: req.headers, timeoutMs: req.timeoutMs, accept: "application/json" });
+  return { status: res.status, body: res.body };
+};
+async function publicInstrumentRules(venue, symbol, opts = {}) {
+  const r3 = { http: opts.http ?? netHttp, timeoutMs: 1e4, at: (opts.now ?? /* @__PURE__ */ new Date()).toISOString() };
+  if (venue === "binance") return binanceRules("https://api.binance.com", symbol, r3);
+  if (venue === "kraken") return krakenRules(symbol, r3);
+  if (venue === "coinbase") return coinbaseRules(symbol, r3);
+  if (venue === "kalshi") return kalshiRules("https://api.elections.kalshi.com", symbol, r3);
+  return void 0;
+}
+
 // src/trading/brokers/binance.ts
 var BINANCE_LIVE = "https://api.binance.com";
 var BINANCE_TEST = "https://testnet.binance.vision";
@@ -45131,6 +45354,9 @@ function binanceAdapter(opts) {
       if (res.status !== 200 || bid === void 0 || ask === void 0)
         throw new BrokerError("binance", `no book for ${symbol} (HTTP ${res.status})`, res.status);
       return { bid, ask, at: new Date(now()).toISOString() };
+    },
+    async instrumentRules(symbol) {
+      return binanceRules(base2, symbol, { http: http3, timeoutMs, at: new Date(now()).toISOString() });
     },
     async permissions() {
       if (opts.env === "test") return { canTrade: true, canWithdraw: false, source: "testnet" };
@@ -45305,6 +45531,9 @@ function coinbaseAdapter(opts) {
       if (res.status !== 200 || bid === void 0 || ask === void 0)
         throw new BrokerError("coinbase", `no book for ${symbol} (HTTP ${res.status})`, res.status);
       return { bid, ask, at: new Date(now()).toISOString() };
+    },
+    async instrumentRules(symbol) {
+      return coinbaseRules(symbol, { http: http3, timeoutMs, at: new Date(now()).toISOString() });
     },
     async permissions() {
       const b = await mustGet("/key_permissions");
@@ -45555,6 +45784,10 @@ function ibkrAdapter(opts) {
         throw new BrokerError("ibkr", `no bid/ask yet for conid ${symbol} (the first snapshot is often empty: ask again)`);
       return { bid, ask, at: new Date(now()).toISOString() };
     },
+    async instrumentRules(symbol) {
+      if (!/^\d+$/.test(symbol)) throw new BrokerError("ibkr", `IBKR contract rules need a conid, not ${symbol}`);
+      return ibkrRules(base2, symbol, { http: send2, timeoutMs, at: new Date(now()).toISOString() });
+    },
     async permissions() {
       const s = await mustGet("/iserver/auth/status");
       return { canTrade: s.authenticated === true && s.competing !== true, canWithdraw: false, source: "gateway session (no withdrawal API)" };
@@ -45718,6 +45951,10 @@ function kalshiAdapter(opts) {
       const ask = side2 === "yes" ? 1 - noBid : 1 - yesBid;
       if (!Number.isFinite(bid) || !Number.isFinite(ask)) throw new BrokerError("kalshi", `orderbook ${ticker} is one-sided or empty`);
       return { bid, ask, at: new Date(now()).toISOString() };
+    },
+    async instrumentRules(symbol) {
+      const { ticker, side: side2 } = splitSym(symbol);
+      return kalshiRules(base2, `${ticker}:${side2.toUpperCase()}`, { http: http3, timeoutMs, at: new Date(now()).toISOString() });
     },
     async permissions() {
       return { canTrade: true, canWithdraw: false, source: "no withdrawal API" };
@@ -45899,6 +46136,9 @@ function krakenAdapter(opts) {
       if (bid === void 0 || ask === void 0)
         throw new BrokerError("kraken", `no book for ${symbol}: ${body?.error?.join("; ") || `HTTP ${res.status}`}`, res.status);
       return { bid, ask, at: new Date(now()).toISOString() };
+    },
+    async instrumentRules(symbol) {
+      return krakenRules(symbol, { http: http3, timeoutMs, at: new Date(now()).toISOString() });
     },
     async permissions() {
       return { canTrade: true, canWithdraw: false, source: "attested" };
@@ -47407,6 +47647,12 @@ async function preconditions(p) {
   } catch (e) {
     no("VENUE", `${p.venue} could not be read: ${e.message}`);
   }
+  try {
+    const rules = await p.adapter.instrumentRules(p.venueSym);
+    for (const g of gridRefusals(rules, { price: o.price, quantity: o.quantity })) no(g.code, g.reason);
+  } catch (e) {
+    no("RULES_UNREAD", `${p.venue}'s price and quantity rules for ${p.venueSym} could not be read (${e.message}): the order is not sent unchecked`);
+  }
   if (!R.length) {
     const v = verifyCode(p.ticket.id, orderBinding(o, p.venue, p.env, p.venueSym), p.code, now);
     if (!v.ok) no("CODE", v.reason);
@@ -47728,7 +47974,7 @@ function adapterFor(venue, env2) {
   });
 }
 function limitChange(args) {
-  const num16 = (f3) => {
+  const num17 = (f3) => {
     const v = argValue(args, f3);
     if (v === void 0) return void 0;
     const n2 = Number(v);
@@ -47743,8 +47989,8 @@ function limitChange(args) {
     return l;
   };
   const change = {
-    maxOrder: num16("max-order"),
-    maxDaily: num16("max-daily"),
+    maxOrder: num17("max-order"),
+    maxDaily: num17("max-daily"),
     venues: venues("venues"),
     attestedNoWithdraw: venues("attest")
   };
@@ -52020,8 +52266,31 @@ async function newsCommand2(args, asJson) {
 import { resolve as resolve15 } from "path";
 
 // src/trading/plan.ts
-var round5 = (x, step) => Number((Math.round(x / step) * step).toFixed(Math.max(0, -Math.floor(Math.log10(step)))));
-var tickOf = (p) => p >= 1e3 ? 0.5 : p >= 100 ? 0.05 : p >= 10 ? 0.01 : p >= 1 ? 1e-3 : 1e-4;
+var displayTick = (p) => p >= 1e3 ? 0.5 : p >= 100 ? 0.05 : p >= 10 ? 0.01 : p >= 1 ? 1e-3 : 1e-4;
+var PAPER_CRYPTO_LOT = 1e-5;
+async function planGrid(venue, inst, now, http3) {
+  if (venue === "paper")
+    return {
+      checked: false,
+      note: "paper venue: no venue's price grid or lot step is checked \u2014 computed prices are rounded for display and quantities to a generic lot"
+    };
+  let sym3;
+  try {
+    sym3 = venueSymbol(venue, inst.symbol, inst.currency);
+  } catch (e) {
+    return {
+      checked: false,
+      note: `${venue}: the price grid is not checked in the plan (${e.message}); \`broker preview\` reads it from the venue`
+    };
+  }
+  try {
+    const rules = await publicInstrumentRules(venue, sym3, { now, http: http3 });
+    if (!rules) return { checked: false, note: `${venue}: the price grid is read through the user's session at \`broker preview\`, not in the plan` };
+    return { checked: true, rules, note: `${venue} ${sym3} grid read live (${rules.source})` };
+  } catch (e) {
+    return { checked: false, note: `${venue} ${sym3}: the venue's price and quantity rules could not be read (${e.message})` };
+  }
+}
 async function planTrade(input) {
   const now = input.now ?? clockNow();
   const resolved = await resolveSymbol(input.symbol);
@@ -52032,9 +52301,24 @@ async function planTrade(input) {
   const last2 = bars[bars.length - 1];
   const a = atr(bars, 14)[bars.length - 1];
   const notes = [...series.notes];
-  const entry2 = input.entry ?? last2.close;
-  const tick = tickOf(entry2);
-  let stop = input.stop;
+  const venue = input.venue ?? "paper";
+  const grid = await planGrid(venue, inst, now, input.rulesHttp);
+  notes.push(grid.note);
+  const conditions = [];
+  if (venue !== "paper" && !grid.checked)
+    conditions.push(`GRID: ${grid.note} \u2014 \`broker preview\` refuses an order off the venue's grid; check it there before approving`);
+  const rules = grid.rules;
+  const toTick = (x, what) => {
+    const t = rules ? tickAt(rules, x) : void 0;
+    if (!t) return x;
+    const y = snap(x, t, "down");
+    if (y !== x && what) notes.push(`${what} ${x} rounded down to ${rules.venue}'s tick ${t}: ${y}`);
+    return y;
+  };
+  const entry2 = rules ? toTick(input.entry ?? last2.close, input.entry !== void 0 ? "the entry" : "") : input.entry ?? last2.close;
+  const tick = displayTick(entry2);
+  const round5 = (x) => rules ? toTick(x, "") : snap(x, tick, "nearest");
+  let stop = input.stop === void 0 ? void 0 : rules ? toTick(input.stop, "the stop") : input.stop;
   let stopMethod = "given";
   if (stop === void 0) {
     if (a === void 0) throw new Error("not enough history for an ATR stop: give --stop");
@@ -52048,11 +52332,11 @@ async function planTrade(input) {
       stop = atrStop;
       stopMethod = `${input.atrMultiple ?? 2} ATR(14) below the entry (ATR ${a.toFixed(4)})`;
     }
-    stop = round5(stop, tick);
+    stop = round5(stop);
   }
   if (!(stop < entry2)) throw new Error(`the stop ${stop} must be below the entry ${entry2} for a buy`);
   const riskPerUnit = entry2 - stop;
-  const targets = input.targets ?? (input.rMultiples ?? [2, 3]).map((r3) => round5(entry2 + r3 * riskPerUnit, tick));
+  const targets = input.targets ? input.targets.map((t) => rules ? toTick(t, "the target") : t) : (input.rMultiples ?? [2, 3]).map((r3) => round5(entry2 + r3 * riskPerUnit));
   const sr = supportResistance(bars);
   const wall = sr?.levels.filter((l) => l.kind === "resistance" && l.price > entry2).sort((x, y) => x.price - y.price)[0];
   if (wall && targets[0] > wall.price)
@@ -52069,7 +52353,7 @@ async function planTrade(input) {
     currency: inst.currency,
     stop,
     assetKind: inst.kind === "crypto" ? "crypto" : inst.kind === "etf" ? "etf" : inst.kind === "fund" ? "fund" : "equity",
-    venue: input.venue ?? "paper",
+    venue,
     ...domicile?.code ? { domicile: domicile.code } : {}
   };
   const built = await gateContextFor(draft, { now });
@@ -52084,16 +52368,26 @@ async function planTrade(input) {
     riskPct: ctx.profile.limits.riskPerTradePct * ctx.breaker.sizeMultiplier,
     maxPositionPct: ctx.profile.limits.maxPositionPct,
     cash: Math.max(0, (ctx.cashBase - buffer) / ctx.fxToBase),
-    lot: crypto ? 1e-5 : 1,
-    fractional: crypto,
+    // The venue's step when it was read (fractional when under one unit); paper: a generic lot, said in the notes.
+    lot: rules?.step ?? (crypto ? PAPER_CRYPTO_LOT : 1),
+    fractional: rules?.step !== void 0 ? rules.step < 1 : crypto,
     adv: avgVol > 0 ? avgVol : void 0,
     maxAdvPct: 5
   });
+  if (rules && size.quantity > 0) {
+    const small = gridRefusals(rules, { price: entry2, quantity: size.quantity }).filter((g) => g.code === "MIN_QUANTITY" || g.code === "MIN_NOTIONAL");
+    if (small.length) {
+      size.reasons.push(...small.map((g) => `${g.code}: ${g.reason} \u2014 no order`));
+      size.quantity = 0;
+      size.notional = 0;
+    }
+  }
+  if (rules && !rules.tradable) conditions.push(`NOT_TRADING: ${rules.venue} ${rules.symbol} takes no limit order now (status ${rules.status ?? "unknown"})`);
   const order = { ...draft, quantity: size.quantity };
   const gate = size.quantity > 0 ? riskGate(order, ctx) : riskGate({ ...order, quantity: Number.MIN_VALUE }, ctx);
   const blocks = gate.checks.filter((c) => c.status === "block");
   const warns = gate.checks.filter((c) => c.status === "warn");
-  const verdict = size.quantity === 0 ? "not ready" : blocks.length ? "reject" : warns.length ? "ready with conditions" : "ready";
+  const verdict = size.quantity === 0 ? "not ready" : blocks.length ? "reject" : warns.length || conditions.length ? "ready with conditions" : "ready";
   return {
     symbol: inst.symbol,
     name: inst.name,
@@ -52115,8 +52409,9 @@ async function planTrade(input) {
     sizingReasons: size.reasons,
     gate,
     verdict,
-    conditions: [...blocks.map((b) => `${b.code}: ${b.reason}`), ...warns.map((w) => `${w.code}: ${w.reason}`)],
+    conditions: [...blocks.map((b) => `${b.code}: ${b.reason}`), ...warns.map((w) => `${w.code}: ${w.reason}`), ...conditions],
     notes,
+    grid: { checked: grid.checked, ...rules ? { rules } : {}, note: grid.note },
     equityBase: built.equityBase
   };
 }
@@ -52307,7 +52602,7 @@ async function currentPrices(symbols) {
 }
 
 // src/commands/trading.ts
-var num12 = (v, flag) => {
+var num13 = (v, flag) => {
   if (v === void 0) return void 0;
   const n2 = Number(v);
   if (!Number.isFinite(n2)) throw new UsageError(`--${flag} takes a number, not "${v}"`);
@@ -52423,7 +52718,7 @@ async function portfolioCommand(args, asJson) {
   if (PORTFOLIO_ANALYTICS_ACTIONS.includes(sub)) return portfolioAnalyticsCommand(args, asJson);
   if (sub === "deposit" || sub === "withdraw") {
     const [account, amountRaw] = rest;
-    const amount = num12(amountRaw, "amount");
+    const amount = num13(amountRaw, "amount");
     if (!account || amount === void 0 || amount <= 0)
       throw new UsageError(`usage: ultrastock portfolio ${sub} <account> <amount> [--currency EUR] [--date YYYY-MM-DD] [--book real|paper]`);
     const r3 = await appendTransactions(
@@ -52457,10 +52752,10 @@ async function portfolioCommand(args, asJson) {
           type,
           account,
           symbol: argValue(args, "symbol")?.toUpperCase(),
-          quantity: num12(argValue(args, "quantity"), "quantity"),
-          price: num12(argValue(args, "price"), "price"),
-          amount: num12(argValue(args, "amount"), "amount"),
-          fee: num12(argValue(args, "fee"), "fee"),
+          quantity: num13(argValue(args, "quantity"), "quantity"),
+          price: num13(argValue(args, "price"), "price"),
+          amount: num13(argValue(args, "amount"), "amount"),
+          fee: num13(argValue(args, "fee"), "fee"),
           currency: (argValue(args, "currency") ?? loadProfile()?.baseCurrency ?? "EUR").toUpperCase(),
           origin: "manual"
         }
@@ -52562,12 +52857,12 @@ async function planCommand(args, asJson) {
     throw new UsageError("usage: ultrastock plan <symbol> --account <id> [--entry n] [--stop n] [--target a,b] [--venue paper] [--ticket] [--out <dir>]");
   const account = argValue(args, "account");
   if (!account) throw new UsageError("--account names the envelope the order would go to (a profile envelope id, e.g. pea or ibkr)");
-  const targets = argList(args, "target").map((t) => num12(t, "target"));
+  const targets = argList(args, "target").map((t) => num13(t, "target"));
   const p = await planTrade({
     symbol: sym3,
     account,
-    entry: num12(argValue(args, "entry"), "entry"),
-    stop: num12(argValue(args, "stop"), "stop"),
+    entry: num13(argValue(args, "entry"), "entry"),
+    stop: num13(argValue(args, "stop"), "stop"),
     targets: targets.length ? targets : void 0,
     venue: argValue(args, "venue") ?? "paper"
   });
@@ -52891,7 +53186,7 @@ function signed(n2, decimals = 2, unit = "") {
 }
 var value = (v) => typeof v === "number" ? formatNumber(v) : String(v);
 var opt = (s) => esc2(s ?? "");
-var num13 = (html) => `<td class="num">${html}</td>`;
+var num14 = (html) => `<td class="num">${html}</td>`;
 var cell2 = (s) => `<td>${opt(s)}</td>`;
 var time = (iso4) => `<time datetime="${esc2(iso4)}">${esc2(
   iso4.replace("T", " ").replace(/\.\d+Z$/, " UTC").replace(/Z$/, " UTC")
@@ -52956,14 +53251,14 @@ function portfolioPage(v) {
     `Positions, marked to market; P&L against the average cost (PMP, fees included), in ${v.base}`,
     ["Symbol", "Class", "Accounts", "Quantity", "Average cost", "Price", "Day", `Value (${v.base})`, "Weight", `P&L (${v.base})`, "P&L", "Source"],
     v.positions.map(
-      (p) => `<tr><th scope="row">${esc2(p.symbol)}</th>${cell2(p.assetClass)}${cell2(p.accounts.join(", "))}${num13(esc2(value(p.quantity)))}${num13(`${fmt6(p.averageCost, 4)} ${esc2(p.currency)}`)}${num13(p.price === void 0 ? "n/a" : `${esc2(value(p.price))} ${esc2(p.currency)}`)}${num13(signed(p.changePct, 2, " %"))}${num13(fmt6(p.valueBase))}${num13(p.weightPct === void 0 ? "n/a" : `${fmt6(p.weightPct)} %`)}${num13(signed(p.pnlBase))}${num13(signed(p.pnlPct, 2, " %"))}<td>${opt(p.source)}${p.delay ? `, ${esc2(p.delay)}` : ""}${p.quoteAsOf ? ` (${esc2(p.quoteAsOf)})` : ""}</td></tr>`
+      (p) => `<tr><th scope="row">${esc2(p.symbol)}</th>${cell2(p.assetClass)}${cell2(p.accounts.join(", "))}${num14(esc2(value(p.quantity)))}${num14(`${fmt6(p.averageCost, 4)} ${esc2(p.currency)}`)}${num14(p.price === void 0 ? "n/a" : `${esc2(value(p.price))} ${esc2(p.currency)}`)}${num14(signed(p.changePct, 2, " %"))}${num14(fmt6(p.valueBase))}${num14(p.weightPct === void 0 ? "n/a" : `${fmt6(p.weightPct)} %`)}${num14(signed(p.pnlBase))}${num14(signed(p.pnlPct, 2, " %"))}<td>${opt(p.source)}${p.delay ? `, ${esc2(p.delay)}` : ""}${p.quoteAsOf ? ` (${esc2(p.quoteAsOf)})` : ""}</td></tr>`
     ),
     [3, 4, 5, 6, 7, 8, 9, 10]
   ) : "<p>No open position.</p>";
   const cash = v.cashByAccount.length ? table(
     "Cash by account",
     ["Account", "Currency", "Amount", `In ${v.base}`],
-    v.cashByAccount.map((c) => `<tr><th scope="row">${esc2(c.account)}</th>${cell2(c.currency)}${num13(fmt6(c.amount))}${num13(fmt6(c.amountBase))}</tr>`),
+    v.cashByAccount.map((c) => `<tr><th scope="row">${esc2(c.account)}</th>${cell2(c.currency)}${num14(fmt6(c.amount))}${num14(fmt6(c.amountBase))}</tr>`),
     [2, 3]
   ) : "<p>No cash recorded.</p>";
   const unpriced = v.unpriced.length ? `<p class="hint" role="note"><strong>Unpriced lines, left out of the total:</strong> ${v.unpriced.map(esc2).join(", ")} (see the notes).</p>` : "";
@@ -52971,7 +53266,7 @@ function portfolioPage(v) {
   const results = currencies.length ? table(
     "Realised P&L (average cost) and dividends received, in each position's currency",
     ["Currency", "Realised", "Dividends"],
-    currencies.map(([c, x]) => `<tr><th scope="row">${esc2(c)}</th>${num13(signed(x.realized))}${num13(fmt6(x.dividends))}</tr>`),
+    currencies.map(([c, x]) => `<tr><th scope="row">${esc2(c)}</th>${num14(signed(x.realized))}${num14(fmt6(x.dividends))}</tr>`),
     [1, 2]
   ) : "";
   const breaker = `<p>Circuit breaker: ${br.tripped ? `<span class="flag">TRIPPED</span> \u2014 ${esc2(br.reason ?? "")}${br.until ? ` (until ${esc2(br.until)})` : ""}` : "not tripped"}; drawdown ${br.drawdownPct === void 0 ? "n/a" : `${fmt6(br.drawdownPct)} %`}, size multiplier ${esc2(String(br.sizeMultiplier))}, losing streak ${esc2(String(br.losingStreak))}. Read on the recorded equity curve plus today's value (not recorded).</p>`;
@@ -53005,7 +53300,7 @@ function analysisPage(v) {
       s.section,
       ["Figure", "Value", "How"],
       s.figures.map(
-        (x) => `<tr><th scope="row">${esc2(x.label)}</th>${num13(`${esc2(value(x.value))}${x.unit ? ` ${esc2(x.unit)}` : ""}`)}<td class="meta">${esc2(x.formula)}</td></tr>`
+        (x) => `<tr><th scope="row">${esc2(x.label)}</th>${num14(`${esc2(value(x.value))}${x.unit ? ` ${esc2(x.unit)}` : ""}`)}<td class="meta">${esc2(x.formula)}</td></tr>`
       ),
       [1]
     )}`
@@ -53023,7 +53318,7 @@ function ledgerPage(v) {
   const select = (name, label2, options, current2) => `<label>${esc2(label2)}<select name="${name}"><option value="">all</option>${options.map((o) => `<option value="${esc2(o)}"${o === current2 ? " selected" : ""}>${esc2(o)}</option>`).join("")}</select></label>`;
   const form = `<form class="filter" method="get" action="/ledger"><input type="hidden" name="book" value="${esc2(v.book)}">${select("account", "Account", v.accounts, v.filter.account)}${select("symbol", "Symbol", v.symbols, v.filter.symbol)}<button type="submit">Filter</button></form>`;
   const rows = v.transactions.map(
-    (t) => `<tr><td>${esc2(t.date)}</td><th scope="row">${esc2(t.type)}</th>${cell2(t.account)}${cell2(t.symbol)}${num13(t.quantity === void 0 ? "" : esc2(value(t.quantity)))}${num13(t.price === void 0 ? "" : esc2(value(t.price)))}${num13(t.amount === void 0 ? "" : signed(t.amount))}${num13(t.fee === void 0 ? "" : fmt6(t.fee))}${cell2(t.currency)}${cell2(t.note)}${cell2(t.origin)}</tr>`
+    (t) => `<tr><td>${esc2(t.date)}</td><th scope="row">${esc2(t.type)}</th>${cell2(t.account)}${cell2(t.symbol)}${num14(t.quantity === void 0 ? "" : esc2(value(t.quantity)))}${num14(t.price === void 0 ? "" : esc2(value(t.price)))}${num14(t.amount === void 0 ? "" : signed(t.amount))}${num14(t.fee === void 0 ? "" : fmt6(t.fee))}${cell2(t.currency)}${cell2(t.note)}${cell2(t.origin)}</tr>`
   );
   return layout({
     title: `${v.book} book \u2014 ledger`,
@@ -53044,7 +53339,7 @@ function journalPage(v, book2) {
     "Decisions, newest first",
     ["Decided", "Symbol", "Rating", "Horizon", "Conviction", "Thesis"],
     v.decisions.map(
-      (d) => `<tr><td>${esc2(d.decidedAt)}</td><th scope="row">${esc2(d.symbol)}</th>${cell2(d.rating)}${num13(`${esc2(String(d.horizon))} sessions`)}${num13(`${esc2(String(d.conviction))}/5`)}${cell2(d.thesis)}</tr>`
+      (d) => `<tr><td>${esc2(d.decidedAt)}</td><th scope="row">${esc2(d.symbol)}</th>${cell2(d.rating)}${num14(`${esc2(String(d.horizon))} sessions`)}${num14(`${esc2(String(d.conviction))}/5`)}${cell2(d.thesis)}</tr>`
     ),
     [3, 4]
   ) : "<p>No decision recorded (<code>ultrastock decide</code>).</p>";
@@ -53052,7 +53347,7 @@ function journalPage(v, book2) {
     "Hit rates by rating and horizon",
     ["Rating", "Horizon", "Settled", "Hit rate", "Mean alpha"],
     v.hitRates.map(
-      (h) => `<tr><th scope="row">${esc2(h.rating)}</th>${num13(`${esc2(String(h.horizon))} sessions`)}${num13(esc2(String(h.n)))}${num13(`${fmt6(h.hitRate * 100, 0)} %`)}${num13(signed(h.meanAlphaPct, 2, " %"))}</tr>`
+      (h) => `<tr><th scope="row">${esc2(h.rating)}</th>${num14(`${esc2(String(h.horizon))} sessions`)}${num14(esc2(String(h.n)))}${num14(`${fmt6(h.hitRate * 100, 0)} %`)}${num14(signed(h.meanAlphaPct, 2, " %"))}</tr>`
     ),
     [1, 2, 3, 4]
   ) : "<p>No settled decision yet (<code>ultrastock journal settle</code>).</p>";
@@ -53060,7 +53355,7 @@ function journalPage(v, book2) {
     "Settlements, newest first",
     ["Symbol", "Rating", "Horizon", "Decided", "Ended", "Return", "Alpha", "Hit"],
     v.settlements.map(
-      (s) => `<tr><th scope="row">${esc2(s.symbol)}</th>${cell2(s.rating)}${num13(`${esc2(String(s.horizon))} sessions`)}${cell2(s.decidedAt.slice(0, 10))}${cell2(s.endDate)}${num13(signed(s.returnPct, 2, " %"))}${num13(signed(s.alphaPct, 2, " %"))}<td>${s.hit === void 0 ? "n/a" : s.hit ? "yes" : "no"}</td></tr>`
+      (s) => `<tr><th scope="row">${esc2(s.symbol)}</th>${cell2(s.rating)}${num14(`${esc2(String(s.horizon))} sessions`)}${cell2(s.decidedAt.slice(0, 10))}${cell2(s.endDate)}${num14(signed(s.returnPct, 2, " %"))}${num14(signed(s.alphaPct, 2, " %"))}<td>${s.hit === void 0 ? "n/a" : s.hit ? "yes" : "no"}</td></tr>`
     ),
     [2, 5, 6]
   ) : "";
@@ -53102,7 +53397,7 @@ function ticketsPage(v, book2) {
     "Tickets, newest first",
     ["Id", "Status", "Side", "Quantity", "Symbol", "Price", "Stop", "Venue", "Account", "Risk check", "Created"],
     v.tickets.map(
-      (t) => `<tr><th scope="row"><code>${esc2(t.id)}</code></th><td class="flag">${esc2(t.status)}</td>${cell2(t.order.side)}${num13(esc2(value(t.order.quantity)))}${cell2(t.order.symbol)}${num13(`${esc2(value(t.order.price))} ${esc2(t.order.currency)}`)}${num13(t.order.stop === void 0 ? "" : esc2(value(t.order.stop)))}${cell2(t.order.venue)}${cell2(t.order.account)}${cell2(t.check?.verdict)}${cell2(t.createdAt)}</tr>`
+      (t) => `<tr><th scope="row"><code>${esc2(t.id)}</code></th><td class="flag">${esc2(t.status)}</td>${cell2(t.order.side)}${num14(esc2(value(t.order.quantity)))}${cell2(t.order.symbol)}${num14(`${esc2(value(t.order.price))} ${esc2(t.order.currency)}`)}${num14(t.order.stop === void 0 ? "" : esc2(value(t.order.stop)))}${cell2(t.order.venue)}${cell2(t.order.account)}${cell2(t.check?.verdict)}${cell2(t.createdAt)}</tr>`
     ),
     [3, 5, 6]
   ) : "<p>No ticket (<code>ultrastock plan \u2026 --ticket</code>).</p>";
@@ -54355,7 +54650,7 @@ function morningMarkdown(c, f3, emitted, store) {
     const id = store.byKey(key)?.id;
     return id ? ` [${id}]` : "";
   };
-  const num16 = (key, digits = 2, signed2 = false) => {
+  const num17 = (key, digits = 2, signed2 = false) => {
     const it = key ? store.byKey(key) : void 0;
     if (!it || typeof it.value !== "number") return "\u2014";
     const v = Number(it.value.toFixed(digits));
@@ -54384,9 +54679,9 @@ function morningMarkdown(c, f3, emitted, store) {
       lines.push("| Line | Price | Last session | Against average cost | Weight | Next dated event |", "|---|---|---|---|---|---|");
       for (const h of held)
         lines.push(
-          `| ${h.symbol} | ${num16(h.keys.price, 4)} | ${num16(h.keys.change, 2, true)} | ${num16(`${P}.${h.symbol}.unrealizedPct`, 1, true)} | ${num16(h.keys.weight, 1)} | ${nextEvent(h.symbol.toUpperCase())} |`
+          `| ${h.symbol} | ${num17(h.keys.price, 4)} | ${num17(h.keys.change, 2, true)} | ${num17(`${P}.${h.symbol}.unrealizedPct`, 1, true)} | ${num17(h.keys.weight, 1)} | ${nextEvent(h.symbol.toUpperCase())} |`
         );
-      lines.push("", `Total ${num16(c.marked.keys.total, 2)}, of which cash ${num16(c.marked.keys.cash, 2)}.`, "");
+      lines.push("", `Total ${num17(c.marked.keys.total, 2)}, of which cash ${num17(c.marked.keys.cash, 2)}.`, "");
     } else lines.push("No open position: cash only.", "");
   }
   const followed = c.universe.filter((s) => !c.origins[s]?.includes("held"));
@@ -54399,7 +54694,7 @@ function morningMarkdown(c, f3, emitted, store) {
     lines.push("## Watchlist and ideas", "", "| Name | Why it is here | Price | Last session | Next dated event | Note |", "|---|---|---|---|---|---|");
     for (const s of followed)
       lines.push(
-        `| ${s} | ${c.origins[s].join(", ")} | ${num16(`${s}.quote.price`, 4)} | ${num16(`${s}.quote.changePct`, 2, true)} | ${nextEvent(s)} | ${note(s) || ""} |`
+        `| ${s} | ${c.origins[s].join(", ")} | ${num17(`${s}.quote.price`, 4)} | ${num17(`${s}.quote.changePct`, 2, true)} | ${nextEvent(s)} | ${note(s) || ""} |`
       );
     lines.push("");
   }
@@ -54407,9 +54702,9 @@ function morningMarkdown(c, f3, emitted, store) {
     lines.push("## Orders and stops", "");
     for (const t of c.openTickets)
       lines.push(
-        `- ticket ${t.id}: ${t.order.side} ${t.order.quantity} ${t.order.symbol} at ${num16(`TICKET.${t.id}.price`, 4)}, status ${t.status}${ref(`TICKET.${t.id}.status`)}${t.order.stop !== void 0 ? `, planned stop ${num16(`TICKET.${t.id}.plannedStop`, 4)}` : ""}`
+        `- ticket ${t.id}: ${t.order.side} ${t.order.quantity} ${t.order.symbol} at ${num17(`TICKET.${t.id}.price`, 4)}, status ${t.status}${ref(`TICKET.${t.id}.status`)}${t.order.stop !== void 0 ? `, planned stop ${num17(`TICKET.${t.id}.plannedStop`, 4)}` : ""}`
       );
-    for (const s of c.stops) lines.push(`- ${s.symbol}: stop ${num16(`TICKET.${s.ticket}.stop`, 4)}, ${num16(s.keys[0], 1)} below the latest price`);
+    for (const s of c.stops) lines.push(`- ${s.symbol}: stop ${num17(`TICKET.${s.ticket}.stop`, 4)}, ${num17(s.keys[0], 1)} below the latest price`);
     for (const u of c.unprotected)
       lines.push(`- ${u.symbol} (${u.account}): no stop on record since the line was last opened on ${u.since} \u2014 the stop on file was set before it`);
     lines.push("");
@@ -54444,7 +54739,7 @@ function morningMarkdown(c, f3, emitted, store) {
   lines.push("### Rate decisions and elections in the window", "");
   lines.push(
     ...c.events.length ? c.events.map(
-      (e) => `- ${e.event.date} ${sanitizeExternalText(e.event.title, 90)}${ref(e.key)}${e.exposureKeys.length ? ` \u2014 book exposure ${e.exposureKeys.map((k) => `${k.split(".").pop()} ${num16(k, 1)}`).join(", ")}` : ""}`
+      (e) => `- ${e.event.date} ${sanitizeExternalText(e.event.title, 90)}${ref(e.key)}${e.exposureKeys.length ? ` \u2014 book exposure ${e.exposureKeys.map((k) => `${k.split(".").pop()} ${num17(k, 1)}`).join(", ")}` : ""}`
     ) : ["None in the window."],
     ""
   );
@@ -59166,17 +59461,17 @@ import { join as join60 } from "path";
 
 // src/analyze/value/styles.ts
 var VALUE_STYLE_IDS = ["quality-value", "deep-value", "dividend", "garp", "magic-formula"];
-var num14 = (row, f3) => {
+var num15 = (row, f3) => {
   const v = row[f3];
   return typeof v === "number" && Number.isFinite(v) ? v : void 0;
 };
 function grahamProduct(row) {
-  const pe = num14(row, "price_to_earnings_ratio");
-  const pb = num14(row, "price_to_book_ratio");
+  const pe = num15(row, "price_to_earnings_ratio");
+  const pb = num15(row, "price_to_book_ratio");
   return pe !== void 0 && pb !== void 0 && pe > 0 && pb > 0 ? pe * pb : void 0;
 }
 function componentValue(row, field2) {
-  return field2 === "graham_product" ? grahamProduct(row) : num14(row, field2);
+  return field2 === "graham_product" ? grahamProduct(row) : num15(row, field2);
 }
 var DIVIDEND_YIELD_CAP = 0.12;
 var VALUE_STYLES = {
@@ -59250,7 +59545,7 @@ var VALUE_STYLES = {
         id: "yield-cap",
         label: `dividend yield above ${DIVIDEND_YIELD_CAP * 100} % (a cut or a stale price is likelier than a gift)`,
         test: (row) => {
-          const y = num14(row, "weighted_dividend_yield");
+          const y = num15(row, "weighted_dividend_yield");
           return y === void 0 ? void 0 : y <= DIVIDEND_YIELD_CAP;
         }
       },
@@ -59258,7 +59553,7 @@ var VALUE_STYLES = {
         id: "payout",
         label: "payout ratio above 100 % or negative (the dividend is not earned)",
         test: (row) => {
-          const p = num14(row, "dividend_payout_ratio");
+          const p = num15(row, "dividend_payout_ratio");
           return p === void 0 ? void 0 : p > 0 && p <= 1;
         }
       }
@@ -59289,7 +59584,7 @@ var VALUE_STYLES = {
         id: "growth",
         label: "net income shrinking over three years (a PEG on falling earnings means nothing)",
         test: (row) => {
-          const g = num14(row, "net_income_cagr_3y");
+          const g = num15(row, "net_income_cagr_3y");
           return g === void 0 ? void 0 : g > 0;
         }
       }
@@ -59355,7 +59650,7 @@ function valueCandidateDsl(style, region, minCapEur) {
 }
 
 // src/analyze/value/gates.ts
-var num15 = (row, f3) => {
+var num16 = (row, f3) => {
   const v = row[f3];
   return typeof v === "number" && Number.isFinite(v) ? v : void 0;
 };
@@ -59377,7 +59672,7 @@ var VALUE_GATES = [
     label: `Beneish M-score above ${BENEISH_LIMIT} (an earnings-manipulation profile)`,
     fields: ["beneish_m"],
     check: (row) => {
-      const m = num15(row, "beneish_m");
+      const m = num16(row, "beneish_m");
       if (m === void 0) return unknown("Beneish M-score", ["beneish_m"]);
       return m > BENEISH_LIMIT ? { status: "fail", reason: `Beneish M-score ${fmt7(m)} > ${BENEISH_LIMIT}: earnings look managed` } : { status: "pass", reason: `Beneish M-score ${fmt7(m)} \u2264 ${BENEISH_LIMIT}` };
     }
@@ -59388,9 +59683,9 @@ var VALUE_GATES = [
     fields: ["interest_coverage_ratio", "total_debt"],
     check: (row) => {
       if (isFinancial(row)) return { status: "skipped", reason: "interest coverage does not apply to a financial (interest is its business)" };
-      const c = num15(row, "interest_coverage_ratio");
+      const c = num16(row, "interest_coverage_ratio");
       if (c === void 0) {
-        const debt = num15(row, "total_debt");
+        const debt = num16(row, "total_debt");
         if (debt !== void 0 && debt <= 0) return { status: "pass", reason: "no interest-bearing debt" };
         return unknown("interest coverage", ["interest_coverage_ratio"]);
       }
@@ -59402,8 +59697,8 @@ var VALUE_GATES = [
     label: `share count up more than ${DILUTION_MAX * 100} % in a year (the cheapness is diluted away)`,
     fields: ["shares_outstanding_growth", "net_share_issuance"],
     check: (row) => {
-      const g = num15(row, "shares_outstanding_growth");
-      const n2 = num15(row, "net_share_issuance");
+      const g = num16(row, "shares_outstanding_growth");
+      const n2 = num16(row, "net_share_issuance");
       if (g === void 0 && n2 === void 0) return unknown("dilution", ["shares_outstanding_growth", "net_share_issuance"]);
       const worst = Math.max(g ?? Number.NEGATIVE_INFINITY, n2 ?? Number.NEGATIVE_INFINITY);
       const which = worst === g ? "share count growth" : "net share issuance";
@@ -59416,8 +59711,8 @@ var VALUE_GATES = [
     fields: ["positive_fcf_years_5y", "ttm_free_cash_flow"],
     check: (row) => {
       if (isFinancial(row)) return { status: "skipped", reason: "free cash flow is not meaningful for a financial" };
-      const years = num15(row, "positive_fcf_years_5y");
-      const ttm = num15(row, "ttm_free_cash_flow");
+      const years = num16(row, "positive_fcf_years_5y");
+      const ttm = num16(row, "ttm_free_cash_flow");
       if (years === void 0 && ttm === void 0) return unknown("cash generation", ["positive_fcf_years_5y", "ttm_free_cash_flow"]);
       if (ttm !== void 0 && ttm < 0) return { status: "fail", reason: "free cash flow negative over the last 12 months" };
       if (years !== void 0 && years < FCF_YEARS_MIN)
@@ -59433,7 +59728,7 @@ var VALUE_GATES = [
     label: `Montier C-score above ${MONTIER_MAX} of 6 (accounts that flatter the earnings)`,
     fields: ["montier_c"],
     check: (row) => {
-      const c = num15(row, "montier_c");
+      const c = num16(row, "montier_c");
       if (c === void 0) return unknown("Montier C-score", ["montier_c"]);
       return c > MONTIER_MAX ? { status: "fail", reason: `Montier C-score ${c} of 6 > ${MONTIER_MAX}` } : { status: "pass", reason: `Montier C-score ${c} of 6 \u2264 ${MONTIER_MAX}` };
     }
@@ -59443,7 +59738,7 @@ var VALUE_GATES = [
     label: "Ohlson O-score above 0 (a bankruptcy probability above 50 %)",
     fields: ["ohlson_o"],
     check: (row) => {
-      const o = num15(row, "ohlson_o");
+      const o = num16(row, "ohlson_o");
       if (o === void 0) return unknown("Ohlson O-score", ["ohlson_o"]);
       const p = 1 / (1 + Math.exp(-o));
       return o > 0 ? { status: "fail", reason: `Ohlson O-score ${fmt7(o)} > 0 (bankruptcy probability ${pct13(p)})` } : { status: "pass", reason: `Ohlson O-score ${fmt7(o)} \u2264 0 (bankruptcy probability ${pct13(p)})` };
@@ -59455,7 +59750,7 @@ var VALUE_GATES = [
     fields: ["altman_z_double_prime"],
     check: (row) => {
       if (isFinancial(row)) return { status: "skipped", reason: "Altman Z\u2033 is not built for a financial's balance sheet" };
-      const z = num15(row, "altman_z_double_prime");
+      const z = num16(row, "altman_z_double_prime");
       if (z === void 0) return unknown("Altman Z\u2033", ["altman_z_double_prime"]);
       return z < ALTMAN_ZPP_MIN ? { status: "fail", reason: `Altman Z\u2033 ${fmt7(z)} < ${ALTMAN_ZPP_MIN}: distress zone` } : { status: "pass", reason: `Altman Z\u2033 ${fmt7(z)} \u2265 ${ALTMAN_ZPP_MIN}` };
     }
@@ -59465,8 +59760,8 @@ var VALUE_GATES = [
     label: `a falling knife: below ${KNIFE_PROXIMITY * 100} % of the 52-week high AND bottom-${KNIFE_MOMENTUM} momentum in its peer group`,
     fields: ["high_52w_proximity", "momentum_rank"],
     check: (row) => {
-      const p = num15(row, "high_52w_proximity");
-      const m = num15(row, "momentum_rank");
+      const p = num16(row, "high_52w_proximity");
+      const m = num16(row, "momentum_rank");
       if (p === void 0 && m === void 0) return unknown("price momentum", ["high_52w_proximity", "momentum_rank"]);
       if (p !== void 0 && m !== void 0 && p < KNIFE_PROXIMITY && m < KNIFE_MOMENTUM)
         return { status: "fail", reason: `at ${pct13(p)} of its 52-week high with momentum rank ${fmt7(m, 0)} / 100: a falling knife` };
@@ -59581,11 +59876,11 @@ function valueHygieneReason(row, opts) {
   if (countries && !(typeof row.country === "string" && countries.includes(row.country))) return "outside the region";
   if (opts.region.pea && !peaEligible(row)) return "not PEA-eligible on country and ISIN (both must be EU / EEA)";
   if (opts.style.excludeSectors?.includes(String(row.sector))) return `sector left out of the style (${opts.style.excludeSectors.join(", ")})`;
-  const ey = num15(row, "earnings_yield");
+  const ey = num16(row, "earnings_yield");
   if (ey === void 0) return "earnings yield unknown";
   if (ey <= 0) return "earnings yield not positive (a loss)";
   if (ey >= 0.5) return "earnings yield at or above 50 % (an impossible multiple: a one-off gain or a bad price)";
-  const pb = num15(row, "price_to_book_ratio");
+  const pb = num16(row, "price_to_book_ratio");
   if (pb !== void 0 && pb <= 0.05) return "price-to-book at or below 0.05 (negative or absurd equity)";
   const end = periodEnd(row.period);
   if (!end) return "fiscal period unknown";
@@ -59599,7 +59894,7 @@ function valueHygieneReason(row, opts) {
   }
   return void 0;
 }
-var cap = (row) => num15(row, "cap_eur") ?? 0;
+var cap = (row) => num16(row, "cap_eur") ?? 0;
 function valueHygiene(rows, opts) {
   const dropped = /* @__PURE__ */ new Map();
   const drop = (reason, row) => {
@@ -61524,13 +61819,13 @@ var SPEC = {
   }
 };
 var INTERVALS3 = ["1d", "1w", "4h", "1h", "15m"];
-function fail(msg, code = EXIT_FAILURE) {
+function fail2(msg, code = EXIT_FAILURE) {
   process.stderr.write(`ultrastock: ${msg}
 `);
   process.exit(code);
 }
 function usage(msg) {
-  return fail(msg, EXIT_USAGE);
+  return fail2(msg, EXIT_USAGE);
 }
 var plural2 = (n2, w) => `${n2} ${w}${n2 === 1 ? "" : "s"}`;
 function arity(args) {
@@ -61657,7 +61952,7 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
       r3 = from ? calcFromDocument(resolve21(dir2), from, formula, opts) : calcEvidence(resolve21(dir2), formula, opts);
     } catch (e) {
       if (e instanceof ExprError) usage(`formula: ${e.message}`);
-      return fail(e.message);
+      return fail2(e.message);
     }
     if (asJson) process.stdout.write(jsonLine(r3.item));
     else process.stdout.write(`${formatEvidence(r3.item)} \u2014 ${formula}
@@ -61668,7 +61963,7 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
     const dir2 = args.positional[0];
     if (!dir2) usage("usage: ultrastock evidence <run> [--json]");
     const store = EvidenceStore.load(resolve21(dir2));
-    if (!store) fail(`${dir2} holds no evidence.json`);
+    if (!store) fail2(`${dir2} holds no evidence.json`);
     if (asJson) process.stdout.write(jsonLine({ dir: resolve21(dir2), subject: store.subject, items: store.items }));
     else process.stdout.write(`${store.items.map(formatEvidence).join("\n")}
 `);
@@ -61683,10 +61978,10 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
     try {
       answer = readFileSync52(file, "utf8");
     } catch {
-      return fail(`cannot read ${file}`);
+      return fail2(`cannot read ${file}`);
     }
     const r3 = checkAnswer(resolve21(dir2), answer, { maxAgeMs: maxAge ? parseDuration(maxAge) : void 0 });
-    if ("error" in r3) fail(r3.error);
+    if ("error" in r3) fail2(r3.error);
     const failing = r3.problems.filter((p) => !NOTE_KINDS.has(p.kind));
     if (asJson) process.stdout.write(jsonLine({ ok: failing.length === 0, ...r3 }));
     else {
@@ -61792,7 +62087,7 @@ async function main(argv) {
     await run2(args);
   } catch (e) {
     if (e instanceof UsageError) usage(e.message);
-    if (e instanceof ProviderError || e instanceof FixtureMiss || e instanceof Error) fail(e.message);
+    if (e instanceof ProviderError || e instanceof FixtureMiss || e instanceof Error) fail2(e.message);
     throw e;
   }
 }
@@ -61810,7 +62105,7 @@ if (isInvokedDirectly() || isStartedFile()) {
       throw e;
     });
   }
-  main(process.argv.slice(2)).catch((e) => fail(e.message));
+  main(process.argv.slice(2)).catch((e) => fail2(e.message));
 }
 export {
   BOOL_FLAGS,

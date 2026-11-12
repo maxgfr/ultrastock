@@ -17,7 +17,9 @@
 //   6. the order's notional fits the per-order and per-day limits of the
 //      experience tier;
 //   7. the key cannot withdraw (asked to the venue, or attested by the user);
-//   8. the limit price is within 1 % of the venue's book right now;
+//   8. the limit price is within 1 % of the venue's book right now, on the
+//      venue's price grid, and the quantity on its step and above its
+//      minimums (read live: trading/brokers/rules.ts);
 //   9. a valid out-of-band code bound to this ticket's fingerprint.
 //
 // Then: a lock, an audit line BEFORE, exactly one request, an audit line
@@ -34,6 +36,7 @@ import { loadProfile } from "../core/profile.js";
 import { appendTransactions, readLedger } from "../portfolio/ledger.js";
 import { splitPair } from "../tax/regime.js";
 import { breakerState, closedTradeResults, readEquity } from "./breaker.js";
+import { gridRefusals } from "./brokers/rules.js";
 import type { BrokerAdapter, Environment, LiveOrder, OrderResult, Venue } from "./brokers/types.js";
 import { attemptKey, fxToBase, unplacedAttempts } from "./context.js";
 import { effectiveLimits } from "./limits.js";
@@ -266,6 +269,14 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
       );
   } catch (e) {
     no("VENUE", `${p.venue} could not be read: ${(e as Error).message}`);
+  }
+  // The venue's own grid, read now: an order off its tick or step, or under its minimums, is refused here by name —
+  // never rounded on the way out (the order that goes is the one approved).
+  try {
+    const rules = await p.adapter.instrumentRules(p.venueSym);
+    for (const g of gridRefusals(rules, { price: o.price, quantity: o.quantity })) no(g.code, g.reason);
+  } catch (e) {
+    no("RULES_UNREAD", `${p.venue}'s price and quantity rules for ${p.venueSym} could not be read (${(e as Error).message}): the order is not sent unchecked`);
   }
 
   // The code is checked last, and only when nothing else stands in the way: a refused order must not use up a try.

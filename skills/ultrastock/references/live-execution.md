@@ -89,6 +89,9 @@ either switch for the user.
 | `ORDER_LIMIT`, `DAILY_LIMIT` | the per-order or per-day limit of the experience tier: 250 / 500 at first, then 1 000 / 2 500 after 20 live fills, 5 000 / 10 000 after 100. The day counts every live order sent, but one the venue refused, one never sent and one the user declared never placed |
 | `WITHDRAW_RIGHT`, `ATTEST`, `TRADE_RIGHT` | the key can withdraw, or no attestation was given for a venue that cannot be asked, or the key cannot trade |
 | `PRICE_BAND` | the limit is more than 1 % beyond the venue's best price right now |
+| `GRID_PRICE`, `GRID_QUANTITY` | the limit is not a multiple of the venue's price tick, or the quantity of its lot step — read live from the venue (Binance `exchangeInfo`, Kraken `AssetPairs`, Coinbase product, IBKR contract rules, Kalshi market). ultrastock never rounds an approved order: plan it again |
+| `MIN_QUANTITY`, `MAX_QUANTITY`, `MIN_NOTIONAL`, `NOT_TRADING` | under the venue's minimum size or order value, above its maximum, or the instrument takes no limit order now (halted, cancel-only) |
+| `RULES_UNREAD`, `GRID_UNKNOWN` | the venue's price and quantity rules could not be read, or give no tick: the order is not sent unchecked |
 | `CODE` | no code, an expired code, a wrong code, or a code issued for a different order |
 | `PENDING` | this ticket already went out: reconcile it first |
 

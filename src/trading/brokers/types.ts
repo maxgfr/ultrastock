@@ -12,8 +12,13 @@
 //   trading/live.ts reconciles by clientOrderId before anything else is sent.
 // - Every adapter has a native dry run (`preview`): Binance order/test (and the
 //   testnet), Kraken validate=true, Coinbase orders/preview, IBKR whatif.
+// - `instrumentRules` reads the venue's own tick, step and minimums for the
+//   symbol: nothing about a venue's grid is written in ultrastock.
 // - Credentials come in as an argument (from trading/secrets.ts) and never
 //   appear in an error message, a log line or a return value.
+import type { InstrumentRules } from "./rules.js";
+
+export type { InstrumentRules };
 
 export type Venue = "binance" | "kraken" | "coinbase" | "ibkr" | "kalshi";
 export type Environment = "test" | "live";
@@ -89,6 +94,8 @@ export interface BrokerAdapter {
   env: Environment;
   /** Public: the best bid and ask now (the price band is checked against it). */
   bookTop(symbol: string): Promise<BookTop>;
+  /** The instrument's price and quantity grid, read live from the venue (trading/brokers/rules.ts). */
+  instrumentRules(symbol: string): Promise<InstrumentRules>;
   /** Trading and withdrawal rights of the key, as far as the venue tells. */
   permissions(): Promise<KeyPermissions>;
   balances(): Promise<Balance[]>;

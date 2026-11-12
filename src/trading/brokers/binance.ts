@@ -20,6 +20,7 @@ import {
   scrubSecrets,
   toNumber,
 } from "./http.js";
+import { binanceRules } from "./rules.js";
 import type { Balance, BrokerAdapter, LiveOrder, OrderResult, OrderState } from "./types.js";
 
 const BINANCE_LIVE = "https://api.binance.com";
@@ -121,6 +122,10 @@ export function binanceAdapter(opts: AdapterOptions): BrokerAdapter {
       if (res.status !== 200 || bid === undefined || ask === undefined)
         throw new BrokerError("binance", `no book for ${symbol} (HTTP ${res.status})`, res.status);
       return { bid, ask, at: new Date(now()).toISOString() };
+    },
+
+    async instrumentRules(symbol) {
+      return binanceRules(base, symbol, { http, timeoutMs, at: new Date(now()).toISOString() });
     },
 
     async permissions() {
