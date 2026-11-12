@@ -50,10 +50,11 @@ export async function calendarCommand(args: CommandArgs, asJson: boolean): Promi
   }
   if (sub === "holidays") {
     const list = holidays(market, year);
+    const sc = specialClosures(market, year);
     const notes =
-      market !== "CRYPTO" && !specialClosures(market, year).researched && `${year}-12-31` > CLOSURES_CHECKED_THROUGH
+      market !== "CRYPTO" && `${year}-12-31` > sc.knownThrough
         ? [
-            `one-off closures after ${CLOSURES_CHECKED_THROUGH} are not researched for ${year}: this list may lack one — \`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``,
+            `one-off closures ${sc.researched ? `are researched only through ${sc.knownThrough}` : `after ${CLOSURES_CHECKED_THROUGH} are not researched`} for ${year}: this list may lack one — \`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``,
           ]
         : [];
     if (asJson) return void process.stdout.write(jsonLine({ market: spec, year, holidays: list, notes }));
@@ -67,7 +68,7 @@ export async function calendarCommand(args: CommandArgs, asJson: boolean): Promi
     const items = [
       `Compare with the exchange's published ${year} calendar: ${market === "XNYS" ? "https://www.nyse.com/markets/hours-calendars" : "https://www.euronext.com/en/trade/trading-hours-holidays"}`,
       `Computed ${list.length} non-standard sessions: ${list.map((h) => h.date).join(", ")}`,
-      `One-off closures ${specialClosures(market, year).researched ? "researched" : `recorded (checked through ${CLOSURES_CHECKED_THROUGH}, not researched for ${year})`}: ${
+      `One-off closures ${specialClosures(market, year).researched ? `researched (known through ${specialClosures(market, year).knownThrough})` : `recorded (checked through ${CLOSURES_CHECKED_THROUGH}, not researched for ${year})`}: ${
         specialClosures(market, year)
           .closures.map((s) => `${s.date} ${s.name}`)
           .join("; ") || "none"

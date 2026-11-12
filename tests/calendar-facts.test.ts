@@ -1,7 +1,7 @@
 // Trading hours and one-off closures are researched calendar facts (TEST facts here); the holiday rules stay computed.
 // Session times follow the exchange's own clock, daylight saving included; a session count that reaches past the
 // closures checked says so instead of assuming none.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { settlementAt } from "../src/analyze/quant/options.js";
 import { closedBars, sessionFinalAt } from "../src/analyze/regime/common.js";
 import {
@@ -76,8 +76,12 @@ describe("hours and one-off closures as researched facts", () => {
     );
     expect(sessionCountCaveat(undefined, "2026-11-02", "2027-01-15")).toBeUndefined();
     expect(sessionCountCaveat("CRYPTO", "2026-11-02", "2027-01-15")).toBeUndefined();
-    installTestFacts(CALENDAR, "US", 2026, { "XNYS.specialClosures": [] });
+    // A list verified after the year's last session knows all of its closures.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2027-01-04T12:00:00Z"));
+    installTestFacts(CALENDAR, "US", 2026, { "XNYS.specialClosures": [] }, { verifiedAt: "2027-01-02" });
     expect(sessionCountCaveat("XNYS", "2026-11-02", "2026-12-31")).toBeUndefined();
+    vi.useRealTimers();
   });
 
   it("lists, per exchange country, the keys to research", () => {

@@ -13,9 +13,11 @@
 //   the exchange's site when this file was written (BUILT_IN_HOURS, dated and
 //   sourced), and the outputs that print them say so.
 // - One-off closures (a national day of mourning, an outage): the researched
-//   list of the year; without it, only the past closures recorded below up to
-//   the date they were checked. A session count reaching past that date says
-//   the closures are unknown (`sessionCountCaveat`) — it never assumes none. A
+//   list of the year, known a few days past its verification; without it, only
+//   the past closures recorded below up to the date they were checked. A
+//   session count reaching past what is known says the closures are unknown
+//   (`sessionCountCaveat`) — it never assumes none. A list past its age keeps
+//   the closures already passed: they are history, not a forecast. A
 //   closure stored under another year (announced in December for January)
 //   still closes its own day, and its name says which year's file it belongs in.
 //
@@ -207,50 +209,64 @@ const misfiled = (market: ExchangeMarket, year: number, date: string): string =>
 };
 
 /**
- * A year's one-off closures: the researched list when there is one (known), else the past ones recorded here (known
- * only up to CLOSURES_CHECKED_THROUGH). A researched list past its age keeps the closures whose day has passed.
+ * Days past its verification a researched closures list is taken to know the closures still to come (one announced a
+ * few days ahead); a day of mourning later than that is unknown to any research, however recent.
  */
-export function specialClosures(market: CalendarMarket, year: number): { closures: Holiday[]; researched: boolean } {
-  if (market === "CRYPTO") return { closures: [], researched: true };
+export const CLOSURES_HORIZON_DAYS = 7;
+
+/**
+ * A year's one-off closures: the researched list when there is one, with the past ones recorded here, and the day
+ * through which they are known — `CLOSURES_HORIZON_DAYS` past the list's verification, or CLOSURES_CHECKED_THROUGH for
+ * the record here, whichever is later. A researched list past its age keeps the closures whose day has passed.
+ */
+export function specialClosures(market: CalendarMarket, year: number): { closures: Holiday[]; researched: boolean; knownThrough: string } {
+  if (market === "CRYPTO") return { closures: [], researched: true, knownThrough: "9999-12-31" };
+  const recorded = PAST_SPECIAL_CLOSURES.filter((s) => s.market === market && s.date.startsWith(String(year))).map((s) => ({
+    date: s.date,
+    name: s.name,
+    kind: s.kind,
+  }));
   const key = `${market}.specialClosures`;
   const f = calendarFacts(market, year, "stored")[key];
-  if (f) {
-    // Past its maxAgeDays the list no longer says which closures there are; the ones whose day has passed are history
-    // all the same, and still close it — only the closures still to come are no longer taken from it.
-    const today = clockNow().toISOString().slice(0, 10);
-    const maxAge = keysOf(market).find((k) => k.key === key)!.maxAgeDays!;
-    const stale = Date.parse(`${today}T00:00:00Z`) - Date.parse(`${f.verifiedAt}T00:00:00Z`) > maxAge * 86_400_000;
-    const names = f.note ? ` — ${f.note}` : "";
-    const closures = (f.value as string[])
-      .filter((date) => !stale || date < today)
-      .map((date) => ({ date, name: `one-off closure (researched${names}${misfiled(market, year, date)})`, kind: "closed" as const }));
-    if (!stale) return { closures, researched: true };
-    const builtIn = PAST_SPECIAL_CLOSURES.filter((s) => s.market === market && s.date.startsWith(String(year)) && !closures.some((c) => c.date === s.date));
-    return { closures: [...closures, ...builtIn.map((s) => ({ date: s.date, name: s.name, kind: s.kind }))], researched: false };
-  }
+  if (!f) return { closures: recorded, researched: false, knownThrough: CLOSURES_CHECKED_THROUGH };
+  // Past its maxAgeDays the list no longer says which closures there are; the ones whose day has passed are history
+  // all the same, and still close it — only the closures still to come are no longer taken from it.
+  const today = clockNow().toISOString().slice(0, 10);
+  const maxAge = keysOf(market).find((k) => k.key === key)!.maxAgeDays!;
+  const stale = Date.parse(`${today}T00:00:00Z`) - Date.parse(`${f.verifiedAt}T00:00:00Z`) > maxAge * 86_400_000;
+  const names = f.note ? ` — ${f.note}` : "";
+  const closures = (f.value as string[])
+    .filter((date) => !stale || date < today)
+    .map((date) => ({ date, name: `one-off closure (researched${names}${misfiled(market, year, date)})`, kind: "closed" as const }));
+  const horizon = fmt(addDays(new Date(`${f.verifiedAt}T00:00:00Z`), CLOSURES_HORIZON_DAYS));
   return {
-    closures: PAST_SPECIAL_CLOSURES.filter((s) => s.market === market && s.date.startsWith(String(year))).map((s) => ({
-      date: s.date,
-      name: s.name,
-      kind: s.kind,
-    })),
-    researched: false,
+    closures: [...closures, ...recorded.filter((r) => !closures.some((c) => c.date === r.date))],
+    researched: true,
+    knownThrough: horizon > CLOSURES_CHECKED_THROUGH ? horizon : CLOSURES_CHECKED_THROUGH,
   };
 }
 
 /**
  * What a session count from `from` to `to` (YYYY-MM-DD) must say: undefined when every one-off closure on the way is
- * known (researched for its year, or before CLOSURES_CHECKED_THROUGH), else that the count assumes none it does not know.
+ * known (each year's `knownThrough` reaches the end of the span), else that the count assumes none it does not know.
  */
 export function sessionCountCaveat(market: CalendarMarket | undefined, from: string, to: string): string | undefined {
   if (!market || market === "CRYPTO") return undefined;
   const [lo, hi] = from <= to ? [from, to] : [to, from];
   if (hi <= CLOSURES_CHECKED_THROUGH) return undefined;
-  const years: number[] = [];
-  for (let y = Math.max(Number(lo.slice(0, 4)), Number(CLOSURES_CHECKED_THROUGH.slice(0, 4))); y <= Number(hi.slice(0, 4)); y++)
-    if (!specialClosures(market, y).researched) years.push(y);
-  if (!years.length) return undefined;
-  return `${MARKETS[market].name}: one-off closures (a day of mourning, an outage) after ${CLOSURES_CHECKED_THROUGH} are not researched for ${years.join(", ")} — the session count counts every rule-computed session as open and may be off by a day; research them with ${years.map((year) => `\`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``).join(", ")}`;
+  // The years whose closures are unknown somewhere on the way, grouped by what is known of them.
+  const gaps = new Map<string, number[]>();
+  for (let y = Math.max(Number(lo.slice(0, 4)), Number(CLOSURES_CHECKED_THROUGH.slice(0, 4))); y <= Number(hi.slice(0, 4)); y++) {
+    const c = specialClosures(market, y);
+    // The span's last day in this year: past what is known, a closure on the way may be missing.
+    const last = [hi, `${y}-12-31`].sort()[0]!;
+    if (last <= c.knownThrough) continue;
+    const what = c.researched ? `are researched only through ${c.knownThrough} for` : `after ${CLOSURES_CHECKED_THROUGH} are not researched for`;
+    gaps.set(what, [...(gaps.get(what) ?? []), y]);
+  }
+  if (!gaps.size) return undefined;
+  const years = [...gaps.values()].flat().sort();
+  return `${MARKETS[market].name}: one-off closures (a day of mourning, an outage) ${[...gaps].map(([what, ys]) => `${what} ${ys.join(", ")}`).join("; ")} — the session count counts every rule-computed session as open and may be off by a day; research them with ${years.map((year) => `\`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``).join(", ")}`;
 }
 
 /** The UTC instant of a local wall-clock time on a day in an IANA time zone (daylight saving included), by Intl. */

@@ -44,9 +44,12 @@ listing", a jurisdiction block) is reported, never routed around.
   closures (a day of mourning, an outage) are researched facts per year
   (`ultrastock facts research calendar --country US|FR|IT|NO --year <Y> --out <run>`, keys
   `<MIC>.open`, `<MIC>.close`, `<MIC>.specialClosures`). Without them the hours
-  are the built-in ones (`calendar sessions` says so) and a session count past
-  the closures last checked carries a note that it may be off by a day — say so
-  when a horizon or a settlement date depends on it.
+  are the built-in ones (`calendar sessions` says so). A researched closures list
+  is known only a week past the day it was verified (no research knows a later
+  day of mourning), the built-in record only up to the day it was checked: a
+  session count past that carries a note that it may be off by a day — say so
+  when a horizon or a settlement date depends on it. A closure whose day has
+  passed stays known, however old its list.
 - A company that reports in another currency than it trades in (a Hong Kong line
   reporting in CNY, a London line reporting in USD) is valued in its statements'
   currency: the price is converted at the ECB cross rate as a derived [E#]. Outside

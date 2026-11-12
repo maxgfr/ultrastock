@@ -20332,38 +20332,44 @@ var misfiled = (market, year, date) => {
   const own = Number(date.slice(0, 4));
   return own === year ? "" : `; dated ${own}, stored with the ${year} facts \u2014 it belongs in ${MARKET_COUNTRY[market]}-${own}.json: \`${researchCommand("calendar", MARKET_COUNTRY[market], { year: own })}\``;
 };
+var CLOSURES_HORIZON_DAYS = 7;
 function specialClosures(market, year) {
-  if (market === "CRYPTO") return { closures: [], researched: true };
+  if (market === "CRYPTO") return { closures: [], researched: true, knownThrough: "9999-12-31" };
+  const recorded = PAST_SPECIAL_CLOSURES.filter((s) => s.market === market && s.date.startsWith(String(year))).map((s) => ({
+    date: s.date,
+    name: s.name,
+    kind: s.kind
+  }));
   const key = `${market}.specialClosures`;
   const f3 = calendarFacts(market, year, "stored")[key];
-  if (f3) {
-    const today2 = clockNow().toISOString().slice(0, 10);
-    const maxAge = keysOf(market).find((k) => k.key === key).maxAgeDays;
-    const stale = Date.parse(`${today2}T00:00:00Z`) - Date.parse(`${f3.verifiedAt}T00:00:00Z`) > maxAge * 864e5;
-    const names2 = f3.note ? ` \u2014 ${f3.note}` : "";
-    const closures = f3.value.filter((date) => !stale || date < today2).map((date) => ({ date, name: `one-off closure (researched${names2}${misfiled(market, year, date)})`, kind: "closed" }));
-    if (!stale) return { closures, researched: true };
-    const builtIn = PAST_SPECIAL_CLOSURES.filter((s) => s.market === market && s.date.startsWith(String(year)) && !closures.some((c) => c.date === s.date));
-    return { closures: [...closures, ...builtIn.map((s) => ({ date: s.date, name: s.name, kind: s.kind }))], researched: false };
-  }
+  if (!f3) return { closures: recorded, researched: false, knownThrough: CLOSURES_CHECKED_THROUGH };
+  const today2 = clockNow().toISOString().slice(0, 10);
+  const maxAge = keysOf(market).find((k) => k.key === key).maxAgeDays;
+  const stale = Date.parse(`${today2}T00:00:00Z`) - Date.parse(`${f3.verifiedAt}T00:00:00Z`) > maxAge * 864e5;
+  const names2 = f3.note ? ` \u2014 ${f3.note}` : "";
+  const closures = f3.value.filter((date) => !stale || date < today2).map((date) => ({ date, name: `one-off closure (researched${names2}${misfiled(market, year, date)})`, kind: "closed" }));
+  const horizon = fmt2(addDays(/* @__PURE__ */ new Date(`${f3.verifiedAt}T00:00:00Z`), CLOSURES_HORIZON_DAYS));
   return {
-    closures: PAST_SPECIAL_CLOSURES.filter((s) => s.market === market && s.date.startsWith(String(year))).map((s) => ({
-      date: s.date,
-      name: s.name,
-      kind: s.kind
-    })),
-    researched: false
+    closures: [...closures, ...recorded.filter((r3) => !closures.some((c) => c.date === r3.date))],
+    researched: true,
+    knownThrough: horizon > CLOSURES_CHECKED_THROUGH ? horizon : CLOSURES_CHECKED_THROUGH
   };
 }
 function sessionCountCaveat(market, from, to) {
   if (!market || market === "CRYPTO") return void 0;
   const [lo, hi] = from <= to ? [from, to] : [to, from];
   if (hi <= CLOSURES_CHECKED_THROUGH) return void 0;
-  const years = [];
-  for (let y = Math.max(Number(lo.slice(0, 4)), Number(CLOSURES_CHECKED_THROUGH.slice(0, 4))); y <= Number(hi.slice(0, 4)); y++)
-    if (!specialClosures(market, y).researched) years.push(y);
-  if (!years.length) return void 0;
-  return `${MARKETS[market].name}: one-off closures (a day of mourning, an outage) after ${CLOSURES_CHECKED_THROUGH} are not researched for ${years.join(", ")} \u2014 the session count counts every rule-computed session as open and may be off by a day; research them with ${years.map((year) => `\`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``).join(", ")}`;
+  const gaps2 = /* @__PURE__ */ new Map();
+  for (let y = Math.max(Number(lo.slice(0, 4)), Number(CLOSURES_CHECKED_THROUGH.slice(0, 4))); y <= Number(hi.slice(0, 4)); y++) {
+    const c = specialClosures(market, y);
+    const last2 = [hi, `${y}-12-31`].sort()[0];
+    if (last2 <= c.knownThrough) continue;
+    const what = c.researched ? `are researched only through ${c.knownThrough} for` : `after ${CLOSURES_CHECKED_THROUGH} are not researched for`;
+    gaps2.set(what, [...gaps2.get(what) ?? [], y]);
+  }
+  if (!gaps2.size) return void 0;
+  const years = [...gaps2.values()].flat().sort();
+  return `${MARKETS[market].name}: one-off closures (a day of mourning, an outage) ${[...gaps2].map(([what, ys]) => `${what} ${ys.join(", ")}`).join("; ")} \u2014 the session count counts every rule-computed session as open and may be off by a day; research them with ${years.map((year) => `\`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``).join(", ")}`;
 }
 function localTimeToUtc(day4, hhmm, timeZone) {
   const [y, m, d] = day4.split("-").map(Number);
@@ -39104,8 +39110,9 @@ async function calendarCommand(args, asJson) {
   }
   if (sub === "holidays") {
     const list = holidays(market, year);
-    const notes = market !== "CRYPTO" && !specialClosures(market, year).researched && `${year}-12-31` > CLOSURES_CHECKED_THROUGH ? [
-      `one-off closures after ${CLOSURES_CHECKED_THROUGH} are not researched for ${year}: this list may lack one \u2014 \`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``
+    const sc = specialClosures(market, year);
+    const notes = market !== "CRYPTO" && `${year}-12-31` > sc.knownThrough ? [
+      `one-off closures ${sc.researched ? `are researched only through ${sc.knownThrough}` : `after ${CLOSURES_CHECKED_THROUGH} are not researched`} for ${year}: this list may lack one \u2014 \`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``
     ] : [];
     if (asJson) return void process.stdout.write(jsonLine({ market: spec, year, holidays: list, notes }));
     process.stdout.write(
@@ -39121,7 +39128,7 @@ ${notes.map((n2) => `note: ${n2}
     const items = [
       `Compare with the exchange's published ${year} calendar: ${market === "XNYS" ? "https://www.nyse.com/markets/hours-calendars" : "https://www.euronext.com/en/trade/trading-hours-holidays"}`,
       `Computed ${list.length} non-standard sessions: ${list.map((h) => h.date).join(", ")}`,
-      `One-off closures ${specialClosures(market, year).researched ? "researched" : `recorded (checked through ${CLOSURES_CHECKED_THROUGH}, not researched for ${year})`}: ${specialClosures(market, year).closures.map((s) => `${s.date} ${s.name}`).join("; ") || "none"} \u2014 search "${spec.name} market closure ${year}" for new ones (a national day of mourning, an outage)`,
+      `One-off closures ${specialClosures(market, year).researched ? `researched (known through ${specialClosures(market, year).knownThrough})` : `recorded (checked through ${CLOSURES_CHECKED_THROUGH}, not researched for ${year})`}: ${specialClosures(market, year).closures.map((s) => `${s.date} ${s.name}`).join("; ") || "none"} \u2014 search "${spec.name} market closure ${year}" for new ones (a national day of mourning, an outage)`,
       `Trading hours ${hours.open}\u2013${hours.close} ${spec.timeZone} (${hours.origin === "researched" ? `researched, verified ${hours.asOf}` : `built-in, as published on ${hours.asOf}`})`,
       ...market === "CRYPTO" ? [] : [`Store the year's hours and one-off closures: \`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``]
     ];

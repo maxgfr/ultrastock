@@ -12,7 +12,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { addSessions, CALENDAR, holidays, isTradingDay, nextSessions, specialClosures } from "../src/core/calendar.js";
+import { addSessions, CALENDAR, holidays, isTradingDay, nextSessions, sessionCountCaveat, specialClosures } from "../src/core/calendar.js";
 import { horizonEnd } from "../src/journal/settle.js";
 import { installTestFacts } from "./helpers/facts.js";
 
@@ -44,6 +44,24 @@ describe("researched one-off closures", () => {
     // One session after Tuesday 8 December 2026 is Thursday 10, the 9th being closed. Actual at HEAD: 2026-12-09.
     expect(addSessions("XNYS", "2026-12-08", 1)).toBe("2026-12-10");
     expect(horizonEnd("XNYS", "2026-12-08", 1)).toBe("2026-12-10");
+  });
+
+  it("says a count reaching past the day the list was verified does not know the closures to come", () => {
+    at("2026-11-12T12:00:00Z");
+    installTestFacts(CALENDAR, "US", 2026, { "XNYS.specialClosures": [] }, { verifiedAt: "2026-11-12" });
+    // Seven weeks past the verification. Before the fix: undefined — the count silently assumed no closure.
+    expect(sessionCountCaveat("XNYS", "2026-11-12", "2026-12-31")).toMatch(/one-off closures/);
+    expect(sessionCountCaveat("XNYS", "2026-11-12", "2026-12-31")).toMatch(/researched only through 2026-11-19 for 2026 /);
+    // Within the horizon past the verification, the list is taken as complete.
+    expect(sessionCountCaveat("XNYS", "2026-11-12", "2026-11-19")).toBeUndefined();
+  });
+
+  it("does not take a list verified in November 2026 as knowing the one-off closures of 2027", () => {
+    at("2026-11-12T12:00:00Z");
+    installTestFacts(CALENDAR, "US", 2026, { "XNYS.specialClosures": [] }, { verifiedAt: "2026-11-12" });
+    installTestFacts(CALENDAR, "US", 2027, { "XNYS.specialClosures": [] }, { verifiedAt: "2026-11-12" });
+    // Before the fix: undefined.
+    expect(sessionCountCaveat("XNYS", "2026-11-12", "2027-03-01")).toMatch(/one-off closures/);
   });
 
   it("refuses a closure dated outside the file's year, or closes that day — not neither", () => {
