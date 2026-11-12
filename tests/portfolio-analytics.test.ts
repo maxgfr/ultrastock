@@ -25,6 +25,7 @@ import { isharesDate, parseIsharesHoldings } from "../src/providers/funds/ishare
 import { parseMfTickers, parseNport, parseNportFeed } from "../src/providers/funds/nport.js";
 import { withFixture } from "./helpers/fixtures.js";
 import { day, prng } from "./helpers/series.js";
+import { installTaxTestRules } from "./helpers/tax-rules.js";
 
 afterEach(() => {
   setNetMode({ kind: "live" });
@@ -232,8 +233,8 @@ describe("rebalancing pieces", () => {
     expect(btc.feeBasis).toBe("no fee known");
     expect(btc.reasons).toContain("fee unknown: not counted");
     expect(orderFor({ symbol: "MC.PA", amountBase: 100, price: 600, rate: 1, currency: "EUR", market: "euronext", held: 0, fee: pctMin })).toBeUndefined();
-    expect(sellTaxNote("PEA")).toMatch(/nothing taxable/);
-    expect(sellTaxNote("CTO")).toMatch(/taxable gain/);
+    expect(sellTaxNote("PEA", { residence: "FR", year: 2026 })).toMatch(/nothing taxable/);
+    expect(sellTaxNote("CTO", { residence: "FR", year: 2026 })).toMatch(/taxable gain/);
   });
 });
 
@@ -475,6 +476,7 @@ async function run(positional: string[], values: Record<string, string> = {}): P
 describe("portfolio analytics on a recorded two-position paper book", () => {
   it("risk, stress, location, income and rebalance register every figure", async () => {
     freshHome();
+    installTaxTestRules([2026]);
     saveProfile(defaultProfile("FR", "EUR"));
     installTestVenueFacts({ date: FIXTURE_SAFE_DATE });
     await appendTransactions(
@@ -513,6 +515,14 @@ describe("portfolio analytics on a recorded two-position paper book", () => {
       expect(loc.out).toMatch(/NVDA ideal envelope \(French resident\) = CTO/);
       expect(loc.out).toMatch(/room left under the PEA deposit ceiling = 140000 EUR/);
       expect(loc.out).toMatch(/MC.PA sits in a worse envelope than one available = true/);
+      expect(loc.out).not.toMatch(/tax facts not researched/);
+      // Another tax residence: no French advice at all, and what to research instead.
+      saveProfile(defaultProfile("DE", "EUR"));
+      const de = await run(["location"], { out: mkdtempSync(join(tmpdir(), "pa-loc-de-")) });
+      expect(de.out).toMatch(/no asset-location advice for a DE tax resident/);
+      expect(de.out).toMatch(/tax rules template --country DE/);
+      expect(de.out).not.toMatch(/ideal envelope|PEA deposit ceiling/);
+      saveProfile(defaultProfile("FR", "EUR"));
 
       const inc = await run(["income"], { out: mkdtempSync(join(tmpdir(), "pa-inc-")) });
       expect(inc.out).toMatch(/NVDA dividends received/);

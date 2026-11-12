@@ -17,6 +17,7 @@ import { type Dashboard, serveToken, startDashboard } from "../src/serve/server.
 import { journalView } from "../src/serve/views.js";
 import { createTicket } from "../src/trading/tickets.js";
 import { withFixture } from "./helpers/fixtures.js";
+import { installTaxTestRules } from "./helpers/tax-rules.js";
 
 const TOKEN = "test-token-0123456789abcdef";
 const XSS = `<script>alert(1)</script>"'`;
@@ -108,6 +109,7 @@ let home: string;
 
 beforeAll(async () => {
   home = newHome("main");
+  installTaxTestRules([2026]);
   saveProfile(defaultProfile("FR", "EUR"));
   await appendTransactions(PAPER, "paper");
   await appendTransactions(REAL, "real");

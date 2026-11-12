@@ -1,20 +1,23 @@
-// Asset location for a French resident, the pure part: which envelope suits
-// each kind of holding best, as a table of rules with their sources, and the
-// holdings sitting in a worse envelope than one the investor already has.
+// Asset location, the pure part: which envelope suits each kind of holding
+// best, and the holdings sitting in a worse envelope than one the investor
+// already has. ultrastock has envelope rankings for one tax residence only —
+// France (PEA, PEA-PME, assurance-vie, PER, CTO) — and even there it states no
+// tax rule of its own: the holding periods, the ceiling and the treaty rate in
+// the advice are the researched "tax" facts for the user's tax year
+// (src/tax/rules.ts: pea.ceiling, pea.minYears, av.minYears,
+// us.dividendWithholdingTreaty). A fact not researched is left out of the
+// advice, which says so and names the command to research it. For any other
+// residence no advice is given at all (run-book.ts locationAnalysis).
 //
-// Eligibility is a FIRST PASS: the PEA takes shares of companies whose
-// registered office is in the EU/EEA and that pay corporate tax, and funds at
-// least 75 % invested in them — the ISIN's country prefix approximates the
-// first (it is the issuer's country of incorporation, usually), and only the
-// issuer says the second (Amundi's FUND_PEA flag when it answers). Always
+// Eligibility is a FIRST PASS: the ISIN's country prefix (usually the
+// issuer's country of incorporation) against the EU/EEA list of core/geo.ts
+// for shares, the issuer's own flag (Amundi's FUND_PEA) for funds. Always
 // "confirm with the broker": the broker refuses an ineligible order anyway.
-import type { EnvelopeType } from "../../core/profile.js";
 import { euEeaMembers, isEuEea } from "../../core/geo.js";
+import { ruleStatus } from "../../core/jurisdiction.js";
+import type { EnvelopeType } from "../../core/profile.js";
+import { loadRules, TAX, templateCommand } from "../../tax/rules.js";
 import { isinCountry } from "./risk.js";
-
-/** PEA deposit ceiling (versements), and the combined PEA + PEA-PME ceiling. */
-export const PEA_CEILING = 150_000;
-export const PEA_PME_COMBINED_CEILING = 225_000;
 
 export interface LocationRule {
   id: string;
@@ -26,71 +29,131 @@ export interface LocationRule {
   sources: Array<{ label: string; url: string }>;
 }
 
-const SP_PEA = { label: "service-public.fr — Plan d'épargne en actions (PEA)", url: "https://www.service-public.fr/particuliers/vosdroits/F2385" };
-const SP_AV = { label: "service-public.fr — Contrat d'assurance-vie : fonctionnement", url: "https://www.service-public.fr/particuliers/vosdroits/F15274" };
-const SP_AV_TAX = {
-  label: "service-public.fr — Comment sont imposés les revenus d'un contrat d'assurance-vie",
-  url: "https://www.service-public.fr/particuliers/vosdroits/F22414",
-};
+/** The researched facts the French advice is written with, for one tax year; a field absent is not researched (or stale). */
+export interface LocationFacts {
+  country: string;
+  year: number;
+  /** PEA deposit ceiling (tax currency). */
+  peaCeiling?: number;
+  /** Years after which PEA withdrawals are free of income tax. */
+  peaMinYears?: number;
+  /** Assurance-vie contract age for the reduced rate and the allowance. */
+  avMinYears?: number;
+  /** The US treaty withholding rate on dividends for a resident (a fraction). */
+  usTreatyRate?: number;
+  /** The sources of the facts read, as researched. */
+  sources: string[];
+  /** The keys the advice would use and could not read. */
+  missing: string[];
+  /** Why the facts could not be read at all (no file for the year…). */
+  problem?: string;
+}
+
+const KEYS = { peaCeiling: "pea.ceiling", peaMinYears: "pea.minYears", avMinYears: "av.minYears", usTreatyRate: "us.dividendWithholdingTreaty" } as const;
+
+/** The tax facts the advice reads for a tax year: whatever is researched and current, the rest listed as missing. */
+export function locationFacts(year: number, country = "FR"): LocationFacts {
+  const out: LocationFacts = { country, year, sources: [], missing: [] };
+  let facts: Record<string, { value: unknown; sources: string[] }> = {};
+  try {
+    facts = loadRules(country, year).rules.facts;
+  } catch (e) {
+    out.problem = `no ${country} tax facts for ${year}: ${(e as Error).message.split(" — ")[0]}`;
+  }
+  for (const [field, key] of Object.entries(KEYS) as Array<[keyof typeof KEYS, string]>) {
+    const f = facts[key];
+    if (f && typeof f.value === "number") {
+      out[field] = f.value;
+      for (const u of f.sources) if (!out.sources.includes(u)) out.sources.push(u);
+    } else out.missing.push(key);
+  }
+  return out;
+}
+
+/** What the advice lacks, in words, with the command to research it — undefined when every fact it uses is researched. */
+export function locationFactsNote(lf: LocationFacts): string | undefined {
+  if (!lf.missing.length) return undefined;
+  return `${lf.country} tax facts not researched for ${lf.year}: ${lf.missing.join(", ")} — the advice leaves out what they would say (no holding period, ceiling or treaty rate is assumed); run \`${templateCommand(lf.country, lf.year)}\`, research the keys and store them with \`${TAX.setCommand}\``;
+}
+
+/** Facts with nothing researched: the advice without any holding period, ceiling or rate. */
+export const unresearched = (year: number, country = "FR"): LocationFacts => ({ country, year, sources: [], missing: Object.values(KEYS) });
+
 const SP_CTO = { label: "service-public.fr — Plus-values sur valeurs mobilières", url: "https://www.service-public.fr/particuliers/vosdroits/F21618" };
 const PRIIPS = { label: "Regulation (EU) 1286/2014 (PRIIPs)", url: "https://eur-lex.europa.eu/eli/reg/2014/1286/oj" };
-const ACCOUNTS_ABROAD = {
-  label: "service-public.gouv.fr — comptes à l'étranger (3916, 3916-bis)",
-  url: "https://www.service-public.gouv.fr/particuliers/actualites/A18891",
-};
+const researched = (lf: LocationFacts) => lf.sources.map((url) => ({ label: `researched ${lf.country} tax fact (${lf.year})`, url }));
 
-/** The rules, verified 2026-10-24. Rankings put the tax-sheltered envelope first where the holding is eligible for it. */
-export const LOCATION_RULES: Record<string, LocationRule> = {
-  "eu-share": {
-    id: "eu-share",
-    applies: "shares of a company incorporated in the EU/EEA (ISIN prefix)",
-    ranking: ["PEA", "PEA-PME", "CTO", "TAXABLE"],
-    why: "PEA-eligible: gains and dividends are free of income tax after 5 years (social levies remain); in a CTO every sale and dividend is taxed",
-    sources: [SP_PEA, SP_CTO],
-  },
-  "pea-fund": {
-    id: "pea-fund",
-    applies: "an ETF or fund its issuer flags PEA-eligible (≥ 75 % EU/EEA shares, physically or by swap)",
-    ranking: ["PEA", "AV", "CTO", "TAXABLE"],
-    why: "PEA-eligible fund: the PEA shelters it; an assurance-vie unit-linked line is second best",
-    sources: [SP_PEA, SP_AV],
-  },
-  "other-fund": {
-    id: "other-fund",
-    applies: "an ETF or fund not known to be PEA-eligible (world/US physical UCITS ETFs, bond funds)",
-    ranking: ["AV", "PER", "CTO", "TAXABLE"],
-    why: "not PEA-eligible as far as is known: an assurance-vie contract that lists it defers tax (allowance after 8 years); otherwise a CTO",
-    sources: [SP_AV, SP_AV_TAX, SP_CTO],
-  },
-  "us-etf": {
-    id: "us-etf",
-    applies: "a US-domiciled ETF",
-    ranking: ["CTO", "TAXABLE"],
-    why: "no PRIIPs key information document: EU brokers do not sell it to retail clients — an existing line stays in a CTO; buy the UCITS equivalent instead",
-    sources: [PRIIPS, SP_CTO],
-  },
-  "non-eu-share": {
-    id: "non-eu-share",
-    applies: "shares of a company incorporated outside the EU/EEA (US, UK, Switzerland…)",
-    ranking: ["CTO", "TAXABLE"],
-    why: "not PEA-eligible: a CTO (file a W-8BEN for the 15 % US treaty rate on dividends; declare an account held abroad on form 3916)",
-    sources: [SP_CTO, ACCOUNTS_ABROAD],
-  },
-  crypto: {
-    id: "crypto",
-    applies: "crypto-assets",
-    ranking: ["CRYPTO"],
-    why: "no tax wrapper takes crypto: an exchange account (a MiCA-authorised venue; form 3916-bis for an account abroad), gains taxed when converted to euros",
-    sources: [ACCOUNTS_ABROAD],
-  },
-  unknown: {
-    id: "unknown",
-    applies: "a holding whose country or fund eligibility could not be read",
-    ranking: ["CTO", "TAXABLE"],
-    why: "eligibility unknown: a CTO takes anything — check the ISIN and the KID before moving it",
-    sources: [SP_CTO],
-  },
-};
+/**
+ * The French location rules, written with the researched facts of `lf`: a holding period, a ceiling or a treaty
+ * rate that is not researched is left out of the text, never assumed. Rankings put the tax-sheltered envelope first
+ * where the holding is eligible for it.
+ */
+export function locationRules(lf: LocationFacts = unresearched(new Date().getUTCFullYear())): Record<string, LocationRule> {
+  const src = researched(lf);
+  const pea =
+    lf.peaMinYears !== undefined
+      ? `gains and dividends are free of income tax after ${lf.peaMinYears} years (social levies remain)`
+      : "the PEA shelters gains and dividends (its holding period is not researched for this tax year)";
+  const av =
+    lf.avMinYears !== undefined
+      ? `an assurance-vie contract that lists it defers tax (allowance after ${lf.avMinYears} years)`
+      : "an assurance-vie contract that lists it defers tax (its holding period is not researched for this tax year)";
+  const treaty = lf.usTreatyRate !== undefined ? `file a W-8BEN for the ${Number((lf.usTreatyRate * 100).toFixed(2))} % US treaty rate on dividends; ` : "";
+  const priips = ruleStatus(lf.country, "us-domiciled-etf") === "restricted";
+  return {
+    "eu-share": {
+      id: "eu-share",
+      applies: "shares of a company incorporated in the EU/EEA (ISIN prefix)",
+      ranking: ["PEA", "PEA-PME", "CTO", "TAXABLE"],
+      why: `PEA-eligible: ${pea}; in a CTO every sale and dividend is taxed`,
+      sources: [...src, SP_CTO],
+    },
+    "pea-fund": {
+      id: "pea-fund",
+      applies: "an ETF or fund its issuer flags PEA-eligible",
+      ranking: ["PEA", "AV", "CTO", "TAXABLE"],
+      why: "PEA-eligible fund: the PEA shelters it; an assurance-vie unit-linked line is second best",
+      sources: [...src, SP_CTO],
+    },
+    "other-fund": {
+      id: "other-fund",
+      applies: "an ETF or fund not known to be PEA-eligible (world/US physical UCITS ETFs, bond funds)",
+      ranking: ["AV", "PER", "CTO", "TAXABLE"],
+      why: `not PEA-eligible as far as is known: ${av}; otherwise a CTO`,
+      sources: [...src, SP_CTO],
+    },
+    "us-etf": {
+      id: "us-etf",
+      applies: "a US-domiciled ETF",
+      ranking: ["CTO", "TAXABLE"],
+      why: priips
+        ? "no PRIIPs key information document: EU brokers do not sell it to retail clients — an existing line stays in a CTO; buy the UCITS equivalent instead"
+        : "not PEA-eligible: a CTO",
+      sources: [...(priips ? [PRIIPS] : []), SP_CTO],
+    },
+    "non-eu-share": {
+      id: "non-eu-share",
+      applies: "shares of a company incorporated outside the EU/EEA (US, UK, Switzerland…)",
+      ranking: ["CTO", "TAXABLE"],
+      why: `not PEA-eligible: a CTO (${treaty}declare an account held abroad on form 3916)`,
+      sources: [...src, SP_CTO],
+    },
+    crypto: {
+      id: "crypto",
+      applies: "crypto-assets",
+      ranking: ["CRYPTO"],
+      why: "no tax wrapper takes crypto: an exchange account (form 3916-bis for an account abroad)",
+      sources: [...src],
+    },
+    unknown: {
+      id: "unknown",
+      applies: "a holding whose country or fund eligibility could not be read",
+      ranking: ["CTO", "TAXABLE"],
+      why: "eligibility unknown: a CTO takes anything — check the ISIN and the KID before moving it",
+      sources: [SP_CTO],
+    },
+  };
+}
 
 export interface LocationInput {
   symbol: string;
@@ -103,24 +166,24 @@ export interface LocationInput {
   envelopes: Array<EnvelopeType | "unknown">;
 }
 
-/** The rule for one holding. */
-export function locationRule(h: LocationInput): { rule: LocationRule; basis: string } {
-  if (h.assetClass === "crypto") return { rule: LOCATION_RULES.crypto!, basis: "crypto-asset" };
+/** The rule for one holding, from `rules` (by default the rules with no researched fact). */
+export function locationRule(h: LocationInput, rules: Record<string, LocationRule> = locationRules()): { rule: LocationRule; basis: string } {
+  if (h.assetClass === "crypto") return { rule: rules.crypto!, basis: "crypto-asset" };
   const country = isinCountry(h.isin) ?? (h.market === "us" ? "US" : undefined);
   if (h.assetClass === "etf" || h.assetClass === "fund") {
-    if (country === "US" || (h.market === "us" && !h.isin)) return { rule: LOCATION_RULES["us-etf"]!, basis: "US listing / US ISIN" };
-    if (h.peaFlag === true) return { rule: LOCATION_RULES["pea-fund"]!, basis: "issuer flags it PEA-eligible (FUND_PEA)" };
+    if (country === "US" || (h.market === "us" && !h.isin)) return { rule: rules["us-etf"]!, basis: "US listing / US ISIN" };
+    if (h.peaFlag === true) return { rule: rules["pea-fund"]!, basis: "issuer flags it PEA-eligible (FUND_PEA)" };
     if (h.peaFlag === undefined && h.envelopes.includes("PEA"))
-      return { rule: LOCATION_RULES["pea-fund"]!, basis: "already held in a PEA, so the broker accepted it as eligible" };
-    return { rule: LOCATION_RULES["other-fund"]!, basis: h.peaFlag === false ? "issuer flags it not PEA-eligible" : "no issuer PEA flag read" };
+      return { rule: rules["pea-fund"]!, basis: "already held in a PEA, so the broker accepted it as eligible" };
+    return { rule: rules["other-fund"]!, basis: h.peaFlag === false ? "issuer flags it not PEA-eligible" : "no issuer PEA flag read" };
   }
-  if (!country) return { rule: LOCATION_RULES.unknown!, basis: "no ISIN read" };
+  if (!country) return { rule: rules.unknown!, basis: "no ISIN read" };
   if (isEuEea(country))
     return {
-      rule: LOCATION_RULES["eu-share"]!,
+      rule: rules["eu-share"]!,
       basis: `ISIN prefix ${country} (EU/EEA${euEeaMembers().origin === "built-in" ? `, built-in list as of ${euEeaMembers().asOf}` : ""})`,
     };
-  return { rule: LOCATION_RULES["non-eu-share"]!, basis: `ISIN prefix ${country} (outside the EU/EEA)` };
+  return { rule: rules["non-eu-share"]!, basis: `ISIN prefix ${country} (outside the EU/EEA)` };
 }
 
 /**
@@ -131,10 +194,12 @@ export function locationRule(h: LocationInput): { rule: LocationRule; basis: str
 export function bestEnvelope(
   h: LocationInput,
   available: ReadonlySet<EnvelopeType>,
-  peaRoom: number,
+  /** Room under the PEA ceiling; undefined when the ceiling is not researched (the PEA then counts as usable, its room unknown). */
+  peaRoom: number | undefined,
+  rules: Record<string, LocationRule> = locationRules(),
 ): { rule: LocationRule; basis: string; best?: EnvelopeType; ideal: EnvelopeType; worse: Array<EnvelopeType | "unknown">; reason: string } {
-  const { rule, basis } = locationRule(h);
-  const usable = (e: EnvelopeType) => available.has(e) && (e !== "PEA" || peaRoom > 0);
+  const { rule, basis } = locationRule(h, rules);
+  const usable = (e: EnvelopeType) => available.has(e) && (e !== "PEA" || peaRoom === undefined || peaRoom > 0);
   const best = rule.ranking.find(usable);
   const rank = (e: EnvelopeType | "unknown") =>
     e === "unknown" ? rule.ranking.length : rule.ranking.indexOf(e) === -1 ? rule.ranking.length : rule.ranking.indexOf(e);
@@ -143,7 +208,10 @@ export function bestEnvelope(
   const reason = [
     `${rule.applies} (${basis}): ${rule.why}`,
     best ? `best envelope held: ${best}` : `none of ${rule.ranking.join(", ")} is in the profile`,
-    ideal !== best ? `ideal: ${ideal}${ideal === "PEA" && available.has("PEA") && peaRoom <= 0 ? " (the PEA has no room left under its ceiling)" : ""}` : "",
+    ideal !== best
+      ? `ideal: ${ideal}${ideal === "PEA" && available.has("PEA") && peaRoom !== undefined && peaRoom <= 0 ? " (the PEA has no room left under its ceiling)" : ""}`
+      : "",
+    best === "PEA" && peaRoom === undefined ? "the room under the PEA ceiling is unknown (the ceiling is not researched for this tax year)" : "",
     worse.length ? `held in ${worse.join(", ")}, worse than ${best}` : "",
     rule.id === "eu-share" || rule.id === "pea-fund" ? "eligibility is a first pass — confirm with the broker" : "",
   ]

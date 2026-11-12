@@ -49322,91 +49322,111 @@ function incomeFigures(units, rate2, averageCost, price) {
 }
 
 // src/analyze/portfolio/location.ts
-var PEA_CEILING = 15e4;
-var SP_PEA = { label: "service-public.fr \u2014 Plan d'\xE9pargne en actions (PEA)", url: "https://www.service-public.fr/particuliers/vosdroits/F2385" };
-var SP_AV = { label: "service-public.fr \u2014 Contrat d'assurance-vie : fonctionnement", url: "https://www.service-public.fr/particuliers/vosdroits/F15274" };
-var SP_AV_TAX = {
-  label: "service-public.fr \u2014 Comment sont impos\xE9s les revenus d'un contrat d'assurance-vie",
-  url: "https://www.service-public.fr/particuliers/vosdroits/F22414"
-};
+var KEYS3 = { peaCeiling: "pea.ceiling", peaMinYears: "pea.minYears", avMinYears: "av.minYears", usTreatyRate: "us.dividendWithholdingTreaty" };
+function locationFacts(year, country2 = "FR") {
+  const out = { country: country2, year, sources: [], missing: [] };
+  let facts = {};
+  try {
+    facts = loadRules(country2, year).rules.facts;
+  } catch (e) {
+    out.problem = `no ${country2} tax facts for ${year}: ${e.message.split(" \u2014 ")[0]}`;
+  }
+  for (const [field2, key] of Object.entries(KEYS3)) {
+    const f3 = facts[key];
+    if (f3 && typeof f3.value === "number") {
+      out[field2] = f3.value;
+      for (const u of f3.sources) if (!out.sources.includes(u)) out.sources.push(u);
+    } else out.missing.push(key);
+  }
+  return out;
+}
+function locationFactsNote(lf) {
+  if (!lf.missing.length) return void 0;
+  return `${lf.country} tax facts not researched for ${lf.year}: ${lf.missing.join(", ")} \u2014 the advice leaves out what they would say (no holding period, ceiling or treaty rate is assumed); run \`${templateCommand2(lf.country, lf.year)}\`, research the keys and store them with \`${TAX2.setCommand}\``;
+}
+var unresearched = (year, country2 = "FR") => ({ country: country2, year, sources: [], missing: Object.values(KEYS3) });
 var SP_CTO = { label: "service-public.fr \u2014 Plus-values sur valeurs mobili\xE8res", url: "https://www.service-public.fr/particuliers/vosdroits/F21618" };
 var PRIIPS = { label: "Regulation (EU) 1286/2014 (PRIIPs)", url: "https://eur-lex.europa.eu/eli/reg/2014/1286/oj" };
-var ACCOUNTS_ABROAD = {
-  label: "service-public.gouv.fr \u2014 comptes \xE0 l'\xE9tranger (3916, 3916-bis)",
-  url: "https://www.service-public.gouv.fr/particuliers/actualites/A18891"
-};
-var LOCATION_RULES = {
-  "eu-share": {
-    id: "eu-share",
-    applies: "shares of a company incorporated in the EU/EEA (ISIN prefix)",
-    ranking: ["PEA", "PEA-PME", "CTO", "TAXABLE"],
-    why: "PEA-eligible: gains and dividends are free of income tax after 5 years (social levies remain); in a CTO every sale and dividend is taxed",
-    sources: [SP_PEA, SP_CTO]
-  },
-  "pea-fund": {
-    id: "pea-fund",
-    applies: "an ETF or fund its issuer flags PEA-eligible (\u2265 75 % EU/EEA shares, physically or by swap)",
-    ranking: ["PEA", "AV", "CTO", "TAXABLE"],
-    why: "PEA-eligible fund: the PEA shelters it; an assurance-vie unit-linked line is second best",
-    sources: [SP_PEA, SP_AV]
-  },
-  "other-fund": {
-    id: "other-fund",
-    applies: "an ETF or fund not known to be PEA-eligible (world/US physical UCITS ETFs, bond funds)",
-    ranking: ["AV", "PER", "CTO", "TAXABLE"],
-    why: "not PEA-eligible as far as is known: an assurance-vie contract that lists it defers tax (allowance after 8 years); otherwise a CTO",
-    sources: [SP_AV, SP_AV_TAX, SP_CTO]
-  },
-  "us-etf": {
-    id: "us-etf",
-    applies: "a US-domiciled ETF",
-    ranking: ["CTO", "TAXABLE"],
-    why: "no PRIIPs key information document: EU brokers do not sell it to retail clients \u2014 an existing line stays in a CTO; buy the UCITS equivalent instead",
-    sources: [PRIIPS, SP_CTO]
-  },
-  "non-eu-share": {
-    id: "non-eu-share",
-    applies: "shares of a company incorporated outside the EU/EEA (US, UK, Switzerland\u2026)",
-    ranking: ["CTO", "TAXABLE"],
-    why: "not PEA-eligible: a CTO (file a W-8BEN for the 15 % US treaty rate on dividends; declare an account held abroad on form 3916)",
-    sources: [SP_CTO, ACCOUNTS_ABROAD]
-  },
-  crypto: {
-    id: "crypto",
-    applies: "crypto-assets",
-    ranking: ["CRYPTO"],
-    why: "no tax wrapper takes crypto: an exchange account (a MiCA-authorised venue; form 3916-bis for an account abroad), gains taxed when converted to euros",
-    sources: [ACCOUNTS_ABROAD]
-  },
-  unknown: {
-    id: "unknown",
-    applies: "a holding whose country or fund eligibility could not be read",
-    ranking: ["CTO", "TAXABLE"],
-    why: "eligibility unknown: a CTO takes anything \u2014 check the ISIN and the KID before moving it",
-    sources: [SP_CTO]
-  }
-};
-function locationRule(h) {
-  if (h.assetClass === "crypto") return { rule: LOCATION_RULES.crypto, basis: "crypto-asset" };
+var researched = (lf) => lf.sources.map((url) => ({ label: `researched ${lf.country} tax fact (${lf.year})`, url }));
+function locationRules(lf = unresearched((/* @__PURE__ */ new Date()).getUTCFullYear())) {
+  const src2 = researched(lf);
+  const pea = lf.peaMinYears !== void 0 ? `gains and dividends are free of income tax after ${lf.peaMinYears} years (social levies remain)` : "the PEA shelters gains and dividends (its holding period is not researched for this tax year)";
+  const av = lf.avMinYears !== void 0 ? `an assurance-vie contract that lists it defers tax (allowance after ${lf.avMinYears} years)` : "an assurance-vie contract that lists it defers tax (its holding period is not researched for this tax year)";
+  const treaty = lf.usTreatyRate !== void 0 ? `file a W-8BEN for the ${Number((lf.usTreatyRate * 100).toFixed(2))} % US treaty rate on dividends; ` : "";
+  const priips = ruleStatus(lf.country, "us-domiciled-etf") === "restricted";
+  return {
+    "eu-share": {
+      id: "eu-share",
+      applies: "shares of a company incorporated in the EU/EEA (ISIN prefix)",
+      ranking: ["PEA", "PEA-PME", "CTO", "TAXABLE"],
+      why: `PEA-eligible: ${pea}; in a CTO every sale and dividend is taxed`,
+      sources: [...src2, SP_CTO]
+    },
+    "pea-fund": {
+      id: "pea-fund",
+      applies: "an ETF or fund its issuer flags PEA-eligible",
+      ranking: ["PEA", "AV", "CTO", "TAXABLE"],
+      why: "PEA-eligible fund: the PEA shelters it; an assurance-vie unit-linked line is second best",
+      sources: [...src2, SP_CTO]
+    },
+    "other-fund": {
+      id: "other-fund",
+      applies: "an ETF or fund not known to be PEA-eligible (world/US physical UCITS ETFs, bond funds)",
+      ranking: ["AV", "PER", "CTO", "TAXABLE"],
+      why: `not PEA-eligible as far as is known: ${av}; otherwise a CTO`,
+      sources: [...src2, SP_CTO]
+    },
+    "us-etf": {
+      id: "us-etf",
+      applies: "a US-domiciled ETF",
+      ranking: ["CTO", "TAXABLE"],
+      why: priips ? "no PRIIPs key information document: EU brokers do not sell it to retail clients \u2014 an existing line stays in a CTO; buy the UCITS equivalent instead" : "not PEA-eligible: a CTO",
+      sources: [...priips ? [PRIIPS] : [], SP_CTO]
+    },
+    "non-eu-share": {
+      id: "non-eu-share",
+      applies: "shares of a company incorporated outside the EU/EEA (US, UK, Switzerland\u2026)",
+      ranking: ["CTO", "TAXABLE"],
+      why: `not PEA-eligible: a CTO (${treaty}declare an account held abroad on form 3916)`,
+      sources: [...src2, SP_CTO]
+    },
+    crypto: {
+      id: "crypto",
+      applies: "crypto-assets",
+      ranking: ["CRYPTO"],
+      why: "no tax wrapper takes crypto: an exchange account (form 3916-bis for an account abroad)",
+      sources: [...src2]
+    },
+    unknown: {
+      id: "unknown",
+      applies: "a holding whose country or fund eligibility could not be read",
+      ranking: ["CTO", "TAXABLE"],
+      why: "eligibility unknown: a CTO takes anything \u2014 check the ISIN and the KID before moving it",
+      sources: [SP_CTO]
+    }
+  };
+}
+function locationRule(h, rules = locationRules()) {
+  if (h.assetClass === "crypto") return { rule: rules.crypto, basis: "crypto-asset" };
   const country2 = isinCountry(h.isin) ?? (h.market === "us" ? "US" : void 0);
   if (h.assetClass === "etf" || h.assetClass === "fund") {
-    if (country2 === "US" || h.market === "us" && !h.isin) return { rule: LOCATION_RULES["us-etf"], basis: "US listing / US ISIN" };
-    if (h.peaFlag === true) return { rule: LOCATION_RULES["pea-fund"], basis: "issuer flags it PEA-eligible (FUND_PEA)" };
+    if (country2 === "US" || h.market === "us" && !h.isin) return { rule: rules["us-etf"], basis: "US listing / US ISIN" };
+    if (h.peaFlag === true) return { rule: rules["pea-fund"], basis: "issuer flags it PEA-eligible (FUND_PEA)" };
     if (h.peaFlag === void 0 && h.envelopes.includes("PEA"))
-      return { rule: LOCATION_RULES["pea-fund"], basis: "already held in a PEA, so the broker accepted it as eligible" };
-    return { rule: LOCATION_RULES["other-fund"], basis: h.peaFlag === false ? "issuer flags it not PEA-eligible" : "no issuer PEA flag read" };
+      return { rule: rules["pea-fund"], basis: "already held in a PEA, so the broker accepted it as eligible" };
+    return { rule: rules["other-fund"], basis: h.peaFlag === false ? "issuer flags it not PEA-eligible" : "no issuer PEA flag read" };
   }
-  if (!country2) return { rule: LOCATION_RULES.unknown, basis: "no ISIN read" };
+  if (!country2) return { rule: rules.unknown, basis: "no ISIN read" };
   if (isEuEea(country2))
     return {
-      rule: LOCATION_RULES["eu-share"],
+      rule: rules["eu-share"],
       basis: `ISIN prefix ${country2} (EU/EEA${euEeaMembers().origin === "built-in" ? `, built-in list as of ${euEeaMembers().asOf}` : ""})`
     };
-  return { rule: LOCATION_RULES["non-eu-share"], basis: `ISIN prefix ${country2} (outside the EU/EEA)` };
+  return { rule: rules["non-eu-share"], basis: `ISIN prefix ${country2} (outside the EU/EEA)` };
 }
-function bestEnvelope(h, available, peaRoom) {
-  const { rule, basis } = locationRule(h);
-  const usable = (e) => available.has(e) && (e !== "PEA" || peaRoom > 0);
+function bestEnvelope(h, available, peaRoom, rules = locationRules()) {
+  const { rule, basis } = locationRule(h, rules);
+  const usable = (e) => available.has(e) && (e !== "PEA" || peaRoom === void 0 || peaRoom > 0);
   const best = rule.ranking.find(usable);
   const rank2 = (e) => e === "unknown" ? rule.ranking.length : rule.ranking.indexOf(e) === -1 ? rule.ranking.length : rule.ranking.indexOf(e);
   const worse = best ? h.envelopes.filter((e) => rank2(e) > rank2(best)) : [];
@@ -49414,7 +49434,8 @@ function bestEnvelope(h, available, peaRoom) {
   const reason = [
     `${rule.applies} (${basis}): ${rule.why}`,
     best ? `best envelope held: ${best}` : `none of ${rule.ranking.join(", ")} is in the profile`,
-    ideal !== best ? `ideal: ${ideal}${ideal === "PEA" && available.has("PEA") && peaRoom <= 0 ? " (the PEA has no room left under its ceiling)" : ""}` : "",
+    ideal !== best ? `ideal: ${ideal}${ideal === "PEA" && available.has("PEA") && peaRoom !== void 0 && peaRoom <= 0 ? " (the PEA has no room left under its ceiling)" : ""}` : "",
+    best === "PEA" && peaRoom === void 0 ? "the room under the PEA ceiling is unknown (the ceiling is not researched for this tax year)" : "",
     worse.length ? `held in ${worse.join(", ")}, worse than ${best}` : "",
     rule.id === "eu-share" || rule.id === "pea-fund" ? "eligibility is a first pass \u2014 confirm with the broker" : ""
   ].filter(Boolean).join("; ");
@@ -49476,12 +49497,17 @@ function orderFor(a) {
     reasons
   };
 }
-function sellTaxNote(envelope) {
+var pctText = (x) => `${Number((x * 100).toFixed(2))} %`;
+function sellTaxNote(envelope, ctx) {
+  const research = `\`${templateCommand2(ctx.residence, ctx.year)}\``;
+  if (ctx.residence !== "FR")
+    return `how a sell from this ${envelope === "unknown" ? "account" : envelope} is taxed for a ${ctx.residence} tax resident is not built in: research the ${ctx.residence} rules for ${ctx.year} (${research}); \`tax report\` then shows the realised gain beside them`;
+  const rate2 = ctx.pfuIr !== void 0 && ctx.psCapital !== void 0 ? `the flat tax, PFU: ${pctText(ctx.pfuIr)} income tax + ${pctText(ctx.psCapital)} social levies on the net gain, researched for ${ctx.year}` : `the flat tax, PFU, whose rates are not researched for ${ctx.year} \u2014 ${research}`;
   if (envelope === "PEA" || envelope === "PEA-PME") return "inside the PEA a sell realises nothing taxable: the plan is taxed only on withdrawal";
   if (envelope === "AV" || envelope === "PER") return "inside the wrapper an arbitrage is not taxed; tax applies on withdrawal";
-  if (envelope === "CRYPTO") return "crypto \u2192 crypto is not taxed in France; a sell to euros realises a taxable capital gain (art. 150 VH bis CGI, flat tax)";
-  if (envelope === "CTO" || envelope === "TAXABLE")
-    return "in a CTO a sell realises a taxable gain or loss (the French flat tax, PFU, on the net gain) \u2014 the tax engine is to come";
+  if (envelope === "CRYPTO")
+    return `crypto \u2192 crypto is not taxed in France; a sell to euros realises a taxable capital gain (art. 150 VH bis CGI; ${rate2}) \u2014 \`tax report\` computes it`;
+  if (envelope === "CTO" || envelope === "TAXABLE") return `in a CTO a sell realises a taxable gain or loss (${rate2}) \u2014 \`tax report\` computes it`;
   return "the envelope is unknown: whether this sell is taxable depends on it (a CTO realises a taxable gain, a PEA does not)";
 }
 
@@ -49489,8 +49515,20 @@ function sellTaxNote(envelope) {
 var DAY10 = 864e5;
 var pct10 = (x) => Number((x * 100).toFixed(6));
 var money3 = (x) => Number(x.toFixed(2));
+function sellTaxContext(m) {
+  const residence = (m.profile.taxResidence || m.profile.jurisdiction).toUpperCase();
+  const year = m.now.getUTCFullYear();
+  try {
+    const facts = loadRules(residence, year).rules.facts;
+    const num17 = (k) => typeof facts[k]?.value === "number" ? facts[k].value : void 0;
+    return { residence, year, pfuIr: num17("pfu.ir"), psCapital: num17("ps.capital") };
+  } catch {
+    return { residence, year };
+  }
+}
 async function rebalanceAnalysis(m, f3, o) {
   const P = `PORTFOLIO.${m.bookName}.rebalance`;
+  const sellTax = sellTaxContext(m);
   const band = o.bandPct ?? 5;
   const rel = o.relBand ?? 0.25;
   const targets = {};
@@ -49633,7 +49671,7 @@ async function rebalanceAnalysis(m, f3, o) {
     const env2 = main2?.envelope ?? "unknown";
     let tax;
     if (order.side === "sell") {
-      tax = sellTaxNote(env2);
+      tax = sellTaxNote(env2, sellTax);
       if (order.realisedPmp !== void 0)
         f3.derive(
           sec,
@@ -49651,7 +49689,7 @@ async function rebalanceAnalysis(m, f3, o) {
         tax,
         void 0,
         [`${P}.${h.symbol}.units`],
-        "the envelope's rule \u2014 no tax amount is computed (the tax engine is to come)"
+        "the envelope's rule, with the researched rates of the tax year when there are \u2014 no tax amount is computed here (`tax report` computes it)"
       );
     }
     const account = main2?.account;
@@ -49672,8 +49710,18 @@ async function rebalanceAnalysis(m, f3, o) {
 }
 async function locationAnalysis(m, f3) {
   const P = `PORTFOLIO.${m.bookName}.location`;
-  if (m.profile.jurisdiction !== "FR")
-    f3.note(`the location rules are written for a French resident; the profile says ${m.profile.jurisdiction} \u2014 read them as such`);
+  const residence = (m.profile.taxResidence || m.profile.jurisdiction).toUpperCase();
+  const year = m.now.getUTCFullYear();
+  if (residence !== "FR") {
+    f3.note(
+      `no asset-location advice for a ${residence} tax resident: ultrastock's rankings are of French envelopes (PEA, assurance-vie, CTO) and say nothing about ${residence} accounts \u2014 research the ${residence} tax-advantaged accounts and how each taxes gains, dividends and interest (\`${templateCommand2(residence, year)}\`), then place the holdings by them`
+    );
+    return { residence, rules: {}, peaRoom: void 0, holdings: [] };
+  }
+  const facts = locationFacts(year, residence);
+  const factsNote = locationFactsNote(facts);
+  if (factsNote) f3.note(factsNote);
+  const rules = locationRules(facts);
   const accounts = [...new Set(m.txs.map((t) => t.account))];
   const envOf2 = (a) => envelopeOf(m.profile, a);
   const available = /* @__PURE__ */ new Set([
@@ -49701,16 +49749,21 @@ async function locationAnalysis(m, f3) {
       notes: []
     });
     const deposited = depositPoints.reduce((s, p) => s + p.value, 0);
-    room = PEA_CEILING - deposited;
-    f3.derive(
-      "PEA",
-      `${P}.pea.room`,
-      "room left under the PEA deposit ceiling",
-      money3(room),
-      "EUR",
-      depositPoints.map((p) => p.key),
-      `${PEA_CEILING} \u20AC ceiling \u2212 \u03A3 deposits into the PEA (withdrawals do not give room back)`
-    );
+    if (facts.peaCeiling !== void 0) {
+      room = facts.peaCeiling - deposited;
+      f3.derive(
+        "PEA",
+        `${P}.pea.room`,
+        "room left under the PEA deposit ceiling",
+        money3(room),
+        "EUR",
+        depositPoints.map((p) => p.key),
+        `${facts.peaCeiling} \u20AC ceiling (researched pea.ceiling, ${year}: ${facts.sources.join(", ") || "no source"}) \u2212 \u03A3 deposits into the PEA (withdrawals do not give room back)`
+      );
+    } else {
+      room = void 0;
+      f3.note(`the room under the PEA ceiling is not computed: pea.ceiling is not researched for ${year} (\`${templateCommand2(residence, year)}\`)`);
+    }
   } else f3.note("no PEA among the accounts or the profile's envelopes: a PEA would shelter the EU shares and PEA-eligible funds");
   const funds = m.holdings.filter((h) => (h.assetClass === "etf" || h.assetClass === "fund") && h.isin && !h.isin.startsWith("US")).slice(0, 10);
   const flags = await mapLimit(funds, 2, async (h) => amundiPeaFlag(h.isin).catch(() => void 0));
@@ -49735,14 +49788,15 @@ async function locationAnalysis(m, f3) {
     const r3 = bestEnvelope(
       { symbol: h.symbol, assetClass: h.assetClass, market: h.instrument?.market, isin: h.isin, peaFlag: peaFlag.get(h.symbol)?.flag, envelopes: envs },
       available,
-      peaAccounts.size ? room : 0
+      peaAccounts.size ? room : 0,
+      rules
     );
     const from = [
       h.keys.quantity,
       ...h.isin ? [`${h.symbol}.instrument.isin`] : [],
       `${h.symbol}.instrument.kind`,
       ...peaFlag.get(h.symbol) ? [peaFlag.get(h.symbol).key] : [],
-      ...peaAccounts.size ? [`${P}.pea.room`] : []
+      ...peaAccounts.size && room !== void 0 ? [`${P}.pea.room`] : []
     ];
     const sec = `${h.symbol}`;
     f3.derive(
@@ -49773,7 +49827,7 @@ async function locationAnalysis(m, f3) {
   f3.note(
     "PEA eligibility is a first pass (ISIN country prefix for shares, the issuer's flag for funds) \u2014 confirm with the broker before moving anything; a move between envelopes is a sale and a purchase"
   );
-  return { rules: LOCATION_RULES, peaRoom: peaAccounts.size ? room : void 0, holdings: out };
+  return { residence, rules, peaRoom: peaAccounts.size ? room : void 0, holdings: out };
 }
 var LOOKTHROUGH_MAX_FUNDS = 10;
 async function compositionOf(h) {
@@ -57291,11 +57345,11 @@ function chosenMethod(text2) {
 function neutralReport(input) {
   const base2 = input.currency.toUpperCase();
   const warnings = [];
-  const researched = input.rules?.facts.costMethod?.value;
-  const chosen = chosenMethod(researched);
+  const researched2 = input.rules?.facts.costMethod?.value;
+  const chosen = chosenMethod(researched2);
   if (!input.rules?.facts.costMethod)
     warnings.push("costMethod is not researched: the cost is shown under FIFO and the weighted average, neither is marked as the law's");
-  else if (!chosen) warnings.push(`costMethod "${String(researched)}" is neither FIFO nor the weighted average: both are shown, apply the researched method`);
+  else if (!chosen) warnings.push(`costMethod "${String(researched2)}" is neither FIFO nor the weighted average: both are shown, apply the researched method`);
   const value2 = (t, amount, currency = t.currency) => {
     if (amount === 0) return 0;
     let c = currency.toUpperCase();
@@ -57550,7 +57604,7 @@ function neutralReport(input) {
     country: input.rules?.country ?? "",
     year: input.year,
     currency: base2,
-    costMethod: { researched: typeof researched === "string" ? researched : void 0, chosen },
+    costMethod: { researched: typeof researched2 === "string" ? researched2 : void 0, chosen },
     disposals,
     income,
     charges,
@@ -61220,12 +61274,12 @@ async function doctorReport(opts = {}) {
   };
   if (profile.jurisdiction) {
     const rules = rulesFor(profile.jurisdiction).rules;
-    const unresearched = rules.filter((r3) => !r3.researched).map((r3) => r3.id);
+    const unresearched2 = rules.filter((r3) => !r3.researched).map((r3) => r3.id);
     report2.jurisdiction = {
       country: profile.jurisdiction,
-      researched: rules.length - unresearched.length,
+      researched: rules.length - unresearched2.length,
       total: rules.length,
-      unresearched,
+      unresearched: unresearched2,
       research: researchCommand("jurisdiction", profile.jurisdiction)
     };
   }

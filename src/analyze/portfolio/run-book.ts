@@ -15,10 +15,11 @@ import { getQuote, resolveSymbol } from "../../providers/router.js";
 import { envelopeOf, type Holding, type MarkedBook, referenceRates } from "./book.js";
 import type { Findings } from "./findings.js";
 import { incomeFigures, ledgerDividends, trailingPerShare } from "./income.js";
-import { bestEnvelope, LOCATION_RULES, PEA_CEILING, peaDeposits } from "./location.js";
+import { bestEnvelope, locationFacts, locationFactsNote, locationRules, peaDeposits } from "./location.js";
 import { feeLookup } from "../../trading/fees.js";
-import { orderFor, sellTaxNote } from "./rebalance.js";
+import { orderFor, type SellTaxContext, sellTaxNote } from "./rebalance.js";
 import { euEeaMembers, membershipNote } from "../../core/geo.js";
+import { loadRules, templateCommand } from "../../tax/rules.js";
 
 const DAY = 86_400_000;
 const pct = (x: number) => Number((x * 100).toFixed(6));
@@ -33,9 +34,23 @@ export interface RebalanceOptions {
   contribution?: number;
 }
 
+/** The tax residence and the researched rates a sell's tax note may quote (none when the year is not researched). */
+function sellTaxContext(m: MarkedBook): SellTaxContext {
+  const residence = (m.profile.taxResidence || m.profile.jurisdiction).toUpperCase();
+  const year = m.now.getUTCFullYear();
+  try {
+    const facts = loadRules(residence, year).rules.facts;
+    const num = (k: string) => (typeof facts[k]?.value === "number" ? (facts[k]!.value as number) : undefined);
+    return { residence, year, pfuIr: num("pfu.ir"), psCapital: num("ps.capital") };
+  } catch {
+    return { residence, year };
+  }
+}
+
 /** Everything `portfolio rebalance` registers: drifts, the band rule's amounts, and orders in units with fees. */
 export async function rebalanceAnalysis(m: MarkedBook, f: Findings, o: RebalanceOptions) {
   const P = `PORTFOLIO.${m.bookName}.rebalance`;
+  const sellTax = sellTaxContext(m);
   const band = o.bandPct ?? 5;
   const rel = o.relBand ?? 0.25;
   const targets: Record<string, number> = {};
@@ -182,7 +197,7 @@ export async function rebalanceAnalysis(m: MarkedBook, f: Findings, o: Rebalance
     const env = main?.envelope ?? "unknown";
     let tax: string | undefined;
     if (order.side === "sell") {
-      tax = sellTaxNote(env);
+      tax = sellTaxNote(env, sellTax);
       if (order.realisedPmp !== undefined)
         f.derive(
           sec,
@@ -200,7 +215,7 @@ export async function rebalanceAnalysis(m: MarkedBook, f: Findings, o: Rebalance
         tax,
         undefined,
         [`${P}.${h.symbol}.units`],
-        "the envelope's rule — no tax amount is computed (the tax engine is to come)",
+        "the envelope's rule, with the researched rates of the tax year when there are — no tax amount is computed here (`tax report` computes it)",
       );
     }
     const account = main?.account;
@@ -225,8 +240,19 @@ export async function rebalanceAnalysis(m: MarkedBook, f: Findings, o: Rebalance
 /** Everything `portfolio location` registers. */
 export async function locationAnalysis(m: MarkedBook, f: Findings) {
   const P = `PORTFOLIO.${m.bookName}.location`;
-  if (m.profile.jurisdiction !== "FR")
-    f.note(`the location rules are written for a French resident; the profile says ${m.profile.jurisdiction} — read them as such`);
+  const residence = (m.profile.taxResidence || m.profile.jurisdiction).toUpperCase();
+  const year = m.now.getUTCFullYear();
+  if (residence !== "FR") {
+    // The only rankings ultrastock has are French envelopes: none of them is advice for another residence.
+    f.note(
+      `no asset-location advice for a ${residence} tax resident: ultrastock's rankings are of French envelopes (PEA, assurance-vie, CTO) and say nothing about ${residence} accounts — research the ${residence} tax-advantaged accounts and how each taxes gains, dividends and interest (\`${templateCommand(residence, year)}\`), then place the holdings by them`,
+    );
+    return { residence, rules: {}, peaRoom: undefined, holdings: [] };
+  }
+  const facts = locationFacts(year, residence);
+  const factsNote = locationFactsNote(facts);
+  if (factsNote) f.note(factsNote);
+  const rules = locationRules(facts);
   const accounts = [...new Set(m.txs.map((t) => t.account))];
   const envOf = (a: string) => envelopeOf(m.profile, a);
   const available = new Set<EnvelopeType>([
@@ -243,7 +269,7 @@ export async function locationAnalysis(m: MarkedBook, f: Findings) {
     value: money(peaDeposits(m.txs, new Set([a]))),
     unit: "EUR",
   }));
-  let room = 0;
+  let room: number | undefined = 0;
   if (peaAccounts.size) {
     f.input({
       kind: "ledger",
@@ -254,16 +280,21 @@ export async function locationAnalysis(m: MarkedBook, f: Findings) {
       notes: [],
     });
     const deposited = depositPoints.reduce((s, p) => s + p.value, 0);
-    room = PEA_CEILING - deposited;
-    f.derive(
-      "PEA",
-      `${P}.pea.room`,
-      "room left under the PEA deposit ceiling",
-      money(room),
-      "EUR",
-      depositPoints.map((p) => p.key),
-      `${PEA_CEILING} € ceiling − Σ deposits into the PEA (withdrawals do not give room back)`,
-    );
+    if (facts.peaCeiling !== undefined) {
+      room = facts.peaCeiling - deposited;
+      f.derive(
+        "PEA",
+        `${P}.pea.room`,
+        "room left under the PEA deposit ceiling",
+        money(room),
+        "EUR",
+        depositPoints.map((p) => p.key),
+        `${facts.peaCeiling} € ceiling (researched pea.ceiling, ${year}: ${facts.sources.join(", ") || "no source"}) − Σ deposits into the PEA (withdrawals do not give room back)`,
+      );
+    } else {
+      room = undefined;
+      f.note(`the room under the PEA ceiling is not computed: pea.ceiling is not researched for ${year} (\`${templateCommand(residence, year)}\`)`);
+    }
   } else f.note("no PEA among the accounts or the profile's envelopes: a PEA would shelter the EU shares and PEA-eligible funds");
 
   // The issuer's PEA flag for funds (Amundi answers for its own; others: unknown).
@@ -292,13 +323,14 @@ export async function locationAnalysis(m: MarkedBook, f: Findings) {
       { symbol: h.symbol, assetClass: h.assetClass, market: h.instrument?.market, isin: h.isin, peaFlag: peaFlag.get(h.symbol)?.flag, envelopes: envs },
       available,
       peaAccounts.size ? room : 0,
+      rules,
     );
     const from = [
       h.keys.quantity,
       ...(h.isin ? [`${h.symbol}.instrument.isin`] : []),
       `${h.symbol}.instrument.kind`,
       ...(peaFlag.get(h.symbol) ? [peaFlag.get(h.symbol)!.key] : []),
-      ...(peaAccounts.size ? [`${P}.pea.room`] : []),
+      ...(peaAccounts.size && room !== undefined ? [`${P}.pea.room`] : []),
     ];
     const sec = `${h.symbol}`;
     f.derive(
@@ -329,7 +361,7 @@ export async function locationAnalysis(m: MarkedBook, f: Findings) {
   f.note(
     "PEA eligibility is a first pass (ISIN country prefix for shares, the issuer's flag for funds) — confirm with the broker before moving anything; a move between envelopes is a sale and a purchase",
   );
-  return { rules: LOCATION_RULES, peaRoom: peaAccounts.size ? room : undefined, holdings: out };
+  return { residence, rules, peaRoom: peaAccounts.size ? room : undefined, holdings: out };
 }
 
 // ─── lookthrough ───────────────────────────────────────────────────────────

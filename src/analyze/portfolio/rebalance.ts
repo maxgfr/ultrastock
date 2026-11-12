@@ -7,6 +7,7 @@
 // each sell costs in tax terms. Never places an order.
 import { existsSync, readFileSync } from "node:fs";
 import { UsageError } from "../../engine.js";
+import { templateCommand } from "../../tax/rules.js";
 import { type FeeLookup, feeFor } from "../../trading/fees.js";
 
 /** Targets from a JSON file path or inline JSON: {"CW8.PA": 60, "MC.PA": 10, "CASH": 5} — weights in %. */
@@ -98,12 +99,35 @@ export function orderFor(a: {
   };
 }
 
-/** What a sell costs in tax terms in an envelope — a statement, not a computation (the tax engine is to come). */
-export function sellTaxNote(envelope: string): string {
+/** Who sells, and the researched rates of their tax year that a sell's note may quote (absent: not researched). */
+export interface SellTaxContext {
+  residence: string;
+  year: number;
+  /** The flat tax's income-tax part (researched pfu.ir). */
+  pfuIr?: number;
+  /** Social levies on capital gains (researched ps.capital). */
+  psCapital?: number;
+}
+
+const pctText = (x: number) => `${Number((x * 100).toFixed(2))} %`;
+
+/**
+ * What a sell costs in tax terms in an envelope — a statement, not a computation (`tax report` computes). Only the
+ * French envelopes have one, and it quotes a rate only when it is researched for the year; for any other residence the
+ * note says what to research instead of guessing.
+ */
+export function sellTaxNote(envelope: string, ctx: SellTaxContext): string {
+  const research = `\`${templateCommand(ctx.residence, ctx.year)}\``;
+  if (ctx.residence !== "FR")
+    return `how a sell from this ${envelope === "unknown" ? "account" : envelope} is taxed for a ${ctx.residence} tax resident is not built in: research the ${ctx.residence} rules for ${ctx.year} (${research}); \`tax report\` then shows the realised gain beside them`;
+  const rate =
+    ctx.pfuIr !== undefined && ctx.psCapital !== undefined
+      ? `the flat tax, PFU: ${pctText(ctx.pfuIr)} income tax + ${pctText(ctx.psCapital)} social levies on the net gain, researched for ${ctx.year}`
+      : `the flat tax, PFU, whose rates are not researched for ${ctx.year} — ${research}`;
   if (envelope === "PEA" || envelope === "PEA-PME") return "inside the PEA a sell realises nothing taxable: the plan is taxed only on withdrawal";
   if (envelope === "AV" || envelope === "PER") return "inside the wrapper an arbitrage is not taxed; tax applies on withdrawal";
-  if (envelope === "CRYPTO") return "crypto → crypto is not taxed in France; a sell to euros realises a taxable capital gain (art. 150 VH bis CGI, flat tax)";
-  if (envelope === "CTO" || envelope === "TAXABLE")
-    return "in a CTO a sell realises a taxable gain or loss (the French flat tax, PFU, on the net gain) — the tax engine is to come";
+  if (envelope === "CRYPTO")
+    return `crypto → crypto is not taxed in France; a sell to euros realises a taxable capital gain (art. 150 VH bis CGI; ${rate}) — \`tax report\` computes it`;
+  if (envelope === "CTO" || envelope === "TAXABLE") return `in a CTO a sell realises a taxable gain or loss (${rate}) — \`tax report\` computes it`;
   return "the envelope is unknown: whether this sell is taxable depends on it (a CTO realises a taxable gain, a PEA does not)";
 }
