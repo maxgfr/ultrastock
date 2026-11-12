@@ -19,6 +19,7 @@ import { coingeckoMarkets } from "../providers/crypto/coingecko.js";
 import { coinmetricsAssetMetrics } from "../providers/crypto/coinmetrics.js";
 import { llamaYields } from "../providers/crypto/defillama.js";
 import { mempoolNetwork } from "../providers/crypto/mempool.js";
+import { treasuryCurve } from "../providers/macro/treasury.js";
 import { cboeChain } from "../providers/options/cboe.js";
 import { deribitChain, deribitDvol } from "../providers/options/deribit.js";
 import type { OrderBook } from "../providers/prediction/common.js";
@@ -75,6 +76,31 @@ const fraction = (v: string | undefined, flag: string, lo: number, hi: number): 
 
 // --- options-analysis ------------------------------------------------------------------
 
+/**
+ * The risk-free rate a US chain's Black–Scholes marks use: `--rate` as given, else the latest US Treasury 3-month par
+ * yield (home.treasury.gov, the T-bill rate for a USD option). Unreadable, the rate is unknown: a usage error asks for
+ * `--rate` rather than assume one.
+ */
+export async function blackScholesRate(flag: number | undefined, now: Date): Promise<{ rate: number; basis: string; dataset?: Dataset }> {
+  if (flag !== undefined) return { rate: flag / 100, basis: `--rate ${flag} % as given` };
+  let ds: Dataset;
+  try {
+    ds = await treasuryCurve(now);
+  } catch (e) {
+    throw new UsageError(
+      `the risk-free rate is unknown: the US Treasury 3-month yield could not be read (${(e as Error).message}) — give it with --rate <percent>`,
+    );
+  }
+  const p = ds.points.find((x) => x.key === "US.rates.ust.3M");
+  if (typeof p?.value !== "number")
+    throw new UsageError("the risk-free rate is unknown: the US Treasury curve carries no 3-month yield today — give it with --rate <percent>");
+  return {
+    rate: p.value / 100,
+    basis: `US Treasury 3-month par yield of ${p.asOf ?? ds.provenance.asOf ?? "the latest session"} (US.rates.ust.3M, home.treasury.gov); --rate overrides it`,
+    dataset: { ...ds, title: "US Treasury 3-month par yield (the Black–Scholes rate)", points: [p] },
+  };
+}
+
 const OPTIONS_USAGE = `usage: ultrastock options-analysis <symbol> [--expiry YYYY-MM-DD] [--strategy <spec>] [--spot-moves=-30,-10,0,10,50] [--rate <pct>] [--out <dir>] — ${STRATEGY_USAGE}`;
 
 export async function optionsAnalysisCommand(args: CommandArgs, asJson: boolean): Promise<void> {
@@ -82,11 +108,14 @@ export async function optionsAnalysisCommand(args: CommandArgs, asJson: boolean)
   if (!raw) throw new UsageError(OPTIONS_USAGE);
   const venue: OptionVenue = DERIBIT.has(raw) ? "deribit" : "cboe";
   const now = clockNow();
-  const rate = (fraction(argValue(args, "rate"), "rate", 0, 20) ?? 4) / 100;
+  const rateFlag = fraction(argValue(args, "rate"), "rate", 0, 20);
   const spec = argValue(args, "strategy") ? parseStrategySpec(argValue(args, "strategy")!) : undefined;
   const movesArg = argList(args, "spot-moves");
   const moves = movesArg.length ? movesArg.map((m) => fraction(m.replace(/%$/, ""), "spot-moves", -95, 500)! / 100).sort((a, b) => a - b) : undefined;
   const chain = venue === "deribit" ? await deribitChain(raw.slice(0, 3)) : await cboeChain(raw);
+  // Deribit's coin-settled marks carry no rate; a US chain's Black–Scholes marks need one, read live or given.
+  const bs = venue === "cboe" ? await blackScholesRate(rateFlag, now) : undefined;
+  const rate = bs?.rate ?? 0;
   const q = toQuantChain(chain, venue, now, rate);
   const U = q.underlying;
   const asked = argValue(args, "expiry");
@@ -108,8 +137,7 @@ export async function optionsAnalysisCommand(args: CommandArgs, asJson: boolean)
 
   const readings = new PointList();
   readings.num(`${U}.quant.spot`, `${U} underlying price (${chain.provenance.source})`, q.spot, q.currency);
-  if (venue === "cboe")
-    readings.num(`${U}.quant.rate`, `${U} risk-free rate assumed for Black–Scholes marks`, rate * 100, "%", "assumption (--rate, default 4 %)");
+  if (bs) readings.num(`${U}.quant.rate`, `${U} risk-free rate for Black–Scholes marks`, rate * 100, "%", bs.basis);
   for (const e of expiries) expiryPoints(q, e, readings);
   unusualPoints(q, expiries, readings);
 
@@ -138,6 +166,7 @@ export async function optionsAnalysisCommand(args: CommandArgs, asJson: boolean)
       "gamma exposure assumes dealers are long calls and short puts — their real books are unknown",
     ]),
     dataset("options-analysis", `${U} implied-volatility term structure and IV rank`, U, vol, prov, volNotes),
+    ...(bs?.dataset ? [bs.dataset] : []),
   ];
   if (spec) {
     const expiry = asked ?? expiries[0]!;

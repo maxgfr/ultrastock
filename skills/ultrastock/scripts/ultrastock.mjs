@@ -19124,6 +19124,118 @@ async function mempoolNetwork() {
   ];
 }
 
+// src/providers/macro/common.ts
+function requireOk(source2, res, what) {
+  if (!res.ok) throw new ProviderError(source2, `${what} unavailable (HTTP ${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+}
+function seriesPoints(key, label2, unit, obs, opts = {}) {
+  const last2 = obs[obs.length - 1];
+  if (!last2) return [];
+  const points = [{ key, label: label2, value: last2.value, unit, asOf: last2.date }];
+  const prev = obs[obs.length - 2];
+  if (prev) {
+    const bp = unit === "%";
+    points.push({
+      key: `${key}.chg`,
+      label: `${label2}, change since ${prev.date}`,
+      value: bp ? Number(((last2.value - prev.value) * 100).toFixed(4)) : Number((last2.value - prev.value).toPrecision(12)),
+      unit: bp ? "bp" : unit,
+      asOf: last2.date,
+      formula: bp ? `(${key}@${last2.date} \u2212 ${key}@${prev.date}) \xD7 100` : `${key}@${last2.date} \u2212 ${key}@${prev.date}`
+    });
+  }
+  if (opts.history) for (const o of obs) points.push({ key: `${key}.${o.date}`, label: `${label2} (${o.date})`, value: o.value, unit, asOf: o.date });
+  return points;
+}
+function sortObservations(obs) {
+  const byDate = /* @__PURE__ */ new Map();
+  for (const o of obs) if (Number.isFinite(o.value)) byDate.set(o.date, o.value);
+  return [...byDate.entries()].map(([date, value2]) => ({ date, value: value2 })).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// src/providers/macro/treasury.ts
+var SOURCE14 = "us-treasury";
+var BASE16 = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv";
+var treasuryCsvUrl = (year) => `${BASE16}/${year}/all?type=daily_treasury_yield_curve&field_tdr_date_value=${year}&page&_format=csv`;
+function tenorOf(header2) {
+  const m = /^([\d.]+)\s*(mo|month|months|yr|year|years)$/i.exec(header2.trim());
+  return m ? `${m[1]}${m[2].toLowerCase().startsWith("m") ? "M" : "Y"}` : void 0;
+}
+function parseTreasuryCsv(text2) {
+  const rows = [];
+  for (const r3 of csvRecords(text2)) {
+    const date = mdyToIso(r3.Date);
+    if (!date) continue;
+    const yields = {};
+    for (const [h, v] of Object.entries(r3)) {
+      const tenor = tenorOf(h);
+      const n2 = parseLooseNumber(v);
+      if (tenor && n2 !== void 0) yields[tenor] = n2;
+    }
+    if (Object.keys(yields).length) rows.push({ date, yields });
+  }
+  return rows.sort((a, b) => a.date.localeCompare(b.date));
+}
+async function readYear(year) {
+  const res = await fetchText(treasuryCsvUrl(year), { accept: "text/csv" });
+  requireOk(SOURCE14, res, `the ${year} par yield curve`);
+  return { rows: parseTreasuryCsv(res.body), url: res.url, fetchedAt: res.fetchedAt };
+}
+async function treasuryRows(days, now = clockNow()) {
+  const from = isoDayOf(new Date(now.getTime() - days * 864e5));
+  const year = now.getUTCFullYear();
+  const cur = await readYear(year);
+  let rows = cur.rows;
+  if (from.slice(0, 4) < String(year) || !rows.length) rows = [...(await readYear(year - 1)).rows, ...rows];
+  rows = rows.filter((r3) => r3.date >= from);
+  if (!rows.length) throw new ProviderError(SOURCE14, `no par yield curve published since ${from}`);
+  return { rows, url: cur.url, fetchedAt: cur.fetchedAt };
+}
+var spread = (key, label2, long, short, row) => {
+  const a = row.yields[long];
+  const b = row.yields[short];
+  if (a === void 0 || b === void 0) return void 0;
+  return {
+    key,
+    label: label2,
+    value: Number(((a - b) * 100).toFixed(2)),
+    unit: "bp",
+    asOf: row.date,
+    formula: `(US.rates.ust.${long} \u2212 US.rates.ust.${short}) \xD7 100`
+  };
+};
+function curvePoints(row) {
+  const points = Object.entries(row.yields).map(([tenor, v]) => ({
+    key: `US.rates.ust.${tenor}`,
+    label: `US Treasury ${tenor} par yield`,
+    value: v,
+    unit: "%",
+    asOf: row.date
+  }));
+  for (const p of [
+    spread("US.rates.ust.spread.2s10s", "US Treasury 2s10s spread", "10Y", "2Y", row),
+    spread("US.rates.ust.spread.3m10y", "US Treasury 3m10y spread", "10Y", "3M", row)
+  ])
+    if (p) points.push(p);
+  return points;
+}
+async function treasuryCurve(now = clockNow()) {
+  const { rows, url, fetchedAt } = await treasuryRows(14, now);
+  const last2 = rows[rows.length - 1];
+  const points = curvePoints(last2);
+  const tenYear = rows.slice(-2).flatMap((r3) => r3.yields["10Y"] === void 0 ? [] : [{ date: r3.date, value: r3.yields["10Y"] }]);
+  const chg = seriesPoints("US.rates.ust.10Y", "US Treasury 10Y par yield", "%", tenYear).find((p) => p.key.endsWith(".chg"));
+  if (chg) points.push(chg);
+  return {
+    kind: "macro",
+    title: `US Treasury par yield curve \u2014 ${last2.date}`,
+    subject: "US",
+    points,
+    provenance: { source: SOURCE14, url, fetchedAt, delay: "eod", official: true, asOf: last2.date },
+    notes: ["Par yields (bond-equivalent, %), published by the US Treasury each business day after the close."]
+  };
+}
+
 // src/providers/options/chain.ts
 var DAY = 864e5;
 function summarizeChain(chain2, now) {
@@ -19220,8 +19332,8 @@ function chainDataset(chain2, source2, now, maxExpiries = 12) {
 }
 
 // src/providers/options/cboe.ts
-var BASE16 = "https://cdn.cboe.com/api/global/delayed_quotes/options";
-var SOURCE14 = "cboe";
+var BASE17 = "https://cdn.cboe.com/api/global/delayed_quotes/options";
+var SOURCE15 = "cboe";
 var INDEX_ROOTS = /* @__PURE__ */ new Set(["SPX", "XSP", "NDX", "RUT", "VIX", "DJX", "OEX", "XEO", "MXEA", "MXEF"]);
 function cboeSymbol(symbol) {
   const s = symbol.toUpperCase().trim().replace(/^[\^$]/, "");
@@ -19261,16 +19373,16 @@ function parseCboeOptions(options) {
 }
 async function cboeChain(symbol) {
   const file = cboeSymbol(symbol);
-  const url = `${BASE16}/${file}.json`;
+  const url = `${BASE17}/${file}.json`;
   const res = await fetchJson(url, { maxBytes: 64 * 1024 * 1024, timeoutMs: 6e4 });
   if (!res.ok || !res.data?.data) {
-    if (res.status === 403 || res.status === 404) throw new ProviderError(SOURCE14, `CBOE lists no options on ${symbol} (${file})`, 404);
-    throw new ProviderError(SOURCE14, `option chain for ${file} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+    if (res.status === 403 || res.status === 404) throw new ProviderError(SOURCE15, `CBOE lists no options on ${symbol} (${file})`, 404);
+    throw new ProviderError(SOURCE15, `option chain for ${file} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   }
   const d = res.data.data;
   const contracts = parseCboeOptions(d.options ?? []);
   const price = num4(d.current_price) ?? num4(d.close);
-  if (!contracts.length || price === void 0) throw new ProviderError(SOURCE14, `CBOE's file for ${file} holds no contracts`, 404);
+  if (!contracts.length || price === void 0) throw new ProviderError(SOURCE15, `CBOE's file for ${file} holds no contracts`, 404);
   const underlying = file.replace(/^_/, "");
   const session = d.last_trade_time?.slice(0, 10) ?? res.fetchedAt.slice(0, 10);
   return {
@@ -19281,7 +19393,7 @@ async function cboeChain(symbol) {
     asOf: session,
     contracts,
     ...pos(d.iv30) !== void 0 ? { iv30: d.iv30 } : {},
-    provenance: { source: SOURCE14, url: res.url, fetchedAt: res.fetchedAt, delay: "15min", official: true, asOf: session },
+    provenance: { source: SOURCE15, url: res.url, fetchedAt: res.fetchedAt, delay: "15min", official: true, asOf: session },
     notes: [
       `CBOE delayed quotes (15 minutes); file stamped ${res.data.timestamp ?? "without a time"} (US Eastern, as published)`,
       "premiums per share; one contract is usually 100 shares"
@@ -19290,7 +19402,7 @@ async function cboeChain(symbol) {
 }
 async function cboeOptions(symbol, opts = {}) {
   const chain2 = await cboeChain(symbol);
-  const dataset3 = chainDataset(chain2, SOURCE14, opts.now ?? clockNow(), opts.maxExpiries);
+  const dataset3 = chainDataset(chain2, SOURCE15, opts.now ?? clockNow(), opts.maxExpiries);
   if (chain2.iv30 !== void 0)
     dataset3.points.splice(1, 0, {
       key: `${chain2.underlying}.opt.iv30`,
@@ -19303,8 +19415,8 @@ async function cboeOptions(symbol, opts = {}) {
 }
 
 // src/providers/options/deribit.ts
-var BASE17 = "https://www.deribit.com/api/v2/public";
-var SOURCE15 = "deribit";
+var BASE18 = "https://www.deribit.com/api/v2/public";
+var SOURCE16 = "deribit";
 var PACE5 = { hostIntervalMs: 100 };
 var MONTHS4 = {
   JAN: "01",
@@ -19344,11 +19456,11 @@ function parseDeribitBook(rows) {
   return out;
 }
 async function rpc(path2, what) {
-  const url = `${BASE17}${path2}`;
+  const url = `${BASE18}${path2}`;
   const res = await fetchJson(url, PACE5);
   if (res.ok && res.data?.result !== void 0) return { result: res.data.result, url: res.url, fetchedAt: res.fetchedAt };
-  if (res.status === 400) throw new ProviderError(SOURCE15, `Deribit refused ${what} (invalid parameters)`, 400);
-  throw new ProviderError(SOURCE15, `${what} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+  if (res.status === 400) throw new ProviderError(SOURCE16, `Deribit refused ${what} (invalid parameters)`, 400);
+  throw new ProviderError(SOURCE16, `${what} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
 }
 async function deribitChain(currency, base2) {
   const cur = currency.toUpperCase();
@@ -19356,7 +19468,7 @@ async function deribitChain(currency, base2) {
   const r3 = await rpc(`/get_book_summary_by_currency?currency=${encodeURIComponent(cur)}&kind=option`, `the ${cur} option book`);
   const rows = r3.result.filter((x) => (x.base_currency ?? cur) === und);
   const contracts = parseDeribitBook(rows);
-  if (!contracts.length) throw new ProviderError(SOURCE15, `Deribit lists no ${und} options settled in ${cur}`, 404);
+  if (!contracts.length) throw new ProviderError(SOURCE16, `Deribit lists no ${und} options settled in ${cur}`, 404);
   const spot = rows.find((x) => val(x.estimated_delivery_price) !== void 0)?.estimated_delivery_price ?? contracts[0].underlyingPrice ?? 0;
   const premium = rows[0]?.quote_currency ?? cur;
   return {
@@ -19366,7 +19478,7 @@ async function deribitChain(currency, base2) {
     premiumCurrency: premium,
     asOf: r3.fetchedAt,
     contracts,
-    provenance: { source: SOURCE15, url: r3.url, fetchedAt: r3.fetchedAt, delay: "realtime", official: true, asOf: r3.fetchedAt.slice(0, 10) },
+    provenance: { source: SOURCE16, url: r3.url, fetchedAt: r3.fetchedAt, delay: "realtime", official: true, asOf: r3.fetchedAt.slice(0, 10) },
     notes: [
       premium === und ? `premiums quoted in ${und} (inverse options), strikes in USD; one contract = 1 ${und}` : `premiums and strikes in ${premium}`,
       "each expiry prices off its own future: ATM is the strike nearest that expiry's underlying",
@@ -19376,7 +19488,7 @@ async function deribitChain(currency, base2) {
 }
 async function deribitOptions(currency, opts = {}) {
   const chain2 = await deribitChain(currency, opts.base);
-  return { dataset: chainDataset(chain2, SOURCE15, opts.now ?? clockNow(), opts.maxExpiries), chain: chain2 };
+  return { dataset: chainDataset(chain2, SOURCE16, opts.now ?? clockNow(), opts.maxExpiries), chain: chain2 };
 }
 function parseDvol(rows) {
   return rows.map(([t, open2, high, low, close]) => ({ date: new Date(t).toISOString().slice(0, 10), open: open2, high, low, close })).sort((a, b) => a.date.localeCompare(b.date));
@@ -19409,7 +19521,7 @@ async function deribitDvol(currency, days = 90, now = clockNow()) {
     `DVOL for ${cur}`
   );
   const candles = parseDvol(r3.result.data ?? []);
-  if (!candles.length) throw new ProviderError(SOURCE15, `no DVOL candles for ${cur}`, 404);
+  if (!candles.length) throw new ProviderError(SOURCE16, `no DVOL candles for ${cur}`, 404);
   return {
     candles,
     dataset: {
@@ -19417,7 +19529,7 @@ async function deribitDvol(currency, days = 90, now = clockNow()) {
       title: `${cur} DVOL (Deribit)`,
       subject: cur,
       points: dvolPoints(cur, candles),
-      provenance: { source: SOURCE15, url: r3.url, fetchedAt: r3.fetchedAt, delay: "realtime", official: true, asOf: candles[candles.length - 1].date },
+      provenance: { source: SOURCE16, url: r3.url, fetchedAt: r3.fetchedAt, delay: "realtime", official: true, asOf: candles[candles.length - 1].date },
       notes: ["DVOL is Deribit's 30-day forward implied volatility index, annualised (a VIX-style measure); the latest candle may still be forming"]
     }
   };
@@ -19488,8 +19600,8 @@ function bookPoints(prefix, subject, book2, currency, levels = 10) {
 }
 
 // src/providers/prediction/kalshi.ts
-var BASE18 = "https://api.elections.kalshi.com/trade-api/v2";
-var SOURCE16 = "kalshi";
+var BASE19 = "https://api.elections.kalshi.com/trade-api/v2";
+var SOURCE17 = "kalshi";
 var PACE6 = { hostIntervalMs: 120 };
 var NOTE_UNITS = "prices in USD per contract paying 1 USD on YES (price \xD7 100 = implied probability %); volume and open interest in contracts";
 function parseKalshiMarket(r3) {
@@ -19576,11 +19688,11 @@ function parseKalshiOrderbook(raw) {
   return sortBook(levels(raw.orderbook_fp?.yes_dollars, false), levels(raw.orderbook_fp?.no_dollars, true));
 }
 function failure2(status2, what, error) {
-  if (status2 === 404) return new ProviderError(SOURCE16, `${what}: not found`, 404);
-  return new ProviderError(SOURCE16, `${what} failed (${status2}${error ? `, ${error}` : ""})`, status2);
+  if (status2 === 404) return new ProviderError(SOURCE17, `${what}: not found`, 404);
+  return new ProviderError(SOURCE17, `${what} failed (${status2}${error ? `, ${error}` : ""})`, status2);
 }
 var prov2 = (res) => ({
-  source: SOURCE16,
+  source: SOURCE17,
   url: res.url,
   fetchedAt: res.fetchedAt,
   delay: "realtime",
@@ -19592,11 +19704,11 @@ async function kalshiMarkets(q = {}) {
   if (q.seriesTicker) params.set("series_ticker", q.seriesTicker.toUpperCase());
   if (q.eventTicker) params.set("event_ticker", q.eventTicker.toUpperCase());
   if (!q.includeMultivariate) params.set("mve_filter", "exclude");
-  const res = await fetchJson(`${BASE18}/markets?${params}`, PACE6);
+  const res = await fetchJson(`${BASE19}/markets?${params}`, PACE6);
   if (!res.ok || !Array.isArray(res.data?.markets)) throw failure2(res.status, "market list", res.error);
   const markets = res.data.markets.map(parseKalshiMarket);
   const scope = q.eventTicker ?? q.seriesTicker;
-  if (!markets.length) throw new ProviderError(SOURCE16, `no ${q.status ?? "open"} markets${scope ? ` for ${scope.toUpperCase()}` : ""}`, 404);
+  if (!markets.length) throw new ProviderError(SOURCE17, `no ${q.status ?? "open"} markets${scope ? ` for ${scope.toUpperCase()}` : ""}`, 404);
   const notes = [NOTE_UNITS, ...liquidityNotes(markets)];
   if (!scope)
     notes.push("no series given: these are the first open markets Kalshi lists, often thin sports lines \u2014 pass a series (KXFED, KXCPI, KXRECSSNBER\u2026)");
@@ -19612,7 +19724,7 @@ async function kalshiMarkets(q = {}) {
 }
 async function kalshiMarket(ticker) {
   const t = ticker.toUpperCase();
-  const res = await fetchJson(`${BASE18}/markets/${encodeURIComponent(t)}`, PACE6);
+  const res = await fetchJson(`${BASE19}/markets/${encodeURIComponent(t)}`, PACE6);
   if (!res.ok || !res.data?.market) throw failure2(res.status, `market ${t}`, res.error);
   const market = parseKalshiMarket(res.data.market);
   return {
@@ -19626,10 +19738,10 @@ async function kalshiMarket(ticker) {
 }
 async function kalshiOrderbook(ticker, levels = 10) {
   const t = ticker.toUpperCase();
-  const res = await fetchJson(`${BASE18}/markets/${encodeURIComponent(t)}/orderbook`, PACE6);
+  const res = await fetchJson(`${BASE19}/markets/${encodeURIComponent(t)}/orderbook`, PACE6);
   if (!res.ok || !res.data) throw failure2(res.status, `orderbook ${t}`, res.error);
   const book2 = parseKalshiOrderbook(res.data);
-  if (!book2.bids.length && !book2.asks.length) throw new ProviderError(SOURCE16, `orderbook ${t} is empty (unknown ticker, or no resting orders)`, 404);
+  if (!book2.bids.length && !book2.asks.length) throw new ProviderError(SOURCE17, `orderbook ${t} is empty (unknown ticker, or no resting orders)`, 404);
   return {
     book: book2,
     dataset: {
@@ -19657,10 +19769,10 @@ function kalshiEventPoints(e) {
 async function kalshiEvents(q = {}) {
   const params = new URLSearchParams({ status: q.status ?? "open", limit: String(Math.min(Math.max(q.limit ?? 20, 1), 200)) });
   if (q.seriesTicker) params.set("series_ticker", q.seriesTicker.toUpperCase());
-  const res = await fetchJson(`${BASE18}/events?${params}`, PACE6);
+  const res = await fetchJson(`${BASE19}/events?${params}`, PACE6);
   if (!res.ok || !Array.isArray(res.data?.events)) throw failure2(res.status, "event list", res.error);
   const events = res.data.events;
-  if (!events.length) throw new ProviderError(SOURCE16, `no ${q.status ?? "open"} events${q.seriesTicker ? ` for ${q.seriesTicker.toUpperCase()}` : ""}`, 404);
+  if (!events.length) throw new ProviderError(SOURCE17, `no ${q.status ?? "open"} events${q.seriesTicker ? ` for ${q.seriesTicker.toUpperCase()}` : ""}`, 404);
   const notes = [];
   if (res.data.cursor) notes.push(`first ${events.length} events only: more are available`);
   return {
@@ -19675,22 +19787,22 @@ async function kalshiEvents(q = {}) {
 async function kalshiSeriesFees(seriesTicker) {
   const t = seriesTicker.toUpperCase();
   const res = await fetchJson(
-    `${BASE18}/series/${encodeURIComponent(t)}`,
+    `${BASE19}/series/${encodeURIComponent(t)}`,
     PACE6
   );
   if (!res.ok || !res.data?.series) throw failure2(res.status, `series ${t}`, res.error);
   const s = res.data.series;
   const multiplier = num5(s.fee_multiplier);
   if (typeof s.fee_type !== "string" || !s.fee_type || multiplier === void 0)
-    throw new ProviderError(SOURCE16, `series ${t} gives no fee_type and fee_multiplier`, 502);
+    throw new ProviderError(SOURCE17, `series ${t} gives no fee_type and fee_multiplier`, 502);
   return { series: t, feeType: s.fee_type, feeMultiplier: multiplier, url: res.url, fetchedAt: res.fetchedAt };
 }
 async function kalshiSeriesOfMarket(ticker) {
   const t = ticker.toUpperCase();
-  const m = await fetchJson(`${BASE18}/markets/${encodeURIComponent(t)}`, PACE6);
+  const m = await fetchJson(`${BASE19}/markets/${encodeURIComponent(t)}`, PACE6);
   const event = m.data?.market?.event_ticker;
   if (!m.ok || !event) throw failure2(m.status, `market ${t}`, m.error);
-  const e = await fetchJson(`${BASE18}/events/${encodeURIComponent(event)}`, PACE6);
+  const e = await fetchJson(`${BASE19}/events/${encodeURIComponent(event)}`, PACE6);
   const series = e.data?.event?.series_ticker;
   if (!e.ok || !series) throw failure2(e.status, `event ${event}`, e.error);
   return series;
@@ -19808,8 +19920,8 @@ function venueFact(key, opts = {}) {
 }
 
 // src/providers/prediction/manifold.ts
-var BASE19 = "https://api.manifold.markets/v0";
-var SOURCE17 = "manifold";
+var BASE20 = "https://api.manifold.markets/v0";
+var SOURCE18 = "manifold";
 var PACE7 = { hostIntervalMs: 150 };
 var PLAY_MONEY_NOTE = "play money (MANA, not redeemable) \u2014 a signal, not a market";
 function manifoldMarketPoints(m) {
@@ -19843,11 +19955,11 @@ function manifoldMarketPoints(m) {
   return out;
 }
 function failure3(status2, what, error) {
-  if (status2 === 404) return new ProviderError(SOURCE17, `${what}: not found`, 404);
-  return new ProviderError(SOURCE17, `${what} failed (${status2}${error ? `, ${error}` : ""})`, status2);
+  if (status2 === 404) return new ProviderError(SOURCE18, `${what}: not found`, 404);
+  return new ProviderError(SOURCE18, `${what} failed (${status2}${error ? `, ${error}` : ""})`, status2);
 }
 var prov3 = (res) => ({
-  source: SOURCE17,
+  source: SOURCE18,
   url: res.url,
   fetchedAt: res.fetchedAt,
   delay: "realtime",
@@ -19857,9 +19969,9 @@ var prov3 = (res) => ({
 async function manifoldSearch(term, opts = {}) {
   const params = new URLSearchParams({ term, limit: String(Math.min(Math.max(opts.limit ?? 10, 1), 100)) });
   if (opts.filter) params.set("filter", opts.filter);
-  const res = await fetchJson(`${BASE19}/search-markets?${params}`, PACE7);
+  const res = await fetchJson(`${BASE20}/search-markets?${params}`, PACE7);
   if (!res.ok || !Array.isArray(res.data)) throw failure3(res.status, "market search", res.error);
-  if (!res.data.length) throw new ProviderError(SOURCE17, "no market matches the search", 404);
+  if (!res.data.length) throw new ProviderError(SOURCE18, "no market matches the search", 404);
   const notes = [PLAY_MONEY_NOTE];
   if (res.data.some((m) => m.outcomeType && m.outcomeType !== "BINARY"))
     notes.push("non-binary markets carry no single probability in search results: read them one by one for their answers");
@@ -19872,7 +19984,7 @@ async function manifoldSearch(term, opts = {}) {
   };
 }
 async function manifoldMarket(id) {
-  const res = await fetchJson(`${BASE19}/market/${encodeURIComponent(id)}`, PACE7);
+  const res = await fetchJson(`${BASE20}/market/${encodeURIComponent(id)}`, PACE7);
   if (!res.ok || !res.data?.id) throw failure3(res.status, `market ${id}`, res.error);
   return {
     kind: "prediction",
@@ -21784,17 +21896,38 @@ var fraction = (v, flag, lo, hi) => {
   if (!Number.isFinite(n2) || n2 < lo || n2 > hi) throw new UsageError(`--${flag} is a number between ${lo} and ${hi} (got ${v})`);
   return n2;
 };
+async function blackScholesRate(flag, now) {
+  if (flag !== void 0) return { rate: flag / 100, basis: `--rate ${flag} % as given` };
+  let ds;
+  try {
+    ds = await treasuryCurve(now);
+  } catch (e) {
+    throw new UsageError(
+      `the risk-free rate is unknown: the US Treasury 3-month yield could not be read (${e.message}) \u2014 give it with --rate <percent>`
+    );
+  }
+  const p = ds.points.find((x) => x.key === "US.rates.ust.3M");
+  if (typeof p?.value !== "number")
+    throw new UsageError("the risk-free rate is unknown: the US Treasury curve carries no 3-month yield today \u2014 give it with --rate <percent>");
+  return {
+    rate: p.value / 100,
+    basis: `US Treasury 3-month par yield of ${p.asOf ?? ds.provenance.asOf ?? "the latest session"} (US.rates.ust.3M, home.treasury.gov); --rate overrides it`,
+    dataset: { ...ds, title: "US Treasury 3-month par yield (the Black\u2013Scholes rate)", points: [p] }
+  };
+}
 var OPTIONS_USAGE = `usage: ultrastock options-analysis <symbol> [--expiry YYYY-MM-DD] [--strategy <spec>] [--spot-moves=-30,-10,0,10,50] [--rate <pct>] [--out <dir>] \u2014 ${STRATEGY_USAGE}`;
 async function optionsAnalysisCommand(args, asJson) {
   const raw = args.positional[0]?.toUpperCase();
   if (!raw) throw new UsageError(OPTIONS_USAGE);
   const venue = DERIBIT.has(raw) ? "deribit" : "cboe";
   const now = clockNow();
-  const rate2 = (fraction(argValue(args, "rate"), "rate", 0, 20) ?? 4) / 100;
+  const rateFlag = fraction(argValue(args, "rate"), "rate", 0, 20);
   const spec = argValue(args, "strategy") ? parseStrategySpec(argValue(args, "strategy")) : void 0;
   const movesArg = argList(args, "spot-moves");
   const moves = movesArg.length ? movesArg.map((m) => fraction(m.replace(/%$/, ""), "spot-moves", -95, 500) / 100).sort((a, b) => a - b) : void 0;
   const chain2 = venue === "deribit" ? await deribitChain(raw.slice(0, 3)) : await cboeChain(raw);
+  const bs = venue === "cboe" ? await blackScholesRate(rateFlag, now) : void 0;
+  const rate2 = bs?.rate ?? 0;
   const q = toQuantChain(chain2, venue, now, rate2);
   const U = q.underlying;
   const asked = argValue(args, "expiry");
@@ -21811,8 +21944,7 @@ async function optionsAnalysisCommand(args, asJson) {
   const prov5 = { ...chain2.provenance, asOf: chain2.asOf.slice(0, 10) };
   const readings = new PointList();
   readings.num(`${U}.quant.spot`, `${U} underlying price (${chain2.provenance.source})`, q.spot, q.currency);
-  if (venue === "cboe")
-    readings.num(`${U}.quant.rate`, `${U} risk-free rate assumed for Black\u2013Scholes marks`, rate2 * 100, "%", "assumption (--rate, default 4 %)");
+  if (bs) readings.num(`${U}.quant.rate`, `${U} risk-free rate for Black\u2013Scholes marks`, rate2 * 100, "%", bs.basis);
   for (const e of expiries) expiryPoints(q, e, readings);
   unusualPoints(q, expiries, readings);
   const vol = new PointList();
@@ -21836,7 +21968,8 @@ async function optionsAnalysisCommand(args, asJson) {
       asked ? `expiry ${asked} as asked` : `expiries: the next ${expiries.length} monthly-style expiries at least 7 days out (topped up with the nearest when fewer)`,
       "gamma exposure assumes dealers are long calls and short puts \u2014 their real books are unknown"
     ]),
-    dataset2("options-analysis", `${U} implied-volatility term structure and IV rank`, U, vol, prov5, volNotes)
+    dataset2("options-analysis", `${U} implied-volatility term structure and IV rank`, U, vol, prov5, volNotes),
+    ...bs?.dataset ? [bs.dataset] : []
   ];
   if (spec) {
     const expiry = asked ?? expiries[0];
@@ -25784,8 +25917,8 @@ async function nportHoldings(ticker) {
 }
 
 // src/providers/markets/tradingview.ts
-var BASE20 = "https://scanner.tradingview.com";
-var SOURCE18 = "tradingview";
+var BASE21 = "https://scanner.tradingview.com";
+var SOURCE19 = "tradingview";
 var NOTE = "unofficial endpoint (TradingView's screener backend); delayed snapshot";
 var TV_SNAPSHOT_COLUMNS = [
   "description",
@@ -25987,22 +26120,22 @@ function tvRowPoints(row, columns, asOf) {
   return out;
 }
 async function scan(market, body) {
-  if (!/^[a-z0-9_]+$/.test(market)) throw new ProviderError(SOURCE18, `"${market}" is not a TradingView scanner market (germany, france, america, global\u2026)`, 400);
-  const url = `${BASE20}/${market}/scan`;
+  if (!/^[a-z0-9_]+$/.test(market)) throw new ProviderError(SOURCE19, `"${market}" is not a TradingView scanner market (germany, france, america, global\u2026)`, 400);
+  const url = `${BASE21}/${market}/scan`;
   const res = await fetchJson(url, { method: "POST", json: body, userAgent: "browser", hostIntervalMs: 1e3 });
   if (!res.ok || !res.data || !Array.isArray(res.data.data)) {
-    if (res.status === 404) throw new ProviderError(SOURCE18, `TradingView has no scanner market "${market}"`, 404);
-    throw new ProviderError(SOURCE18, `scan on ${market} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
+    if (res.status === 404) throw new ProviderError(SOURCE19, `TradingView has no scanner market "${market}"`, 404);
+    throw new ProviderError(SOURCE19, `scan on ${market} failed (${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
   }
   return { data: res.data, url, fetchedAt: res.fetchedAt };
 }
 async function tradingviewSnapshot(symbol, opts = {}) {
   const ticker = toTradingViewTicker(symbol);
-  if (!ticker) throw new ProviderError(SOURCE18, `cannot map ${symbol} to a TradingView ticker \u2014 pass EXCHANGE:TICKER (e.g. NASDAQ:AAPL)`, 400);
+  if (!ticker) throw new ProviderError(SOURCE19, `cannot map ${symbol} to a TradingView ticker \u2014 pass EXCHANGE:TICKER (e.g. NASDAQ:AAPL)`, 400);
   const columns = opts.columns ?? TV_SNAPSHOT_COLUMNS;
   const res = await scan(opts.market ?? "global", { symbols: { tickers: [ticker] }, columns });
   const row = res.data.data.find((r3) => r3.s === ticker) ?? res.data.data[0];
-  if (!row) throw new ProviderError(SOURCE18, `TradingView knows no ${ticker}`, 404);
+  if (!row) throw new ProviderError(SOURCE19, `TradingView knows no ${ticker}`, 404);
   const day4 = res.fetchedAt.slice(0, 10);
   const notes = [NOTE];
   const cur = row.d[columns.indexOf("currency")];
@@ -26013,7 +26146,7 @@ async function tradingviewSnapshot(symbol, opts = {}) {
     title: `${ticker} TradingView snapshot`,
     subject: symbol.toUpperCase(),
     points: tvRowPoints(row, columns, day4),
-    provenance: { source: SOURCE18, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day4 },
+    provenance: { source: SOURCE19, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day4 },
     notes
   };
 }
@@ -26036,43 +26169,14 @@ async function tradingviewScan(market, opts = {}) {
     title: `TradingView ${market} screener`,
     subject: market,
     points,
-    provenance: { source: SOURCE18, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day4 },
+    provenance: { source: SOURCE19, url: res.url, fetchedAt: res.fetchedAt, delay: "delayed (15 min or more)", official: false, asOf: day4 },
     notes
   };
 }
 
-// src/providers/macro/common.ts
-function requireOk(source2, res, what) {
-  if (!res.ok) throw new ProviderError(source2, `${what} unavailable (HTTP ${res.status}${res.error ? `, ${res.error}` : ""})`, res.status);
-}
-function seriesPoints(key, label2, unit, obs, opts = {}) {
-  const last2 = obs[obs.length - 1];
-  if (!last2) return [];
-  const points = [{ key, label: label2, value: last2.value, unit, asOf: last2.date }];
-  const prev = obs[obs.length - 2];
-  if (prev) {
-    const bp = unit === "%";
-    points.push({
-      key: `${key}.chg`,
-      label: `${label2}, change since ${prev.date}`,
-      value: bp ? Number(((last2.value - prev.value) * 100).toFixed(4)) : Number((last2.value - prev.value).toPrecision(12)),
-      unit: bp ? "bp" : unit,
-      asOf: last2.date,
-      formula: bp ? `(${key}@${last2.date} \u2212 ${key}@${prev.date}) \xD7 100` : `${key}@${last2.date} \u2212 ${key}@${prev.date}`
-    });
-  }
-  if (opts.history) for (const o of obs) points.push({ key: `${key}.${o.date}`, label: `${label2} (${o.date})`, value: o.value, unit, asOf: o.date });
-  return points;
-}
-function sortObservations(obs) {
-  const byDate = /* @__PURE__ */ new Map();
-  for (const o of obs) if (Number.isFinite(o.value)) byDate.set(o.date, o.value);
-  return [...byDate.entries()].map(([date, value2]) => ({ date, value: value2 })).sort((a, b) => a.date.localeCompare(b.date));
-}
-
 // src/providers/macro/ecb.ts
-var SOURCE19 = "ecb";
-var BASE21 = "https://data-api.ecb.europa.eu/service/data";
+var SOURCE20 = "ecb";
+var BASE22 = "https://data-api.ecb.europa.eu/service/data";
 function parseSdmxCsv(text2) {
   const byKey = /* @__PURE__ */ new Map();
   for (const r3 of csvRecords(text2)) {
@@ -26085,14 +26189,14 @@ function parseSdmxCsv(text2) {
   }
   return [...byKey.entries()].map(([key, obs]) => ({ key, obs: sortObservations(obs) })).sort((a, b) => a.key.localeCompare(b.key));
 }
-var ecbUrl = (flow, key, n2) => `${BASE21}/${encodeURIComponent(flow)}/${key.split(".").map(encodeURIComponent).join(".").replace(/%2B/g, "+")}?lastNObservations=${n2}&format=csvdata&detail=dataonly`;
+var ecbUrl = (flow, key, n2) => `${BASE22}/${encodeURIComponent(flow)}/${key.split(".").map(encodeURIComponent).join(".").replace(/%2B/g, "+")}?lastNObservations=${n2}&format=csvdata&detail=dataonly`;
 async function fetchEcb(flow, key, n2 = 12) {
   const url = ecbUrl(flow, key, n2);
   const res = await fetchText(url, { accept: "text/csv" });
-  if (res.status === 404) throw new ProviderError(SOURCE19, `no series ${flow}.${key}`, 404);
-  requireOk(SOURCE19, res, `series ${flow}.${key}`);
+  if (res.status === 404) throw new ProviderError(SOURCE20, `no series ${flow}.${key}`, 404);
+  requireOk(SOURCE20, res, `series ${flow}.${key}`);
   const series = parseSdmxCsv(res.body);
-  if (!series.length) throw new ProviderError(SOURCE19, `series ${flow}.${key} returned no observations`);
+  if (!series.length) throw new ProviderError(SOURCE20, `series ${flow}.${key} returned no observations`);
   return { series, url: res.url, fetchedAt: res.fetchedAt };
 }
 async function ecbSeries(flow, key, n2 = 12, opts = {}) {
@@ -26107,7 +26211,7 @@ async function ecbSeries(flow, key, n2 = 12, opts = {}) {
     title: opts.label ?? `ECB ${flow}.${key}`,
     subject: opts.subject ?? "EA",
     points,
-    provenance: { source: SOURCE19, url, fetchedAt, official: true, asOf: series[0].obs[series[0].obs.length - 1]?.date },
+    provenance: { source: SOURCE20, url, fetchedAt, official: true, asOf: series[0].obs[series[0].obs.length - 1]?.date },
     notes: []
   };
 }
@@ -26141,7 +26245,7 @@ async function ecbPolicyRates() {
     title: "ECB key interest rates",
     subject: "EA",
     points,
-    provenance: { source: SOURCE19, url, fetchedAt, official: true },
+    provenance: { source: SOURCE20, url, fetchedAt, official: true },
     notes: ["Dates are the dates the current rates took effect; the change is versus the previous decision."]
   };
 }
@@ -26175,7 +26279,7 @@ async function ecbYieldCurve(tenors = EA_TENORS) {
     title: "Euro area AAA government yield curve (ECB)",
     subject: "EA",
     points,
-    provenance: { source: SOURCE19, url, fetchedAt, delay: "eod", official: true, asOf: y10?.date },
+    provenance: { source: SOURCE20, url, fetchedAt, delay: "eod", official: true, asOf: y10?.date },
     notes: ["Spot rates fitted by the ECB on AAA-rated euro area central government bonds (Svensson model)."]
   };
 }
@@ -26225,7 +26329,7 @@ async function ecbSovereignYields(countries = SOVEREIGN_COUNTRIES) {
     title: "Euro area 10-year sovereign yields and spreads over the Bund (ECB)",
     subject: "EA",
     points,
-    provenance: { source: SOURCE19, url, fetchedAt, official: true, asOf: bund?.date },
+    provenance: { source: SOURCE20, url, fetchedAt, official: true, asOf: bund?.date },
     notes: [
       "Monthly averages of secondary-market yields (the ECB's long-term interest rate for convergence purposes), published after the month ends: a trend, not today's price."
     ]
@@ -26244,7 +26348,7 @@ async function ecbFx(currencies = ["USD", "GBP", "JPY", "CHF"], n2 = 5) {
     title: "ECB euro foreign exchange reference rates",
     subject: "EUR",
     points,
-    provenance: { source: SOURCE19, url, fetchedAt, delay: "eod", official: true },
+    provenance: { source: SOURCE20, url, fetchedAt, delay: "eod", official: true },
     notes: [
       "Reference rates set around 14:15 CET each TARGET business day \u2014 for information, not a transaction rate.",
       ...missing.length ? [`no ECB reference rate for: ${missing.join(", ")}`] : []
@@ -29544,7 +29648,7 @@ function cryptoRegime(c) {
 }
 
 // src/providers/macro/fred.ts
-var SOURCE20 = "fred";
+var SOURCE21 = "fred";
 var FRED_PRESETS = {
   DGS10: { label: "US 10-year Treasury constant-maturity yield", unit: "%", freq: "d" },
   DGS2: { label: "US 2-year Treasury constant-maturity yield", unit: "%", freq: "d" },
@@ -29588,7 +29692,7 @@ async function fredSeries(id, opts = {}) {
       userAgent: politeUa(),
       recordAs: apiUrl("REDACTED")
     });
-    if (!res.ok || !res.data) throw new ProviderError(SOURCE20, `${sid}: API answered HTTP ${res.status}`, res.status);
+    if (!res.ok || !res.data) throw new ProviderError(SOURCE21, `${sid}: API answered HTTP ${res.status}`, res.status);
     obs = parseFredJson(res.data);
     url = `https://fred.stlouisfed.org/series/${sid}`;
     fetchedAt = res.fetchedAt;
@@ -29596,20 +29700,20 @@ async function fredSeries(id, opts = {}) {
     const csvUrl = `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(sid)}&cosd=${start}`;
     const res = await fetchText(csvUrl, { accept: "text/csv", userAgent: politeUa() });
     if (res.status === 404 || res.ok && !/observation_date|DATE/.test(res.body.slice(0, 80)))
-      throw new ProviderError(SOURCE20, `no FRED series ${sid}`, res.status === 404 ? 404 : 400);
-    if (!res.ok) throw new ProviderError(SOURCE20, `${sid}: keyless CSV export refused (HTTP ${res.status}) \u2014 set FRED_API_KEY (free)`, res.status);
+      throw new ProviderError(SOURCE21, `no FRED series ${sid}`, res.status === 404 ? 404 : 400);
+    if (!res.ok) throw new ProviderError(SOURCE21, `${sid}: keyless CSV export refused (HTTP ${res.status}) \u2014 set FRED_API_KEY (free)`, res.status);
     obs = parseFredCsv(res.body, sid);
     url = res.url;
     fetchedAt = res.fetchedAt;
     notes.push("read keyless from FRED's graph CSV export; set FRED_API_KEY (free) to use the documented API");
   }
-  if (!obs.length) throw new ProviderError(SOURCE20, `${sid}: no observations since ${start}`);
+  if (!obs.length) throw new ProviderError(SOURCE21, `${sid}: no observations since ${start}`);
   return {
     kind: "macro",
     title: preset ? `${preset.label} (FRED ${sid})` : `FRED series ${sid}`,
     subject: "US",
     points: seriesPoints(`US.fred.${sid}`, preset?.label ?? `FRED series ${sid}`, preset?.unit, obs, { history: opts.history ?? true }),
-    provenance: { source: SOURCE20, url, fetchedAt, official: true, asOf: obs[obs.length - 1].date },
+    provenance: { source: SOURCE21, url, fetchedAt, official: true, asOf: obs[obs.length - 1].date },
     notes
   };
 }
@@ -32443,7 +32547,7 @@ var period = (name, def2, description) => ({
   min: 1
 });
 var real = (name, def2, description) => ({ name, kind: "number", default: def2, description, min: 0 });
-var SOURCE21 = { name: "source", kind: "string", default: "close", description: "Price series read", choices: PRICE_SOURCES };
+var SOURCE22 = { name: "source", kind: "string", default: "close", description: "Price series read", choices: PRICE_SOURCES };
 var BENCHMARK2 = { name: "benchmark", kind: "bars", description: "Benchmark bars (as-of joined by date)" };
 var num8 = (p, k) => p[k];
 var str4 = (p, k) => p[k];
@@ -32454,18 +32558,18 @@ function def(name, group, description, params, outputs, run3) {
 }
 var V = ["value"];
 var BAND = ["upper", "middle", "lower"];
-def("sma", "averages", "Simple moving average", [period("period", 20, "Window"), SOURCE21], V, (b, p) => sma(src(b, p), num8(p, "period")));
-def("ema", "averages", "Exponential moving average, SMA-seeded", [period("period", 20, "Window"), SOURCE21], V, (b, p) => ema(src(b, p), num8(p, "period")));
-def("wma", "averages", "Linearly weighted moving average", [period("period", 20, "Window"), SOURCE21], V, (b, p) => wma(src(b, p), num8(p, "period")));
-def("rma", "averages", "Wilder's smoothing (RMA/SMMA)", [period("period", 14, "Window"), SOURCE21], V, (b, p) => rma(src(b, p), num8(p, "period")));
-def("dema", "averages", "Mulloy's double EMA", [period("period", 20, "Window"), SOURCE21], V, (b, p) => dema(src(b, p), num8(p, "period")));
-def("tema", "averages", "Mulloy's triple EMA", [period("period", 20, "Window"), SOURCE21], V, (b, p) => tema(src(b, p), num8(p, "period")));
-def("hma", "averages", "Hull moving average", [period("period", 16, "Window"), SOURCE21], V, (b, p) => hma(src(b, p), num8(p, "period")));
+def("sma", "averages", "Simple moving average", [period("period", 20, "Window"), SOURCE22], V, (b, p) => sma(src(b, p), num8(p, "period")));
+def("ema", "averages", "Exponential moving average, SMA-seeded", [period("period", 20, "Window"), SOURCE22], V, (b, p) => ema(src(b, p), num8(p, "period")));
+def("wma", "averages", "Linearly weighted moving average", [period("period", 20, "Window"), SOURCE22], V, (b, p) => wma(src(b, p), num8(p, "period")));
+def("rma", "averages", "Wilder's smoothing (RMA/SMMA)", [period("period", 14, "Window"), SOURCE22], V, (b, p) => rma(src(b, p), num8(p, "period")));
+def("dema", "averages", "Mulloy's double EMA", [period("period", 20, "Window"), SOURCE22], V, (b, p) => dema(src(b, p), num8(p, "period")));
+def("tema", "averages", "Mulloy's triple EMA", [period("period", 20, "Window"), SOURCE22], V, (b, p) => tema(src(b, p), num8(p, "period")));
+def("hma", "averages", "Hull moving average", [period("period", 16, "Window"), SOURCE22], V, (b, p) => hma(src(b, p), num8(p, "period")));
 def(
   "kama",
   "averages",
   "Kaufman adaptive moving average",
-  [period("period", 10, "Efficiency-ratio window"), period("fast", 2, "Fast EMA period"), period("slow", 30, "Slow EMA period"), SOURCE21],
+  [period("period", 10, "Efficiency-ratio window"), period("fast", 2, "Fast EMA period"), period("slow", 30, "Slow EMA period"), SOURCE22],
   V,
   (b, p) => kama(src(b, p), num8(p, "period"), num8(p, "fast"), num8(p, "slow"))
 );
@@ -32473,7 +32577,7 @@ def(
   "mcginleyDynamic",
   "averages",
   "McGinley Dynamic",
-  [period("period", 14, "Window"), { ...real("k", 1, "McGinley's constant (he suggested 0.6)"), min: 0.01 }, SOURCE21],
+  [period("period", 14, "Window"), { ...real("k", 1, "McGinley's constant (he suggested 0.6)"), min: 0.01 }, SOURCE22],
   V,
   (b, p) => mcginleyDynamic(src(b, p), num8(p, "period"), num8(p, "k"))
 );
@@ -32482,7 +32586,7 @@ def(
   "movingAverage",
   "averages",
   "Moving average of a chosen type",
-  [period("period", 20, "Window"), { name: "type", kind: "string", default: "ema", description: "Average type", choices: MA_TYPES }, SOURCE21],
+  [period("period", 20, "Window"), { name: "type", kind: "string", default: "ema", description: "Average type", choices: MA_TYPES }, SOURCE22],
   V,
   (b, p) => movingAverage(src(b, p), num8(p, "period"), str4(p, "type"))
 );
@@ -32542,7 +32646,7 @@ def(
   "ravi",
   "trend",
   "Chande's Range Action Verification Index (%)",
-  [period("shortPeriod", 7, "Short SMA"), period("longPeriod", 65, "Long SMA"), SOURCE21],
+  [period("shortPeriod", 7, "Short SMA"), period("longPeriod", 65, "Long SMA"), SOURCE22],
   V,
   (b, p) => ravi(src(b, p), num8(p, "shortPeriod"), num8(p, "longPeriod"))
 );
@@ -32550,21 +32654,21 @@ def(
   "linearRegressionSlope",
   "trend",
   "Least-squares slope per bar",
-  [period("period", 14, "Window"), SOURCE21],
+  [period("period", 14, "Window"), SOURCE22],
   V,
   (b, p) => linearRegressionSlope(src(b, p), num8(p, "period"))
 );
-def("rsi", "momentum", "Wilder's RSI", [period("period", 14, "Window"), SOURCE21], V, (b, p) => rsi(src(b, p), num8(p, "period")));
+def("rsi", "momentum", "Wilder's RSI", [period("period", 14, "Window"), SOURCE22], V, (b, p) => rsi(src(b, p), num8(p, "period")));
 def(
   "macd",
   "momentum",
   "Appel's MACD",
-  [period("fast", 12, "Fast EMA"), period("slow", 26, "Slow EMA"), period("signal", 9, "Signal EMA"), SOURCE21],
+  [period("fast", 12, "Fast EMA"), period("slow", 26, "Slow EMA"), period("signal", 9, "Signal EMA"), SOURCE22],
   ["macd", "signal", "histogram"],
   (b, p) => macd(src(b, p), num8(p, "fast"), num8(p, "slow"), num8(p, "signal"))
 );
-def("roc", "momentum", "Rate of change (%)", [period("period", 12, "Lookback"), SOURCE21], V, (b, p) => roc(src(b, p), num8(p, "period")));
-def("momentum", "momentum", "Momentum (price difference)", [period("period", 10, "Lookback"), SOURCE21], V, (b, p) => momentum(src(b, p), num8(p, "period")));
+def("roc", "momentum", "Rate of change (%)", [period("period", 12, "Lookback"), SOURCE22], V, (b, p) => roc(src(b, p), num8(p, "period")));
+def("momentum", "momentum", "Momentum (price difference)", [period("period", 10, "Lookback"), SOURCE22], V, (b, p) => momentum(src(b, p), num8(p, "period")));
 def(
   "stochastic",
   "momentum",
@@ -32599,7 +32703,7 @@ def(
     period("stochasticPeriod", 14, "Stochastic window"),
     period("kPeriod", 3, "%K smoothing"),
     period("dPeriod", 3, "%D smoothing"),
-    SOURCE21
+    SOURCE22
   ],
   ["stochRsi", "k", "d"],
   (b, p) => stochRsi(src(b, p), num8(p, "rsiPeriod"), num8(p, "stochasticPeriod"), num8(p, "kPeriod"), num8(p, "dPeriod"))
@@ -32628,12 +32732,12 @@ def(
   V,
   (b, p) => awesomeOscillator(b, num8(p, "fastPeriod"), num8(p, "slowPeriod"))
 );
-def("trix", "momentum", "Hutson's TRIX (%)", [period("period", 14, "EMA window"), SOURCE21], V, (b, p) => trix(src(b, p), num8(p, "period")));
+def("trix", "momentum", "Hutson's TRIX (%)", [period("period", 14, "EMA window"), SOURCE22], V, (b, p) => trix(src(b, p), num8(p, "period")));
 def(
   "pmo",
   "momentum",
   "DecisionPoint Price Momentum Oscillator",
-  [period("smooth1Period", 35, "First smoothing"), period("smooth2Period", 20, "Second smoothing"), period("signalPeriod", 10, "Signal EMA"), SOURCE21],
+  [period("smooth1Period", 35, "First smoothing"), period("smooth2Period", 20, "Second smoothing"), period("signalPeriod", 10, "Signal EMA"), SOURCE22],
   ["pmo", "signal"],
   (b, p) => pmo(src(b, p), num8(p, "smooth1Period"), num8(p, "smooth2Period"), num8(p, "signalPeriod"))
 );
@@ -32641,7 +32745,7 @@ def(
   "kst",
   "momentum",
   "Pring's Know Sure Thing (daily)",
-  [period("signalPeriod", 9, "Signal SMA"), SOURCE21],
+  [period("signalPeriod", 9, "Signal SMA"), SOURCE22],
   ["kst", "signal"],
   (b, p) => kst(src(b, p), num8(p, "signalPeriod"))
 );
@@ -32649,7 +32753,7 @@ def(
   "pringSpecialK",
   "momentum",
   "Pring's Special K (daily)",
-  [period("signalPeriod", 10, "Signal SMA"), SOURCE21],
+  [period("signalPeriod", 10, "Signal SMA"), SOURCE22],
   ["specialK", "signal"],
   (b, p) => pringSpecialK(src(b, p), num8(p, "signalPeriod"))
 );
@@ -32657,7 +32761,7 @@ def(
   "coppockCurve",
   "momentum",
   "Coppock curve",
-  [period("rocPeriod1", 14, "Long ROC"), period("rocPeriod2", 11, "Short ROC"), period("wmaPeriod", 10, "WMA window"), SOURCE21],
+  [period("rocPeriod1", 14, "Long ROC"), period("rocPeriod2", 11, "Short ROC"), period("wmaPeriod", 10, "WMA window"), SOURCE22],
   V,
   (b, p) => coppockCurve(src(b, p), num8(p, "rocPeriod1"), num8(p, "rocPeriod2"), num8(p, "wmaPeriod"))
 );
@@ -32665,7 +32769,7 @@ def(
   "dpo",
   "momentum",
   "Detrended Price Oscillator (not displaced)",
-  [period("period", 20, "SMA window"), SOURCE21],
+  [period("period", 20, "SMA window"), SOURCE22],
   V,
   (b, p) => dpo(src(b, p), num8(p, "period"))
 );
@@ -32708,7 +32812,7 @@ def(
     return a.map((x, i) => x === void 0 || m[i] === void 0 || m[i] === 0 ? void 0 : x / m[i]);
   }
 );
-def("stdev", "volatility", "Rolling standard deviation", [period("period", 20, "Window"), SOURCE21], V, (b, p) => rollingStdev(src(b, p), num8(p, "period")));
+def("stdev", "volatility", "Rolling standard deviation", [period("period", 20, "Window"), SOURCE22], V, (b, p) => rollingStdev(src(b, p), num8(p, "period")));
 def("choppinessIndex", "volatility", "Dreiss' Choppiness Index", [period("period", 14, "Window")], V, (b, p) => choppinessIndex(b, num8(p, "period")));
 def(
   "massIndex",
@@ -32761,7 +32865,7 @@ def(
   "bollinger",
   "bands",
   "Bollinger bands",
-  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE21],
+  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE22],
   BAND,
   (b, p) => bollinger(src(b, p), num8(p, "period"), num8(p, "stdDev"))
 );
@@ -32769,7 +32873,7 @@ def(
   "bollingerPercentB",
   "bands",
   "Bollinger %B",
-  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE21],
+  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE22],
   V,
   (b, p) => bollingerPercentB(src(b, p), num8(p, "period"), num8(p, "stdDev"))
 );
@@ -32777,7 +32881,7 @@ def(
   "bollingerBandwidth",
   "bands",
   "Bollinger bandwidth",
-  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE21],
+  [period("period", 20, "Window"), real("stdDev", 2, "Deviations"), SOURCE22],
   V,
   (b, p) => bollingerBandwidth(src(b, p), num8(p, "period"), num8(p, "stdDev"))
 );
@@ -32806,7 +32910,7 @@ def(
     period("period", 20, "Window"),
     real("percentage", 2.5, "Envelope %"),
     { name: "type", kind: "string", default: "sma", description: "Average type", choices: ["sma", "ema"] },
-    SOURCE21
+    SOURCE22
   ],
   BAND,
   (b, p) => movingAverageEnvelope(src(b, p), num8(p, "period"), num8(p, "percentage"), str4(p, "type"))
@@ -32851,16 +32955,16 @@ def(
 );
 def("rollingVwap", "volume", "Rolling VWAP", [period("period", 20, "Window")], V, (b, p) => rollingVwap(b, num8(p, "period")));
 def("volumeSma", "volume", "SMA of volume", [period("period", 20, "Window")], V, (b, p) => sma(priceSource(b, "volume"), num8(p, "period")));
-def("rollingMax", "stats", "Rolling maximum", [period("period", 20, "Window"), SOURCE21], V, (b, p) => rollingMax(src(b, p), num8(p, "period")));
-def("rollingMin", "stats", "Rolling minimum", [period("period", 20, "Window"), SOURCE21], V, (b, p) => rollingMin(src(b, p), num8(p, "period")));
+def("rollingMax", "stats", "Rolling maximum", [period("period", 20, "Window"), SOURCE22], V, (b, p) => rollingMax(src(b, p), num8(p, "period")));
+def("rollingMin", "stats", "Rolling minimum", [period("period", 20, "Window"), SOURCE22], V, (b, p) => rollingMin(src(b, p), num8(p, "period")));
 def("highestHigh", "stats", "Highest high", [period("period", 14, "Window")], V, (b, p) => highestHigh(b, num8(p, "period")));
 def("lowestLow", "stats", "Lowest low", [period("period", 14, "Window")], V, (b, p) => lowestLow(b, num8(p, "period")));
-def("zScore", "stats", "Z-score against the rolling mean/stdev", [period("period", 20, "Window"), SOURCE21], V, (b, p) => zScore(src(b, p), num8(p, "period")));
+def("zScore", "stats", "Z-score against the rolling mean/stdev", [period("period", 20, "Window"), SOURCE22], V, (b, p) => zScore(src(b, p), num8(p, "period")));
 def(
   "percentRank",
   "stats",
   "Percent of the previous n values \u2264 the current one",
-  [period("period", 252, "Window"), SOURCE21],
+  [period("period", 252, "Window"), SOURCE22],
   V,
   (b, p) => percentRank(src(b, p), num8(p, "period"))
 );
@@ -34374,89 +34478,6 @@ function growthOf(periods, field2, years = 3) {
   const b = vals[n2];
   if (a === void 0 || b === void 0 || a <= 0 || b <= 0) return void 0;
   return (a / b) ** (1 / n2) - 1;
-}
-
-// src/providers/macro/treasury.ts
-var SOURCE22 = "us-treasury";
-var BASE22 = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv";
-var treasuryCsvUrl = (year) => `${BASE22}/${year}/all?type=daily_treasury_yield_curve&field_tdr_date_value=${year}&page&_format=csv`;
-function tenorOf(header2) {
-  const m = /^([\d.]+)\s*(mo|month|months|yr|year|years)$/i.exec(header2.trim());
-  return m ? `${m[1]}${m[2].toLowerCase().startsWith("m") ? "M" : "Y"}` : void 0;
-}
-function parseTreasuryCsv(text2) {
-  const rows = [];
-  for (const r3 of csvRecords(text2)) {
-    const date = mdyToIso(r3.Date);
-    if (!date) continue;
-    const yields = {};
-    for (const [h, v] of Object.entries(r3)) {
-      const tenor = tenorOf(h);
-      const n2 = parseLooseNumber(v);
-      if (tenor && n2 !== void 0) yields[tenor] = n2;
-    }
-    if (Object.keys(yields).length) rows.push({ date, yields });
-  }
-  return rows.sort((a, b) => a.date.localeCompare(b.date));
-}
-async function readYear(year) {
-  const res = await fetchText(treasuryCsvUrl(year), { accept: "text/csv" });
-  requireOk(SOURCE22, res, `the ${year} par yield curve`);
-  return { rows: parseTreasuryCsv(res.body), url: res.url, fetchedAt: res.fetchedAt };
-}
-async function treasuryRows(days, now = clockNow()) {
-  const from = isoDayOf(new Date(now.getTime() - days * 864e5));
-  const year = now.getUTCFullYear();
-  const cur = await readYear(year);
-  let rows = cur.rows;
-  if (from.slice(0, 4) < String(year) || !rows.length) rows = [...(await readYear(year - 1)).rows, ...rows];
-  rows = rows.filter((r3) => r3.date >= from);
-  if (!rows.length) throw new ProviderError(SOURCE22, `no par yield curve published since ${from}`);
-  return { rows, url: cur.url, fetchedAt: cur.fetchedAt };
-}
-var spread = (key, label2, long, short, row) => {
-  const a = row.yields[long];
-  const b = row.yields[short];
-  if (a === void 0 || b === void 0) return void 0;
-  return {
-    key,
-    label: label2,
-    value: Number(((a - b) * 100).toFixed(2)),
-    unit: "bp",
-    asOf: row.date,
-    formula: `(US.rates.ust.${long} \u2212 US.rates.ust.${short}) \xD7 100`
-  };
-};
-function curvePoints(row) {
-  const points = Object.entries(row.yields).map(([tenor, v]) => ({
-    key: `US.rates.ust.${tenor}`,
-    label: `US Treasury ${tenor} par yield`,
-    value: v,
-    unit: "%",
-    asOf: row.date
-  }));
-  for (const p of [
-    spread("US.rates.ust.spread.2s10s", "US Treasury 2s10s spread", "10Y", "2Y", row),
-    spread("US.rates.ust.spread.3m10y", "US Treasury 3m10y spread", "10Y", "3M", row)
-  ])
-    if (p) points.push(p);
-  return points;
-}
-async function treasuryCurve(now = clockNow()) {
-  const { rows, url, fetchedAt } = await treasuryRows(14, now);
-  const last2 = rows[rows.length - 1];
-  const points = curvePoints(last2);
-  const tenYear = rows.slice(-2).flatMap((r3) => r3.yields["10Y"] === void 0 ? [] : [{ date: r3.date, value: r3.yields["10Y"] }]);
-  const chg = seriesPoints("US.rates.ust.10Y", "US Treasury 10Y par yield", "%", tenYear).find((p) => p.key.endsWith(".chg"));
-  if (chg) points.push(chg);
-  return {
-    kind: "macro",
-    title: `US Treasury par yield curve \u2014 ${last2.date}`,
-    subject: "US",
-    points,
-    provenance: { source: SOURCE22, url, fetchedAt, delay: "eod", official: true, asOf: last2.date },
-    notes: ["Par yields (bond-equivalent, %), published by the US Treasury each business day after the close."]
-  };
 }
 
 // src/providers/macro/frankfurter.ts

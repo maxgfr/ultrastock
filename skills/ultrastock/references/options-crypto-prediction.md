@@ -65,7 +65,10 @@ Across expiries it adds the ATM-IV term structure and unusual activity. Once
 `strangle:Kp/Kc`, `covered-call:K`, `cash-secured-put:K` or `collar:Kp/Kc`.
 The output gives the max profit and loss, the breakevens, and a P&L matrix by
 spot move, date and volatility. Pass the moves with an equals sign:
-`--spot-moves=-30,0,30`. `--rate` sets the risk-free rate.
+`--spot-moves=-30,0,30`. The risk-free rate of a US chain's Black–Scholes
+marks is the latest US Treasury 3-month yield, read live and registered as
+evidence; `--rate <pct>` overrides it. When the yield cannot be read the rate
+is unknown and the command asks for `--rate` instead of assuming one.
 
 - GEX assumes dealers are long calls and short puts. This is a convention,
   not a measurement, so say so.
