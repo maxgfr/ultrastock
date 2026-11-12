@@ -137,22 +137,29 @@ export const CALENDAR = defineDomain({
 
 // Reading a year's facts on every "is this a session?" would read the file hundreds of times a count: it is read once
 // per file state (its modification time), so a file stored meanwhile is picked up.
-const FACTS = new Map<string, { stamp: string; facts: Record<string, { value: unknown; sources: string[]; verifiedAt: string; note?: string }> }>();
+type CalendarFact = { value: unknown; sources: string[]; verifiedAt: string; note?: string };
+const FACTS = new Map<string, { stamp: string; facts: Record<string, CalendarFact>; stored: Record<string, CalendarFact> }>();
 
-function calendarFacts(market: ExchangeMarket, year: number) {
+/** A year's current facts; `stored` for every fact the file holds, the stale ones included. */
+function calendarFacts(market: ExchangeMarket, year: number, which: "current" | "stored" = "current") {
   const country = MARKET_COUNTRY[market];
   const path = factsPath(CALENDAR, country, year);
   const stamp = existsSync(path) ? String(statSync(path).mtimeMs) : "none";
   const hit = FACTS.get(path);
-  if (hit && hit.stamp === stamp) return hit.facts;
-  let facts: Record<string, { value: unknown; sources: string[]; verifiedAt: string; note?: string }> = {};
+  if (hit && hit.stamp === stamp) return which === "current" ? hit.facts : hit.stored;
+  let facts: Record<string, CalendarFact> = {};
+  let stored: Record<string, CalendarFact> = {};
   try {
-    if (stamp !== "none") facts = loadFacts(CALENDAR, country, year).current;
+    if (stamp !== "none")
+      ({
+        current: facts,
+        file: { facts: stored },
+      } = loadFacts(CALENDAR, country, year));
   } catch {
-    facts = {}; // an invalid file is reported by `facts research calendar`, never used
+    facts = stored = {}; // an invalid file is reported by `facts research calendar`, never used
   }
-  FACTS.set(path, { stamp, facts });
-  return facts;
+  FACTS.set(path, { stamp, facts, stored });
+  return which === "current" ? facts : stored;
 }
 
 export interface SessionHours {
@@ -199,20 +206,27 @@ const misfiled = (market: ExchangeMarket, year: number, date: string): string =>
     : `; dated ${own}, stored with the ${year} facts — it belongs in ${MARKET_COUNTRY[market]}-${own}.json: \`${researchCommand("calendar", MARKET_COUNTRY[market], { year: own })}\``;
 };
 
-/** A year's one-off closures: the researched list when there is one (known), else the past ones recorded here (known only up to CLOSURES_CHECKED_THROUGH). */
+/**
+ * A year's one-off closures: the researched list when there is one (known), else the past ones recorded here (known
+ * only up to CLOSURES_CHECKED_THROUGH). A researched list past its age keeps the closures whose day has passed.
+ */
 export function specialClosures(market: CalendarMarket, year: number): { closures: Holiday[]; researched: boolean } {
   if (market === "CRYPTO") return { closures: [], researched: true };
-  const f = calendarFacts(market, year)[`${market}.specialClosures`];
+  const key = `${market}.specialClosures`;
+  const f = calendarFacts(market, year, "stored")[key];
   if (f) {
+    // Past its maxAgeDays the list no longer says which closures there are; the ones whose day has passed are history
+    // all the same, and still close it — only the closures still to come are no longer taken from it.
+    const today = clockNow().toISOString().slice(0, 10);
+    const maxAge = keysOf(market).find((k) => k.key === key)!.maxAgeDays!;
+    const stale = Date.parse(`${today}T00:00:00Z`) - Date.parse(`${f.verifiedAt}T00:00:00Z`) > maxAge * 86_400_000;
     const names = f.note ? ` — ${f.note}` : "";
-    return {
-      closures: (f.value as string[]).map((date) => ({
-        date,
-        name: `one-off closure (researched${names}${misfiled(market, year, date)})`,
-        kind: "closed" as const,
-      })),
-      researched: true,
-    };
+    const closures = (f.value as string[])
+      .filter((date) => !stale || date < today)
+      .map((date) => ({ date, name: `one-off closure (researched${names}${misfiled(market, year, date)})`, kind: "closed" as const }));
+    if (!stale) return { closures, researched: true };
+    const builtIn = PAST_SPECIAL_CLOSURES.filter((s) => s.market === market && s.date.startsWith(String(year)) && !closures.some((c) => c.date === s.date));
+    return { closures: [...closures, ...builtIn.map((s) => ({ date: s.date, name: s.name, kind: s.kind }))], researched: false };
   }
   return {
     closures: PAST_SPECIAL_CLOSURES.filter((s) => s.market === market && s.date.startsWith(String(year))).map((s) => ({
@@ -400,7 +414,8 @@ function yearOf(market: CalendarMarket, year: number): { closed: ReadonlySet<str
     const path = market === "CRYPTO" ? "" : factsPath(CALENDAR, MARKET_COUNTRY[market], y);
     return path && existsSync(path) ? `${path}@${statSync(path).mtimeMs}` : "none";
   };
-  const key = `${market}:${year}:${[year - 1, year, year + 1].map(stamp).join("|")}`;
+  // And the day: a list past its age keeps only the closures already passed.
+  const key = `${market}:${year}:${clockNow().toISOString().slice(0, 10)}:${[year - 1, year, year + 1].map(stamp).join("|")}`;
   let y = YEARS.get(key);
   if (!y) {
     const list = holidays(market, year);

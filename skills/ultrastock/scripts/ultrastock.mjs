@@ -20288,20 +20288,25 @@ var CALENDAR = defineDomain({
   about: (c, year) => `TEMPLATE to fill by research: the trading hours and the one-off closures of ${marketsOf(c).join(", ") || "no calendar ultrastock computes"} in ${year}, read on the exchange's own calendar page. The regular holidays are computed from the rules (\`ultrastock calendar verify --year ${year}\` lists them to compare).`
 });
 var FACTS2 = /* @__PURE__ */ new Map();
-function calendarFacts(market, year) {
+function calendarFacts(market, year, which = "current") {
   const country2 = MARKET_COUNTRY[market];
   const path2 = factsPath(CALENDAR, country2, year);
   const stamp2 = existsSync16(path2) ? String(statSync11(path2).mtimeMs) : "none";
   const hit = FACTS2.get(path2);
-  if (hit && hit.stamp === stamp2) return hit.facts;
+  if (hit && hit.stamp === stamp2) return which === "current" ? hit.facts : hit.stored;
   let facts = {};
+  let stored = {};
   try {
-    if (stamp2 !== "none") facts = loadFacts(CALENDAR, country2, year).current;
+    if (stamp2 !== "none")
+      ({
+        current: facts,
+        file: { facts: stored }
+      } = loadFacts(CALENDAR, country2, year));
   } catch {
-    facts = {};
+    facts = stored = {};
   }
-  FACTS2.set(path2, { stamp: stamp2, facts });
-  return facts;
+  FACTS2.set(path2, { stamp: stamp2, facts, stored });
+  return which === "current" ? facts : stored;
 }
 function marketHours(market, year = clockNow().getUTCFullYear()) {
   if (market === "CRYPTO") return { open: "00:00", close: "24:00", origin: "built-in", sources: [], asOf: BUILT_IN_HOURS.checkedAt };
@@ -20329,17 +20334,17 @@ var misfiled = (market, year, date) => {
 };
 function specialClosures(market, year) {
   if (market === "CRYPTO") return { closures: [], researched: true };
-  const f3 = calendarFacts(market, year)[`${market}.specialClosures`];
+  const key = `${market}.specialClosures`;
+  const f3 = calendarFacts(market, year, "stored")[key];
   if (f3) {
+    const today2 = clockNow().toISOString().slice(0, 10);
+    const maxAge = keysOf(market).find((k) => k.key === key).maxAgeDays;
+    const stale = Date.parse(`${today2}T00:00:00Z`) - Date.parse(`${f3.verifiedAt}T00:00:00Z`) > maxAge * 864e5;
     const names2 = f3.note ? ` \u2014 ${f3.note}` : "";
-    return {
-      closures: f3.value.map((date) => ({
-        date,
-        name: `one-off closure (researched${names2}${misfiled(market, year, date)})`,
-        kind: "closed"
-      })),
-      researched: true
-    };
+    const closures = f3.value.filter((date) => !stale || date < today2).map((date) => ({ date, name: `one-off closure (researched${names2}${misfiled(market, year, date)})`, kind: "closed" }));
+    if (!stale) return { closures, researched: true };
+    const builtIn = PAST_SPECIAL_CLOSURES.filter((s) => s.market === market && s.date.startsWith(String(year)) && !closures.some((c) => c.date === s.date));
+    return { closures: [...closures, ...builtIn.map((s) => ({ date: s.date, name: s.name, kind: s.kind }))], researched: false };
   }
   return {
     closures: PAST_SPECIAL_CLOSURES.filter((s) => s.market === market && s.date.startsWith(String(year))).map((s) => ({
@@ -20494,7 +20499,7 @@ function yearOf(market, year) {
     const path2 = market === "CRYPTO" ? "" : factsPath(CALENDAR, MARKET_COUNTRY[market], y2);
     return path2 && existsSync16(path2) ? `${path2}@${statSync11(path2).mtimeMs}` : "none";
   };
-  const key = `${market}:${year}:${[year - 1, year, year + 1].map(stamp2).join("|")}`;
+  const key = `${market}:${year}:${clockNow().toISOString().slice(0, 10)}:${[year - 1, year, year + 1].map(stamp2).join("|")}`;
   let y = YEARS.get(key);
   if (!y) {
     const list = holidays(market, year);

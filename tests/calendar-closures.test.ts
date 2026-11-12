@@ -12,7 +12,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { addSessions, CALENDAR, holidays, isTradingDay, nextSessions } from "../src/core/calendar.js";
+import { addSessions, CALENDAR, holidays, isTradingDay, nextSessions, specialClosures } from "../src/core/calendar.js";
+import { horizonEnd } from "../src/journal/settle.js";
 import { installTestFacts } from "./helpers/facts.js";
 
 const at = (iso: string) => {
@@ -32,6 +33,17 @@ describe("researched one-off closures", () => {
     installTestFacts(CALENDAR, "US", 2026, { "XNYS.specialClosures": ["2026-12-09"] }, { verifiedAt: "2026-12-10" });
     expect(isTradingDay("XNYS", "2026-12-09")).toBe(false);
     expect(addSessions("XNYS", "2026-12-08", 1)).toBe("2026-12-10");
+  });
+
+  it("still knows that closure four months later (the file is unchanged, the day is long past)", () => {
+    at("2027-04-20T12:00:00Z");
+    installTestFacts(CALENDAR, "US", 2026, { "XNYS.specialClosures": ["2026-12-09"] }, { verifiedAt: "2026-12-10" });
+    // Before the fix: { closures: [], researched: false } — the stored closure is dropped as "stale".
+    expect(specialClosures("XNYS", 2026).closures.map((c) => c.date)).toEqual(["2026-12-09"]);
+    expect(isTradingDay("XNYS", "2026-12-09")).toBe(false);
+    // One session after Tuesday 8 December 2026 is Thursday 10, the 9th being closed. Actual at HEAD: 2026-12-09.
+    expect(addSessions("XNYS", "2026-12-08", 1)).toBe("2026-12-10");
+    expect(horizonEnd("XNYS", "2026-12-08", 1)).toBe("2026-12-10");
   });
 
   it("refuses a closure dated outside the file's year, or closes that day — not neither", () => {
