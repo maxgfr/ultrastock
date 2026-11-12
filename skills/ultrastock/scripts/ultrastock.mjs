@@ -55531,7 +55531,12 @@ var SHELTERED = /* @__PURE__ */ new Set(["IRA", "ROTH-IRA", "401K"]);
 var TRANSIT_DAYS = 30;
 var REWARD_NOTE = /\b(staking|rewards?|airdrops?|interest|income|distribution|rebate|cashback|bonus|mining|launchpool|referral)\b/i;
 var NON_US_BROKERS = /degiro|trade ?republic|bourso|fortuneo|bourse ?direct|saxo|scalable|xtb|lightyear|trading ?212|revolut|bitpanda|bitstamp|binance(?!\.?us)|bnp|cr[eé]dit|soci[eé]t[eé]|lcl|linxea|bforbank|hello ?bank|freedom ?24/i;
-var assetOf = (t, crypto) => crypto ? splitPair(t.symbol ?? "", t.currency).base : (t.symbol ?? "").toUpperCase();
+var assetOf = (t, crypto, isinOf) => crypto ? splitPair(t.symbol ?? "", t.currency).base : t.isin?.toUpperCase() ?? isinOf.get((t.symbol ?? "").toUpperCase()) ?? (t.symbol ?? "").toUpperCase();
+function isinsOf(txs) {
+  const m = /* @__PURE__ */ new Map();
+  for (const t of txs) if (t.symbol && t.isin) m.set(t.symbol.toUpperCase(), t.isin.toUpperCase());
+  return m;
+}
 var dollarLike = (t, crypto) => {
   if (!crypto) return false;
   const base2 = splitPair(t.symbol ?? "", t.currency).base;
@@ -55570,7 +55575,7 @@ var UsRegime = class extends TaxRegime {
    * Every purchase becomes a lot up front, so a later replacement buy can absorb a disallowed loss — the crypto-asset a
    * sale is paid in too (`received`, by sale).
    */
-  lots(input, history) {
+  lots(input, history, isinOf) {
     const lots = [];
     const byTx = /* @__PURE__ */ new Map();
     const received = /* @__PURE__ */ new Map();
@@ -55607,7 +55612,7 @@ var UsRegime = class extends TaxRegime {
         id: lots.length,
         account: t.account,
         symbol: (t.symbol ?? "").toUpperCase(),
-        asset: assetOf(t, crypto),
+        asset: assetOf(t, crypto, isinOf),
         currency: t.currency.toUpperCase(),
         acquired: day3(t.date),
         bought: day3(t.date),
@@ -55631,7 +55636,8 @@ var UsRegime = class extends TaxRegime {
     const after = until ? [] : chronological(
       input.transactions.filter((t) => t.type === "buy" && day3(t.date) > yearEnd && day3(t.date) <= addDays2(yearEnd, this.param("washSale.windowDays")))
     );
-    const { lots, byTx, received } = this.lots(input, [...history, ...after]);
+    const isinOf = isinsOf(input.transactions);
+    const { lots, byTx, received } = this.lots(input, [...history, ...after], isinOf);
     const events = [];
     const warnings = [];
     const active2 = /* @__PURE__ */ new Set();
@@ -55909,7 +55915,7 @@ var UsRegime = class extends TaxRegime {
           continue;
         }
         const proceeds = t.type === "sell" ? this.toBase(t, gross2(t), input) - this.toBase(t, t.fee ?? 0, input) : 0;
-        dispose(t, assetOf(t, crypto), sym3, t.quantity ?? 0, proceeds, crypto);
+        dispose(t, assetOf(t, crypto, isinOf), sym3, t.quantity ?? 0, proceeds, crypto);
         continue;
       }
       if (SHELTERED.has(env2.type)) continue;
