@@ -233,7 +233,10 @@ describe("rebalancing pieces", () => {
     expect(btc.feeBasis).toBe("no fee known");
     expect(btc.reasons).toContain("fee unknown: not counted");
     expect(orderFor({ symbol: "MC.PA", amountBase: 100, price: 600, rate: 1, currency: "EUR", market: "euronext", held: 0, fee: pctMin })).toBeUndefined();
-    expect(sellTaxNote("PEA", { residence: "FR", year: 2026 })).toMatch(/nothing taxable/);
+    // How a wrapper taxes a sell is no researched fact: the note names the research instead of a rule of its own.
+    expect(sellTaxNote("PEA", { residence: "FR", year: 2026 })).toMatch(
+      /inside this PEA is taxed is not built in.*tax rules template --country FR --year 2026/,
+    );
     expect(sellTaxNote("CTO", { residence: "FR", year: 2026 })).toMatch(/taxable gain/);
   });
 });

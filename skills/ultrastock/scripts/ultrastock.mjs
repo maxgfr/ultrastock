@@ -50122,12 +50122,12 @@ function sellTaxNote(envelope, ctx) {
   if (ctx.residence !== "FR")
     return `how a sell from this ${envelope === "unknown" ? "account" : envelope} is taxed for a ${ctx.residence} tax resident is not built in: research the ${ctx.residence} rules for ${ctx.year} (${research}); \`tax report\` then shows the realised gain beside them`;
   const rate2 = ctx.pfuIr !== void 0 && ctx.psCapital !== void 0 ? `the flat tax, PFU: ${pctText(ctx.pfuIr)} income tax + ${pctText(ctx.psCapital)} social levies on the net gain, researched for ${ctx.year}` : `the flat tax, PFU, whose rates are not researched for ${ctx.year} \u2014 ${research}`;
-  if (envelope === "PEA" || envelope === "PEA-PME") return "inside the PEA a sell realises nothing taxable: the plan is taxed only on withdrawal";
-  if (envelope === "AV" || envelope === "PER") return "inside the wrapper an arbitrage is not taxed; tax applies on withdrawal";
+  const notBuiltIn = (what) => `${what} is not built in (ultrastock states no tax rule of its own): research the FR rules for ${ctx.year} (${research})`;
+  if (envelope === "PEA" || envelope === "PEA-PME" || envelope === "AV" || envelope === "PER") return notBuiltIn(`how a sell inside this ${envelope} is taxed`);
   if (envelope === "CRYPTO")
-    return `crypto \u2192 crypto is not taxed in France; a sell to euros realises a taxable capital gain (art. 150 VH bis CGI; ${rate2}) \u2014 \`tax report\` computes it`;
+    return `${notBuiltIn("how a crypto sell is taxed \u2014 a trade for another crypto-asset or a sell to euros (crypto.treatment)")}; \`tax report\` then computes the realised gain`;
   if (envelope === "CTO" || envelope === "TAXABLE") return `in a CTO a sell realises a taxable gain or loss (${rate2}) \u2014 \`tax report\` computes it`;
-  return "the envelope is unknown: whether this sell is taxable depends on it (a CTO realises a taxable gain, a PEA does not)";
+  return "the envelope is unknown: whether this sell is taxable depends on it";
 }
 
 // src/analyze/portfolio/run-book.ts

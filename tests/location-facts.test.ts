@@ -53,6 +53,14 @@ describe("a sell's tax note", () => {
     expect(sellTaxNote("CTO", { residence: "FR", year: 2026 })).not.toMatch(/to come/);
   });
 
+  it("states no French rule of its own for a wrapper or crypto, and names the research instead", () => {
+    for (const env of ["PEA", "PEA-PME", "AV", "PER", "CRYPTO", "unknown"]) {
+      const note = sellTaxNote(env, { residence: "FR", year: 2026 });
+      expect(note).not.toMatch(/not taxed|nothing taxable|withdrawal|CGI|PEA does not/);
+    }
+    expect(sellTaxNote("CRYPTO", { residence: "FR", year: 2026 })).toMatch(/crypto\.treatment.*tax rules template --country FR --year 2026/);
+  });
+
   it("says nothing French to another residence, and what to research instead", () => {
     for (const env of ["PEA", "CTO", "CRYPTO", "TAXABLE", "unknown"]) {
       const note = sellTaxNote(env, { residence: "DE", year: 2026 });
