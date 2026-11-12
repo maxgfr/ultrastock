@@ -82,7 +82,7 @@ either switch for the user.
 |---|---|
 | `LIVE_OFF`, `NODE`, `NOT_READY` | live is not switched on, Node is too old, or the paper record is not ready |
 | `VENUE_OFF`, `VENUE_MISMATCH` | the venue is not switched on, or the ticket was planned for another venue |
-| `BLOCKED_JURISDICTION` | live: the researched rules of the profile's country do not let the order go — crypto: `crypto-casp` blocked or unknown, or the venue not found on the register `crypto-register` names (ESMA's MiCA register is read at order time; another register needs the venue's own `cryptoVenue.<venue>` fact); Kalshi: `kalshi` not "allowed". A rule never researched or stale reads as unknown: the reason names the `facts research jurisdiction` command |
+| `BLOCKED_JURISDICTION` | live: the researched rules of the profile's country do not let the order go — crypto: `crypto-casp` blocked or unknown, or the venue not found on the register `crypto-register` names (ESMA's MiCA register is read at order time; another register needs the venue's own `cryptoVenue.<venue>` fact); Kalshi: `kalshi` not "allowed"; an order priced in a dollar stablecoin: `stablecoin.<coin>` (e.g. `stablecoin.usdt`) not "allowed" — a live plan quoted in one says what the research concluded. A rule never researched or stale reads as unknown: the reason names the `facts research jurisdiction` command |
 | `KILL_SWITCH`, `BREAKER` | `<home>/KILL` exists, or a loss limit tripped |
 | `TICKET` | not checked, older than 15 minutes, or changed since the check |
 | `MARKET_ORDER`, `ASSET`, `NO_SHORT` | live orders are limit orders only, on spot shares, ETFs, crypto or Kalshi contracts; no selling what is not held |

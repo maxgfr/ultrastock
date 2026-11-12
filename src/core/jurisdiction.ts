@@ -164,6 +164,10 @@ export function jurisdictionKeys(country: string): FactSpec[] {
 
 const VENUE_KEY = /^cryptoVenue\.([a-z0-9]+)$/;
 const VENUE_LEI_KEY = /^cryptoVenue\.([a-z0-9]+)\.lei$/;
+const STABLECOIN_KEY = /^stablecoin\.([a-z0-9]+)$/;
+
+/** The key of a stablecoin's researched availability for residents: `stablecoin.usdt`. */
+export const stablecoinKey = (coin: string): string => `stablecoin.${coin.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
 
 /** The "jurisdiction" domain of the researched-facts store: one file per country and research date. */
 export const JURISDICTION = defineDomain<FactSpec>({
@@ -182,6 +186,16 @@ export const JURISDICTION = defineDomain<FactSpec>({
         "the register named in crypto-register",
         180,
         `${STATUS_NOTE} Read when crypto-register is "other": ultrastock cannot query that register itself.`,
+      );
+    const coin = STABLECOIN_KEY.exec(key)?.[1];
+    if (coin)
+      return status(
+        key,
+        `Whether residents of ${n} may buy, sell or be quoted in ${coin.toUpperCase()} on a crypto-asset platform`,
+        `${coin.toUpperCase()} stablecoin ${n} residents crypto platform trading allowed regulator ${clockNow().getUTCFullYear()}`,
+        "the financial regulator (EU/EEA: MiCA's rules on e-money tokens and ESMA's register of their issuers)",
+        180,
+        `${STATUS_NOTE} A live order quoted in ${coin.toUpperCase()} needs "allowed"; a plan quoted in it says what the research concluded.`,
       );
     const l = VENUE_LEI_KEY.exec(key)?.[1];
     if (l)

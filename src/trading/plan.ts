@@ -10,7 +10,9 @@ import { atr } from "../analytics/indicators.js";
 import { supportResistance } from "../analytics/patterns.js";
 import { sizePosition } from "../analytics/sizing.js";
 import { etfFundDomicile } from "../analyze/etf.js";
+import { ruleFact, ruleWhy, stablecoinKey } from "../core/jurisdiction.js";
 import { clockNow } from "../core/net.js";
+import { loadProfile } from "../core/profile.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
 import { gridRefusals, type InstrumentRules, publicInstrumentRules, snap, tickAt } from "./brokers/rules.js";
 import type { HttpFn, Venue } from "./brokers/types.js";
@@ -104,12 +106,18 @@ async function planGrid(venue: string, inst: { symbol: string; currency: string 
 }
 
 /**
- * Whether a stablecoin quote asset may be used from the user's country is a jurisdiction fact (e.g. the EU's rules on
- * stablecoins under MiCA): not checked yet — said for a live plan, so it is not read as cleared on that point.
+ * Whether a stablecoin quote asset may be used from the user's country is a researched jurisdiction fact
+ * (`stablecoin.<coin>`, e.g. under the EU's rules on e-money tokens): a live plan says what the research concluded, or
+ * that it was not researched and how to research it — the live gate refuses anything but "allowed".
  */
-export function quoteAssetNote(venue: string, currency: string): string | undefined {
+export function quoteAssetNote(venue: string, currency: string, country: string | undefined): string | undefined {
   if (venue === "paper" || !isDollarStablecoin(currency)) return undefined;
-  return `the order is quoted in ${currency}: whether ${currency} may be traded from your country of residence is a jurisdiction rule ultrastock does not check yet — verify it before a live order`;
+  const coin = currency.toUpperCase();
+  if (!country)
+    return `the order is quoted in ${coin}: whether ${coin} may be traded from your country is a researched jurisdiction rule, and no profile names the country (\`ultrastock profile init --jurisdiction <CC>\`) — a live order is refused until it is researched`;
+  const r = ruleFact(country, stablecoinKey(coin));
+  if (r.status === "allowed") return `the order is quoted in ${coin}: the ${country} research allows it (${ruleWhy(r, country)})`;
+  return `the order is quoted in ${coin}: ${coin} for residents of ${country} is ${r.status} (${ruleWhy(r, country)}) — a live order is refused until the research says "allowed"`;
 }
 
 export async function planTrade(input: PlanInput): Promise<TradePlanResult> {
@@ -171,7 +179,7 @@ export async function planTrade(input: PlanInput): Promise<TradePlanResult> {
   // An ETF's domicile decides PRIIPs (a US-domiciled ETF has no KID for EU retail investors).
   const domicile = inst.kind === "etf" ? await etfFundDomicile(inst) : undefined;
   if (domicile) notes.push(`fund domicile ${domicile.code ?? "unknown"} (${domicile.basis})`);
-  const quoteNote = quoteAssetNote(venue, inst.currency);
+  const quoteNote = quoteAssetNote(venue, inst.currency, loadProfile()?.jurisdiction);
   if (quoteNote) notes.push(quoteNote);
   const draft: Order = {
     account: input.account,

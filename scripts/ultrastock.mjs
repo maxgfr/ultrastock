@@ -17859,6 +17859,8 @@ function jurisdictionKeys(country2) {
 }
 var VENUE_KEY = /^cryptoVenue\.([a-z0-9]+)$/;
 var VENUE_LEI_KEY = /^cryptoVenue\.([a-z0-9]+)\.lei$/;
+var STABLECOIN_KEY = /^stablecoin\.([a-z0-9]+)$/;
+var stablecoinKey = (coin) => `stablecoin.${coin.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
 var JURISDICTION = defineDomain({
   name: "jurisdiction",
   period: "date",
@@ -17875,6 +17877,16 @@ var JURISDICTION = defineDomain({
         "the register named in crypto-register",
         180,
         `${STATUS_NOTE} Read when crypto-register is "other": ultrastock cannot query that register itself.`
+      );
+    const coin = STABLECOIN_KEY.exec(key)?.[1];
+    if (coin)
+      return status(
+        key,
+        `Whether residents of ${n2} may buy, sell or be quoted in ${coin.toUpperCase()} on a crypto-asset platform`,
+        `${coin.toUpperCase()} stablecoin ${n2} residents crypto platform trading allowed regulator ${clockNow().getUTCFullYear()}`,
+        "the financial regulator (EU/EEA: MiCA's rules on e-money tokens and ESMA's register of their issuers)",
+        180,
+        `${STATUS_NOTE} A live order quoted in ${coin.toUpperCase()} needs "allowed"; a plan quoted in it says what the research concluded.`
       );
     const l = VENUE_LEI_KEY.exec(key)?.[1];
     if (l)
@@ -48279,6 +48291,11 @@ async function preconditions(p) {
     else notional *= rate2;
   }
   if (isDollarStablecoin(o.currency)) {
+    if (profile && p.env === "live") {
+      const r3 = ruleFact(profile.jurisdiction, stablecoinKey(o.currency));
+      if (r3.status !== "allowed")
+        no("BLOCKED_JURISDICTION", `${o.currency.toUpperCase()} is ${r3.status} for residents of ${profile.jurisdiction}: ${ruleWhy(r3, profile.jurisdiction)}`);
+    }
     const peg = pegs?.find((r3) => r3.coin === o.currency.toUpperCase()) ?? (await readPegs([o.currency]))[0];
     if (peg?.usd === void 0)
       no("PEG", `${o.currency}'s USD rate could not be read (${peg?.unread ?? "no reading"}): an order priced in it is not sent on its peg`);
@@ -53045,9 +53062,14 @@ async function planGrid(venue, inst, now, http3) {
     return { checked: false, note: `${venue} ${sym3}: the venue's price and quantity rules could not be read (${e.message})` };
   }
 }
-function quoteAssetNote(venue, currency) {
+function quoteAssetNote(venue, currency, country2) {
   if (venue === "paper" || !isDollarStablecoin(currency)) return void 0;
-  return `the order is quoted in ${currency}: whether ${currency} may be traded from your country of residence is a jurisdiction rule ultrastock does not check yet \u2014 verify it before a live order`;
+  const coin = currency.toUpperCase();
+  if (!country2)
+    return `the order is quoted in ${coin}: whether ${coin} may be traded from your country is a researched jurisdiction rule, and no profile names the country (\`ultrastock profile init --jurisdiction <CC>\`) \u2014 a live order is refused until it is researched`;
+  const r3 = ruleFact(country2, stablecoinKey(coin));
+  if (r3.status === "allowed") return `the order is quoted in ${coin}: the ${country2} research allows it (${ruleWhy(r3, country2)})`;
+  return `the order is quoted in ${coin}: ${coin} for residents of ${country2} is ${r3.status} (${ruleWhy(r3, country2)}) \u2014 a live order is refused until the research says "allowed"`;
 }
 async function planTrade(input) {
   const now = input.now ?? clockNow();
@@ -53101,7 +53123,7 @@ async function planTrade(input) {
     notes.push(`resistance at ${wall.price.toFixed(4)} (${wall.touches} touches) stands before the first target ${targets[0]}`);
   const domicile = inst.kind === "etf" ? await etfFundDomicile(inst) : void 0;
   if (domicile) notes.push(`fund domicile ${domicile.code ?? "unknown"} (${domicile.basis})`);
-  const quoteNote = quoteAssetNote(venue, inst.currency);
+  const quoteNote = quoteAssetNote(venue, inst.currency, loadProfile()?.jurisdiction);
   if (quoteNote) notes.push(quoteNote);
   const draft = {
     account: input.account,

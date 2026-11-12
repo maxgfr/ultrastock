@@ -3,6 +3,7 @@
 // the live path, and is refused on it. Kraken and Coinbase are stubbed.
 import { rmSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { stablecoinKey } from "../src/core/jurisdiction.js";
 import { setNetMode } from "../src/core/net.js";
 import { homeDir } from "../src/core/paths.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
@@ -12,6 +13,7 @@ import { preconditions } from "../src/trading/live.js";
 import { pegNotes, readPegs } from "../src/trading/stablecoins.js";
 import { createTicket, loadTicket, recordCheck } from "../src/trading/tickets.js";
 import { withFixture } from "./helpers/fixtures.js";
+import { installJurisdictionTestFacts } from "./helpers/jurisdiction-facts.js";
 import { testGrid } from "./helpers/venue-rules.js";
 
 /** Kraken's public AssetPairs and Ticker as documented, with a last trade per coin; Coinbase refuses. */
@@ -105,5 +107,21 @@ describe("the live gate and a stablecoin off its peg", () => {
     venues({ USDT: "0.9995" });
     const fine = await preconditions({ ticket: await ticket(), venue: "kraken", env: "test", adapter, venueSym: "SOLUSDT" });
     expect(fine.refusals.map((r) => r.code)).not.toContain("PEG");
+  }, 60_000);
+
+  it("refuses a real order priced in a stablecoin the user's country research does not allow", async () => {
+    saveProfile(defaultProfile("US", "USD"));
+    venues({ USDT: "0.9995" });
+    const t = await ticket();
+    const coinRefusal = async (env: "live" | "test") =>
+      (await preconditions({ ticket: t, venue: "kraken", env, adapter: { ...adapter, env }, venueSym: "SOLUSDT" })).refusals.find((r) =>
+        r.reason.startsWith("USDT is"),
+      );
+    expect((await coinRefusal("live"))?.reason).toMatch(
+      /USDT is unknown for residents of US: not researched for US — research it: `ultrastock facts research jurisdiction --country US --key stablecoin\.usdt --out <run>`/,
+    );
+    expect(await coinRefusal("test")).toBeUndefined(); // a testnet moves no real money
+    installJurisdictionTestFacts({ US: { [stablecoinKey("USDT")]: "allowed" } });
+    expect(await coinRefusal("live")).toBeUndefined();
   }, 60_000);
 });

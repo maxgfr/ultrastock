@@ -29,7 +29,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { writeFileAtomic } from "../engine.js";
 import { createHash } from "node:crypto";
-import { cryptoVenueGate, ruleFact, ruleWhy } from "../core/jurisdiction.js";
+import { cryptoVenueGate, ruleFact, ruleWhy, stablecoinKey } from "../core/jurisdiction.js";
 import { withFileLock } from "../core/lock.js";
 import { homeDir } from "../core/paths.js";
 import { loadProfile } from "../core/profile.js";
@@ -243,6 +243,12 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
   }
   // A dollar stablecoin is priced live: off its peg beyond the threshold, or unreadable, no real order is priced in it.
   if (isDollarStablecoin(o.currency)) {
+    // And it is a crypto-asset of its own: the researched rule of the user's country decides (fail-closed, real money only).
+    if (profile && p.env === "live") {
+      const r = ruleFact(profile.jurisdiction, stablecoinKey(o.currency));
+      if (r.status !== "allowed")
+        no("BLOCKED_JURISDICTION", `${o.currency.toUpperCase()} is ${r.status} for residents of ${profile.jurisdiction}: ${ruleWhy(r, profile.jurisdiction)}`);
+    }
     const peg = pegs?.find((r) => r.coin === o.currency.toUpperCase()) ?? (await readPegs([o.currency]))[0];
     if (peg?.usd === undefined)
       no("PEG", `${o.currency}'s USD rate could not be read (${peg?.unread ?? "no reading"}): an order priced in it is not sent on its peg`);
