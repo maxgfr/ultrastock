@@ -137,9 +137,11 @@ USAGE
   ultrastock ticket list|show|check|cancel [<ticket-id>] [--status <s>] [--json]
   ultrastock paper book|submit <ticket-id>|sweep|readiness [--json]
   ultrastock decide <run> <decision.json> [--json]
-  ultrastock tax report|lots [--regime fr|us] [--year YYYY] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,…|short=…,long=…] [--envelope-value <account>:<date>=<value>] [--lot-method fifo|hifo|lifo] [--household single|couple] [--out <dir>] [--json]
-  ultrastock tax harvest|rules|verify [--regime fr|us] [--year YYYY] [--json]
-  ultrastock tax export --format 8949|2086|2074|koinly [--regime fr|us] [--year YYYY] [--out <dir>]
+  ultrastock tax rules template --country CC --year YYYY [--currency <code>] | tax rules set --file <rules.json> [--country CC] [--year YYYY] | tax rules show [--country CC] [--year YYYY] [--json]
+  ultrastock tax verify [--country CC] [--year YYYY] [--json]
+  ultrastock tax report [--country FR|US|--regime fr|us] [--year YYYY] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,…|short=…,long=…] [--envelope-value <account>:<date>=<value>] [--lot-method fifo|hifo|lifo] [--household single|couple] [--out <dir>] [--json]
+  ultrastock tax lots|harvest [--country FR|US] [--year YYYY] [--json]
+  ultrastock tax export --format 8949|2086|2074|koinly [--country FR|US] [--year YYYY] [--out <dir>]
   ultrastock journal settle|hits|review|digest [--book real|paper] [--json]
   ultrastock journal thesis list|add|show|move [<id>] [<state>] [--symbol] [--thesis] [--invalidation] [--catalysts] [--review-by] [--note] [--outcome] [--ticket-id] [--json]
   ultrastock journal lesson <text> [--tags <a,b>] | journal lessons [--tag <t>] [--json]
@@ -447,22 +449,24 @@ COMMANDS
   decide    Validate a decision (rating, horizon, conviction, thesis, the [E#] it
             rests on, falsifiers, an optional plan with a stop) against the run's
             evidence, then record it in the journal for settlement.
-  tax       The ledger through the tax regime of the profile's residence (or
-            --regime fr|us) for a tax year (default: last year; harvest: this
-            year). report: the year's totals, the form boxes (2042-C 3VG/3VH,
-            2DC, 2TR, 2CK, 2AB, 3AN/3BN, 2086, 2074, 2047; 8949, Schedule D,
-            NIIT…), obligations (2778-DIV, 3916 / 3916-bis, FBAR, 8938) and what
-            is missing. FR: PMP, PFU vs the progressive scale with --tmi, losses
-            carried 10 years (--carryforward 2024=1200), PEA / AV withdrawals
-            (--envelope-value pea:2026-03-02=52000), crypto by the global
-            formula of art. 150 VH bis (portfolio valued at each disposal).
-            US: FIFO/HIFO/LIFO lots, wash sales, ST/LT, the $3,000 limit,
-            0/15/20 % brackets with --income and --filing, NIIT. lots: every
-            realised event; harvest: positions under water and what selling
-            saves; rules: each envelope's rules; verify: every parameter with
-            its sources and a search query to re-check this year; export:
-            CSV for 8949, 2086, 2074 or Koinly. Every amount is converted at
-            the ECB rate of its date. A preparation aid, not tax advice.
+  tax       ultrastock contains no tax law. The agent researches the rules
+            of the user's country (--country, default the profile's tax
+            residence) and tax year (default: last year; harvest: this year)
+            on official sources and stores them with their sources and dates:
+            rules template prints the keys to research (JSON, values null),
+            rules set --file stores a filled one (strictly validated), rules
+            show prints it, verify is the research checklist. Without them the
+            tax commands refuse. report: FR and US engines read every rate,
+            threshold and period from the researched rules — FR: PMP, PFU vs
+            the progressive scale with --tmi, loss carryforward (--carryforward
+            2024=1200), PEA / AV withdrawals (--envelope-value
+            pea:2026-03-02=52000), crypto by art. 150 VH bis, the form boxes
+            and obligations; US: FIFO/HIFO/LIFO lots, wash sales, short/long
+            term, the loss limit, the long-term brackets with --income and
+            --filing, NIIT. lots: every realised event; harvest: positions
+            under water; export: CSV for 8949, 2086, 2074 or Koinly. Every
+            amount is converted at the ECB rate of its date. A preparation aid,
+            not tax advice: a professional should confirm.
   journal   The learning loop: settle decisions at +5/+20/+60 sessions against a
             benchmark (alpha, right or wrong), hit rates by rating, post-trade
             reviews (the plan first, then the outcome in R, with best and worst
@@ -737,6 +741,7 @@ export const VALUE_FLAGS = [
   "max-funds",
   "top",
   "min-cap-eur",
+  "file",
 ];
 export const BOOL_FLAGS = [
   "json",
@@ -956,6 +961,9 @@ const SPEC: CliSpec = {
     decide: ["json"],
     tax: [
       "regime",
+      "country",
+      "file",
+      "currency",
       "year",
       "book",
       "tmi",

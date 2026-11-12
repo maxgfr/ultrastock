@@ -1,9 +1,10 @@
 // FR securities: the household PMP pool (CGI art. 150-0 D 3; BOI-RPPM-PVBMI-20-10-20-40).
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Envelope } from "../src/core/profile.js";
 import { buildBook, type Transaction, transactionId } from "../src/portfolio/ledger.js";
 import { FranceRegime } from "../src/tax/fr.js";
 import type { TaxInput } from "../src/tax/regime.js";
+import { installTaxTestRules } from "./helpers/tax-rules.js";
 
 const tx = (t: Partial<Transaction> & Pick<Transaction, "date" | "type" | "account">): Transaction => {
   const raw = { origin: "manual", currency: "EUR", ...t } as Omit<Transaction, "id">;
@@ -16,6 +17,9 @@ const run = (txs: Transaction[]) => {
   const st = new FranceRegime(2025).replay(input(txs));
   return { sales: st.events.filter((e) => e.kind === "securities-disposal"), warnings: st.warnings };
 };
+
+// The engines hold no tax value: every test computes with TEST rules (tests/helpers/tax-rules.ts), not law.
+beforeEach(() => installTaxTestRules());
 
 describe("FR: a split recorded in each of two accounts that hold the same security", () => {
   // The ledger keeps a position per account, so a 2-for-1 is one split row per account (buildBook needs both).

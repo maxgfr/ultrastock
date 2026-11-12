@@ -4,27 +4,35 @@
 //   price minus the weighted average cost (PMP) of the same security held by
 //   the household, fees included (CGI art. 150-0 D, BOI-RPPM-PVBMI-20-10-20-40);
 //   a security is its ISIN, whatever symbol each account books it under.
-//   Net losses carry forward 10 years against securities gains only.
-// - Taxed at the PFU — 12.8 % income tax plus the prélèvements sociaux — or,
-//   on a household-wide option (2OP), at the progressive scale with the 40 %
-//   dividend allowance and the deductible CSG; both are computed and compared.
+//   Net losses carry forward (losses.carryforwardYears) against securities
+//   gains only.
+// - Taxed at the PFU — its income-tax part (pfu.ir) plus the prélèvements
+//   sociaux (ps.capital) — or, on a household-wide option (2OP), at the
+//   progressive scale with the dividend allowance (dividend.abattement) and the
+//   deductible CSG (csg.deductible); both are computed and compared.
 // - PEA / PEA-PME: nothing is taxed inside; a withdrawal is taxed on its share
-//   of the plan's gain — social levies after 5 years, plus the 12.8 % before
-//   (and the plan closes). AV: same share rule, 7.5 % after 8 years with an
-//   allowance, 12.8 % before; social levies at their own rate.
+//   of the plan's gain — social levies once the plan is old enough
+//   (pea.minYears), plus the PFU's income-tax part before (and the plan
+//   closes). AV: same share rule, the reduced rate (av.reducedRate) after
+//   av.minYears with an allowance, the PFU's before; social levies at their own
+//   rate (ps.assuranceVie).
 // - Crypto-assets (CGI art. 150 VH bis, form 2086): only disposals for fiat
 //   (or goods) are taxable; crypto-to-crypto exchanges are deferred, a
 //   Coinbase "Convert" (imported as two legs priced in fiat) included; a pair
 //   whose base is the fiat (EURUSDT) is read from the fiat side. Gain =
 //   net price − total acquisition price × price / portfolio value; exempt
-//   when the year's disposals total 305 € or less. Net crypto losses offset
-//   only crypto gains of the same year.
-// - Dividends from abroad: the treaty withholding (15 % for US shares with a
-//   W-8BEN) is a credit against the French income tax on them (2AB), capped at
-//   that tax; at a foreign broker the 12.8 % instalment is paid by the
-//   taxpayer with form 2778-DIV by the 15th of the next month.
+//   when the year's disposals total no more than crypto.exemptionThreshold.
+//   Net crypto losses offset only crypto gains of the same year.
+// - Dividends from abroad: the treaty withholding (us.dividendWithholdingTreaty
+//   for US shares with a W-8BEN) is a credit against the French income tax on
+//   them (2AB), capped at that tax; at a foreign broker the PFU instalment is
+//   paid by the taxpayer with form 2778-DIV (div2778.dueDay of the next month).
+//
+// Every rate, threshold, ceiling and period is a key of the researched rules
+// (tax/rules.ts, FR_SPEC): none is written here.
 import type { Envelope } from "../core/profile.js";
 import type { Transaction } from "../portfolio/ledger.js";
+import type { FrKey } from "./rules.js";
 import {
   brokerIsForeign,
   day,
@@ -39,6 +47,7 @@ import {
   isCryptoTx,
   isFiat,
   isStablecoin,
+  pct,
   round2,
   splitPair,
   type TaxEvent,
@@ -63,12 +72,12 @@ interface FrState {
 const ORDINARY = new Set(["CTO", "TAXABLE", "OTHER"]);
 const isFrenchSecurity = (t: Pick<Transaction, "symbol" | "isin">) => (t.isin ? t.isin.startsWith("FR") : /\.PA$/i.test(t.symbol ?? ""));
 
-export class FranceRegime extends TaxRegime {
+export class FranceRegime extends TaxRegime<FrKey> {
   readonly id = "fr" as const;
   readonly currency = "EUR";
 
   constructor(year: number) {
-    super("fr", year);
+    super("FR", year);
   }
 
   costBasisMethod(): string {
@@ -89,6 +98,8 @@ export class FranceRegime extends TaxRegime {
     const inYear = (t: Transaction) => yearOf(t.date) === input.year;
     const pfuIr = this.param("pfu.ir");
     const ps = this.param("ps.capital");
+    const allowanceBefore = this.param<string>("securities.allowanceAcquiredBefore");
+    const dueDay = this.param("div2778.dueDay");
     // The same security may be booked under several symbols (a ticker at one broker, its ISIN at another): the pool is
     // the ISIN's, learnt from every row that carries both, so a row without one still finds it. A security may also
     // change ISIN under its ticker (a reverse split, a redomiciliation): the ISINs one account books a ticker under
@@ -213,8 +224,8 @@ export class FranceRegime extends TaxRegime {
             acquired: pos.firstBuy,
             formula: `(${q} × ${t.price} ${t.currency} − fees ${round2(fee)} €) − PMP ${pmp.toFixed(4)} € × ${qty}`,
             notes:
-              pos.firstBuy && pos.firstBuy < "2018-01-01"
-                ? ["held since before 2018: the progressive-scale option may allow the holding-period allowance (not computed)"]
+              pos.firstBuy && pos.firstBuy < allowanceBefore
+                ? [`held since before ${allowanceBefore}: the progressive-scale option may allow the holding-period allowance (not computed)`]
                 : [],
           });
         if (pos.quantity <= 1e-12) st.securities.delete(key);
@@ -251,7 +262,7 @@ export class FranceRegime extends TaxRegime {
             ...(isFrenchSecurity(t) ? [] : ["foreign-source income: also on form 2047"]),
             ...(foreign === true
               ? [
-                  `paid at a foreign broker: 12.8 % instalment (${round2(amount * pfuIr)} €) and social levies (${round2(amount * ps)} €) to pay with form 2778-DIV by the 15th of the following month`,
+                  `paid at a foreign broker: ${pct(pfuIr)} instalment (${round2(amount * pfuIr)} €) and social levies (${round2(amount * ps)} €) to pay with form 2778-DIV by day ${dueDay} of the following month`,
                 ]
               : []),
           ],
@@ -443,7 +454,7 @@ export class FranceRegime extends TaxRegime {
     if (age === undefined) notes.push("opening date unknown: set the envelope's openedAt in the profile");
     if ((s.type === "PEA" || s.type === "PEA-PME") && age !== undefined && age < this.param("pea.minYears"))
       notes.push(
-        `before ${this.param("pea.minYears")} years: the plan closes (except the legal cases — job loss, disability, early retirement, starting a business) and the gain bears 12.8 % on top of the social levies`,
+        `before ${this.param("pea.minYears")} years: the plan closes (except the legal cases — job loss, disability, early retirement, starting a business) and the gain bears ${pct(this.param("pfu.ir"))} on top of the social levies`,
       );
     if (s.type === "PER") notes.push("PER withdrawal: taxation depends on whether the deposits were deducted and on the kind of exit — not computed");
     st.events.push({
@@ -466,7 +477,6 @@ export class FranceRegime extends TaxRegime {
     const st = this.replay(input);
     const ev = st.events;
     const warnings = [...st.warnings];
-    if (this.stale) warnings.unshift(this.stale);
     const pfuIr = this.param("pfu.ir");
     const ps = this.param("ps.capital");
     const sum = (xs: TaxEvent[], f: (e: TaxEvent) => number | undefined) => round2(xs.reduce((a, e) => a + (f(e) ?? 0), 0));
@@ -521,7 +531,7 @@ export class FranceRegime extends TaxRegime {
       "",
     );
     if (taxableSec > 0) forms.push({ form: "2042-C", box: "3VG", label: "net capital gain on securities", value: taxableSec });
-    if (net < 0) forms.push({ form: "2042-C", box: "3VH", label: "net capital loss on securities (carried forward 10 years)", value: round2(-net) });
+    if (net < 0) forms.push({ form: "2042-C", box: "3VH", label: `net capital loss on securities (carried forward ${maxAge} years)`, value: round2(-net) });
     if (sec.length)
       forms.push({
         form: "2074",
@@ -542,7 +552,7 @@ export class FranceRegime extends TaxRegime {
       forms.push({
         form: "2042-C",
         box: "2DC",
-        label: "dividends eligible for the 40 % allowance",
+        label: `dividends eligible for the ${pct(this.param("dividend.abattement"))} allowance`,
         value: dividends,
         note: "fund / ETF distributions: only their dividend part is eligible — follow the IFU",
       });
@@ -555,7 +565,7 @@ export class FranceRegime extends TaxRegime {
       forms.push({
         form: "2042-C",
         box: "2CK",
-        label: "12.8 % instalment already withheld by French paying agents (estimate — the IFU has the exact figure)",
+        label: `${pct(pfuIr)} instalment already withheld by French paying agents (estimate — the IFU has the exact figure)`,
         value: ck,
       });
     const foreignIncome = sum(
@@ -578,15 +588,17 @@ export class FranceRegime extends TaxRegime {
         `min(${foreignWh}, ${foreignIncome} × ${pfuIr})`,
       );
       forms.push({ form: "2042-C", box: "2AB", label: "tax credits on foreign income", value: credit });
-      if (foreignWh > foreignIncome * this.param("us.dividendWithholdingTreaty") + 0.01)
+      // A cent of tolerance: the amounts are rounded to the cent.
+      const treaty = this.param("us.dividendWithholdingTreaty");
+      if (foreignWh > foreignIncome * treaty + 0.01)
         warnings.push(
-          `foreign withholding (${foreignWh} €) is above the 15 % treaty rate on ${foreignIncome} € of foreign income: file a W-8BEN with the broker, and claim the excess from the source country`,
+          `foreign withholding (${foreignWh} €) is above the ${pct(treaty)} treaty rate on ${foreignIncome} € of foreign income: file a W-8BEN with the broker, and claim the excess from the source country`,
         );
     }
     if (viaForeign.length) {
       const months = [...new Set(viaForeign.map((e) => String(e.lines?.month)))].sort();
       obligations.push(
-        `form 2778-DIV: dividends/interest paid at a foreign broker in ${months.join(", ")} — pay the 12.8 % instalment and the social levies by the 15th of each following month (an exemption request for the instalment is possible below the income thresholds, by 30 November of the previous year)`,
+        `form 2778-DIV: dividends/interest paid at a foreign broker in ${months.join(", ")} — pay the ${pct(pfuIr)} instalment and the social levies by day ${this.param("div2778.dueDay")} of each following month (an exemption request for the instalment is possible below the income thresholds, by ${this.param<string>("pfnl.exemptionDeadline")})`,
       );
     }
     for (const e of viaUnknown.slice(0, 1))
@@ -649,7 +661,7 @@ export class FranceRegime extends TaxRegime {
       const premiums = [...st.sheltered.values()].filter((s) => s.type === "AV").reduce((a, s) => a + s.netDeposits, 0);
       const over = premiums > this.param("av.premiumThreshold") ? (premiums - this.param("av.premiumThreshold")) / premiums : 0;
       const taxedLong = Math.max(0, longGain - allowance);
-      const avIr = taxedLong * ((1 - over) * this.param("av.rate8y") + over * pfuIr) + shortGain * pfuIr;
+      const avIr = taxedLong * ((1 - over) * this.param("av.reducedRate") + over * pfuIr) + shortGain * pfuIr;
       const avPs = (longGain + shortGain) * this.param("ps.assuranceVie");
       envelopeTax += avIr + avPs;
       fig("av.gains", "assurance-vie gains withdrawn", round2(longGain + shortGain));
@@ -663,9 +675,9 @@ export class FranceRegime extends TaxRegime {
         forms.push({
           form: "2042",
           box: "2CH",
-          label: "assurance-vie gains from contracts of 8 years or more (for the allowance)",
+          label: `assurance-vie gains from contracts of ${this.param("av.minYears")} years or more (for the allowance)`,
           value: longGain,
-          note: "and 2VV / 2WW split at 150 000 € of premiums — follow the insurer's IFU",
+          note: `and 2VV / 2WW split at ${this.param("av.premiumThreshold")} € of premiums — follow the insurer's IFU`,
         });
       warnings.push("assurance-vie: the insurer withholds an instalment and the social levies on euro funds yearly — reconcile with its IFU");
     }
@@ -674,19 +686,21 @@ export class FranceRegime extends TaxRegime {
     const pfuBase = taxableSec + dividends + interest + cryptoTaxable;
     const pfuTax = round2(pfuBase * pfuIr);
     const psTax = round2(pfuBase * ps);
-    fig("pfu.incomeTax", "income tax at the PFU (12.8 %)", pfuTax, `${round2(pfuBase)} × ${pfuIr}`);
+    fig("pfu.incomeTax", `income tax at the PFU (${pct(pfuIr)})`, pfuTax, `${round2(pfuBase)} × ${pfuIr}`);
     fig("ps.total", "social levies on the year's gains and income (ordinary accounts and crypto)", psTax, `${round2(pfuBase)} × ${ps}`);
     let incomeTax = pfuTax - credit;
     if (input.marginalRate !== undefined) {
       const tmi = input.marginalRate;
-      const scaleBase = taxableSec + dividends * (1 - this.param("dividend.abattement")) + interest + cryptoTaxable;
+      // The part of the dividends the allowance leaves taxed (1 − the allowance).
+      const kept = Number((1 - this.param("dividend.abattement")).toFixed(6));
+      const scaleBase = taxableSec + dividends * kept + interest + cryptoTaxable;
       const scaleTax = round2(scaleBase * tmi);
       const csgSaving = round2(pfuBase * this.param("csg.deductible") * tmi);
       fig(
         "scale.incomeTax",
-        `income tax at the progressive scale (TMI ${tmi * 100} %)`,
+        `income tax at the progressive scale (TMI ${pct(tmi)})`,
         scaleTax,
-        `(${taxableSec} + ${dividends} × 0.6 + ${interest} + ${cryptoTaxable}) × ${tmi}`,
+        `(${taxableSec} + ${dividends} × ${kept} + ${interest} + ${cryptoTaxable}) × ${tmi}`,
       );
       fig(
         "scale.csgSaving",
@@ -700,7 +714,7 @@ export class FranceRegime extends TaxRegime {
       warnings.push(
         "the 2OP option applies to ALL the household's investment income and gains of the year — compare with the other income in mind (the TMI may change with these amounts)",
       );
-    } else warnings.push("no --tmi: only the PFU is computed; the progressive scale pays when the TMI is 0 % or 11 % (pass --tmi to compare)");
+    } else warnings.push("no --tmi: only the PFU is computed; the progressive scale can pay at a low marginal rate (pass --tmi to compare)");
     const total = round2(Math.max(0, incomeTax) + psTax + envelopeTax);
     fig(
       "total.estimate",
@@ -711,14 +725,16 @@ export class FranceRegime extends TaxRegime {
 
     // Foreign accounts.
     const accounts = [...new Set(input.transactions.filter((t) => yearOf(t.date) <= input.year).map((t) => t.account))];
+    const fine3916 = this.param("penalty.3916");
+    const fine3916bis = this.param<{ standard: number; aboveThreshold: number; threshold: number }>("penalty.3916bis");
     for (const a of accounts) {
       const env = envelopeOf(a, input.envelopes);
       const foreign = brokerIsForeign(env.envelope?.broker ?? a);
       if (foreign === true)
         obligations.push(
           env.type === "CRYPTO"
-            ? `form 3916-bis: declare the crypto account "${a}" (${env.envelope?.broker ?? a}) held abroad — 750 € (1 500 € above 50 000 €) per account not declared`
-            : `form 3916: declare the account "${a}" (${env.envelope?.broker ?? a}) opened abroad — 1 500 € per account not declared`,
+            ? `form 3916-bis: declare the crypto account "${a}" (${env.envelope?.broker ?? a}) held abroad — ${fine3916bis.standard} € (${fine3916bis.aboveThreshold} € above ${fine3916bis.threshold} €) per account not declared`
+            : `form 3916: declare the account "${a}" (${env.envelope?.broker ?? a}) opened abroad — ${fine3916} € per account not declared`,
         );
     }
     return { regime: "fr", year: input.year, currency: "EUR", rulesYear: this.rules.year, figures, forms, obligations, warnings, events: ev };
@@ -756,7 +772,7 @@ export class FranceRegime extends TaxRegime {
         saving: round2(used * rate),
         formula: `min(${round2(-r.unrealized)}, gains left ${round2(room + used)}) × ${round2(rate)}`,
         notes: [
-          used < -r.unrealized ? `${round2(-r.unrealized - used)} € of the loss would carry forward 10 years` : "",
+          used < -r.unrealized ? `${round2(-r.unrealized - used)} € of the loss would carry forward ${this.param("losses.carryforwardYears")} years` : "",
           "no wash-sale rule in France: buying back resets the PMP to the new price — a same-day sale and repurchase done only for tax can be challenged as an abuse of law; leave a market interval",
         ].filter(Boolean),
       });
@@ -788,15 +804,16 @@ export class FranceRegime extends TaxRegime {
   }
 
   envelopeRules(): EnvelopeRule[] {
-    const ps = (this.param("ps.capital") * 100).toFixed(1);
+    const ps = pct(this.param("ps.capital"));
+    const pfu = pct(this.param("pfu.ir"));
     return [
       {
         envelope: "CTO",
-        rule: `gains at PMP; PFU ${this.param("pfu.ir") * 100} % + social levies ${ps} % (or the scale, option 2OP); losses carried forward ${this.param("losses.carryforwardYears")} years; dividends: 40 % allowance under the scale`,
+        rule: `gains at PMP; PFU ${pfu} + social levies ${ps} (or the scale, option 2OP); losses carried forward ${this.param("losses.carryforwardYears")} years; dividends: ${pct(this.param("dividend.abattement"))} allowance under the scale`,
       },
       {
         envelope: "PEA",
-        rule: `EU/EEA shares and eligible UCITS ETFs; deposits up to ${this.param("pea.ceiling")} €; after ${this.param("pea.minYears")} years withdrawals bear only the social levies (${ps} %) on their gain share; before, the plan closes and 12.8 % is added`,
+        rule: `EU/EEA shares and eligible UCITS ETFs; deposits up to ${this.param("pea.ceiling")} €; after ${this.param("pea.minYears")} years withdrawals bear only the social levies (${ps}) on their gain share; before, the plan closes and ${pfu} is added`,
       },
       {
         envelope: "PEA-PME",
@@ -804,7 +821,7 @@ export class FranceRegime extends TaxRegime {
       },
       {
         envelope: "AV",
-        rule: `gains taxed on withdrawal only: after ${this.param("av.minYears")} years ${this.param("av.rate8y") * 100} % after a ${this.param("av.abattement.single")} € / ${this.param("av.abattement.couple")} € allowance (12.8 % on the part of premiums above ${this.param("av.premiumThreshold")} €), before 12.8 %; social levies ${(this.param("ps.assuranceVie") * 100).toFixed(1)} %`,
+        rule: `gains taxed on withdrawal only: after ${this.param("av.minYears")} years ${pct(this.param("av.reducedRate"))} after a ${this.param("av.abattement.single")} € / ${this.param("av.abattement.couple")} € allowance (${pfu} on the part of premiums above ${this.param("av.premiumThreshold")} €), before ${pfu}; social levies ${pct(this.param("ps.assuranceVie"))}`,
       },
       {
         envelope: "PER",
@@ -812,17 +829,18 @@ export class FranceRegime extends TaxRegime {
       },
       {
         envelope: "CRYPTO",
-        rule: `art. 150 VH bis: only disposals for fiat or goods are taxed, by the global portfolio formula; exempt if disposals ≤ ${this.param("crypto.exemptionThreshold")} € a year; flat ${this.param("pfu.ir") * 100} % + ${ps} % (or the scale); foreign accounts on form 3916-bis`,
+        rule: `art. 150 VH bis: only disposals for fiat or goods are taxed, by the global portfolio formula; exempt if disposals ≤ ${this.param("crypto.exemptionThreshold")} € a year; flat ${pfu} + ${ps} (or the scale); foreign accounts on form 3916-bis`,
       },
     ];
   }
 
   withholdingRules(): string[] {
+    const pfu = pct(this.param("pfu.ir"));
     return [
-      `US shares: ${this.param("us.dividendWithholdingTreaty") * 100} % withheld with a W-8BEN (30 % without), credited against the French income tax on the dividend (2AB) up to that tax; the social levies remain due in full`,
-      "other countries: the treaty rate is creditable; anything withheld above it must be reclaimed from the source country (e.g. Switzerland 35 % → 15 %, Germany 26.375 % → 15 %)",
-      "French broker: the 12.8 % instalment (PFNL) and the social levies are withheld at payment and credited on the return (2CK)",
-      "foreign broker: pay them yourself with form 2778-DIV by the 15th of the month after each payment",
+      `US shares: ${pct(this.param("us.dividendWithholdingTreaty"))} withheld with a W-8BEN (${pct(this.param("us.dividendWithholdingStatutory"))} without), credited against the French income tax on the dividend (2AB) up to that tax; the social levies remain due in full`,
+      "other countries: the treaty rate is creditable; anything withheld above it must be reclaimed from the source country (research its treaty rate)",
+      `French broker: the ${pfu} instalment (PFNL) and the social levies are withheld at payment and credited on the return (2CK)`,
+      `foreign broker: pay them yourself with form 2778-DIV by day ${this.param("div2778.dueDay")} of the month after each payment`,
     ];
   }
 }

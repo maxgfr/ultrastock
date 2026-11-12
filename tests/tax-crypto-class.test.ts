@@ -1,15 +1,19 @@
 // What is read as a crypto-asset, and a fiat-base pair in the US regime.
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Envelope } from "../src/core/profile.js";
 import { type Transaction, transactionId } from "../src/portfolio/ledger.js";
 import { FranceRegime } from "../src/tax/fr.js";
 import { envelopeOf, isCryptoTx, type TaxInput } from "../src/tax/regime.js";
 import { UsRegime } from "../src/tax/us.js";
+import { installTaxTestRules } from "./helpers/tax-rules.js";
 
 const tx = (t: Partial<Transaction> & Pick<Transaction, "date" | "type" | "account">): Transaction => {
   const raw = { origin: "manual", currency: "USD", ...t } as Omit<Transaction, "id">;
   return { ...raw, id: transactionId(raw) } as Transaction;
 };
+
+// The engines hold no tax value: every test computes with TEST rules (tests/helpers/tax-rules.ts), not law.
+beforeEach(() => installTaxTestRules());
 
 describe("a listed bitcoin trust (GBTC, FBTC: a share with an ISIN) in an account the profile does not list", () => {
   // 49dd58f: "A listed product (an ETP has an ISIN or a suffix) stays a security." GBTC is a security: §1091 applies

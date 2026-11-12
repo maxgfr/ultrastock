@@ -1,6 +1,11 @@
-// tax report | lots | harvest | rules | verify | export — the ledger through
-// the regime of the profile's tax residence (or --regime), for a tax year.
-import { mkdirSync, writeFileSync } from "node:fs";
+// tax report | lots | harvest | rules template|set|show | verify | export — the
+// ledger through the tax engine of the profile's tax residence (FR, US), for a
+// tax year.
+//
+// ultrastock contains no tax law: every rate, threshold and period comes from
+// the rules the agent researched and stored (`tax rules set`); without them for
+// the exact year the engines refuse and say what to research.
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { Dataset, Point } from "../core/datasets.js";
 import { clockNow } from "../core/net.js";
@@ -8,13 +13,17 @@ import { loadProfile } from "../core/profile.js";
 import { argList, argValue, type CommandArgs, UsageError } from "../engine.js";
 import { buildBook, readLedger, type Transaction } from "../portfolio/ledger.js";
 import { EXPORT_FORMATS, type ExportFormat, export2074, export2086, export8949, exportKoinly } from "../tax/export.js";
-import { regimeFor } from "../tax/index.js";
+import { isEngineCountry, regimeFor } from "../tax/index.js";
 import { cryptoValuer, currentPrices, historicalFx, withCryptoQuotes } from "../tax/inputs.js";
-import { cryptoTradeKind, day, isCryptoTx, isFiat, splitPair, type TaxInput, type TaxRegime, type TaxSummary, yearOf } from "../tax/regime.js";
+import { cryptoTradeKind, day, type Fx, isCryptoTx, isFiat, splitPair, type TaxInput, type TaxRegime, type TaxSummary, yearOf } from "../tax/regime.js";
+import { countryCode, loadRules, type RuleSet, researchChecklist, rulesTemplate, saveRules, specFor, templateCommand } from "../tax/rules.js";
 import { emitDatasets, printResult as print } from "./emit.js";
 
 const USAGE =
-  "usage: ultrastock tax report|lots|harvest|rules|verify|export [--regime fr|us] [--year YYYY] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,… | short=…,long=…] [--envelope-value <account>:<YYYY-MM-DD>=<value>,…] [--lot-method fifo|hifo|lifo] [--household single|couple] [--format 8949|2086|2074|koinly] [--out <dir>] [--json]";
+  "usage: ultrastock tax report|lots|harvest|verify|export|rules template|set|show [--country CC] [--regime fr|us] [--year YYYY] [--file <rules.json>] [--currency <code>] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,… | short=…,long=…] [--envelope-value <account>:<YYYY-MM-DD>=<value>,…] [--lot-method fifo|hifo|lifo] [--household single|couple] [--format 8949|2086|2074|koinly] [--out <dir>] [--json]";
+
+const DISCLAIMER =
+  "ultrastock contains no tax law: every rule here is the agent's research (sources and dates beside each) — a preparation aid, not tax advice; have a professional confirm";
 
 const rate = (raw?: string) => {
   if (raw === undefined) return undefined;
@@ -23,12 +32,13 @@ const rate = (raw?: string) => {
   return v > 1 ? v / 100 : v;
 };
 
-function regimeId(args: CommandArgs): string {
-  const r = argValue(args, "regime");
-  if (r) return r;
+/** The country of tax residence: --country, --regime (fr|us, kept for the engines), else the profile's. */
+function countryOf(args: CommandArgs): string {
+  const c = argValue(args, "country") ?? argValue(args, "regime");
+  if (c) return countryCode(c);
   const res = loadProfile()?.taxResidence;
-  if (res) return res.toLowerCase();
-  throw new UsageError("no tax residence in the profile: pass --regime fr|us (or run `ultrastock profile init`)");
+  if (res) return countryCode(res);
+  throw new UsageError("no tax residence in the profile: pass --country CC (an ISO 3166 code such as FR, US, DE), or run `ultrastock profile init`");
 }
 
 /** An amount flag: digits and an optional decimal point. "85,000" is refused, not read as NaN (or as 85). */
@@ -49,14 +59,8 @@ function bookTransactions(args: CommandArgs): Transaction[] {
   return txs;
 }
 
-/** Everything the regime needs, network included (FX, crypto values). */
-async function buildInput(args: CommandArgs, regime: TaxRegime, year: number, opts: { asOf?: string } = {}): Promise<{ input: TaxInput; notes: string[] }> {
-  // The flags are read before anything is fetched: a usage error costs no request.
-  const income = amountFlag(args, "income");
-  const hh = argValue(args, "household");
-  if (hh !== undefined && hh !== "single" && hh !== "couple") throw new UsageError(`--household is single or couple, not "${hh}"`);
-  const txs = bookTransactions(args);
-  const envelopes = loadProfile()?.envelopes ?? [];
+/** ECB rates into `currency` for every currency of the ledger over its history; crypto quotes (ETHBTC) at their daily close when asked. */
+async function ledgerFx(txs: readonly Transaction[], currency: string, year: number, opts: { asOf?: string; cryptoQuotes: boolean }) {
   const notes: string[] = [];
   const today = day(clockNow().toISOString());
   // biome-ignore lint/complexity/useMathMinMax: ISO date strings, not numbers
@@ -65,18 +69,30 @@ async function buildInput(args: CommandArgs, regime: TaxRegime, year: number, op
   const first = txs.map((t) => day(t.date)).sort()[0] ?? end;
   // biome-ignore lint/complexity/useMathMinMax: ISO date strings, not numbers
   const from = first < end ? first : end;
-  const currencies = [...new Set(txs.map((t) => t.currency)), "USD"].filter((c) => c !== regime.currency);
-  // The engines also convert the fiat base of a pair such as GBPUSDT (the pounds paid or received): its rate is asked too.
-  const fiatBases = txs.map((t) => splitPair(t.symbol ?? t.currency, t.currency).base).filter((c) => isFiat(c) && c !== regime.currency);
-  const ecb = await historicalFx(regime.currency, [...new Set([...currencies, ...fiatBases])], from, end);
+  const currencies = [...new Set(txs.map((t) => t.currency)), "USD"].filter((c) => c !== currency);
+  // The fiat base of a pair such as GBPUSDT (the pounds paid or received) is converted too: its rate is asked.
+  const fiatBases = txs.map((t) => splitPair(t.symbol ?? t.currency, t.currency).base).filter((c) => isFiat(c) && c !== currency);
+  const ecb = await historicalFx(currency, [...new Set([...currencies, ...fiatBases])], from, end);
   notes.push(...ecb.notes);
-  let fx = ecb.fx;
-  // The US taxes a trade quoted in a crypto-asset (ETHBTC) at its dollar value; France defers it and needs no rate.
-  if (regime.id === "us") {
+  let fx: Fx = ecb.fx;
+  if (opts.cryptoQuotes) {
     const quoted = await withCryptoQuotes(fx, currencies, from, end);
     fx = quoted.fx;
     notes.push(...quoted.notes);
   }
+  return { fx, notes };
+}
+
+/** Everything the regime needs, network included (FX, crypto values). */
+async function buildInput(args: CommandArgs, regime: TaxRegime, year: number, opts: { asOf?: string } = {}): Promise<{ input: TaxInput; notes: string[] }> {
+  // The flags are read before anything is fetched: a usage error costs no request.
+  const income = amountFlag(args, "income");
+  const hh = argValue(args, "household");
+  if (hh !== undefined && hh !== "single" && hh !== "couple") throw new UsageError(`--household is single or couple, not "${hh}"`);
+  const txs = bookTransactions(args);
+  const envelopes = loadProfile()?.envelopes ?? [];
+  // The US taxes a trade quoted in a crypto-asset (ETHBTC) at its dollar value; France defers it and needs no rate.
+  const { fx, notes } = await ledgerFx(txs, regime.currency, year, { asOf: opts.asOf, cryptoQuotes: regime.id === "us" });
   const input: TaxInput = { year, transactions: txs, envelopes, fx };
   const tmi = rate(argValue(args, "tmi") ?? argValue(args, "marginal-rate"));
   if (tmi !== undefined) input.marginalRate = tmi;
@@ -129,6 +145,31 @@ async function buildInput(args: CommandArgs, regime: TaxRegime, year: number, op
   return { input, notes };
 }
 
+const formatValue = (v: unknown) => (typeof v === "object" && v !== null ? JSON.stringify(v) : String(v));
+
+/** The researched rules as citable points, each with its first source and its verification date. */
+function rulesDataset(rules: RuleSet, fetchedAt: string): Dataset {
+  const specs = new Map(specFor(rules.country).map((s) => [s.key, s]));
+  const params: Point[] = Object.entries(rules.facts).map(([k, p]) => {
+    const t = specs.get(k)?.type;
+    return {
+      key: `TAXRULE.${rules.country}.${rules.year}.${k}`,
+      label: `${p.label} (researched, verified ${p.verifiedAt}, ${p.confidence} confidence)`,
+      value: typeof p.value === "object" && p.value !== null ? JSON.stringify(p.value) : (p.value as string | number),
+      unit: t === "rate" ? "ratio" : t === "amount" ? rules.currency : undefined,
+      url: p.sources[0],
+    };
+  });
+  return {
+    kind: "tax-rules",
+    title: `${rules.country} tax rules for ${rules.year} — researched by the agent on ${rules.researchedAt}, each with its sources (\`tax verify\` lists what to re-check)`,
+    subject: `TAXRULE.${rules.country}`,
+    points: params,
+    provenance: { source: "researched-tax-rules", fetchedAt, asOf: rules.researchedAt, official: false },
+    notes: [DISCLAIMER],
+  };
+}
+
 function summaryDatasets(s: TaxSummary, regime: TaxRegime, notes: string[]): Dataset[] {
   const fetchedAt = clockNow().toISOString();
   const prov = { source: "ultrastock-tax", fetchedAt, asOf: `${s.year}-12-31`, official: false };
@@ -137,7 +178,7 @@ function summaryDatasets(s: TaxSummary, regime: TaxRegime, notes: string[]): Dat
     ...s.figures.map((f) => ({
       key: f.key,
       label: f.label,
-      value: typeof f.value === "number" ? f.value : f.value,
+      value: f.value,
       unit: f.unit || undefined,
       formula: f.formula,
     })),
@@ -149,13 +190,6 @@ function summaryDatasets(s: TaxSummary, regime: TaxRegime, notes: string[]): Dat
     })),
     ...s.obligations.map((o, i) => ({ key: `${P}.obligation.${i + 1}`, label: "obligation", value: o })),
   ];
-  const params: Point[] = Object.entries(regime.rules.params).map(([k, p]) => ({
-    key: `TAXRULE.${s.regime.toUpperCase()}.${regime.rules.year}.${k}`,
-    label: `${p.label} (verified ${p.verifiedAt}, ${p.confidence} confidence)`,
-    value: typeof p.value === "object" ? JSON.stringify(p.value) : p.value,
-    unit: typeof p.value === "number" && p.value < 1 ? "ratio" : undefined,
-    url: p.sources[0]?.split(" ")[0],
-  }));
   return [
     {
       kind: "tax",
@@ -163,76 +197,155 @@ function summaryDatasets(s: TaxSummary, regime: TaxRegime, notes: string[]): Dat
       subject: `TAX.${s.regime.toUpperCase()}`,
       points,
       provenance: prov,
-      notes: [...s.warnings, ...notes, "a preparation aid for the return, not tax advice: the broker's IFU / 1099 and the official notices decide"],
+      notes: [...s.warnings, ...notes, `${DISCLAIMER}; the broker's IFU / 1099 and the official notices decide`],
     },
-    {
-      kind: "tax-rules",
-      title: `${s.regime.toUpperCase()} tax parameters for ${regime.rules.year} (each with its sources — \`tax verify\` re-checks them)`,
-      subject: `TAXRULE.${s.regime.toUpperCase()}`,
-      points: params,
-      provenance: { source: "ultrastock-tax-rules", fetchedAt, asOf: regime.rules.params[Object.keys(regime.rules.params)[0]!]?.verifiedAt, official: false },
-      notes: [],
-    },
+    rulesDataset(regime.rules, fetchedAt),
   ];
 }
 
-export async function taxCommand(args: CommandArgs, asJson: boolean): Promise<void> {
-  const [sub = "report"] = args.positional;
-  const now = clockNow();
-  const defaultYear = sub === "harvest" ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
-  const year = Number(argValue(args, "year") ?? defaultYear);
-  if (!Number.isInteger(year) || year < 2000 || year > now.getUTCFullYear()) throw new UsageError(`--year ${argValue(args, "year")} is not a tax year`);
-  const regime = regimeFor(regimeId(args), year);
-
-  if (sub === "rules") {
-    const rows = {
-      method: regime.costBasisMethod(),
-      envelopes: regime.envelopeRules(),
-      withholding: regime.withholdingRules(),
-      stale: regime.stale,
-      year: regime.rules.year,
-    };
-    if (asJson) return print(true, { ...rows, params: regime.rules.params }, "");
-    print(
-      false,
-      rows,
-      [
-        `# ${regime.id.toUpperCase()} tax rules ${year}${regime.stale ? ` — ${regime.stale}` : ""}`,
-        `cost basis: ${rows.method}`,
-        "",
-        ...rows.envelopes.map((e) => `- ${e.envelope}: ${e.rule}`),
-        "",
-        "withholding:",
-        ...rows.withholding.map((w) => `- ${w}`),
-        "",
-      ].join("\n"),
-    );
-    return emitDatasets(
-      args,
-      summaryDatasets(
-        { regime: regime.id, year, currency: regime.currency, rulesYear: regime.rules.year, figures: [], forms: [], obligations: [], warnings: [], events: [] },
-        regime,
-        [],
-      ).slice(1),
-      false,
-    );
+async function rulesCommand(args: CommandArgs, asJson: boolean, sub: string | undefined, country: () => string, year: () => number): Promise<void> {
+  if (sub === "template") {
+    const c = country();
+    const y = year();
+    const currency = argValue(args, "currency");
+    const t = rulesTemplate(c, y);
+    if (currency && t.currency === null) t.currency = currency.toUpperCase();
+    return void process.stdout.write(`${JSON.stringify(t, null, asJson ? undefined : 2)}\n`);
   }
-  if (sub === "verify") {
-    const list = regime.verifyChecklist();
+  if (sub === "set") {
+    const f = argValue(args, "file");
+    if (!f) throw new UsageError("tax rules set needs --file <rules.json> (fill the skeleton of `tax rules template`)");
+    const path = resolve(f);
+    if (!existsSync(path)) throw new UsageError(`no such file: ${path}`);
+    let raw: unknown;
+    try {
+      raw = JSON.parse(readFileSync(path, "utf8"));
+    } catch (e) {
+      throw new UsageError(`${path} is not valid JSON: ${(e as Error).message}`);
+    }
+    // --country / --year, when given, pin what the file must be for.
+    const pinC = argValue(args, "country") ?? argValue(args, "regime");
+    const pinY = argValue(args, "year");
+    const v = saveRules(raw, { country: pinC ? countryCode(pinC) : undefined, year: pinY ? year() : undefined });
+    const engine = isEngineCountry(v.rules.country);
+    const lines = [
+      `stored ${v.path} — ${Object.keys(v.rules.facts).length} researched fact(s) for ${v.rules.country} ${v.rules.year}`,
+      ...(v.missing.length
+        ? [
+            engine
+              ? `the ${v.rules.country} engine refuses until these are researched: ${v.missing.join(", ")}`
+              : `template keys not researched yet (the report lists them): ${v.missing.join(", ")}`,
+          ]
+        : []),
+      ...v.stale.map((s) => `stale: ${s.key} (${s.reason})`),
+      DISCLAIMER,
+    ];
     return print(
       asJson,
-      { regime: regime.id, year, items: list },
+      { path: v.path, country: v.rules.country, year: v.rules.year, facts: Object.keys(v.rules.facts).length, missing: v.missing, stale: v.stale },
+      lines.join("\n"),
+    );
+  }
+  if (sub === undefined || sub === "show") {
+    const c = country();
+    const y = year();
+    const { rules, missing, stale, path } = loadRules(c, y);
+    let engine: { method: string; envelopes: ReturnType<TaxRegime["envelopeRules"]>; withholding: string[] } | undefined;
+    if (isEngineCountry(c) && !missing.length) {
+      const regime = regimeFor(c, y);
+      engine = { method: regime.costBasisMethod(), envelopes: regime.envelopeRules(), withholding: regime.withholdingRules() };
+    }
+    if (asJson) return print(true, { path, rules, missing, stale, engine, disclaimer: DISCLAIMER }, "");
+    print(
+      false,
+      rules,
       [
-        `# Verify the ${regime.id.toUpperCase()} parameters for ${year} — search each, compare with the official text, update src/tax/rules.ts (value, sources, verifiedAt) when it changed`,
-        ...list.map(
-          (i) =>
-            `- ${i.key} = ${typeof i.value === "object" ? JSON.stringify(i.value) : i.value} (${i.label}; verified ${i.verifiedAt || "never"}, ${i.confidence})\n    search: "${i.query}"${i.sources.length ? `\n    sources: ${i.sources.join(" · ")}` : ""}${i.note ? `\n    note: ${i.note}` : ""}`,
+        `# ${c} tax rules ${y} — researched ${rules.researchedAt} (${path})`,
+        DISCLAIMER,
+        "",
+        ...Object.entries(rules.facts).map(
+          ([k, p]) =>
+            `- ${k} = ${formatValue(p.value)} — ${p.label} (verified ${p.verifiedAt}, ${p.confidence}; ${p.sources.join(" · ")})${p.note ? ` — ${p.note}` : ""}`,
         ),
+        ...stale.map((s) => `stale (not used): ${s.key} — ${s.reason}`),
+        ...(missing.length ? ["", `not researched: ${missing.join(", ")} — \`${templateCommand(c, y)}\``] : []),
+        ...(engine
+          ? [
+              "",
+              `cost basis: ${engine.method}`,
+              ...engine.envelopes.map((e) => `- ${e.envelope}: ${e.rule}`),
+              "",
+              "withholding:",
+              ...engine.withholding.map((w) => `- ${w}`),
+            ]
+          : []),
+        "",
+      ].join("\n"),
+    );
+    return emitDatasets(args, [rulesDataset(rules, clockNow().toISOString())], false);
+  }
+  throw new UsageError(`tax rules is template, set or show — ${USAGE}`);
+}
+
+export async function taxCommand(args: CommandArgs, asJson: boolean): Promise<void> {
+  const [sub = "report", sub2] = args.positional;
+  const now = clockNow();
+  const defaultYear = sub === "harvest" ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+  const year = () => {
+    const y = Number(argValue(args, "year") ?? defaultYear);
+    if (!Number.isInteger(y) || y < 2000 || y > now.getUTCFullYear()) throw new UsageError(`--year ${argValue(args, "year")} is not a tax year`);
+    return y;
+  };
+  if (sub === "rules") return rulesCommand(args, asJson, sub2, () => countryOf(args), year);
+  const y = year();
+  const country = countryOf(args);
+
+  if (sub === "verify") {
+    const c = researchChecklist(country, y);
+    return print(
+      asJson,
+      { country, year: y, ...c },
+      [
+        `# Research checklist — ${country} tax rules for ${y} (${c.path}: ${c.stored ? "stored" : "not stored yet"})`,
+        `${DISCLAIMER}. For each key: search it on the preferred official source, read the text for ${y}, fill value / sources / verifiedAt / confidence (\`${templateCommand(country, y)}\` gives the skeleton), then \`ultrastock tax rules set --file <file.json>\`.`,
+        ...c.items.map(
+          (i) =>
+            `- ${i.key} [${i.status}] ${i.label} (${i.type}${i.unit ? `, ${i.unit}` : ""})\n    search: "${i.query}"\n    prefer: ${i.prefer}${i.status !== "missing" ? `\n    stored: ${formatValue(i.value)} (verified ${i.verifiedAt}, ${i.confidence}) ${i.sources?.join(" · ") ?? ""}${i.note ? `\n    note: ${i.note}` : ""}` : ""}`,
+        ),
+        ...(c.formLines.length
+          ? ["", `form lines the engine writes — check their numbering on the ${y} forms:`, ...c.formLines.map((f) => `- ${f.form} ${f.lines}: ${f.usedFor}`)]
+          : []),
       ].join("\n"),
     );
   }
+
+  // The engine refuses here, before any request, when the country has none or its researched rules are missing.
+  const regime = regimeFor(country, y);
+  if (sub === "export") {
+    const format = (argValue(args, "format") ?? (country === "US" ? "8949" : "2074")) as ExportFormat;
+    if (!(EXPORT_FORMATS as readonly string[]).includes(format)) throw new UsageError(`--format is one of ${EXPORT_FORMATS.join(", ")}`);
+    const { input } = await buildInput(args, regime, y);
+    const events = format === "koinly" ? [] : regime.realize(input);
+    const csv =
+      format === "8949"
+        ? export8949(events)
+        : format === "2086"
+          ? export2086(events)
+          : format === "2074"
+            ? export2074(events)
+            : exportKoinly(
+                input.transactions.filter((t) => yearOf(t.date) === y),
+                (t) => isCryptoTx(t, input.envelopes),
+              );
+    const out = argValue(args, "out");
+    if (!out) return void process.stdout.write(csv);
+    mkdirSync(resolve(out), { recursive: true });
+    const file = join(resolve(out), `tax-${country.toLowerCase()}-${y}-${format}.csv`);
+    writeFileSync(file, csv, { mode: 0o600 });
+    return print(asJson, { file, rows: csv.split("\r\n").length - 2 }, `written ${file}`);
+  }
   if (sub === "report" || sub === "lots") {
-    const { input, notes } = await buildInput(args, regime, year);
+    const { input, notes } = await buildInput(args, regime, y);
     const s = regime.annualSummary(input);
     if (sub === "lots") {
       const rows = s.events.filter((e) => e.kind !== "crypto-exchange");
@@ -244,13 +357,14 @@ export async function taxCommand(args: CommandArgs, asJson: boolean): Promise<vo
             (e) =>
               `${e.date}  ${e.kind.padEnd(20)} ${(e.symbol ?? "").padEnd(10)} ${e.account.padEnd(10)} ${e.quantity ?? ""} ${e.proceeds !== undefined ? `proceeds ${e.proceeds}` : ""} ${e.cost !== undefined ? `cost ${e.cost}` : ""} ${e.gain !== undefined ? `→ ${e.gain} ${s.currency}` : e.amount !== undefined ? `${e.amount} ${s.currency}` : ""}${e.term ? ` (${e.term})` : ""}${e.washSaleDisallowed ? ` wash ${e.washSaleDisallowed}` : ""}${e.notes.length ? `\n      ${e.notes.join("; ")}` : ""}`,
           )
-          .join("\n") || `nothing realised in ${year}`,
+          .join("\n") || `nothing realised in ${y}`,
       );
     }
     if (!asJson) {
       process.stdout.write(
         [
-          `# ${regime.id.toUpperCase()} tax ${year} — ${s.events.length} event(s)`,
+          `# ${regime.id.toUpperCase()} tax ${y} — ${s.events.length} event(s), with the rules researched on ${regime.rules.researchedAt}`,
+          `${DISCLAIMER}.`,
           ...s.forms.map((f) => `  ${f.form.padEnd(10)} ${f.box.padEnd(8)} ${String(f.value).padStart(12)}  ${f.label}`),
           ...(s.obligations.length ? ["", "obligations:", ...s.obligations.map((o) => `  - ${o}`)] : []),
           ...(s.warnings.length ? ["", "warnings:", ...s.warnings.map((w) => `  - ${w}`)] : []),
@@ -263,7 +377,7 @@ export async function taxCommand(args: CommandArgs, asJson: boolean): Promise<vo
   }
   if (sub === "harvest") {
     const asOf = day(now.toISOString());
-    const { input, notes } = await buildInput(args, regime, year, { asOf });
+    const { input, notes } = await buildInput(args, regime, y, { asOf });
     const book = buildBook(input.transactions);
     const open = [...new Set(book.positions.filter((p) => p.quantity > 0).map((p) => p.symbol))];
     const { prices, notes: pn } = await currentPrices(open);
@@ -283,29 +397,6 @@ export async function taxCommand(args: CommandArgs, asJson: boolean): Promise<vo
           ].join("\n")
         : `no open position under water (${open.length} priced)${pn.length ? `\n${pn.join("\n")}` : ""}`,
     );
-  }
-  if (sub === "export") {
-    const format = (argValue(args, "format") ?? (regime.id === "us" ? "8949" : "2074")) as ExportFormat;
-    if (!(EXPORT_FORMATS as readonly string[]).includes(format)) throw new UsageError(`--format is one of ${EXPORT_FORMATS.join(", ")}`);
-    const { input } = await buildInput(args, regime, year);
-    const events = format === "koinly" ? [] : regime.realize(input);
-    const csv =
-      format === "8949"
-        ? export8949(events)
-        : format === "2086"
-          ? export2086(events)
-          : format === "2074"
-            ? export2074(events)
-            : exportKoinly(
-                input.transactions.filter((t) => yearOf(t.date) === year),
-                (t) => isCryptoTx(t, input.envelopes),
-              );
-    const out = argValue(args, "out");
-    if (!out) return void process.stdout.write(csv);
-    mkdirSync(resolve(out), { recursive: true });
-    const file = join(resolve(out), `tax-${regime.id}-${year}-${format}.csv`);
-    writeFileSync(file, csv, { mode: 0o600 });
-    return print(asJson, { file, rows: csv.split("\r\n").length - 2 }, `written ${file}`);
   }
   throw new UsageError(USAGE);
 }

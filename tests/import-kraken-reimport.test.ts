@@ -1,6 +1,6 @@
 // Kraken importer, ledger ids: re-importing trades.csv into a ledger written before c2fdfc7.
 // `tests/helpers/kraken-before-c2fdfc7.ts` is `git show c2fdfc7^:src/portfolio/import/kraken.ts`.
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Envelope } from "../src/core/profile.js";
 import { parseStatement } from "../src/portfolio/import/index.js";
 import { legacyKrakenPair } from "../src/portfolio/import/kraken.js";
@@ -8,12 +8,16 @@ import { appendTransactions, readLedger } from "../src/portfolio/ledger.js";
 import type { TaxInput } from "../src/tax/regime.js";
 import { UsRegime } from "../src/tax/us.js";
 import { parseKraken as parseKrakenBefore } from "./helpers/kraken-before-c2fdfc7.js";
+import { installTaxTestRules } from "./helpers/tax-rules.js";
 
 const CSV =
   '"txid","ordertxid","pair","time","type","ordertype","price","cost","fee","vol","margin","misc","ledgers"\n' +
   '"T1","O1","XXBTZUSD","2024-01-02 10:00:00","buy","limit",40000,40000,0,1,0,"",""\n' +
   '"T2","O2","AVAXXBT","2025-02-03 10:00:00","buy","limit",0.0005,0.05,0,100,0,"",""\n';
 const KRAKEN: Envelope = { id: "kraken", type: "CRYPTO", broker: "Kraken", currency: "USD" };
+
+// The engines hold no tax value: every test computes with TEST rules (tests/helpers/tax-rules.ts), not law.
+beforeEach(() => installTaxTestRules());
 
 describe('a Kraken AVAX/XBT trade imported before c2fdfc7 (as "AVA") and imported again after it', () => {
   it("the 0.05 BTC paid for the AVAX leave the book once, and are one disposal for the US return", async () => {

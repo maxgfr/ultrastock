@@ -1,10 +1,11 @@
 // US, transfer carry: a staking reward is not coins moved from another account.
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Envelope } from "../src/core/profile.js";
 import { parseStatement } from "../src/portfolio/import/index.js";
 import { type Transaction, transactionId } from "../src/portfolio/ledger.js";
 import type { TaxInput } from "../src/tax/regime.js";
 import { UsRegime } from "../src/tax/us.js";
+import { installTaxTestRules } from "./helpers/tax-rules.js";
 
 const tx = (t: Partial<Transaction> & Pick<Transaction, "date" | "type" | "account">): Transaction => {
   const raw = { origin: "manual", currency: "USD", ...t } as Omit<Transaction, "id">;
@@ -12,6 +13,9 @@ const tx = (t: Partial<Transaction> & Pick<Transaction, "date" | "type" | "accou
 };
 const COINBASE: Envelope = { id: "coinbase", type: "CRYPTO", broker: "Coinbase", currency: "USD" };
 const KRAKEN: Envelope = { id: "kraken", type: "CRYPTO", broker: "Kraken", currency: "USD" };
+
+// The engines hold no tax value: every test computes with TEST rules (tests/helpers/tax-rules.ts), not law.
+beforeEach(() => installTaxTestRules());
 
 describe("US: a staking reward received while coins of the same asset are on their way to a wallet outside the ledger", () => {
   it("does not take the basis and the holding period of the coins that left the other account", () => {

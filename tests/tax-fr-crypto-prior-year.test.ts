@@ -1,8 +1,9 @@
 // FR crypto, the command: a disposal of an earlier year must still take its share of the acquisition
 // price out of the pool (CGI art. 150 VH bis III-B; form 2086 lines 221 and 223).
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
 import { appendTransactions } from "../src/portfolio/ledger.js";
+import { installTaxTestRules } from "./helpers/tax-rules.js";
 
 // A price source that answers for the days it is asked for, and only those — as a venue's klines endpoint does.
 // BTCUSDT closes at 60 000 in 2025 and 80 000 in 2026.
@@ -25,6 +26,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
+
+// The engines hold no tax value: every test computes with TEST rules (tests/helpers/tax-rules.ts), not law.
+beforeEach(() => installTaxTestRules());
 
 describe("FR: crypto sold for euros in two different years", () => {
   it("the second year's gain is computed on the acquisition price net of the first year's fraction", async () => {

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
 import { taxCommand } from "../src/commands/tax.js";
 import { toCsv } from "../src/core/csv.js";
@@ -10,8 +10,9 @@ import { FranceRegime } from "../src/tax/fr.js";
 import { regimeFor } from "../src/tax/index.js";
 import { cryptoHoldings, withCryptoQuotes } from "../src/tax/inputs.js";
 import { brokerIsForeign, envelopeOf, splitPair, type TaxInput, yearsBetween } from "../src/tax/regime.js";
-import { param, rulesFor, verifyChecklist } from "../src/tax/rules.js";
+import { FR_SPEC, loadRules, param } from "../src/tax/rules.js";
 import { isLongTerm, UsRegime } from "../src/tax/us.js";
+import { installTaxTestRules } from "./helpers/tax-rules.js";
 
 const tx = (t: Partial<Transaction> & Pick<Transaction, "date" | "type" | "account">): Transaction => {
   const raw = { origin: "manual", currency: "EUR", ...t } as Omit<Transaction, "id">;
@@ -36,25 +37,22 @@ const IBKR: Envelope = { id: "ibkr", type: "CTO", broker: "Interactive Brokers",
 const KRAKEN: Envelope = { id: "kraken", type: "CRYPTO", broker: "Kraken", currency: "EUR" };
 const PEA: Envelope = { id: "pea", type: "PEA", broker: "Fortuneo", currency: "EUR", openedAt: "2018-01-01" };
 
+// The engines hold no tax value: every test computes with TEST rules (tests/helpers/tax-rules.ts), not law.
+beforeEach(() => installTaxTestRules());
+
 describe("tax rules", () => {
-  it("has sourced, dated parameters and falls back with a staleness warning", () => {
-    const r = rulesFor("fr", 2026);
+  it("reads the stored (here: TEST) rules of the exact year, sourced and dated, and never an earlier year's", () => {
+    const r = loadRules("FR", 2026);
     expect(param(r.rules, "ps.capital")).toBe(0.186);
-    expect(param(r.rules, "ps.assuranceVie")).toBe(0.172);
-    expect(param(rulesFor("fr", 2025).rules, "ps.capital")).toBe(0.172);
-    for (const p of Object.values(r.rules.params)) {
+    expect(param(loadRules("FR", 2025).rules, "ps.capital")).toBe(0.172);
+    for (const p of Object.values(r.rules.facts)) {
       expect(p.sources.length).toBeGreaterThan(0);
       expect(p.verifiedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
-    const later = rulesFor("us", 2031);
-    expect(later.rules.year).toBe(2026);
-    expect(later.stale).toMatch(/tax verify/);
-    expect(() => rulesFor("fr", 1990)).toThrow(/no FR tax rules/);
-    expect(() => param(r.rules, "nope")).toThrow(/not defined/);
-    const check = verifyChecklist("fr", 2027);
-    expect(check[0]!.key).toBe("_year");
-    expect(check.find((c) => c.key === "pfu.ir")!.query).toMatch(/2027/);
-    expect(() => regimeFor("de", 2025)).toThrow(/no tax regime/);
+    // 2021 has no file: no fallback to 2022.
+    expect(() => loadRules("FR", 2021)).toThrow(/no FR tax facts for 2021.*tax rules template --country FR --year 2021.*not used for 2021/);
+    expect(() => param(r.rules, "nope")).toThrow(/not in the FR tax facts/);
+    expect(() => regimeFor("de", 2025)).toThrow(/no tax engine for "de"/);
   });
 
   it("helpers: pairs, envelopes, brokers, anniversaries", () => {
@@ -297,9 +295,10 @@ describe("France", () => {
     const sale = (fee: number) => [txs[0]!, tx({ ...txs[1]!, price: 620, fee })];
     expect(fig(fr.annualSummary(input(sale(5), [KRAKEN], { cryptoValue: () => 620 })), "crypto.exempt")).toBe("yes");
     expect(fig(fr.annualSummary(input(sale(4), [KRAKEN], { cryptoValue: () => 620 })), "crypto.exempt")).toBeUndefined();
-    const rule = rulesFor("fr", 2025).rules.params["crypto.exemptionThreshold"]!;
+    // What the agent is told to research says it: net of fees, the threshold itself exempt.
+    const rule = FR_SPEC.find((s) => s.key === "crypto.exemptionThreshold")!;
     expect(rule.label).toMatch(/net of fees/);
-    expect(`${rule.label} ${rule.note}`).not.toMatch(/gross/);
+    expect(`${rule.label} ${"note" in rule ? rule.note : ""}`).not.toMatch(/gross/);
   });
 
   it("crypto: a gain computed after a disposal of unknown portfolio value is flagged as understated", () => {
@@ -399,9 +398,9 @@ describe("United States", () => {
   const u = (t: Partial<Transaction> & Pick<Transaction, "date" | "type">) => tx({ account: "schwab", currency: "USD", ...t });
 
   it("long-term means sold after the first anniversary", () => {
-    expect(isLongTerm("2024-01-10", "2025-01-10")).toBe(false);
-    expect(isLongTerm("2024-01-10", "2025-01-11")).toBe(true);
-    expect(isLongTerm("2024-02-29", "2025-03-01")).toBe(true);
+    expect(isLongTerm("2024-01-10", "2025-01-10", 1)).toBe(false);
+    expect(isLongTerm("2024-01-10", "2025-01-11", 1)).toBe(true);
+    expect(isLongTerm("2024-02-29", "2025-03-01", 1)).toBe(true);
   });
 
   it("FIFO lots, holding periods and the 8949 export", () => {

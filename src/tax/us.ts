@@ -3,26 +3,33 @@
 // - Lots per account and security, matched FIFO by default (HIFO / LIFO on
 //   request — a standing instruction the broker must hold too); basis includes
 //   the buy fee, proceeds are net of the sell fee (Form 8949 columns d/e).
-// - Long-term when the asset is held more than one year (sold after the first
-//   anniversary of the acquisition), short-term otherwise.
+// - Long-term when the asset is held more than longTerm.holdingYears (sold
+//   after that anniversary of the acquisition), short-term otherwise.
 // - A transfer between the user's own accounts is not a disposal: a
 //   transfer-in without a price takes the lots (basis and acquisition date)
 //   that a transfer-out of the same symbol from another account gave up —
 //   except out of an IRA into a taxable account: a distribution, valued at its
 //   date (Pub. 590-B).
 // - Wash sales (§1091, stocks and securities): a loss is disallowed when
-//   substantially identical shares are bought within 30 days before or after
-//   the sale — in any account, an IRA included (then permanently) — and added
-//   to the replacement shares' basis, whose holding period absorbs the sold
-//   shares'. Crypto-assets are not covered (verify each year: tax/rules.ts).
+//   substantially identical shares are bought within washSale.windowDays
+//   before or after the sale — in any account, an IRA included (then
+//   permanently) — and added to the replacement shares' basis, whose holding
+//   period absorbs the sold shares'. Crypto-assets only when the researched
+//   washSale.appliesToCrypto says so.
 // - Netting: short against short, long against long, then across; a net loss
-//   deducts up to $3,000 ($1,500 married filing separately) from ordinary
-//   income and the rest carries forward keeping its character.
-// - Long-term gains and qualified dividends at 0 / 15 / 20 % stacked over the
-//   ordinary taxable income; the 3.8 % NIIT above the MAGI thresholds.
+//   deducts up to capitalLoss.ordinaryLimit (capitalLoss.separateLimit married
+//   filing separately) from ordinary income and the rest carries forward
+//   keeping its character.
+// - Long-term gains and qualified dividends at the three ltcg.rates stacked
+//   over the ordinary taxable income (ltcg.thresholds); the NIIT (niit.rate)
+//   above the MAGI thresholds (niit.thresholds).
+//
+// Every rate, threshold, limit and period is a key of the researched rules
+// (tax/rules.ts, US_SPEC): none is written here.
 // - Crypto-to-crypto trades are disposals at fair value; stablecoins are
 //   treated as dollars (their own gains ignored, said so).
 import type { Transaction } from "../portfolio/ledger.js";
+import type { UsKey } from "./rules.js";
 import {
   addDays,
   chronological,
@@ -36,6 +43,7 @@ import {
   isCryptoTx,
   isFiat,
   isStablecoin,
+  pct,
   round2,
   splitPair,
   type TaxEvent,
@@ -116,25 +124,31 @@ function cryptoQuote(t: Transaction, crypto: boolean): string | undefined {
 }
 
 /**
- * Long-term when sold after the first anniversary of the acquisition (IRS Pub. 550). The holding period starts the day
- * after the acquisition and is counted in calendar months (Rev. Rul. 66-7): bought on the last day of a month, it is
- * long-term from the first day of the thirteenth month — the anniversary of a last-of-February date is the last day of
- * February a year later (2023-02-28 → 2024-02-29, 2024-02-29 → 2025-02-28).
+ * Long-term when sold after the `years`-th anniversary of the acquisition (the researched longTerm.holdingYears; IRS
+ * Pub. 550). The holding period starts the day after the acquisition and is counted in calendar months (Rev. Rul.
+ * 66-7): bought on the last day of a month, the anniversary is the last day of that month — the anniversary of a
+ * last-of-February date is the last day of February (2023-02-28 → 2024-02-29, 2024-02-29 → 2025-02-28).
  */
-export function isLongTerm(acquired: string, sold: string): boolean {
+export function isLongTerm(acquired: string, sold: string, years: number): boolean {
   const [y, m, d] = acquired.slice(0, 10).split("-").map(Number) as [number, number, number];
   const lastDay = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const day = d === lastDay(y, m) ? lastDay(y + 1, m) : Math.min(d, lastDay(y + 1, m));
-  const anniversary = `${y + 1}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const ay = y + years;
+  const day = d === lastDay(y, m) ? lastDay(ay, m) : Math.min(d, lastDay(ay, m));
+  const anniversary = `${ay}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   return sold.slice(0, 10) > anniversary;
 }
 
-export class UsRegime extends TaxRegime {
+export class UsRegime extends TaxRegime<UsKey> {
   readonly id = "us" as const;
   readonly currency = "USD";
 
   constructor(year: number) {
-    super("us", year);
+    super("US", year);
+  }
+
+  /** Long-term under the researched holding period. */
+  private longTerm(acquired: string, sold: string): boolean {
+    return isLongTerm(acquired, sold, this.param("longTerm.holdingYears"));
   }
 
   costBasisMethod(input?: Pick<TaxInput, "lotMethod">): string {
@@ -205,7 +219,7 @@ export class UsRegime extends TaxRegime {
   /** Replay; returns the year's events and the open lots at the year's end (or at `until`). */
   replay(input: TaxInput, until?: string): { events: TaxEvent[]; open: UsLot[]; warnings: string[]; lots: UsLot[] } {
     const history = this.history(input).filter((t) => !until || day(t.date) <= until);
-    // §1091(a): the window of a sale runs 30 days after it, past the year's end. The purchases of those days become
+    // §1091(a): the window of a sale runs past the year's end. The purchases of those days become
     // lots up front — candidates to replace a December loss, nothing more: they are never replayed into this year.
     const yearEnd = `${input.year}-12-31`;
     const after = until
@@ -220,7 +234,7 @@ export class UsRegime extends TaxRegime {
     /** Replacement shares split off a purchase not replayed yet: they enter the book with it. */
     const pieces = new Map<UsLot, UsLot[]>();
     const method = input.lotMethod ?? "fifo";
-    const washCrypto = this.param<string>("washSale.crypto") !== "not applied";
+    const washCrypto = this.param<boolean>("washSale.appliesToCrypto");
     const window = this.param("washSale.windowDays");
     const inYear = (t: Transaction) => yearOf(t.date) === input.year;
     let stableNoted = false;
@@ -353,7 +367,7 @@ export class UsRegime extends TaxRegime {
         let disallowed = 0;
         const notes: string[] = [...extra];
         if (gain < 0 && (!l.crypto || washCrypto)) {
-          // Replacement shares bought within ±30 days (any account), not the shares sold, not already used — bought: a
+          // Replacement shares bought within the window (any account), not the shares sold, not already used — bought: a
           // transfer-in, even one replayed before its transfer-out, acquires nothing. A purchase this same sale dips
           // into still replaces with the shares it keeps (its `remaining`, already net of this sale): only the lot of
           // the loss itself is never its own replacement.
@@ -420,7 +434,7 @@ export class UsRegime extends TaxRegime {
           }
           gain += disallowed;
         }
-        const term = isLongTerm(l.acquired, day(t.date)) ? "long" : "short";
+        const term = this.longTerm(l.acquired, day(t.date)) ? "long" : "short";
         if (l.id === -1) notes.push("no recorded lot: basis 0 — import the purchase");
         if (inYear(t))
           events.push({
@@ -500,15 +514,15 @@ export class UsRegime extends TaxRegime {
         const notes: string[] = [];
         let qualified: boolean | undefined;
         if (t.type === "dividend") {
-          // Held more than 60 days around the payment (the ex-date is not in the ledger: an approximation).
+          // Held more than the researched days around the payment (the ex-date is not in the ledger: an approximation).
           // Only what is still held earns the dividend: a lot sold out years ago says nothing of this holding period.
           const held = [...active].filter((l) => l.symbol === sym && l.account === t.account && l.remaining > 1e-12);
           const need = this.param("qualifiedDividend.holdingDays");
           qualified = held.some((l) => Date.parse(day(t.date)) - Date.parse(l.acquired) > need * 86_400_000);
           notes.push(
             qualified
-              ? "likely qualified (held > 60 days) — the 1099-DIV box 1b decides"
-              : "likely NOT qualified (held ≤ 60 days) — the 1099-DIV box 1b decides",
+              ? `likely qualified (held > ${need} days) — the 1099-DIV box 1b decides`
+              : `likely NOT qualified (held ≤ ${need} days) — the 1099-DIV box 1b decides`,
           );
         }
         events.push({
@@ -521,6 +535,7 @@ export class UsRegime extends TaxRegime {
       } else if (t.type === "tax" && t.symbol && inYear(t)) {
         // A tax row is the cash it moved: negative when withheld, positive when the broker hands it back.
         const withheld = round2(-this.toBase(t, t.amount ?? 0, input));
+        const direct = this.param<{ single: number; joint: number }>("ftc.directLimit");
         events.push({
           ...base,
           kind: "withholding",
@@ -528,7 +543,7 @@ export class UsRegime extends TaxRegime {
           notes: [
             withheld < 0
               ? "refund of foreign tax withheld earlier (a reversal on the statement): it comes off the tax paid"
-              : "foreign tax withheld: a foreign tax credit (Form 1116, or directly on Schedule 3 up to $300 / $600 joint)",
+              : `foreign tax withheld: a foreign tax credit (Form 1116, or directly on Schedule 3 up to $${direct.single} / $${direct.joint} joint)`,
           ],
         });
       }
@@ -554,7 +569,6 @@ export class UsRegime extends TaxRegime {
     const r = this.replay(input);
     const ev = r.events;
     const warnings = [...r.warnings];
-    if (this.stale) warnings.unshift(this.stale);
     const figures: Figure[] = [];
     const forms: FormLine[] = [];
     const obligations: string[] = [];
@@ -616,32 +630,33 @@ export class UsRegime extends TaxRegime {
     // Long-term rates stacked on top of the ordinary income.
     const status = input.filingStatus ?? "single";
     const th = this.param<Record<string, number>>("ltcg.thresholds");
-    const prefix = status === "joint" ? "joint" : status === "separate" ? "separate" : status === "head" ? "head" : "single";
-    const t0 = th[`${prefix}0`] ?? (status === "separate" ? th.single0 : status === "head" ? undefined : th.single0);
-    const t15 = th[`${prefix}15`];
+    const rates = this.param<{ low: number; mid: number; high: number }>("ltcg.rates");
+    // ltcg.thresholds: <status>Low is the taxable income where the lowest rate ends, <status>Mid where the middle one ends.
+    const t0 = th[`${status}Low`]!;
+    const t15 = th[`${status}Mid`]!;
     const preferential = round2(ltTaxable + qualified);
-    if (input.ordinaryIncome === undefined) warnings.push("no --income: the 0/15/20 % split of long-term gains and the NIIT need the ordinary taxable income");
-    else if (t0 === undefined || t15 === undefined) warnings.push(`no ${status} breakpoints recorded for ${this.rules.year}: verify them (tax verify)`);
+    if (input.ordinaryIncome === undefined)
+      warnings.push("no --income: the split of long-term gains across their rates and the NIIT need the ordinary taxable income");
     else {
       const ord = input.ordinaryIncome + stTaxable + ordinaryDiv + interest - deductible;
-      const at0 = Math.max(0, Math.min(preferential, t0 - ord));
-      const at15 = Math.max(0, Math.min(preferential - at0, t15 - Math.max(ord, t0)));
-      const at20 = preferential - at0 - at15;
-      const ltTax = round2(at15 * 0.15 + at20 * 0.2);
+      const atLow = Math.max(0, Math.min(preferential, t0 - ord));
+      const atMid = Math.max(0, Math.min(preferential - atLow, t15 - Math.max(ord, t0)));
+      const atHigh = preferential - atLow - atMid;
+      const ltTax = round2(atLow * rates.low + atMid * rates.mid + atHigh * rates.high);
       fig(
         "ltcg.tax",
         "tax on long-term gains and qualified dividends",
         ltTax,
-        `${round2(at0)} × 0 + ${round2(at15)} × 15 % + ${round2(at20)} × 20 % over ${round2(ord)} of ordinary income`,
+        `${round2(atLow)} × ${pct(rates.low)} + ${round2(atMid)} × ${pct(rates.mid)} + ${round2(atHigh)} × ${pct(rates.high)} over ${round2(ord)} of ordinary income`,
       );
       const nii = Math.max(0, total) + qualified + ordinaryDiv + interest;
       const magi = input.ordinaryIncome + nii - deductible;
-      const nt = this.param<Record<string, number>>("niit.thresholds")[status === "head" ? "single" : status] ?? 200_000;
+      const nt = this.param<Record<string, number>>("niit.thresholds")[status]!;
       const niit = round2(Math.max(0, Math.min(nii, magi - nt)) * this.param("niit.rate"));
       fig("niit", "net investment income tax (Form 8960)", niit, `${this.param("niit.rate")} × min(${round2(nii)}, ${round2(magi)} − ${nt})`);
       if (input.marginalRate !== undefined) {
         const stTax = round2((stTaxable + ordinaryDiv + interest - deductible) * input.marginalRate);
-        fig("ordinary.tax", `tax on short-term gains, ordinary dividends and interest at ${input.marginalRate * 100} %`, stTax);
+        fig("ordinary.tax", `tax on short-term gains, ordinary dividends and interest at ${pct(input.marginalRate)}`, stTax);
         fig("total.estimate", "estimated federal tax on the year's investments", round2(ltTax + niit + stTax));
       } else warnings.push("no --marginal-rate: short-term gains, ordinary dividends and interest are taxed at the ordinary rates — not computed");
     }
@@ -666,9 +681,10 @@ export class UsRegime extends TaxRegime {
       ev.filter((e) => e.kind === "withholding"),
       (e) => e.amount,
     );
+    const direct = this.param<{ single: number; joint: number }>("ftc.directLimit");
     if (wh > 0)
       forms.push({
-        form: wh <= (status === "joint" ? 600 : 300) ? "Schedule 3" : "1116",
+        form: wh <= (status === "joint" ? direct.joint : direct.single) ? "Schedule 3" : "1116",
         box: "foreign tax credit",
         label: "foreign tax paid on dividends",
         value: wh,
@@ -679,13 +695,17 @@ export class UsRegime extends TaxRegime {
       const e = envelopeOf(a, input.envelopes);
       return ["PEA", "PEA-PME", "AV", "PER"].includes(e.type) || (e.type !== "CRYPTO" && NON_US_BROKERS.test(e.envelope?.broker ?? ""));
     });
+    const f8938 = this.param<{ singleEnd: number; singleAny: number; jointEnd: number; jointAny: number }>("f8938.thresholds");
+    const [end8938, any8938] = status === "joint" ? [f8938.jointEnd, f8938.jointAny] : [f8938.singleEnd, f8938.singleAny];
     if (foreign.length)
       obligations.push(
-        `FBAR (FinCEN 114, by 15 April, automatic extension to 15 October) if the foreign accounts ${foreign.join(", ")} together exceeded $${this.param("fbar.threshold").toLocaleString("en-US")} at any time; Form 8938 above $${this.param<{ singleEnd: number; singleAny: number }>("f8938.thresholds").singleEnd.toLocaleString("en-US")} at year end / $${this.param<{ singleEnd: number; singleAny: number }>("f8938.thresholds").singleAny.toLocaleString("en-US")} any time (single; doubled joint)`,
+        `FBAR (FinCEN 114, ${this.param<string>("fbar.deadline")}) if the foreign accounts ${foreign.join(", ")} together exceeded $${this.param("fbar.threshold").toLocaleString("en-US")} at any time; Form 8938 above $${end8938.toLocaleString("en-US")} at year end / $${any8938.toLocaleString("en-US")} any time (${status === "joint" ? "joint" : "single"} thresholds)`,
       );
     if (accounts.some((a) => envelopeOf(a, input.envelopes).type === "CRYPTO" && NON_US_BROKERS.test(envelopeOf(a, input.envelopes).envelope?.broker ?? "")))
       warnings.push(
-        "crypto-only accounts abroad are not reportable on the FBAR for now (FinCEN Notice 2020-2, a rule change was announced) — verify the year's position; Form 8938 may still apply",
+        this.param<boolean>("fbar.cryptoOnlyAccounts")
+          ? "crypto-only accounts abroad are reportable on the FBAR for this year (researched rule) — count them in the aggregate; Form 8938 may also apply"
+          : "crypto-only accounts abroad are not reportable on the FBAR for this year (researched rule) — Form 8938 may still apply",
       );
     const funds = [
       ...new Set(
@@ -718,9 +738,11 @@ export class UsRegime extends TaxRegime {
       const px = quoted * toUsd;
       const unrealized = (px - l.basis) * l.remaining;
       if (unrealized >= 0) continue;
-      const term = isLongTerm(l.acquired, asOf) ? "long" : "short";
+      const term = this.longTerm(l.acquired, asOf) ? "long" : "short";
       const recent = r.lots.filter((x) => x.symbol === l.symbol && x.id !== l.id && x.bought > addDays(asOf, -window));
-      const rate = input.marginalRate ?? (term === "short" ? 0.24 : 0.15);
+      // Without --marginal-rate a long-term loss is valued at the researched middle long-term rate; a short-term one
+      // offsets ordinary-rate income, whose rate only the user knows: no saving is computed.
+      const rate = input.marginalRate ?? (term === "long" ? this.param<{ mid: number }>("ltcg.rates").mid : undefined);
       const offset = Math.min(-unrealized, Math.max(0, realized) + this.param("capitalLoss.ordinaryLimit"));
       out.push({
         account: l.account,
@@ -730,17 +752,17 @@ export class UsRegime extends TaxRegime {
         cost: round2(l.basis * l.remaining),
         unrealized: round2(unrealized),
         term,
-        saving: round2(offset * rate),
-        formula: `min(${round2(-unrealized)}, gains ${round2(Math.max(0, realized))} + ${this.param("capitalLoss.ordinaryLimit")}) × ${rate}${input.marginalRate === undefined ? " (assumed rate: pass --marginal-rate)" : ""}`,
+        saving: rate === undefined ? undefined : round2(offset * rate),
+        formula: `min(${round2(-unrealized)}, gains ${round2(Math.max(0, realized))} + ${this.param("capitalLoss.ordinaryLimit")}) × ${rate ?? "your marginal rate"}${input.marginalRate === undefined ? " (pass --marginal-rate)" : ""}`,
         notes: [
           `lot bought ${l.bought}${l.acquired !== l.bought ? ` (holding period from ${l.acquired})` : ""}`,
           c !== "USD" ? `priced ${quoted} ${l.currency} = ${round2(px)} $ at the ${asOf} rate` : "",
           recent.length
             ? `WASH-SALE RISK: ${l.symbol} was bought on ${recent.map((x) => `${x.bought} (${x.account})`).join(", ")} within the last ${window} days`
             : "",
-          l.crypto
-            ? "crypto: no wash-sale rule applied (verify the year's law)"
-            : `do not buy ${l.symbol} or a substantially identical security (in any account, IRA included) before ${addDays(asOf, window + 1)}`,
+          l.crypto && !this.param<boolean>("washSale.appliesToCrypto")
+            ? "crypto: no wash-sale rule applied (the researched rule for the year)"
+            : `do not buy ${l.symbol} or a substantially identical ${l.crypto ? "asset" : "security"} (in any account, IRA included) before ${addDays(asOf, window + 1)}`,
         ].filter(Boolean),
       });
     }
@@ -748,29 +770,32 @@ export class UsRegime extends TaxRegime {
   }
 
   envelopeRules(): EnvelopeRule[] {
+    const rates = this.param<{ low: number; mid: number; high: number }>("ltcg.rates");
+    const age = this.param("ira.penaltyFreeAge");
     return [
       {
         envelope: "TAXABLE",
-        rule: `lots, short-term at ordinary rates, long-term (> ${this.param("longTerm.holdingDays")} days) at 0/15/20 %, NIIT ${this.param("niit.rate") * 100} % above the thresholds, $${this.param("capitalLoss.ordinaryLimit")} of net loss a year against ordinary income`,
+        rule: `lots, short-term at ordinary rates, long-term (held more than ${this.param("longTerm.holdingYears")} year(s)) at ${pct(rates.low)} / ${pct(rates.mid)} / ${pct(rates.high)}, NIIT ${pct(this.param("niit.rate"))} above the thresholds, $${this.param("capitalLoss.ordinaryLimit")} of net loss a year against ordinary income`,
       },
       {
         envelope: "IRA",
-        rule: "traditional: deductible contributions within limits, growth tax-deferred, withdrawals taxed as ordinary income, 10 % penalty before 59½ (exceptions)",
+        rule: `traditional: deductible contributions within limits, growth tax-deferred, withdrawals taxed as ordinary income, ${pct(this.param("ira.earlyWithdrawalPenalty"))} additional tax before age ${age} (exceptions)`,
       },
-      { envelope: "ROTH-IRA", rule: "after-tax contributions, qualified withdrawals tax-free after 59½ and 5 years" },
+      { envelope: "ROTH-IRA", rule: `after-tax contributions, qualified withdrawals tax-free after age ${age} and ${this.param("roth.qualifiedYears")} years` },
       { envelope: "401K", rule: "employer plan: pre-tax or Roth deferrals within the yearly limit; same exit rules as the IRA kinds" },
       {
         envelope: "CRYPTO",
-        rule: "property: every sale, trade or spend is a disposal at fair value; lots per wallet / account since 2025; Form 1099-DA from brokers",
+        rule: "property: every sale, trade or spend is a disposal at fair value; lots per wallet / account; Form 1099-DA from brokers",
       },
       { envelope: "PEA / AV (foreign)", rule: "not recognised by the IRS: taxable each year as a foreign account, funds inside are PFICs" },
     ];
   }
 
   withholdingRules(): string[] {
+    const direct = this.param<{ single: number; joint: number }>("ftc.directLimit");
     return [
-      "foreign dividends: the source country withholds (France 12.8 % with the treaty form, 25 % without); the US allows a foreign tax credit (Form 1116, or Schedule 3 directly up to $300 / $600 joint)",
-      "US dividends to a US person: no withholding unless backup withholding (24 %) when the W-9 is missing",
+      `foreign dividends: the source country withholds at its treaty rate with the treaty form, its statutory rate without (research the source country's); the US allows a foreign tax credit (Form 1116, or Schedule 3 directly up to $${direct.single} / $${direct.joint} joint)`,
+      `US dividends to a US person: no withholding unless backup withholding (${pct(this.param("backupWithholding.rate"))}) when the W-9 is missing`,
     ];
   }
 }

@@ -7,14 +7,15 @@
 // and what each envelope's rules are (`envelopeRules`).
 //
 // Each figure says how it was computed (`formula`), every parameter comes from
-// tax/rules.ts with its sources, and anything the engine cannot know (the
+// the rules the agent researched for the country and the year (tax/rules.ts:
+// the engine refuses to start without them, a key missing included), and anything the engine cannot know (the
 // value of a PEA on the day of a withdrawal, a crypto portfolio's value at a
 // disposal, the household's marginal rate) is an input — missing, it is named
 // in `warnings`, never guessed. The result is a preparation aid for the
 // return, not the return: the broker's IFU / 1099 is the reference.
 import type { Envelope, EnvelopeType } from "../core/profile.js";
 import { inReplayOrder, type Transaction } from "../portfolio/ledger.js";
-import { param, type RuleSet, rulesFor, verifyChecklist } from "./rules.js";
+import { type EngineCountry, engineRules, param, type RuleSet } from "./rules.js";
 
 /** Units of the regime's currency per one unit of `currency` on `date` (the last fixing at or before it). */
 export type Fx = (currency: string, date: string) => number | undefined;
@@ -96,7 +97,7 @@ export interface TaxSummary {
   regime: "fr" | "us";
   year: number;
   currency: string;
-  /** The parameters' year (differs from `year` when the rules are stale). */
+  /** The year of the researched rules the figures used (always the tax year: an earlier year's are never used). */
   rulesYear: number;
   figures: Figure[];
   forms: FormLine[];
@@ -293,16 +294,18 @@ export function addDays(d: string, n: number): string {
 /** The gross cash of a trade (quantity × price) in the transaction's currency. */
 export const gross = (t: Transaction) => (t.quantity ?? 0) * (t.price ?? 0);
 
-export abstract class TaxRegime {
+/** A rate as a percent for a sentence: 0.3 → "30 %" (×100 is the percent conversion, not a tax value). */
+export const pct = (r: number) => `${Number((r * 100).toFixed(4))} %`;
+
+/** `K`: the keys of the researched rules the regime reads (a key outside the template's list does not typecheck). */
+export abstract class TaxRegime<K extends string = string> {
   readonly rules: RuleSet;
-  readonly stale?: string;
   abstract readonly id: "fr" | "us";
   abstract readonly currency: string;
 
-  constructor(regime: "fr" | "us", year: number) {
-    const r = rulesFor(regime, year);
-    this.rules = r.rules;
-    this.stale = r.stale;
+  /** Refuses (a usage error naming the file and the keys) without researched rules for the exact year. */
+  constructor(country: EngineCountry, year: number) {
+    this.rules = engineRules(country, year);
   }
 
   /** The cost-basis rule the regime applies (PMP, FIFO lots…), in words. */
@@ -318,12 +321,8 @@ export abstract class TaxRegime {
   /** How dividends paid abroad are withheld and credited. */
   abstract withholdingRules(): string[];
 
-  param<T = number>(key: string): T {
+  param<T = number>(key: K): T {
     return param<T>(this.rules, key);
-  }
-
-  verifyChecklist() {
-    return verifyChecklist(this.id, this.rules.year);
   }
 
   /**

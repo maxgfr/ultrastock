@@ -1,11 +1,12 @@
 // US lots across the user's own accounts and the wash-sale rule: a transfer between accounts, replacement shares,
 // trades quoted in a crypto-asset. The expected figures are computed by hand in the comments.
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Envelope } from "../src/core/profile.js";
 import { type Transaction, transactionId } from "../src/portfolio/ledger.js";
 import { withCryptoQuotes } from "../src/tax/inputs.js";
 import type { TaxEvent, TaxInput } from "../src/tax/regime.js";
 import { UsRegime } from "../src/tax/us.js";
+import { installTaxTestRules } from "./helpers/tax-rules.js";
 
 const tx = (t: Partial<Transaction> & Pick<Transaction, "date" | "type" | "account">): Transaction => {
   const raw = { origin: "manual", currency: "USD", ...t } as Omit<Transaction, "id">;
@@ -18,6 +19,9 @@ const input = (txs: Transaction[], extra: Partial<TaxInput> = {}): TaxInput => (
 const disposals = (txs: Transaction[], extra: Partial<TaxInput> = {}): TaxEvent[] =>
   new UsRegime(2025).realize(input(txs, extra)).filter((e) => e.kind === "securities-disposal" || e.kind === "crypto-disposal");
 const total = (ev: TaxEvent[]) => Math.round(ev.reduce((s, e) => s + (e.gain ?? 0), 0) * 100) / 100;
+
+// The engines hold no tax value: every test computes with TEST rules (tests/helpers/tax-rules.ts), not law.
+beforeEach(() => installTaxTestRules());
 
 describe("US: a transfer between own accounts and the wash-sale rule", () => {
   it("a transfer-in that carries old lots is not a replacement purchase for a loss sale made in the 30 days before it", () => {

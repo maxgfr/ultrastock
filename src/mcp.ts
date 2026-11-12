@@ -410,7 +410,8 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "tax",
-    description: "Tax report, realised events, rules, harvest candidates, and the yearly parameter checklist to verify by web search.",
+    description:
+      "Tax from the ledger with the rules the agent researched (ultrastock contains no tax law): verify lists what to research for the country and year, rules shows the stored research, report, lots and harvest run the FR / US engine. Storing research (`tax rules set`) is not exposed here.",
     command: ["tax"],
     params: {
       action: {
@@ -420,7 +421,8 @@ export const TOOLS: Tool[] = [
         required: true,
         enum: ["report", "lots", "rules", "verify", "harvest"],
       },
-      regime: { kind: "string", description: "fr or us" },
+      country: { kind: "string", description: "ISO 3166 alpha-2 country of tax residence (default: the profile's)" },
+      regime: { kind: "string", description: "fr or us (same as country)" },
       year: { kind: "number", description: "tax year" },
       tmi: { kind: "number", description: "FR marginal rate, e.g. 30" },
       out: OUT,

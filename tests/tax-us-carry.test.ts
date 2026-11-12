@@ -1,8 +1,9 @@
 // US, transfer carry: one transfer-in fed by a taxable account and an IRA.
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Envelope } from "../src/core/profile.js";
 import { type Transaction, transactionId } from "../src/portfolio/ledger.js";
 import { UsRegime } from "../src/tax/us.js";
+import { installTaxTestRules } from "./helpers/tax-rules.js";
 
 const tx = (t: Partial<Transaction> & Pick<Transaction, "date" | "type" | "account">): Transaction => {
   const raw = { origin: "manual", currency: "USD", ...t } as Omit<Transaction, "id">;
@@ -11,6 +12,9 @@ const tx = (t: Partial<Transaction> & Pick<Transaction, "date" | "type" | "accou
 const A: Envelope = { id: "a", type: "TAXABLE", broker: "Schwab", currency: "USD" };
 const B: Envelope = { id: "b", type: "TAXABLE", broker: "Fidelity", currency: "USD" };
 const IRA: Envelope = { id: "ira", type: "IRA", broker: "Vanguard", currency: "USD" };
+
+// The engines hold no tax value: every test computes with TEST rules (tests/helpers/tax-rules.ts), not law.
+beforeEach(() => installTaxTestRules());
 
 describe("US: a transfer-in fed first by a taxable lot, then by an IRA lot", () => {
   it("the IRA part is a distribution from the transfer date, not a copy of the taxable lot", () => {

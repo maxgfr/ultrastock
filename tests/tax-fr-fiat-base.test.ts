@@ -1,15 +1,19 @@
 // France, a crypto pair whose base is the fiat (GBPUSDT, EURUSDT): the command and form 2086.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
 import type { Envelope } from "../src/core/profile.js";
 import { parseStatement } from "../src/portfolio/import/index.js";
 import { appendTransactions, type Transaction, transactionId } from "../src/portfolio/ledger.js";
 import { FranceRegime } from "../src/tax/fr.js";
+import { installTaxTestRules } from "./helpers/tax-rules.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
+
+// The engines hold no tax value: every test computes with TEST rules (tests/helpers/tax-rules.ts), not law.
+beforeEach(() => installTaxTestRules());
 
 describe("FR: a fiat-base pair in another fiat than the euro (GBPUSDT)", () => {
   it("`tax report --regime fr` asks the ECB for the rate of the pair's base currency", async () => {
