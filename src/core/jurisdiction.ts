@@ -22,7 +22,7 @@ import { lookup, resolveCname } from "node:dns/promises";
 import { cachedJson, TTL } from "./cache.js";
 import { parseCsvText } from "./csv.js";
 import { clockNow, fetchText } from "./net.js";
-import { countryCode, defineDomain, type FactSpec, loadLatestFacts, type LatestFacts, specsFor } from "./researched.js";
+import { countryCode, defineDomain, type FactSpec, loadLatestFacts, type LatestFacts, researchCommand, specsFor } from "./researched.js";
 
 export type Status = "allowed" | "blocked" | "restricted" | "unknown";
 export const STATUSES: readonly Status[] = ["allowed", "restricted", "blocked", "unknown"];
@@ -193,11 +193,6 @@ export const JURISDICTION = defineDomain<FactSpec>({
     `TEMPLATE to fill by research. ultrastock contains no jurisdiction rule: every value is the conclusion you drew from official sources for ${c} on ${date}. For each key fill "value" (one of its "values"), "note" (what the sources say, in a sentence), "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"; then run \`ultrastock facts set jurisdiction --file <this file>\`. Leave out a key you could not settle, or store it "unknown": either way it fails closed. \`ultrastock facts research jurisdiction --country ${c} --out <run>\` gathers the documents to read.`,
 });
 
-/** The command that gathers the documents to research a country's rules (one key, or all). */
-export function researchCommand(code: string, key?: string): string {
-  return `ultrastock facts research jurisdiction --country ${code.toUpperCase()}${key ? ` --key ${key}` : ""} --out <run>`;
-}
-
 export interface RuleReading {
   id: string;
   status: Status;
@@ -222,9 +217,9 @@ function latest(code: string): LatestFacts | Error {
 /** A key's current researched value for a country, or why there is none. */
 export function factReading(code: string, id: string): { value?: unknown; fact?: LatestFacts["facts"][string]; unresearched?: string; research: string } {
   const c = code.toUpperCase();
-  if (!/^[A-Z]{2}$/.test(c)) return { unresearched: `"${code}" is not a country code`, research: researchCommand("CC", id) };
+  if (!/^[A-Z]{2}$/.test(c)) return { unresearched: `"${code}" is not a country code`, research: researchCommand("jurisdiction", "CC", id) };
   const known = jurisdictionKeys(c).some((s) => s.key === id) || !!JURISDICTION.extraKey?.(id, c);
-  const research = researchCommand(c, known ? id : undefined);
+  const research = researchCommand("jurisdiction", c, known ? id : undefined);
   if (!known) return { unresearched: `no jurisdiction rule is kept for "${id}"`, research };
   const l = latest(c);
   if (l instanceof Error) return { unresearched: `the stored ${c} jurisdiction facts are unreadable (${l.message.split("\n")[0]})`, research };
@@ -355,7 +350,7 @@ export async function cryptoVenueGate(venue: string, code: string, opts: { micaA
   if (raw === "none")
     return {
       ok: false,
-      reason: `the ${c} research says authorisation is needed (crypto-casp restricted) but no register applies (crypto-register none): settle it — \`${researchCommand(c, "crypto-casp")}\``,
+      reason: `the ${c} research says authorisation is needed (crypto-casp restricted) but no register applies (crypto-register none): settle it — \`${researchCommand("jurisdiction", c, "crypto-casp")}\``,
     };
   const v = ruleFact(c, `cryptoVenue.${venue}`);
   if (v.status === "allowed") return { ok: true, reason: `${venue} is authorised for ${c} per the research: ${ruleWhy(v, c)}` };

@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { collapseForeignLines, isDepositaryReceipt } from "../src/analyze/screen/crible.js";
-import { EU_EEA_COUNTRIES, EU_EEA_ISO } from "../src/analyze/screen/presets.js";
+import { euEeaTradingViewCountries } from "../src/analyze/screen/presets.js";
+import { euEeaMembers } from "../src/core/geo.js";
 import { MAX_UNKNOWN_GATES, periodEnd, runValueGates, VALUE_GATES, valueHygiene, valueHygieneReason } from "../src/analyze/value/gates.js";
 import { midrankPercentiles, MIN_SECTOR_PEERS, rankValueRows, scoreValueUniverse, selectValueRows } from "../src/analyze/value/rank.js";
 import { tvTickerOfRow, type ValueDeps, valueDividendGrowth, valueFields, valueRun } from "../src/analyze/value/run.js";
@@ -205,7 +206,7 @@ describe("PEA and regions", () => {
     expect(peaEligible({ country: "NL", isin: "GB0000000001" })).toBe(false);
     expect(peaEligible({ country: "DE", isin: null })).toBe(false);
     expect(peaEligible({ country: "DE", isin: "DE123" })).toBe(false);
-    expect(EU_EEA_ISO.length).toBe(EU_EEA_COUNTRIES.length);
+    expect(euEeaMembers().codes.length).toBe(euEeaTradingViewCountries().length);
     const h = valueHygieneReason(row({ country: "FR", isin: "NL0000000001" }), { region: valueRegion("pea"), style: QV, now: NOW });
     expect(h).toBeUndefined();
     expect(valueHygieneReason(row({ isin: "US0000000001", country: "FR" }), { region: valueRegion("pea"), style: QV, now: NOW })).toMatch(/depositary|PEA/);

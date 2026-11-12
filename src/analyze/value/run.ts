@@ -486,6 +486,7 @@ export async function valueRun(dir: string, opts: ValueOptions, deps: ValueDeps 
   } catch {
     // An older crible, or none reachable: the TypeScript fallback decides.
   }
+  if (opts.region.note) notes.push(opts.region.note);
   if (!receiptColumn)
     notes.push(
       "this crible dataset has no depositary_receipt column: receipts are recognised by a US ISIN on a non-US issuer, or ADR / ADS / GDR / CDR in the name",

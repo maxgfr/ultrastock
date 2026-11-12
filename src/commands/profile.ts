@@ -2,7 +2,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { registerDatasets, formatDatasets, type Dataset } from "../core/datasets.js";
-import { checkDnsBlock, cryptoVenueGate, JURISDICTION, researchCommand, rulesFor, verifyChecklist } from "../core/jurisdiction.js";
+import { checkDnsBlock, cryptoVenueGate, JURISDICTION, rulesFor, verifyChecklist } from "../core/jurisdiction.js";
+import { researchCommand } from "../core/researched.js";
 import { withFileLockSync } from "../core/lock.js";
 import {
   defaultProfile,
@@ -185,7 +186,7 @@ export async function jurisdictionCommand(args: CommandArgs, asJson: boolean): P
   const [sub = "show"] = args.positional;
   const code = (argValue(args, "jurisdiction") ?? loadProfile()?.jurisdiction ?? "FR").toUpperCase();
   const rules = rulesFor(code);
-  const flow = `ultrastock holds no jurisdiction rule: research them (\`${researchCommand(code)}\` gathers the official documents and prints the worklist), store the conclusions (\`${JURISDICTION.setCommand}\`); until then each rule reads as unknown and fails closed`;
+  const flow = `ultrastock holds no jurisdiction rule: research them (\`${researchCommand("jurisdiction", code)}\` gathers the official documents and prints the worklist), store the conclusions (\`${JURISDICTION.setCommand}\`); until then each rule reads as unknown and fails closed`;
   if (sub === "show") {
     const text = [
       `${rules.name} (${rules.code}) — researched jurisdiction rules`,
@@ -196,7 +197,7 @@ export async function jurisdictionCommand(args: CommandArgs, asJson: boolean): P
       ),
     ];
     if (rules.rules.some((r) => !r.researched)) text.push("", flow);
-    return out(asJson, { ...rules, research: researchCommand(code) }, text.join("\n"));
+    return out(asJson, { ...rules, research: researchCommand("jurisdiction", code) }, text.join("\n"));
   }
   if (sub !== "verify") throw new UsageError(`unknown jurisdiction action "${sub}" — show or verify`);
   const venues = (argValue(args, "venues") ?? "binance,kraken,coinbase")
@@ -252,7 +253,11 @@ export async function jurisdictionCommand(args: CommandArgs, asJson: boolean): P
   if (asJson)
     return out(
       true,
-      { registered: registered.map((r) => ({ title: r.dataset.title, ids: r.ids, items: r.items })), checklist, research: researchCommand(code) },
+      {
+        registered: registered.map((r) => ({ title: r.dataset.title, ids: r.ids, items: r.items })),
+        checklist,
+        research: researchCommand("jurisdiction", code),
+      },
       "",
     );
   process.stdout.write(formatDatasets(registered));

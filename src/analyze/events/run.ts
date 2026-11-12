@@ -40,7 +40,8 @@ import { resolveYahoo, yahooChart } from "../../providers/markets/yahoo.js";
 import { getHistory, resolveSymbol } from "../../providers/router.js";
 import { loadMarkedBook, type MarkedBook } from "../portfolio/book.js";
 import { Findings, formatFindings, registerFindings } from "../portfolio/findings.js";
-import { COUNTRY_MARKETS, type CountryMarket, EURO_AREA, holdingCountry } from "./markets.js";
+import { membershipNote } from "../../core/geo.js";
+import { COUNTRY_MARKETS, type CountryMarket, euroAreaMembers, holdingCountry } from "./markets.js";
 import { type Close, eventReaction, reactionStats } from "./study.js";
 
 const DAY = 86_400_000;
@@ -141,7 +142,10 @@ function policyEvent(m: PolicyMeeting): MarketEvent {
 
 /** The book's exposure to an event: its country (the euro area for the ECB), or its currency. */
 export function eventExposure(e: MarketEvent, byCountry: Map<string, Exposure>, byCurrency: Map<string, Exposure>): Exposure[] {
-  if (e.iso === "EU") return EURO_AREA.map((c) => byCountry.get(c)).filter((x): x is Exposure => !!x);
+  if (e.iso === "EU")
+    return euroAreaMembers()
+      .codes.map((c) => byCountry.get(c))
+      .filter((x): x is Exposure => !!x);
   const out: Exposure[] = [];
   const c = byCountry.get(e.iso);
   if (c) out.push(c);
@@ -336,8 +340,13 @@ export async function eventsRun(dir: string, opts: EventsOptions = {}): Promise<
   const to = iso(new Date(now.getTime() + days * DAY));
   const all = await marketEvents(from, to, notes);
   const wanted = new Set((opts.countries ?? []).map((c) => c.toUpperCase()));
+  const euroArea = euroAreaMembers();
+  if (all.some((e) => e.iso === "EU")) {
+    const note = membershipNote(euroArea, "the euro area an ECB decision moves");
+    if (note) notes.push(note);
+  }
   const relevant = all.filter((e) => {
-    if (wanted.size && (wanted.has(e.iso) || (e.iso === "EU" && EURO_AREA.some((c) => wanted.has(c))))) return true;
+    if (wanted.size && (wanted.has(e.iso) || (e.iso === "EU" && euroArea.codes.some((c) => wanted.has(c))))) return true;
     if (eventExposure(e, byCountry, byCurrency).length) return true;
     return !!opts.all && (!!COUNTRY_MARKETS[e.iso] || e.iso === "EU");
   });

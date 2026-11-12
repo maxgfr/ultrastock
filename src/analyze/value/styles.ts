@@ -5,7 +5,7 @@
 // the style's own client-side rules — runs in TypeScript, because a DSL
 // comparison silently drops the rows where a field is null.
 import { cribleString } from "../../providers/external/crible.js";
-import { EU_EEA_ISO } from "../screen/presets.js";
+import { euEeaMembers, membershipNote } from "../../core/geo.js";
 
 export const VALUE_STYLE_IDS = ["quality-value", "deep-value", "dividend", "garp", "magic-formula"] as const;
 export type ValueStyleId = (typeof VALUE_STYLE_IDS)[number];
@@ -219,10 +219,9 @@ export interface ValueRegion {
   countries?: readonly string[];
   /** PEA eligibility: country AND ISIN prefix in the EU / EEA. */
   pea?: boolean;
+  /** What the output must say about the membership list it used (core/geo.ts), when it is not a current research. */
+  note?: string;
 }
-
-/** Europe as an investor means it: the EU / EEA, the United Kingdom and Switzerland. */
-const EUROPE_ISO = [...EU_EEA_ISO, "GB", "CH"];
 
 /** `--region`: world, europe, pea, us, or a comma list of ISO countries. crible's own `region` is not geography. */
 export function valueRegion(arg: string | undefined): ValueRegion {
@@ -230,8 +229,11 @@ export function valueRegion(arg: string | undefined): ValueRegion {
   const id = raw.toLowerCase();
   if (id === "world") return { id, label: "the world" };
   if (id === "us") return { id, label: "the United States", countries: ["US"] };
-  if (id === "europe") return { id, label: "Europe (EU / EEA, United Kingdom, Switzerland)", countries: EUROPE_ISO };
-  if (id === "pea") return { id, label: "PEA-eligible (EU / EEA issuer and ISIN)", countries: EU_EEA_ISO, pea: true };
+  // Europe as an investor means it: the EU / EEA (core/geo.ts), the United Kingdom and Switzerland.
+  const eea = euEeaMembers();
+  const note = membershipNote(eea);
+  if (id === "europe") return { id, label: "Europe (EU / EEA, United Kingdom, Switzerland)", countries: [...eea.codes, "GB", "CH"], ...(note ? { note } : {}) };
+  if (id === "pea") return { id, label: "PEA-eligible (EU / EEA issuer and ISIN)", countries: eea.codes, pea: true, ...(note ? { note } : {}) };
   const codes = raw
     .split(",")
     .map((c) => c.trim().toUpperCase())
@@ -243,7 +245,7 @@ export function valueRegion(arg: string | undefined): ValueRegion {
 
 /** PEA: an EU / EEA issuer (crible's country) with an EU / EEA ISIN. Eligibility still needs confirming security by security. */
 export function peaEligible(row: Record<string, unknown>): boolean {
-  const iso = EU_EEA_ISO as readonly string[];
+  const iso = euEeaMembers().codes;
   const isin = typeof row.isin === "string" ? row.isin.trim().toUpperCase() : "";
   return typeof row.country === "string" && iso.includes(row.country) && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) && iso.includes(isin.slice(0, 2));
 }

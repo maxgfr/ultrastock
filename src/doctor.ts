@@ -2,7 +2,8 @@
 // recent enough for live trading, which external tools are installed, and —
 // with --probe — whether each data source answers right now, and how fast.
 import { MATURITY } from "./core/maturity.js";
-import { checkDnsBlock, researchCommand, rulesFor, ruleStatus } from "./core/jurisdiction.js";
+import { checkDnsBlock, rulesFor, ruleStatus } from "./core/jurisdiction.js";
+import { researchCommand } from "./core/researched.js";
 import { fetchText } from "./core/net.js";
 import { dataCacheDir, homeDir } from "./core/paths.js";
 import { loadProfile } from "./core/profile.js";
@@ -120,7 +121,7 @@ export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) 
       researched: rules.length - unresearched.length,
       total: rules.length,
       unresearched,
-      research: researchCommand(profile.jurisdiction),
+      research: researchCommand("jurisdiction", profile.jurisdiction),
     };
   }
   const fresh = report.crible.bootstrapped ? await cribleFreshness().catch(() => undefined) : undefined;

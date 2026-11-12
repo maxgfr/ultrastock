@@ -153,40 +153,6 @@ export const keySlug = (s: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
 
-/** EU and EEA member states (ISO 3166 alpha-2), for the "where is it incorporated" first pass. */
-export const EU_EEA = new Set([
-  "AT",
-  "BE",
-  "BG",
-  "HR",
-  "CY",
-  "CZ",
-  "DK",
-  "EE",
-  "FI",
-  "FR",
-  "DE",
-  "GR",
-  "HU",
-  "IE",
-  "IT",
-  "LV",
-  "LT",
-  "LU",
-  "MT",
-  "NL",
-  "PL",
-  "PT",
-  "RO",
-  "SK",
-  "SI",
-  "ES",
-  "SE",
-  "IS",
-  "LI",
-  "NO",
-]);
-
 /** The country an ISIN was issued under (its first two letters), when it looks like one. */
 export function isinCountry(isin: string | undefined): string | undefined {
   return isin && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) ? isin.slice(0, 2) : undefined;

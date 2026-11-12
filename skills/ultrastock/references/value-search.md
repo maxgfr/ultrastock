@@ -30,7 +30,10 @@ ultrastock value --region pea --top 5 --research-with codex --research-top 2 --o
 crible's own `region` field is not geography (`world` there means "the rest");
 `value` filters on the company's country. **PEA** needs both an EU/EEA country
 and an EU/EEA ISIN prefix — VALUE.md marks it "to be confirmed security by
-security": the broker and the issuer's documents decide, not a screen.
+security": the broker and the issuer's documents decide, not a screen. The
+EU/EEA list is the researched `geo` fact (`ultrastock facts research geo
+--country EU`); without a current one VALUE.md's notes say the built-in list
+(as of 2026-01-01) was used.
 
 ## What keeps a name out
 

@@ -9,7 +9,8 @@
 // issuer says the second (Amundi's FUND_PEA flag when it answers). Always
 // "confirm with the broker": the broker refuses an ineligible order anyway.
 import type { EnvelopeType } from "../../core/profile.js";
-import { EU_EEA, isinCountry } from "./risk.js";
+import { euEeaMembers, isEuEea } from "../../core/geo.js";
+import { isinCountry } from "./risk.js";
 
 /** PEA deposit ceiling (versements), and the combined PEA + PEA-PME ceiling. */
 export const PEA_CEILING = 150_000;
@@ -114,7 +115,11 @@ export function locationRule(h: LocationInput): { rule: LocationRule; basis: str
     return { rule: LOCATION_RULES["other-fund"]!, basis: h.peaFlag === false ? "issuer flags it not PEA-eligible" : "no issuer PEA flag read" };
   }
   if (!country) return { rule: LOCATION_RULES.unknown!, basis: "no ISIN read" };
-  if (EU_EEA.has(country)) return { rule: LOCATION_RULES["eu-share"]!, basis: `ISIN prefix ${country} (EU/EEA)` };
+  if (isEuEea(country))
+    return {
+      rule: LOCATION_RULES["eu-share"]!,
+      basis: `ISIN prefix ${country} (EU/EEA${euEeaMembers().origin === "built-in" ? `, built-in list as of ${euEeaMembers().asOf}` : ""})`,
+    };
   return { rule: LOCATION_RULES["non-eu-share"]!, basis: `ISIN prefix ${country} (outside the EU/EEA)` };
 }
 

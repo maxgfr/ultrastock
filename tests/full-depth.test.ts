@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DEPTHS, statisticsCalls, withBudget } from "../src/analyze/full.js";
-import { PEER_EUROPE, peerCountries } from "../src/analyze/peers.js";
+import { peerCountries } from "../src/analyze/peers.js";
 import { extendedValuation } from "../src/analyze/valuation-extra.js";
 import { commandArgs, datasetsOf, emitDatasets } from "../src/commands/emit.js";
 import type { Dataset } from "../src/core/datasets.js";
@@ -11,6 +11,9 @@ import { EvidenceStore } from "../src/core/evidence.js";
 import { setNetMode } from "../src/core/net.js";
 import { contentHash } from "../src/engine.js";
 import { DISTRIBUTION_FIELDS, peersDataset } from "../src/analyze/peers.js";
+
+// The European peer countries as the recorded crible requests wrote them: the geo module must reproduce them byte for byte.
+const PEER_EUROPE = "AT BE BG CH CY CZ DE DK EE ES FI FR GB GR HR HU IE IS IT LI LT LU LV MT NL NO PL PT RO SE SI SK".split(" ");
 
 const ds = (title: string): Dataset => ({
   kind: "t",
@@ -64,7 +67,7 @@ describe("full depth", () => {
 
   it("draws peers from the region, by country", () => {
     expect(peerCountries("US")).toEqual(["US", "CA"]);
-    expect(peerCountries("FR")).toBe(PEER_EUROPE);
+    expect(peerCountries("FR")).toEqual(PEER_EUROPE);
     expect(peerCountries("CH")).toContain("DE");
     expect(peerCountries("JP")).toEqual(["JP"]);
   });

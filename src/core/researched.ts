@@ -17,14 +17,15 @@
 //
 // API: defineDomain, factsPath, validateFacts, loadFacts, saveFacts,
 // factsTemplate, factsChecklist, storedPeriods, factValue, specsFor,
-// factQuery, loadLatestFacts (a `date` domain's newest fact per key).
+// factQuery, loadLatestFacts (a `date` domain's newest fact per key),
+// researchCommand, factsSetCommand (the commands every message names).
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ensureDir, UsageError, writeFileAtomic } from "../engine.js";
 import { clockNow } from "./net.js";
 import { homeDir } from "./paths.js";
 
-export type FactType = "rate" | "amount" | "number" | "date" | "text" | "boolean" | "rates" | "amounts" | "any";
+export type FactType = "rate" | "amount" | "number" | "date" | "text" | "boolean" | "rates" | "amounts" | "codes" | "dates" | "time" | "any";
 export type Confidence = "high" | "medium" | "low";
 
 export interface FactSpec {
@@ -102,6 +103,15 @@ export function countryCode(raw: string): string {
   return c;
 }
 
+/**
+ * The command that gathers the official documents to research a domain's facts for a country (one key, or all) and
+ * writes the JSON to fill: named in every "not researched" message, whatever the domain.
+ */
+export const researchCommand = (domain: string, country?: string, key?: string): string =>
+  `ultrastock facts research ${domain}${country ? ` --country ${country.toUpperCase()}` : ""}${key ? ` --key ${key}` : ""} --out <run>`;
+/** The command that stores a researched facts file of a domain. */
+export const factsSetCommand = (domain: string): string => `ultrastock facts set ${domain} --file <file.json>`;
+
 export const factsDir = (d: Domain): string => join(homeDir(), "facts", d.name);
 export const factsPath = (d: Domain, country: string, period: number | string): string => join(factsDir(d), `${countryCode(country)}-${period}.json`);
 
@@ -159,6 +169,18 @@ export function typeProblem(spec: Pick<FactSpec, "type" | "fields" | "values">, 
       ].filter(Boolean);
       return parts.length ? parts.join("; ") : undefined;
     }
+    case "codes":
+      // A list of codes (ISO 3166 countries, MICs): non-empty, each a code in capitals, no repeat.
+      return Array.isArray(v) && v.length && v.every((x) => typeof x === "string" && /^[A-Z0-9]{2,4}$/.test(x)) && new Set(v).size === v.length
+        ? undefined
+        : 'a list of codes in capitals, such as ["AT", "BE"], none repeated';
+    case "dates":
+      // An empty list is a finding (none), not a gap.
+      return Array.isArray(v) && v.every(isIsoDate) && new Set(v).size === v.length
+        ? undefined
+        : "a list of dates written YYYY-MM-DD, none repeated ([] for none)";
+    case "time":
+      return typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? undefined : 'a time of day written HH:MM (24 h), such as "16:00"';
     case "any":
       return v === null || v === undefined ? "no value" : undefined;
   }
@@ -451,14 +473,14 @@ export interface LatestFacts {
 /**
  * A country's newest fact for each key across every stored file of a `date` domain: research a single key on a new day
  * and the other keys keep their earlier file's fact (each with its own age check). Every file is validated: an invalid
- * one is a usage error naming it.
+ * one is a usage error naming it. `upTo` leaves out the files dated after it (a period written for a later day).
  */
-export function loadLatestFacts(d: Domain, country: string): LatestFacts {
+export function loadLatestFacts(d: Domain, country: string, opts: { upTo?: number | string } = {}): LatestFacts {
   const c = countryCode(country);
   const facts: LatestFacts["facts"] = {};
   const staleReason = new Map<string, string>();
   const paths: string[] = [];
-  for (const period of storedPeriods(d, c)) {
+  for (const period of storedPeriods(d, c).filter((p) => opts.upTo === undefined || String(p) <= String(opts.upTo))) {
     const v = loadFacts(d, c, period);
     paths.push(v.path);
     const stale = new Map(v.stale.map((x) => [x.key, x.reason]));

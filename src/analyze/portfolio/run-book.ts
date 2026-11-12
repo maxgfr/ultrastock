@@ -18,6 +18,7 @@ import { incomeFigures, ledgerDividends, trailingPerShare } from "./income.js";
 import { bestEnvelope, LOCATION_RULES, PEA_CEILING, peaDeposits } from "./location.js";
 import { feeLookup } from "../../trading/fees.js";
 import { orderFor, sellTaxNote } from "./rebalance.js";
+import { euEeaMembers, membershipNote } from "../../core/geo.js";
 
 const DAY = 86_400_000;
 const pct = (x: number) => Number((x * 100).toFixed(6));
@@ -323,6 +324,8 @@ export async function locationAnalysis(m: MarkedBook, f: Findings) {
     f.derive(sec, `${P}.${h.symbol}.misplaced`, `${h.symbol} sits in a worse envelope than one available`, r.worse.length > 0, undefined, from, r.reason);
     out.push({ symbol: h.symbol, rule: r.rule.id, ideal: r.ideal, best: r.best, current: envs, worse: r.worse, reason: r.reason });
   }
+  const membership = membershipNote(euEeaMembers(), "the EU / EEA list the PEA first pass reads");
+  if (membership) f.note(membership);
   f.note(
     "PEA eligibility is a first pass (ISIN country prefix for shares, the issuer's flag for funds) — confirm with the broker before moving anything; a move between envelopes is a sale and a purchase",
   );

@@ -13,6 +13,7 @@
 // largest first — sorting by the screened ratio itself surfaces data errors
 // and micro-caps first (a P/E of 0.005, a 600 % six-month run). `--sort`
 // overrides it.
+import { euEeaMembers, membershipNote, tradingViewCountry } from "../../core/geo.js";
 import type { TvFilter } from "../../providers/markets/tradingview.js";
 
 export type Engine = "tradingview" | "crible" | "builtin";
@@ -90,78 +91,11 @@ const lt = (left: string, right: number | string): TvFilter => ({ left, operatio
 const ge = (left: string, right: number): TvFilter => ({ left, operation: "egreater", right });
 const between = (left: string, lo: number, hi: number): TvFilter => ({ left, operation: "in_range", right: [lo, hi] });
 
-/** EU and EEA member states as TradingView writes the company's country. */
-export const EU_EEA_COUNTRIES = [
-  "Austria",
-  "Belgium",
-  "Bulgaria",
-  "Croatia",
-  "Cyprus",
-  "Czech Republic",
-  "Denmark",
-  "Estonia",
-  "Finland",
-  "France",
-  "Germany",
-  "Greece",
-  "Hungary",
-  "Ireland",
-  "Italy",
-  "Latvia",
-  "Lithuania",
-  "Luxembourg",
-  "Malta",
-  "Netherlands",
-  "Poland",
-  "Portugal",
-  "Romania",
-  "Slovakia",
-  "Slovenia",
-  "Spain",
-  "Sweden",
-  // EEA, outside the EU
-  "Iceland",
-  "Liechtenstein",
-  "Norway",
-];
-
-/**
- * The same EU and EEA member states as ISO 3166-1 alpha-2 codes — crible's
- * `country`, and the first two letters of an ISIN issued there.
- */
-export const EU_EEA_ISO = [
-  "AT",
-  "BE",
-  "BG",
-  "HR",
-  "CY",
-  "CZ",
-  "DK",
-  "EE",
-  "FI",
-  "FR",
-  "DE",
-  "GR",
-  "HU",
-  "IE",
-  "IT",
-  "LV",
-  "LT",
-  "LU",
-  "MT",
-  "NL",
-  "PL",
-  "PT",
-  "RO",
-  "SK",
-  "SI",
-  "ES",
-  "SE",
-  // EEA, outside the EU
-  "IS",
-  "LI",
-  "NO",
-] as const;
+/** EU and EEA member states as TradingView writes the company's country (core/geo.ts: researched, else its dated built-in list). */
+export const euEeaTradingViewCountries = (): string[] =>
+  euEeaMembers()
+    .codes.map(tradingViewCountry)
+    .filter((n): n is string => !!n);
 
 /** `--market europe`: the scanner markets run one by one and merged. */
 export const EUROPE_MARKETS = [
@@ -338,7 +272,10 @@ export const TV_PRESETS: TvPreset[] = [
     id: "pea-candidates",
     title: "PEA candidates",
     assets: "stock",
-    filter: [{ left: "country", operation: "in_range", right: EU_EEA_COUNTRIES }, gt("market_cap_basic", 0)],
+    // Read when the screen runs: the membership is a researched fact, not a constant.
+    get filter() {
+      return [{ left: "country", operation: "in_range", right: euEeaTradingViewCountries() }, gt("market_cap_basic", 0)];
+    },
     columns: ["country", "market_cap_basic", "isin", "sector"],
     sort: { sortBy: "market_cap_basic", sortOrder: "desc" },
     defaultMarket: "europe",
@@ -348,9 +285,15 @@ export const TV_PRESETS: TvPreset[] = [
     ],
     source:
       "French PEA rules (Code monétaire et financier, art. L221-31: shares of companies with their registered office in the EU or EEA, subject to corporate tax)",
-    approximations: [
-      "TradingView's country is the company's country, not always its registered office; corporate-tax status and the broker's own list are not checked",
-    ],
+    get approximations() {
+      const note = membershipNote(euEeaMembers());
+      const unnamed = euEeaMembers().codes.filter((c) => !tradingViewCountry(c));
+      return [
+        "TradingView's country is the company's country, not always its registered office; corporate-tax status and the broker's own list are not checked",
+        ...(note ? [note] : []),
+        ...(unnamed.length ? [`left out of the scan, their TradingView country name unknown: ${unnamed.join(", ")}`] : []),
+      ];
+    },
   },
 ];
 

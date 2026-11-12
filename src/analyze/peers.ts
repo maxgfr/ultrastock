@@ -5,51 +5,18 @@
 // multiples are points; so are the peer medians and the subject's premium or
 // discount to them — the "cheap or dear against whom" a judge needs.
 import type { Dataset, Point } from "../core/datasets.js";
+import { europeCountries, membershipNote } from "../core/geo.js";
 import { clockNow } from "../core/net.js";
 import { cribleScreen, cribleStaleWarning, cribleStats, cribleString } from "../providers/external/crible.js";
 import { medianOf } from "./regime/sectors.js";
 import { collapseForeignLines, issuerKey } from "./screen/crible.js";
 
-// Europe as countries (ISO 3166-1 alpha-2): the EU/EEA, the UK and Switzerland.
-export const PEER_EUROPE = [
-  "AT",
-  "BE",
-  "BG",
-  "CH",
-  "CY",
-  "CZ",
-  "DE",
-  "DK",
-  "EE",
-  "ES",
-  "FI",
-  "FR",
-  "GB",
-  "GR",
-  "HR",
-  "HU",
-  "IE",
-  "IS",
-  "IT",
-  "LI",
-  "LT",
-  "LU",
-  "LV",
-  "MT",
-  "NL",
-  "NO",
-  "PL",
-  "PT",
-  "RO",
-  "SE",
-  "SI",
-  "SK",
-];
-
 /** The countries a company's peers are drawn from. */
 export function peerCountries(country: string): string[] {
   if (country === "US" || country === "CA") return ["US", "CA"];
-  if (PEER_EUROPE.includes(country)) return PEER_EUROPE;
+  // Europe as countries: the EU / EEA (core/geo.ts), the UK and Switzerland.
+  const europe = europeCountries().codes;
+  if (europe.includes(country)) return [...europe];
   return [country];
 }
 
@@ -223,6 +190,9 @@ export async function peersDataset(symbol: string, opts: { max?: number } = {}):
         : []),
       ...(dist.note ? [dist.note] : []),
       ...(stale ? [stale] : []),
+      ...(europeCountries().codes.includes(country)
+        ? [membershipNote(europeCountries(), "the European peer countries (EU / EEA)")].filter((n): n is string => !!n)
+        : []),
     ],
   };
 }

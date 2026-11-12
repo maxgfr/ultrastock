@@ -15617,8 +15617,8 @@ async function fromFiles(sym3, sessions, now) {
     const iso4 = isoDayOf(new Date(now.getTime() - back * 864e5));
     const d = iso4.replace(/-/g, "");
     const u = `${CDN}/CNMSshvol${d}.txt`;
-    const read2 = () => readFile2(u, sym3);
-    const file = daysBetween(iso4, today2) >= 2 ? await cachedJson(`finra:regsho:${d}:${sym3}`, TTL.immutable, read2) : await read2();
+    const read3 = () => readFile2(u, sym3);
+    const file = daysBetween(iso4, today2) >= 2 ? await cachedJson(`finra:regsho:${d}:${sym3}`, TTL.immutable, read3) : await read3();
     if (!file) continue;
     if (file.row) days.push(file.row);
     url ||= u;
@@ -17458,6 +17458,8 @@ function countryCode(raw) {
   if (!/^[A-Z]{2}$/.test(c)) throw new UsageError(`a country is an ISO 3166 alpha-2 code such as FR, US or DE, not "${raw}"`);
   return c;
 }
+var researchCommand = (domain, country2, key) => `ultrastock facts research ${domain}${country2 ? ` --country ${country2.toUpperCase()}` : ""}${key ? ` --key ${key}` : ""} --out <run>`;
+var factsSetCommand = (domain) => `ultrastock facts set ${domain} --file <file.json>`;
 var factsDir = (d) => join17(homeDir(), "facts", d.name);
 var factsPath = (d, country2, period2) => join17(factsDir(d), `${countryCode(country2)}-${period2}.json`);
 var isIsoDate = (s) => {
@@ -17510,6 +17512,12 @@ function typeProblem(spec, v) {
       ].filter(Boolean);
       return parts.length ? parts.join("; ") : void 0;
     }
+    case "codes":
+      return Array.isArray(v) && v.length && v.every((x) => typeof x === "string" && /^[A-Z0-9]{2,4}$/.test(x)) && new Set(v).size === v.length ? void 0 : 'a list of codes in capitals, such as ["AT", "BE"], none repeated';
+    case "dates":
+      return Array.isArray(v) && v.every(isIsoDate) && new Set(v).size === v.length ? void 0 : "a list of dates written YYYY-MM-DD, none repeated ([] for none)";
+    case "time":
+      return typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? void 0 : 'a time of day written HH:MM (24 h), such as "16:00"';
     case "any":
       return v === null || v === void 0 ? "no value" : void 0;
   }
@@ -17721,12 +17729,12 @@ function factsChecklist(d, country2, period2) {
   });
   return { path: path2, stored: !!v, items };
 }
-function loadLatestFacts(d, country2) {
+function loadLatestFacts(d, country2, opts = {}) {
   const c = countryCode(country2);
   const facts = {};
   const staleReason2 = /* @__PURE__ */ new Map();
   const paths = [];
-  for (const period2 of storedPeriods(d, c)) {
+  for (const period2 of storedPeriods(d, c).filter((p) => opts.upTo === void 0 || String(p) <= String(opts.upTo))) {
     const v = loadFacts(d, c, period2);
     paths.push(v.path);
     const stale = new Map(v.stale.map((x) => [x.key, x.reason]));
@@ -17884,9 +17892,6 @@ var JURISDICTION = defineDomain({
   setCommand: "ultrastock facts set jurisdiction --file <file.json>",
   about: (c, date) => `TEMPLATE to fill by research. ultrastock contains no jurisdiction rule: every value is the conclusion you drew from official sources for ${c} on ${date}. For each key fill "value" (one of its "values"), "note" (what the sources say, in a sentence), "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"; then run \`ultrastock facts set jurisdiction --file <this file>\`. Leave out a key you could not settle, or store it "unknown": either way it fails closed. \`ultrastock facts research jurisdiction --country ${c} --out <run>\` gathers the documents to read.`
 });
-function researchCommand(code, key) {
-  return `ultrastock facts research jurisdiction --country ${code.toUpperCase()}${key ? ` --key ${key}` : ""} --out <run>`;
-}
 function latest(code) {
   try {
     return loadLatestFacts(JURISDICTION, code);
@@ -17896,9 +17901,9 @@ function latest(code) {
 }
 function factReading(code, id) {
   const c = code.toUpperCase();
-  if (!/^[A-Z]{2}$/.test(c)) return { unresearched: `"${code}" is not a country code`, research: researchCommand("CC", id) };
+  if (!/^[A-Z]{2}$/.test(c)) return { unresearched: `"${code}" is not a country code`, research: researchCommand("jurisdiction", "CC", id) };
   const known = jurisdictionKeys(c).some((s) => s.key === id) || !!JURISDICTION.extraKey?.(id, c);
-  const research = researchCommand(c, known ? id : void 0);
+  const research = researchCommand("jurisdiction", c, known ? id : void 0);
   if (!known) return { unresearched: `no jurisdiction rule is kept for "${id}"`, research };
   const l = latest(c);
   if (l instanceof Error) return { unresearched: `the stored ${c} jurisdiction facts are unreadable (${l.message.split("\n")[0]})`, research };
@@ -18001,7 +18006,7 @@ async function cryptoVenueGate(venue, code, opts = {}) {
   if (raw === "none")
     return {
       ok: false,
-      reason: `the ${c} research says authorisation is needed (crypto-casp restricted) but no register applies (crypto-register none): settle it \u2014 \`${researchCommand(c, "crypto-casp")}\``
+      reason: `the ${c} research says authorisation is needed (crypto-casp restricted) but no register applies (crypto-register none): settle it \u2014 \`${researchCommand("jurisdiction", c, "crypto-casp")}\``
     };
   const v = ruleFact(c, `cryptoVenue.${venue}`);
   if (v.status === "allowed") return { ok: true, reason: `${venue} is authorised for ${c} per the research: ${ruleWhy(v, c)}` };
@@ -18388,9 +18393,9 @@ async function binanceFuturesPositioning(symbol, opts = {}) {
     notes: ["positive funding: longs pay shorts (demand for leverage on the long side)"]
   });
   const unavailable = [];
-  const optional = async (what, read2) => {
+  const optional = async (what, read3) => {
     try {
-      await read2();
+      await read3();
     } catch (e) {
       if (!(e instanceof ProviderError)) throw e;
       unavailable.push(`unavailable \u2014 ${what}: ${e.message}`);
@@ -24415,8 +24420,8 @@ function readLedgerWithoutWriting(on = true) {
 function readLedger(book2 = "real", warn) {
   ledgerPath(book2);
   if (ledgerBackend() === "sqlite") {
-    const read2 = withLedgerStore((db) => schemaVersionOf(db) === SCHEMA_VERSION ? readSqliteLedger(db, book2) : void 0, { readOnly: true });
-    if (read2) return read2;
+    const read3 = withLedgerStore((db) => schemaVersionOf(db) === SCHEMA_VERSION ? readSqliteLedger(db, book2) : void 0, { readOnly: true });
+    if (read3) return read3;
     if (neverMigrate)
       throw new Error("the local store is on an older schema and this command never writes: run `ultrastock portfolio show` once to migrate it");
     return withLedgerStore((db) => readSqliteLedger(db, book2));
@@ -26356,6 +26361,169 @@ async function ecbFx(currencies = ["USD", "GBP", "JPY", "CHF"], n2 = 5) {
   };
 }
 
+// src/core/geo.ts
+var SOURCES = {
+  eu: "https://european-union.europa.eu/principles-countries-history/eu-countries_en",
+  eea: "https://www.efta.int/eea/eea-agreement",
+  euro: "https://european-union.europa.eu/institutions-law-budget/euro/countries-using-euro_en"
+};
+var KEYS2 = [
+  {
+    key: "eu.members",
+    label: "member states of the European Union (ISO 3166 alpha-2)",
+    type: "codes",
+    unit: "ISO 3166 alpha-2 codes",
+    query: "EU member states list {period}",
+    prefer: "european-union.europa.eu (the EU's own list of countries)",
+    maxAgeDays: 365
+  },
+  {
+    key: "eea.nonEuMembers",
+    label: "EEA states outside the EU (ISO 3166 alpha-2)",
+    type: "codes",
+    unit: "ISO 3166 alpha-2 codes",
+    query: "EEA EFTA states party to the EEA agreement {period}",
+    prefer: "efta.int (the EEA agreement's own page)",
+    maxAgeDays: 365
+  },
+  {
+    key: "euroArea.members",
+    label: "member states whose currency is the euro \u2014 the euro area (ISO 3166 alpha-2)",
+    type: "codes",
+    unit: "ISO 3166 alpha-2 codes",
+    query: "countries using the euro euro area members {period}",
+    prefer: "european-union.europa.eu or ecb.europa.eu",
+    maxAgeDays: 365
+  }
+];
+var GEO = defineDomain({
+  name: "geo",
+  period: "date",
+  keysFor: (c) => c === "EU" ? KEYS2 : [],
+  strict: (c) => c === "EU",
+  templateCommand: () => researchCommand("geo", "EU"),
+  setCommand: factsSetCommand("geo"),
+  about: (_c, date) => `TEMPLATE to fill by research: the EU, EEA and euro-area membership as of ${date}. Each value is a list of ISO 3166 alpha-2 codes read from the official page named in "prefer", with its URL in "sources".`
+});
+var NAMES = {
+  AT: "Austria",
+  BE: "Belgium",
+  BG: "Bulgaria",
+  HR: "Croatia",
+  CY: "Cyprus",
+  CZ: "Czech Republic",
+  DK: "Denmark",
+  EE: "Estonia",
+  FI: "Finland",
+  FR: "France",
+  DE: "Germany",
+  GR: "Greece",
+  HU: "Hungary",
+  IE: "Ireland",
+  IT: "Italy",
+  LV: "Latvia",
+  LT: "Lithuania",
+  LU: "Luxembourg",
+  MT: "Malta",
+  NL: "Netherlands",
+  PL: "Poland",
+  PT: "Portugal",
+  RO: "Romania",
+  SK: "Slovakia",
+  SI: "Slovenia",
+  ES: "Spain",
+  SE: "Sweden",
+  IS: "Iceland",
+  LI: "Liechtenstein",
+  NO: "Norway",
+  GB: "United Kingdom",
+  CH: "Switzerland",
+  AL: "Albania",
+  BA: "Bosnia and Herzegovina",
+  ME: "Montenegro",
+  MK: "North Macedonia",
+  RS: "Serbia",
+  MD: "Moldova",
+  UA: "Ukraine",
+  GE: "Georgia",
+  TR: "Turkey"
+};
+var BUILT_IN_MEMBERSHIP = {
+  asOf: "2026-01-01",
+  eu: [
+    "AT",
+    "BE",
+    "BG",
+    "HR",
+    "CY",
+    "CZ",
+    "DK",
+    "EE",
+    "FI",
+    "FR",
+    "DE",
+    "GR",
+    "HU",
+    "IE",
+    "IT",
+    "LV",
+    "LT",
+    "LU",
+    "MT",
+    "NL",
+    "PL",
+    "PT",
+    "RO",
+    "SK",
+    "SI",
+    "ES",
+    "SE"
+  ],
+  eeaNonEu: ["IS", "LI", "NO"],
+  euroArea: ["AT", "BE", "BG", "HR", "CY", "DE", "EE", "ES", "FI", "FR", "GR", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PT", "SI", "SK"],
+  sources: [SOURCES.eu, SOURCES.eea, SOURCES.euro]
+};
+var byName = (a, b) => {
+  const [x, y] = [NAMES[a] ?? a, NAMES[b] ?? b];
+  return x < y ? -1 : x > y ? 1 : 0;
+};
+function read2(key, fallback) {
+  let stored;
+  try {
+    stored = loadLatestFacts(GEO, "EU", { upTo: clockNow().toISOString().slice(0, 10) });
+  } catch {
+    stored = void 0;
+  }
+  const f3 = stored?.current[key];
+  if (f3) return { codes: [...f3.value].sort(byName), origin: "researched", asOf: f3.verifiedAt, sources: f3.sources };
+  return { codes: [...fallback].sort(byName), origin: "built-in", asOf: BUILT_IN_MEMBERSHIP.asOf, sources: BUILT_IN_MEMBERSHIP.sources };
+}
+var euMembers = () => read2("eu.members", BUILT_IN_MEMBERSHIP.eu);
+function euEeaMembers() {
+  const eu = euMembers();
+  const rest = read2("eea.nonEuMembers", BUILT_IN_MEMBERSHIP.eeaNonEu);
+  return {
+    codes: [...eu.codes, ...rest.codes.filter((c) => !eu.codes.includes(c))],
+    origin: eu.origin === "researched" && rest.origin === "researched" ? "researched" : "built-in",
+    asOf: [eu.asOf, rest.asOf].sort()[0],
+    sources: [.../* @__PURE__ */ new Set([...eu.sources, ...rest.sources])]
+  };
+}
+var euroAreaMembers = () => {
+  const m = read2("euroArea.members", BUILT_IN_MEMBERSHIP.euroArea);
+  return { ...m, codes: [...m.codes].sort() };
+};
+var europeCountries = () => {
+  const m = euEeaMembers();
+  return { ...m, codes: [.../* @__PURE__ */ new Set([...m.codes, "GB", "CH"])].sort() };
+};
+var isEuEea = (iso4) => !!iso4 && euEeaMembers().codes.includes(iso4.toUpperCase());
+var tradingViewCountry = (iso4) => NAMES[iso4.toUpperCase()];
+function membershipNote(m, what = "EU / EEA membership") {
+  if (m.origin === "researched") return void 0;
+  return `${what}: ultrastock's built-in list as of ${m.asOf} (${m.sources.join(", ")}), not a current research \u2014 run \`${researchCommand("geo", "EU")}\` and store the result to read a current one`;
+}
+
 // src/analyze/screen/presets.ts
 var TV_COLUMNS = {
   description: { label: "name" },
@@ -26401,72 +26569,7 @@ var gt = (left, right) => ({ left, operation: "greater", right });
 var lt = (left, right) => ({ left, operation: "less", right });
 var ge = (left, right) => ({ left, operation: "egreater", right });
 var between = (left, lo, hi) => ({ left, operation: "in_range", right: [lo, hi] });
-var EU_EEA_COUNTRIES = [
-  "Austria",
-  "Belgium",
-  "Bulgaria",
-  "Croatia",
-  "Cyprus",
-  "Czech Republic",
-  "Denmark",
-  "Estonia",
-  "Finland",
-  "France",
-  "Germany",
-  "Greece",
-  "Hungary",
-  "Ireland",
-  "Italy",
-  "Latvia",
-  "Lithuania",
-  "Luxembourg",
-  "Malta",
-  "Netherlands",
-  "Poland",
-  "Portugal",
-  "Romania",
-  "Slovakia",
-  "Slovenia",
-  "Spain",
-  "Sweden",
-  // EEA, outside the EU
-  "Iceland",
-  "Liechtenstein",
-  "Norway"
-];
-var EU_EEA_ISO = [
-  "AT",
-  "BE",
-  "BG",
-  "HR",
-  "CY",
-  "CZ",
-  "DK",
-  "EE",
-  "FI",
-  "FR",
-  "DE",
-  "GR",
-  "HU",
-  "IE",
-  "IT",
-  "LV",
-  "LT",
-  "LU",
-  "MT",
-  "NL",
-  "PL",
-  "PT",
-  "RO",
-  "SK",
-  "SI",
-  "ES",
-  "SE",
-  // EEA, outside the EU
-  "IS",
-  "LI",
-  "NO"
-];
+var euEeaTradingViewCountries = () => euEeaMembers().codes.map(tradingViewCountry).filter((n2) => !!n2);
 var EUROPE_MARKETS = [
   "france",
   "germany",
@@ -26635,7 +26738,10 @@ var TV_PRESETS = [
     id: "pea-candidates",
     title: "PEA candidates",
     assets: "stock",
-    filter: [{ left: "country", operation: "in_range", right: EU_EEA_COUNTRIES }, gt("market_cap_basic", 0)],
+    // Read when the screen runs: the membership is a researched fact, not a constant.
+    get filter() {
+      return [{ left: "country", operation: "in_range", right: euEeaTradingViewCountries() }, gt("market_cap_basic", 0)];
+    },
     columns: ["country", "market_cap_basic", "isin", "sector"],
     sort: { sortBy: "market_cap_basic", sortOrder: "desc" },
     defaultMarket: "europe",
@@ -26644,9 +26750,15 @@ var TV_PRESETS = [
       "candidates: PEA eligibility must be confirmed with the broker"
     ],
     source: "French PEA rules (Code mon\xE9taire et financier, art. L221-31: shares of companies with their registered office in the EU or EEA, subject to corporate tax)",
-    approximations: [
-      "TradingView's country is the company's country, not always its registered office; corporate-tax status and the broker's own list are not checked"
-    ]
+    get approximations() {
+      const note = membershipNote(euEeaMembers());
+      const unnamed = euEeaMembers().codes.filter((c) => !tradingViewCountry(c));
+      return [
+        "TradingView's country is the company's country, not always its registered office; corporate-tax status and the broker's own list are not checked",
+        ...note ? [note] : [],
+        ...unnamed.length ? [`left out of the scan, their TradingView country name unknown: ${unnamed.join(", ")}`] : []
+      ];
+    }
   }
 ];
 var BUILTIN_PRESETS = [
@@ -31100,43 +31212,10 @@ function cribleRowsToDataset(r3, opts) {
 }
 
 // src/analyze/peers.ts
-var PEER_EUROPE = [
-  "AT",
-  "BE",
-  "BG",
-  "CH",
-  "CY",
-  "CZ",
-  "DE",
-  "DK",
-  "EE",
-  "ES",
-  "FI",
-  "FR",
-  "GB",
-  "GR",
-  "HR",
-  "HU",
-  "IE",
-  "IS",
-  "IT",
-  "LI",
-  "LT",
-  "LU",
-  "LV",
-  "MT",
-  "NL",
-  "NO",
-  "PL",
-  "PT",
-  "RO",
-  "SE",
-  "SI",
-  "SK"
-];
 function peerCountries(country2) {
   if (country2 === "US" || country2 === "CA") return ["US", "CA"];
-  if (PEER_EUROPE.includes(country2)) return PEER_EUROPE;
+  const europe = europeCountries().codes;
+  if (europe.includes(country2)) return [...europe];
   return [country2];
 }
 var PEER_FIELDS = [
@@ -31288,7 +31367,8 @@ async function peersDataset(symbol, opts = {}) {
       ...screen.total > rows.length ? [`${screen.total} listings match the industry in this region; the ${rows.length} largest issuers are shown`] : [],
       ...dist.points.length ? ["the peer-group quartiles and percentiles cover every primary listing of the industry in the region (crible stats), not only the peers shown"] : [],
       ...dist.note ? [dist.note] : [],
-      ...stale ? [stale] : []
+      ...stale ? [stale] : [],
+      ...europeCountries().codes.includes(country2) ? [membershipNote(europeCountries(), "the European peer countries (EU / EEA)")].filter((n2) => !!n2) : []
     ]
   };
 }
@@ -36766,7 +36846,6 @@ var COUNTRY_MARKETS = Object.fromEntries(
     M("NZ", "New Zealand", "^NZ50", "NZX 50", "NZD", "ENZL")
   ].map((m) => [m.iso, m])
 );
-var EURO_AREA = ["AT", "BE", "CY", "DE", "EE", "ES", "FI", "FR", "GR", "HR", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PT", "SI", "SK"];
 var SUFFIX_COUNTRY = {
   PA: "FR",
   AS: "NL",
@@ -36896,7 +36975,8 @@ function policyEvent(m) {
   };
 }
 function eventExposure(e, byCountry, byCurrency) {
-  if (e.iso === "EU") return EURO_AREA.map((c2) => byCountry.get(c2)).filter((x2) => !!x2);
+  if (e.iso === "EU")
+    return euroAreaMembers().codes.map((c2) => byCountry.get(c2)).filter((x2) => !!x2);
   const out = [];
   const c = byCountry.get(e.iso);
   if (c) out.push(c);
@@ -37048,8 +37128,13 @@ async function eventsRun(dir2, opts = {}) {
   const to = iso2(new Date(now.getTime() + days * DAY5));
   const all = await marketEvents(from, to, notes);
   const wanted = new Set((opts.countries ?? []).map((c) => c.toUpperCase()));
+  const euroArea = euroAreaMembers();
+  if (all.some((e) => e.iso === "EU")) {
+    const note = membershipNote(euroArea, "the euro area an ECB decision moves");
+    if (note) notes.push(note);
+  }
   const relevant = all.filter((e) => {
-    if (wanted.size && (wanted.has(e.iso) || e.iso === "EU" && EURO_AREA.some((c) => wanted.has(c)))) return true;
+    if (wanted.size && (wanted.has(e.iso) || e.iso === "EU" && euroArea.codes.some((c) => wanted.has(c)))) return true;
     if (eventExposure(e, byCountry, byCurrency).length) return true;
     return !!opts.all && (!!COUNTRY_MARKETS[e.iso] || e.iso === "EU");
   });
@@ -39070,38 +39155,6 @@ function knownSector(raw) {
   return typeof raw === "string" ? TV_SECTORS2.find((s) => s.toLowerCase() === raw.trim().toLowerCase()) : void 0;
 }
 var keySlug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-var EU_EEA = /* @__PURE__ */ new Set([
-  "AT",
-  "BE",
-  "BG",
-  "HR",
-  "CY",
-  "CZ",
-  "DK",
-  "EE",
-  "FI",
-  "FR",
-  "DE",
-  "GR",
-  "HU",
-  "IE",
-  "IT",
-  "LV",
-  "LT",
-  "LU",
-  "MT",
-  "NL",
-  "PL",
-  "PT",
-  "RO",
-  "SK",
-  "SI",
-  "ES",
-  "SE",
-  "IS",
-  "LI",
-  "NO"
-]);
 function isinCountry(isin) {
   return isin && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) ? isin.slice(0, 2) : void 0;
 }
@@ -47386,11 +47439,11 @@ function keychain(account) {
   return void 0;
 }
 var credentialEnvName = (venue, env2, field2) => `ULTRASTOCK_${venue.toUpperCase()}_${env2.toUpperCase()}_${field2.toUpperCase()}`;
-function readCredentials(venue, env2, read2 = keychain) {
+function readCredentials(venue, env2, read3 = keychain) {
   const got = {};
   let source2 = "";
   for (const f3 of FIELDS) {
-    const k = read2(`${venue}-${env2}-${f3}`);
+    const k = read3(`${venue}-${env2}-${f3}`);
     if (k) {
       got[f3] = k;
       source2 = process.platform === "darwin" ? "macOS keychain" : "secret-tool";
@@ -47474,9 +47527,9 @@ ${message}
   }
 };
 var LOOPBACK2 = /^(localhost|.+\.localhost|127(\.\d{1,3}){3}|0\.0\.0\.0|\[::1?\]|\[::ffff:.+\])$/i;
-function ntfyDestination(read2 = keychain) {
-  const url = read2("ntfy-url");
-  const token = read2("ntfy-token");
+function ntfyDestination(read3 = keychain) {
+  const url = read3("ntfy-url");
+  const token = read3("ntfy-token");
   if (!url || !token) return { refused: "no ntfy topic and token in the keychain (`ultrastock broker setup ntfy`)" };
   let u;
   try {
@@ -47488,10 +47541,10 @@ function ntfyDestination(read2 = keychain) {
   if (LOOPBACK2.test(u.hostname)) return { refused: "the keychain's ntfy-url points at this machine" };
   return { url: u.toString(), token };
 }
-function ntfyChannelFrom(read2 = keychain) {
+function ntfyChannelFrom(read3 = keychain) {
   return async (message) => {
-    if (process.env.ULTRASTOCK_CODE_CHANNELS === "none" && read2 === keychain) return false;
-    const d = ntfyDestination(read2);
+    if (process.env.ULTRASTOCK_CODE_CHANNELS === "none" && read3 === keychain) return false;
+    const d = ntfyDestination(read3);
     if ("refused" in d) return false;
     try {
       const r3 = await fetch(d.url, {
@@ -49344,7 +49397,11 @@ function locationRule(h) {
     return { rule: LOCATION_RULES["other-fund"], basis: h.peaFlag === false ? "issuer flags it not PEA-eligible" : "no issuer PEA flag read" };
   }
   if (!country2) return { rule: LOCATION_RULES.unknown, basis: "no ISIN read" };
-  if (EU_EEA.has(country2)) return { rule: LOCATION_RULES["eu-share"], basis: `ISIN prefix ${country2} (EU/EEA)` };
+  if (isEuEea(country2))
+    return {
+      rule: LOCATION_RULES["eu-share"],
+      basis: `ISIN prefix ${country2} (EU/EEA${euEeaMembers().origin === "built-in" ? `, built-in list as of ${euEeaMembers().asOf}` : ""})`
+    };
   return { rule: LOCATION_RULES["non-eu-share"], basis: `ISIN prefix ${country2} (outside the EU/EEA)` };
 }
 function bestEnvelope(h, available, peaRoom) {
@@ -49711,6 +49768,8 @@ async function locationAnalysis(m, f3) {
     f3.derive(sec, `${P}.${h.symbol}.misplaced`, `${h.symbol} sits in a worse envelope than one available`, r3.worse.length > 0, void 0, from, r3.reason);
     out.push({ symbol: h.symbol, rule: r3.rule.id, ideal: r3.ideal, best: r3.best, current: envs, worse: r3.worse, reason: r3.reason });
   }
+  const membership = membershipNote(euEeaMembers(), "the EU / EEA list the PEA first pass reads");
+  if (membership) f3.note(membership);
   f3.note(
     "PEA eligibility is a first pass (ISIN country prefix for shares, the issuer's flag for funds) \u2014 confirm with the broker before moving anything; a move between envelopes is a sale and a purchase"
   );
@@ -50138,8 +50197,8 @@ function tradedAfter(b, fill3) {
   return b.date.slice(0, 10) > fill3.slice(0, 10);
 }
 async function runAlerts(now = clockNow()) {
-  const read2 = loadRules2();
-  const rules = [...read2];
+  const read3 = loadRules2();
+  const rules = [...read3];
   const events = [];
   const errors = [];
   const at = now.toISOString();
@@ -50210,7 +50269,7 @@ async function runAlerts(now = clockNow()) {
       errors.push(`${rule.id} (${rule.symbol ?? rule.kind}): ${e.message}`);
     }
   }
-  const changed = new Map(rules.filter((r3, k) => r3 !== read2[k]).map((r3) => [r3.id, r3]));
+  const changed = new Map(rules.filter((r3, k) => r3 !== read3[k]).map((r3) => [r3.id, r3]));
   updateRules((current2) => ({ rules: current2.map((r3) => changed.get(r3.id) ?? r3), result: void 0 }));
   return { events, errors };
 }
@@ -55620,7 +55679,7 @@ async function jurisdictionCommand(args, asJson) {
   const [sub = "show"] = args.positional;
   const code = (argValue(args, "jurisdiction") ?? loadProfile()?.jurisdiction ?? "FR").toUpperCase();
   const rules = rulesFor(code);
-  const flow = `ultrastock holds no jurisdiction rule: research them (\`${researchCommand(code)}\` gathers the official documents and prints the worklist), store the conclusions (\`${JURISDICTION.setCommand}\`); until then each rule reads as unknown and fails closed`;
+  const flow = `ultrastock holds no jurisdiction rule: research them (\`${researchCommand("jurisdiction", code)}\` gathers the official documents and prints the worklist), store the conclusions (\`${JURISDICTION.setCommand}\`); until then each rule reads as unknown and fails closed`;
   if (sub === "show") {
     const text2 = [
       `${rules.name} (${rules.code}) \u2014 researched jurisdiction rules`,
@@ -55630,7 +55689,7 @@ async function jurisdictionCommand(args, asJson) {
       )
     ];
     if (rules.rules.some((r3) => !r3.researched)) text2.push("", flow);
-    return printResult(asJson, { ...rules, research: researchCommand(code) }, text2.join("\n"));
+    return printResult(asJson, { ...rules, research: researchCommand("jurisdiction", code) }, text2.join("\n"));
   }
   if (sub !== "verify") throw new UsageError(`unknown jurisdiction action "${sub}" \u2014 show or verify`);
   const venues = (argValue(args, "venues") ?? "binance,kraken,coinbase").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean);
@@ -55678,7 +55737,11 @@ async function jurisdictionCommand(args, asJson) {
   if (asJson)
     return printResult(
       true,
-      { registered: registered.map((r3) => ({ title: r3.dataset.title, ids: r3.ids, items: r3.items })), checklist, research: researchCommand(code) },
+      {
+        registered: registered.map((r3) => ({ title: r3.dataset.title, ids: r3.ids, items: r3.items })),
+        checklist,
+        research: researchCommand("jurisdiction", code)
+      },
       ""
     );
   process.stdout.write(formatDatasets(registered));
@@ -58017,8 +58080,8 @@ async function researchFacts(o) {
   if (picks.size > toRead.length) notes.push(`${picks.size - toRead.length} document(s) beyond the ${o.limit ?? 20}-document cap were not read`);
   let pages = [];
   if (toRead.length) {
-    const read2 = o.transport?.read ?? ((cands, opts) => readCandidates(cands, opts));
-    const r3 = await read2(toRead, { max: toRead.length, read: { wayback: o.read?.wayback ?? true, browser: o.read?.browser ?? false } });
+    const read3 = o.transport?.read ?? ((cands, opts) => readCandidates(cands, opts));
+    const r3 = await read3(toRead, { max: toRead.length, read: { wayback: o.read?.wayback ?? true, browser: o.read?.browser ?? false } });
     pages = r3.pages;
     dropped.push(...r3.dropped);
   }
@@ -60024,21 +60087,22 @@ function valueStyles(arg) {
   if (!s) throw new Error(`--style is one of ${VALUE_STYLE_IDS.join(", ")} or all, not "${arg}"`);
   return [s];
 }
-var EUROPE_ISO = [...EU_EEA_ISO, "GB", "CH"];
 function valueRegion(arg) {
   const raw = (arg ?? "world").trim();
   const id = raw.toLowerCase();
   if (id === "world") return { id, label: "the world" };
   if (id === "us") return { id, label: "the United States", countries: ["US"] };
-  if (id === "europe") return { id, label: "Europe (EU / EEA, United Kingdom, Switzerland)", countries: EUROPE_ISO };
-  if (id === "pea") return { id, label: "PEA-eligible (EU / EEA issuer and ISIN)", countries: EU_EEA_ISO, pea: true };
+  const eea = euEeaMembers();
+  const note = membershipNote(eea);
+  if (id === "europe") return { id, label: "Europe (EU / EEA, United Kingdom, Switzerland)", countries: [...eea.codes, "GB", "CH"], ...note ? { note } : {} };
+  if (id === "pea") return { id, label: "PEA-eligible (EU / EEA issuer and ISIN)", countries: eea.codes, pea: true, ...note ? { note } : {} };
   const codes = raw.split(",").map((c) => c.trim().toUpperCase()).filter(Boolean);
   if (!codes.length || codes.some((c) => !/^[A-Z]{2}$/.test(c)))
     throw new Error(`--region is world, europe, pea, us or a comma list of ISO country codes (FR,DE,IT), not "${raw}"`);
   return { id: codes.join(","), label: codes.join(", "), countries: [...new Set(codes)] };
 }
 function peaEligible(row) {
-  const iso4 = EU_EEA_ISO;
+  const iso4 = euEeaMembers().codes;
   const isin = typeof row.isin === "string" ? row.isin.trim().toUpperCase() : "";
   return typeof row.country === "string" && iso4.includes(row.country) && /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) && iso4.includes(isin.slice(0, 2));
 }
@@ -60707,6 +60771,7 @@ async function valueRun(dir2, opts, deps = defaultValueDeps()) {
     receiptColumn = (await deps.fields()).some((f3) => f3.name === "depositary_receipt");
   } catch {
   }
+  if (opts.region.note) notes.push(opts.region.note);
   if (!receiptColumn)
     notes.push(
       "this crible dataset has no depositary_receipt column: receipts are recognised by a US ISIN on a non-US issuer, or ADR / ADS / GDR / CDR in the name"
@@ -61161,7 +61226,7 @@ async function doctorReport(opts = {}) {
       researched: rules.length - unresearched.length,
       total: rules.length,
       unresearched,
-      research: researchCommand(profile.jurisdiction)
+      research: researchCommand("jurisdiction", profile.jurisdiction)
     };
   }
   const fresh = report2.crible.bootstrapped ? await cribleFreshness().catch(() => void 0) : void 0;

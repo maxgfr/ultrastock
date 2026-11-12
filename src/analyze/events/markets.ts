@@ -78,8 +78,8 @@ export const COUNTRY_MARKETS: Record<string, CountryMarket> = Object.fromEntries
   ].map((m) => [m.iso, m]),
 );
 
-/** The euro area, for an ECB decision. */
-export const EURO_AREA = ["AT", "BE", "CY", "DE", "EE", "ES", "FI", "FR", "GR", "HR", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PT", "SI", "SK"];
+/** The euro area, for an ECB decision: core/geo.ts (researched, else its dated built-in list — `membershipNote` says which). */
+export { euroAreaMembers } from "../../core/geo.js";
 
 // Listing suffix → country (Yahoo-style symbols the ledger holds).
 const SUFFIX_COUNTRY: Record<string, string> = {

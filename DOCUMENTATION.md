@@ -255,6 +255,22 @@ and stores it with `facts set <domain> --file`. `facts template|show <domain>`
 print the skeleton and what is stored; `facts … tax` runs `tax rules …`. The
 MCP server exposes `facts show|template` only.
 
+Domains so far:
+
+| Domain | Country / period | Keys | Read by |
+|---|---|---|---|
+| `tax` | tax residence / tax year | the rules the FR and US engines read; a generic list elsewhere | the tax engines, `tax report`, `portfolio location` |
+| `geo` | `EU` / the date the membership holds from | `eu.members`, `eea.nonEuMembers`, `euroArea.members` (ISO codes, max age 365 days) | the PEA first pass, the `pea-candidates` screen, `value --region europe\|pea`, European peers, the ECB exposure in `events` |
+
+`src/core/geo.ts` is the only place EU, EEA and euro-area membership is read.
+No keyless machine-readable official list was found to read live, so it reads
+the latest stored `geo` research; without a current one it uses one built-in
+list (as of 2026-01-01: 27 EU states, Iceland, Liechtenstein and Norway, the
+21-state euro area with Bulgaria, sourced from europa.eu and efta.int), and
+every output using it says so with the command to research a current one
+(`ultrastock facts research geo --country EU`). The lists are written in the
+order earlier requests were recorded with (by English name; peers by code).
+
 ## MCP
 
 `mcp` exposes the commands as tools, each one running the bundle in a child
