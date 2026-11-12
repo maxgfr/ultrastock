@@ -22,12 +22,19 @@ const CASPS_URL = "https://www.esma.europa.eu/sites/default/files/2026-10/CASPS.
 const NCASP_URL = "https://www.esma.europa.eu/sites/default/files/2026-10/NCASP.csv";
 const RECORDED_AT = "2026-11-01T10:00:00.000Z";
 
-/** A throwaway fixture holding ESMA's page and a register made of `rows` (clock: 2026-11-01). */
-function register(rows: string[], ncasp: string[] = [], page: string | undefined = PAGE): string {
+/**
+ * A throwaway fixture holding ESMA's page and a register made of `rows` (clock: 2026-11-01). `fallback`: no page, the
+ * register only at its first dated path — what the gate reads when ESMA's page gives no link.
+ */
+function register(rows: string[], ncasp: string[] = [], opts: { fallback?: boolean } = {}): string {
   const dir = mkdtempSync(join(tmpdir(), "us-mica-gate-"));
   mkdirSync(join(dir, "http"), { recursive: true });
-  const answers: Record<string, string> = { [CASPS_URL]: [CASPS_HEADER, ...rows].join("\n"), [NCASP_URL]: [NCASP_HEADER, ...ncasp].join("\n") };
-  if (page) answers[ESMA_MICA_PAGE] = page;
+  const at = (u: string) => (opts.fallback ? u.replace("/2026-10/", "/2024-12/") : u);
+  const answers: Record<string, string> = {
+    [at(CASPS_URL)]: [CASPS_HEADER, ...rows].join("\n"),
+    [at(NCASP_URL)]: [NCASP_HEADER, ...ncasp].join("\n"),
+  };
+  if (!opts.fallback) answers[ESMA_MICA_PAGE] = PAGE;
   for (const [url, body] of Object.entries(answers))
     writeFileSync(
       join(dir, "http", `${contentHash(`GET ${url} `).slice(0, 20)}.json`),
@@ -193,5 +200,42 @@ describe("what `jurisdiction show` says of a researched register", () => {
     const rules = rulesFor("FR").rules;
     expect(rules.find((x) => x.id === "cryptoVenue.kraken.lei")).toMatchObject({ status: "9845003D98SCC2851458", researched: true });
     expect(rules.find((x) => x.id === "crypto-casp")?.status).toBe("restricted");
+  });
+});
+
+describe("what the gate says, and refuses, beyond the authorised entries", () => {
+  const COINBASE =
+    "CSSF,LU,Coinbase Luxembourg S.A.,984500F14CA4571AAC11,LU,Coinbase,Luxembourg,https://coinbase.com,,20/06/2025,,c. exchange,AT|BE|FR|DE,,20/06/2025,,,,";
+  const FACTS = { FR: { ...FR_ESMA, "cryptoVenue.coinbase.lei": "984500F14CA4571AAC11" } };
+
+  it("keeps the 'may be out of date' note in the reason when only the dated fallback copy could be read", async () => {
+    setNetMode({ kind: "fixture", dir: register([COINBASE], [], { fallback: true }) });
+    installJurisdictionTestFacts(FACTS);
+    const g = await cryptoVenueGate("coinbase", "FR");
+    expect(g.ok).toBe(true);
+    expect(g.reason).toMatch(/may be out of date/);
+  });
+
+  it("refuses a venue that is in ESMA's register of non-compliant entities", async () => {
+    // The same entity, also listed as non-compliant: by its LEI, and (another case) by its name with no LEI.
+    setNetMode({
+      kind: "fixture",
+      dir: register(
+        [COINBASE],
+        ["CSSF,LU,Coinbase Luxembourg S.A.,984500F14CA4571AAC11,LU,Coinbase,coinbase.com,Yes,Unauthorised service,01/10/2026,,01/10/2026"],
+      ),
+    });
+    installJurisdictionTestFacts(FACTS);
+    const byLei = await cryptoVenueGate("coinbase", "FR");
+    expect(byLei.ok).toBe(false);
+    expect(byLei.reason).toMatch(/non-compliant.*Unauthorised service/);
+    setNetMode({ kind: "fixture", dir: register([COINBASE], ["AMF,FR,Coinbase France,,FR,Coinbase,coinbase.com,Yes,Unauthorised,01/10/2026,,01/10/2026"]) });
+    expect((await cryptoVenueGate("coinbase", "FR")).ok).toBe(false);
+    // An entry under another LEI is another entity: it does not stop this one.
+    setNetMode({
+      kind: "fixture",
+      dir: register([COINBASE], ["AMF,FR,Coinbase Clone Ltd,5299000000000000CC01,FR,Coinbase,clone.example,Yes,Unauthorised,01/10/2026,,01/10/2026"]),
+    });
+    expect((await cryptoVenueGate("coinbase", "FR")).ok).toBe(true);
   });
 });

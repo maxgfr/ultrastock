@@ -17,7 +17,9 @@
 //
 // What it still checks on public registers: ESMA's MiCA interim register (its
 // CSV links discovered on ESMA's page) when the researched register for the
-// country is ESMA's, and a regulator's DNS block page (detection only).
+// country is ESMA's — matched on the venue's researched LEI only; an ended
+// authorisation is not one, and a listing among the non-compliant entities
+// refuses — and a regulator's DNS block page (detection only).
 import { lookup, resolveCname } from "node:dns/promises";
 import { cachedJson, TTL } from "./cache.js";
 import { parseCsvText } from "./csv.js";
@@ -396,8 +398,20 @@ export async function cryptoVenueGate(venue: string, code: string, opts: { micaA
           mica: m,
         };
       }
+      // Listed as non-compliant (an NCASP entry for the same entity): no live order, whatever the CASP register says.
+      if (m.warnings.length)
+        return {
+          ok: false,
+          reason: `${venue} is in ESMA's register of non-compliant entities (${m.warnings.map((w) => `${w.name}${w.authority ? `, ${w.authority}` : ""}${w.reason ? `: ${w.reason}` : ""}${w.decidedOn ? ` (${w.decidedOn})` : ""}`).join("; ")}): no live orders there`,
+          mica: m,
+        };
+      // The notes travel with a pass too: a register read from its dated fallback copy "may be out of date".
       if (m.authorised.length)
-        return { ok: true, reason: `${venue} is in ESMA's MiCA register for ${c} (${m.authorised[0]!.name}, ${m.authorised[0]!.homeState})`, mica: m };
+        return {
+          ok: true,
+          reason: `${venue} is in ESMA's MiCA register for ${c} (${m.authorised[0]!.name}, ${m.authorised[0]!.homeState})${m.notes.length ? ` — ${m.notes.join("; ")}` : ""}`,
+          mica: m,
+        };
       return {
         ok: false,
         reason: `${venue} is not an authorised MiCA crypto-asset service provider for ${c} in ESMA's register${m.notes.length ? ` (${m.notes.join("; ")})` : ""}: no live orders there`,
@@ -475,7 +489,7 @@ export interface CaspEntry {
 export interface MicaCheck {
   venue: string;
   authorised: CaspEntry[];
-  /** Entries in ESMA's register of non-compliant entities. */
+  /** Entries in ESMA's register of non-compliant entities (the LEI's, or a row with no LEI under the venue's name): any refuses. */
   warnings: Array<{ name: string; lei: string; authority: string; reason: string; decidedOn: string }>;
   url: string;
   fetchedAt: string;
@@ -609,7 +623,10 @@ export async function checkMica(venue: string, country = "FR", opts: { lei?: str
     }))
     .filter((e) => e.homeState === c || e.passportedTo.includes(c));
   if (ended.length) notes.push(`entries whose authorisation ended are not counted (${[...new Set(ended)].join("; ")})`);
-  const warnings = ncasp.rows.filter(hit).map((r) => ({
+  // The non-compliant register often carries no LEI for an entity that was never authorised: a row with none is matched on
+  // the name, so a listing refuses (fail-closed); a row under another LEI is another entity.
+  const flagged = (r: Record<string, string>) => hit(r) || (!leiOf(r) && named(r));
+  const warnings = ncasp.rows.filter(flagged).map((r) => ({
     name: r.ae_lei_name || r.ae_commercial_name || "",
     lei: leiOf(r),
     authority: r.ae_competentAuthority ?? "",

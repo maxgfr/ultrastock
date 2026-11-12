@@ -18078,8 +18078,18 @@ async function cryptoVenueGate(venue, code, opts = {}) {
           mica: m
         };
       }
+      if (m.warnings.length)
+        return {
+          ok: false,
+          reason: `${venue} is in ESMA's register of non-compliant entities (${m.warnings.map((w) => `${w.name}${w.authority ? `, ${w.authority}` : ""}${w.reason ? `: ${w.reason}` : ""}${w.decidedOn ? ` (${w.decidedOn})` : ""}`).join("; ")}): no live orders there`,
+          mica: m
+        };
       if (m.authorised.length)
-        return { ok: true, reason: `${venue} is in ESMA's MiCA register for ${c} (${m.authorised[0].name}, ${m.authorised[0].homeState})`, mica: m };
+        return {
+          ok: true,
+          reason: `${venue} is in ESMA's MiCA register for ${c} (${m.authorised[0].name}, ${m.authorised[0].homeState})${m.notes.length ? ` \u2014 ${m.notes.join("; ")}` : ""}`,
+          mica: m
+        };
       return {
         ok: false,
         reason: `${venue} is not an authorised MiCA crypto-asset service provider for ${c} in ESMA's register${m.notes.length ? ` (${m.notes.join("; ")})` : ""}: no live orders there`,
@@ -18218,7 +18228,8 @@ async function checkMica(venue, country2 = "FR", opts = {}) {
     website: r3.ae_website ?? ""
   })).filter((e) => e.homeState === c || e.passportedTo.includes(c));
   if (ended.length) notes.push(`entries whose authorisation ended are not counted (${[...new Set(ended)].join("; ")})`);
-  const warnings = ncasp.rows.filter(hit).map((r3) => ({
+  const flagged2 = (r3) => hit(r3) || !leiOf(r3) && named(r3);
+  const warnings = ncasp.rows.filter(flagged2).map((r3) => ({
     name: r3.ae_lei_name || r3.ae_commercial_name || "",
     lei: leiOf(r3),
     authority: r3.ae_competentAuthority ?? "",
