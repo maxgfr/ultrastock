@@ -15,6 +15,7 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { writeFileAtomic } from "../engine.js";
+import { classifySymbol } from "../providers/router.js";
 import { homeDir } from "./paths.js";
 
 export const PROFILE_SCHEMA = 1;
@@ -160,6 +161,10 @@ const SETTERS: Record<string, (raw: string) => unknown> = {
     if (/^(default|none)$/i.test(v.trim())) return undefined;
     if (!/^[A-Za-z0-9^][A-Za-z0-9.^=:_-]{0,31}$/.test(v.trim()))
       throw new Error(`a benchmark is a symbol such as CW8.PA, SPY or ^GSPC (or "default"), not "${v}"`);
+    // What the router would refuse (a US ISIN, a market no provider covers) is refused here, with its words: a
+    // benchmark no analysis can read would leave every alpha unmeasured. Without the network — the symbol is not looked up.
+    const kind = classifySymbol(v);
+    if (typeof kind === "object") throw new Error(kind.unsupported);
     return v.trim().toUpperCase();
   },
   horizonYears: (v) => num(v, 0, 80),

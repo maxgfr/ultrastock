@@ -18305,6 +18305,8 @@ var SETTERS = {
     if (/^(default|none)$/i.test(v.trim())) return void 0;
     if (!/^[A-Za-z0-9^][A-Za-z0-9.^=:_-]{0,31}$/.test(v.trim()))
       throw new Error(`a benchmark is a symbol such as CW8.PA, SPY or ^GSPC (or "default"), not "${v}"`);
+    const kind = classifySymbol(v);
+    if (typeof kind === "object") throw new Error(kind.unsupported);
     return v.trim().toUpperCase();
   },
   horizonYears: (v) => num3(v, 0, 80),
@@ -45015,7 +45017,10 @@ async function settleDecisions(now = clockNow()) {
       const from = new Date(Date.parse(start) - 10 * 864e5);
       const series = await getHistory(r3, { from, to: now });
       const benchSym = defaultBenchmark(r3.instrument.market, r3.instrument.mic);
-      const bench = benchSym ? await getHistory(await resolveSymbol(benchSym), { from, to: now }).catch(() => void 0) : void 0;
+      const bench = benchSym ? await resolveSymbol(benchSym).then((b) => getHistory(b, { from, to: now })).catch((e) => {
+        notes.add(`benchmark ${benchSym} could not be read (${e.message}): horizons settle on the raw return once the grace is over`);
+        return void 0;
+      }) : void 0;
       for (const h of matured) {
         const endDate = horizonEnd(market, start, h);
         const caveat = sessionCountCaveat(market, start, endDate);

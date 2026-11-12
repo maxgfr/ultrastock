@@ -174,7 +174,16 @@ export async function settleDecisions(
       const from = new Date(Date.parse(start) - 10 * 86_400_000);
       const series = await getHistory(r, { from, to: now });
       const benchSym = defaultBenchmark(r.instrument.market, r.instrument.mic);
-      const bench = benchSym ? await getHistory(await resolveSymbol(benchSym), { from, to: now }).catch(() => undefined) : undefined;
+      // A benchmark that cannot be read — its history or the symbol itself (a profile benchmark the router refuses) —
+      // is the module's rule above: the grace, then the raw return, marked partial. It never blocks the settlement.
+      const bench = benchSym
+        ? await resolveSymbol(benchSym)
+            .then((b) => getHistory(b, { from, to: now }))
+            .catch((e: unknown) => {
+              notes.add(`benchmark ${benchSym} could not be read (${(e as Error).message}): horizons settle on the raw return once the grace is over`);
+              return undefined;
+            })
+        : undefined;
       for (const h of matured) {
         const endDate = horizonEnd(market, start, h);
         const caveat = sessionCountCaveat(market, start, endDate);

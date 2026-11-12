@@ -22,7 +22,7 @@
 4. `ultrastock profile envelope <id> --type PEA|PEA-PME|CTO|AV|PER|CRYPTO --broker <name>`
    for each account the user holds.
 
-`profile set benchmark <symbol>` (`default` to clear) makes the analyses measure against the user's own benchmark instead of their stated conventions. `profile set <field> <value>` changes one field (`profile set` with no value
+`profile set benchmark <symbol>` (`default` to clear) makes the analyses measure against the user's own benchmark instead of their stated conventions; a symbol no provider can price (a US ISIN, an uncovered market suffix) is refused with the reason. `profile set <field> <value>` changes one field (`profile set` with no value
 lists them); every change is kept in the profile's history. Loosening a limit
 is the user's decision, never the agent's: say what it changes, then ask.
 
