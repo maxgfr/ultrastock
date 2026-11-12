@@ -16,6 +16,7 @@ import { gridRefusals, type InstrumentRules, publicInstrumentRules, snap, tickAt
 import type { HttpFn, Venue } from "./brokers/types.js";
 import { gateContextFor } from "./context.js";
 import { venueSymbol } from "./live.js";
+import { isDollarStablecoin } from "./stablecoins.js";
 import { type GateResult, type Order, riskGate } from "./riskgate.js";
 
 export interface PlanInput {
@@ -102,6 +103,15 @@ async function planGrid(venue: string, inst: { symbol: string; currency: string 
   }
 }
 
+/**
+ * Whether a stablecoin quote asset may be used from the user's country is a jurisdiction fact (e.g. the EU's rules on
+ * stablecoins under MiCA): not checked yet — said for a live plan, so it is not read as cleared on that point.
+ */
+export function quoteAssetNote(venue: string, currency: string): string | undefined {
+  if (venue === "paper" || !isDollarStablecoin(currency)) return undefined;
+  return `the order is quoted in ${currency}: whether ${currency} may be traded from your country of residence is a jurisdiction rule ultrastock does not check yet — verify it before a live order`;
+}
+
 export async function planTrade(input: PlanInput): Promise<TradePlanResult> {
   const now = input.now ?? clockNow();
   const resolved = await resolveSymbol(input.symbol);
@@ -161,6 +171,8 @@ export async function planTrade(input: PlanInput): Promise<TradePlanResult> {
   // An ETF's domicile decides PRIIPs (a US-domiciled ETF has no KID for EU retail investors).
   const domicile = inst.kind === "etf" ? await etfFundDomicile(inst) : undefined;
   if (domicile) notes.push(`fund domicile ${domicile.code ?? "unknown"} (${domicile.basis})`);
+  const quoteNote = quoteAssetNote(venue, inst.currency);
+  if (quoteNote) notes.push(quoteNote);
   const draft: Order = {
     account: input.account,
     symbol: inst.symbol,

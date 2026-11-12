@@ -43,7 +43,10 @@ export function resolveBinance(symbol: string): { instrument: Instrument; notes:
   }
   if (quote === "USD") {
     quote = "USDT";
-    substituted = { written: `${base}-USD`, note: `${base}-USD priced against USDT: Binance spot has no USD book` };
+    substituted = {
+      written: `${base}-USD`,
+      note: `${base}-USD priced against USDT: Binance spot has no USD book — the figures are in USDT, a dollar stablecoin, not in dollars`,
+    };
     notes.push(substituted.note);
   }
   const pair = `${base}${quote}`;

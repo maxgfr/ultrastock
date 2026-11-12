@@ -13237,7 +13237,10 @@ function resolveBinance(symbol) {
   }
   if (quote2 === "USD") {
     quote2 = "USDT";
-    substituted = { written: `${base2}-USD`, note: `${base2}-USD priced against USDT: Binance spot has no USD book` };
+    substituted = {
+      written: `${base2}-USD`,
+      note: `${base2}-USD priced against USDT: Binance spot has no USD book \u2014 the figures are in USDT, a dollar stablecoin, not in dollars`
+    };
     notes.push(substituted.note);
   }
   const pair = `${base2}${quote2}`;
@@ -52657,6 +52660,10 @@ async function planGrid(venue, inst, now, http3) {
     return { checked: false, note: `${venue} ${sym3}: the venue's price and quantity rules could not be read (${e.message})` };
   }
 }
+function quoteAssetNote(venue, currency) {
+  if (venue === "paper" || !isDollarStablecoin(currency)) return void 0;
+  return `the order is quoted in ${currency}: whether ${currency} may be traded from your country of residence is a jurisdiction rule ultrastock does not check yet \u2014 verify it before a live order`;
+}
 async function planTrade(input) {
   const now = input.now ?? clockNow();
   const resolved = await resolveSymbol(input.symbol);
@@ -52709,6 +52716,8 @@ async function planTrade(input) {
     notes.push(`resistance at ${wall.price.toFixed(4)} (${wall.touches} touches) stands before the first target ${targets[0]}`);
   const domicile = inst.kind === "etf" ? await etfFundDomicile(inst) : void 0;
   if (domicile) notes.push(`fund domicile ${domicile.code ?? "unknown"} (${domicile.basis})`);
+  const quoteNote = quoteAssetNote(venue, inst.currency);
+  if (quoteNote) notes.push(quoteNote);
   const draft = {
     account: input.account,
     symbol: inst.symbol,

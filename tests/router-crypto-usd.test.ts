@@ -76,7 +76,9 @@ describe("a crypto pair written against the dollar", () => {
     venues.binanceUp = true;
     const q = await getQuote(await resolveSymbol("BTC-USD"));
     expect(q.instrument).toMatchObject({ symbol: "BTCUSDT", currency: "USDT" });
-    expect(q.notes.join(" ")).toMatch(/BTC-USD priced against USDT: Binance spot has no USD book/);
+    expect(q.notes.join(" ")).toMatch(
+      /BTC-USD priced against USDT: Binance spot has no USD book — the figures are in USDT, a dollar stablecoin, not in dollars/,
+    );
     expect(venues.asked).toEqual([]);
   });
 
