@@ -3,12 +3,13 @@
 // money, CFTC-regulated) and Manifold (play money). Polymarket is never read
 // here: it is jurisdiction-gated in `predict`.
 //
-// Kalshi's taker fee: the schedule published at kalshi.com/docs/kalshi-fee-schedule.pdf
-// is commonly quoted as ceil_to_cent(0.07 × C × P × (1 − P)) per order (C
-// contracts at price P), with per-series multipliers. The PDF could not be read
-// when this was written (HTTP 429), so the coefficient is a PARAMETER that
-// defaults to 0 (no fee) — pass the published value (e.g. 0.07) once you have
-// checked it. The series API exposes `fee_type` and `fee_multiplier` but no formula.
+// Kalshi's fee: no coefficient is written here. The formula and its taker
+// coefficient are researched facts (venues domain, trading/venue-facts.ts,
+// from kalshi.com/docs/kalshi-fee-schedule.pdf); the series' `fee_type` and
+// `fee_multiplier` are read live from the series API. `--kalshi-fee <coef>`
+// replaces the whole effective coefficient. When none of that is known the
+// readings carry no fee (coefficient 0) and say so: a pair "arbitrage" then
+// may be eaten by the fee.
 import { binaryKelly } from "../../analytics/sizing.js";
 import type { Point } from "../../core/datasets.js";
 import { complementArbitrage, type OrderBook, orderbookImbalance, WIDE_SPREAD } from "../../providers/prediction/common.js";
@@ -59,7 +60,7 @@ export interface PredictOptions {
   now: Date;
   /** The user's probability of YES (0–1). */
   myProbability?: number;
-  /** Kalshi fee coefficient (0 = no fee modelled). */
+  /** Kalshi's effective fee coefficient (researched coefficient × the series' multiplier, or --kalshi-fee); 0 = no fee modelled. */
   feeCoefficient: number;
   /** Order size the fee is rounded on. */
   contracts: number;

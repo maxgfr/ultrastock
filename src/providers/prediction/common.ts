@@ -43,8 +43,9 @@ export const WIDE_SPREAD = 0.2;
 /**
  * Buy one YES at `yesAsk` and one NO at `noAsk` (prices 0–1): exactly one pays 1
  * at resolution. Fees are modelled as `feeRate` × price on each leg (a flat
- * taker rate; Kalshi's real schedule is 0.07 × P × (1 − P) per contract, so
- * pass the effective rate for the price when that matters). Settlement risk,
+ * taker rate, default none; Kalshi's schedule is quadratic in the price — the
+ * caller passes the effective rate for these prices, from the researched
+ * formula and the series' live multiplier). Settlement risk,
  * gas and the time value of the locked capital are NOT counted.
  */
 export function complementArbitrage(yesAsk: number, noAsk: number, feeRate = 0): ComplementArbitrage {

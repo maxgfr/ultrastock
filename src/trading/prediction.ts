@@ -2,14 +2,21 @@
 // "KALSHI:<TICKER>:YES" (or :NO): it pays 1 USD if the outcome happens, 0
 // otherwise, and trades between 0 and 1. Paper fills walk Kalshi's live book —
 // buying YES lifts the YES asks (the NO bids turned around), buying NO lifts
-// the NO asks (the YES bids turned around) — and pay Kalshi's taker fee.
+// the NO asks (the YES bids turned around) — and pay Kalshi's taker fee: the
+// formula and its coefficient researched from Kalshi's fee schedule (venues
+// facts, trading/venue-facts.ts), the series' fee_type and fee_multiplier read
+// live. Without all of them there is no paper fill on Kalshi: a fill without
+// its fee would make the paper record the live gate measures look better than
+// trading would have been.
 //
 // Which venues a resident may use is the jurisdiction's call (core/
 // jurisdiction.ts): a venue "blocked" there (Polymarket for France) is never
 // traded, not even on paper; "unknown" or "restricted" is paper only; a live
 // order needs "allowed".
 import type { QuoteResult } from "../providers/types.js";
-import { kalshiOrderbook } from "../providers/prediction/kalshi.js";
+import { kalshiFee } from "../analyze/quant/predict.js";
+import { kalshiOrderbook, kalshiSeriesFees, kalshiSeriesOfMarket } from "../providers/prediction/kalshi.js";
+import { KALSHI_QUADRATIC, venueFact } from "./venue-facts.js";
 import type { BookLevel, OrderBook } from "../providers/prediction/common.js";
 import type { Fill } from "./tickets.js";
 
@@ -26,9 +33,54 @@ export function parsePredictionSymbol(symbol: string): PredictionSymbol | undefi
   return { venue: m[1]!.toLowerCase() as PredictionSymbol["venue"], ticker: m[2]!.toUpperCase(), outcome: m[3]!.toUpperCase() as "YES" | "NO" };
 }
 
-/** Kalshi's taker fee: 0.07 × contracts × P × (1 − P), rounded up to the cent. */
-export function kalshiTakerFee(contracts: number, price: number, coefficient = 0.07): number {
-  return Math.ceil(coefficient * contracts * price * (1 - price) * 100 - 1e-9) / 100;
+/**
+ * Kalshi's taker fee for one order by the formula the engine knows (KALSHI_QUADRATIC): the coefficient is a researched
+ * fact, the multiplier the series' own (read live). No coefficient is written here.
+ */
+export function kalshiTakerFee(contracts: number, price: number, coefficient: number, multiplier: number): number {
+  return kalshiFee(contracts, price, coefficient * multiplier);
+}
+
+export interface KalshiFeeTerms {
+  coefficient: number;
+  multiplier: number;
+  feeType: string;
+  series: string;
+  /** Where each part came from, for the fill's method and the outputs. */
+  basis: string;
+}
+
+/**
+ * The taker fee terms of a Kalshi market: the formula and its coefficient as the agent researched them (venues facts),
+ * the series' `fee_type` and `fee_multiplier` read live. Any part missing, or a formula the engine does not compute,
+ * is said — never replaced by a guess.
+ */
+export async function kalshiTakerTerms(ticker: string, opts: { now?: Date; country?: string } = {}): Promise<KalshiFeeTerms | { missing: string }> {
+  const formula = venueFact<string>("kalshi.feeFormula", opts);
+  if ("missing" in formula) return formula;
+  if (formula.value.trim() !== KALSHI_QUADRATIC)
+    return {
+      missing: `the researched Kalshi fee formula is "${formula.value}" (${formula.basis}): ultrastock computes only ${KALSHI_QUADRATIC} — no Kalshi fee is computed`,
+    };
+  const fees = venueFact<{ taker: number; maker: number }>("kalshi.fees", opts);
+  if ("missing" in fees) return fees;
+  let terms: Awaited<ReturnType<typeof kalshiSeriesFees>>;
+  try {
+    terms = await kalshiSeriesFees(await kalshiSeriesOfMarket(ticker));
+  } catch (e) {
+    return { missing: `Kalshi's fee_type and fee_multiplier for ${ticker} could not be read (${(e as Error).message}): its fee is unknown` };
+  }
+  if (terms.feeType !== "quadratic" && terms.feeType !== "quadratic_with_maker_fees")
+    return {
+      missing: `Kalshi series ${terms.series} charges fee_type "${terms.feeType}": ultrastock computes only the quadratic formula — its fee is unknown`,
+    };
+  return {
+    coefficient: fees.value.taker,
+    multiplier: terms.feeMultiplier,
+    feeType: terms.feeType,
+    series: terms.series,
+    basis: `${KALSHI_QUADRATIC}, taker coefficient ${fees.value.taker} (${fees.basis}), fee_multiplier ${terms.feeMultiplier} and fee_type ${terms.feeType} of series ${terms.series} (${terms.url})`,
+  };
 }
 
 /** The book of one outcome: NO is the YES book turned around (bids ↔ asks at 1 − p). */
@@ -84,6 +136,9 @@ export async function simulatePredictionFill(
 ): Promise<{ kind: "fill"; fill: Fill } | { kind: "working"; reason: string }> {
   const p = parsePredictionSymbol(o.symbol);
   if (p?.venue !== "kalshi") return { kind: "working", reason: `${o.symbol}: paper fills exist for Kalshi contracts only` };
+  // A paper fill without its fee would flatter the record the live gate measures: none is made until the fee is known.
+  const terms = await kalshiTakerTerms(p.ticker, { now });
+  if ("missing" in terms) throw new Error(`no paper fill on Kalshi: ${terms.missing}`);
   const { book } = await kalshiOrderbook(p.ticker);
   const b = outcomeBook(book, p.outcome);
   const limit = o.orderType === "limit" ? o.price : o.side === "buy" ? 1 : 0;
@@ -95,9 +150,9 @@ export async function simulatePredictionFill(
       at: now.toISOString(),
       quantity: o.quantity,
       price: Number(w.price.toFixed(4)),
-      fee: kalshiTakerFee(o.quantity, w.price),
+      fee: kalshiTakerFee(o.quantity, w.price, terms.coefficient, terms.multiplier),
       venue: "paper",
-      method: `Kalshi ${p.outcome} book walk (${w.levels} level(s)), taker fee`,
+      method: `Kalshi ${p.outcome} book walk (${w.levels} level(s)), taker fee ${terms.basis}`,
     },
   };
 }

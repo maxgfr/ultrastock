@@ -84,8 +84,12 @@ rewards (emissions) and by their TVL.
 Reads, for each market:
 - the implied probability, the spread and the time to close;
 - the order-book imbalance;
-- YES + NO arbitrage, net of fees. Kalshi's taker fee is modelled as
-  0.07 × C × P × (1 − P) by default; `--kalshi-fee` changes the coefficient.
+- YES + NO arbitrage, net of fees. ultrastock holds no Kalshi fee: the
+  formula and its taker coefficient are researched facts (`facts research
+  venues`: keys `kalshi.feeFormula` and `kalshi.fees`, from Kalshi's fee
+  schedule), and the series' `fee_type` and `fee_multiplier` are read live.
+  `--kalshi-fee <coef>` replaces the whole effective coefficient. With neither,
+  the readings carry no fee and say so: an "arbitrage" may then be the fee.
 
 With `--my-probability` it adds a half-Kelly stake. The edge behind it is
 discounted by half the spread and the fee, and `--contracts` prices a size.
@@ -97,6 +101,8 @@ discounted by half the spread and the fee, and `--contracts` prices a size.
   - A venue blocked for the jurisdiction is refused even on paper; an
     unverified one is paper only.
   - `paper submit <ticket>` fills it against Kalshi's live book, with the
-    taker fee.
+    taker fee — and refuses to fill until that fee is known (the researched
+    formula and coefficient, the series' live multiplier): a fill without its
+    fee would flatter the paper record the live gate measures.
 - An edge is only as good as your probability. Write down where it comes from
   before you size anything.

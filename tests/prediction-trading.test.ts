@@ -49,9 +49,10 @@ describe("prediction contracts", () => {
   it("parse, fee, the NO book, and a walk within the limit", () => {
     expect(parsePredictionSymbol("kalshi:fed-26dec-t4.25:no")).toEqual({ venue: "kalshi", ticker: "FED-26DEC-T4.25", outcome: "NO" });
     expect(parsePredictionSymbol("MC.PA")).toBeUndefined();
-    // 0.07 × 10 × 0.4 × 0.6 = 0.168 → 0.17
-    expect(kalshiTakerFee(10, 0.4)).toBe(0.17);
-    expect(kalshiTakerFee(100, 0.5)).toBe(1.75);
+    // A TEST coefficient (0.07) and multiplier: 0.07 × 1 × 10 × 0.4 × 0.6 = 0.168 → 0.17
+    expect(kalshiTakerFee(10, 0.4, 0.07, 1)).toBe(0.17);
+    expect(kalshiTakerFee(100, 0.5, 0.07, 1)).toBe(1.75);
+    expect(kalshiTakerFee(100, 0.5, 0.07, 0.5)).toBe(0.88);
     const yes = {
       bids: [{ price: 0.38, size: 50 }],
       asks: [

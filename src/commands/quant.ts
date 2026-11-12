@@ -22,7 +22,8 @@ import { mempoolNetwork } from "../providers/crypto/mempool.js";
 import { cboeChain } from "../providers/options/cboe.js";
 import { deribitChain, deribitDvol } from "../providers/options/deribit.js";
 import type { OrderBook } from "../providers/prediction/common.js";
-import { kalshiMarket, kalshiMarkets, kalshiOrderbook } from "../providers/prediction/kalshi.js";
+import { kalshiMarket, kalshiMarkets, kalshiOrderbook, kalshiSeriesFees, kalshiSeriesOfMarket } from "../providers/prediction/kalshi.js";
+import { KALSHI_QUADRATIC, venueFact } from "../trading/venue-facts.js";
 import { manifoldSearch, PLAY_MONEY_NOTE } from "../providers/prediction/manifold.js";
 import { getHistory, resolveSymbol } from "../providers/router.js";
 import type { Bar, PriceSeries } from "../providers/types.js";
@@ -411,6 +412,52 @@ async function yieldsAnalysis(args: CommandArgs, symbol: string | undefined, asJ
 
 // --- predict-analysis ------------------------------------------------------------------
 
+/**
+ * The effective Kalshi fee coefficient the readings use, and the note saying where it came from: `--kalshi-fee` as
+ * given; else the researched formula and taker coefficient × the series' live fee_multiplier; else 0 — no fee
+ * modelled, said plainly. A series query names its series; `market:TICKER` is looked up through its event.
+ */
+async function kalshiAnalysisFee(
+  query: string,
+  firstTicker: string | undefined,
+  flag: number | undefined,
+  now: Date,
+): Promise<{ coefficient: number; note: string }> {
+  const shape = (c: number) => `ceil_to_cent(${c} × C × P × (1 − P)) per order`;
+  if (flag !== undefined)
+    return {
+      coefficient: flag,
+      note:
+        flag > 0
+          ? `Kalshi taker fee modelled as ${shape(flag)}: --kalshi-fee ${flag} as given (the series' fee multiplier is not applied on top)`
+          : "no Kalshi fee modelled: --kalshi-fee 0",
+    };
+  const formula = venueFact<string>("kalshi.feeFormula", { now });
+  const fees = venueFact<{ taker: number; maker: number }>("kalshi.fees", { now });
+  const unknown = (why: string) => ({
+    coefficient: 0,
+    note: `no Kalshi fee modelled — the fee is unknown: ${why}. Costs, the pair edge and Kelly below leave the fee out, so they look better than trading would be; pass --kalshi-fee <coefficient> after reading kalshi.com/docs/kalshi-fee-schedule.pdf`,
+  });
+  if ("missing" in formula) return unknown(formula.missing);
+  if (formula.value.trim() !== KALSHI_QUADRATIC)
+    return unknown(`the researched formula "${formula.value}" is not the one ultrastock computes (${KALSHI_QUADRATIC})`);
+  if ("missing" in fees) return unknown(fees.missing);
+  let series: string;
+  try {
+    series = query.toLowerCase().startsWith("market:") ? await kalshiSeriesOfMarket(query.slice(7)) : query.toUpperCase();
+    const terms = await kalshiSeriesFees(series);
+    if (terms.feeType !== "quadratic" && terms.feeType !== "quadratic_with_maker_fees")
+      return unknown(`series ${series} charges fee_type "${terms.feeType}", which ultrastock does not compute`);
+    const c = Number((fees.value.taker * terms.feeMultiplier).toFixed(10));
+    return {
+      coefficient: c,
+      note: `Kalshi taker fee modelled as ${shape(c)}: taker coefficient ${fees.value.taker} (${fees.basis}) × fee_multiplier ${terms.feeMultiplier} of series ${series}, fee_type ${terms.feeType} (${terms.url})`,
+    };
+  } catch (e) {
+    return unknown(`the series' fee_type and fee_multiplier could not be read for ${firstTicker ?? query} (${(e as Error).message})`);
+  }
+}
+
 const PREDICT_USAGE =
   "usage: ultrastock predict-analysis kalshi <SERIES|market:TICKER> | manifold <terms> [--my-probability 0.62] [--kalshi-fee <coef>] [--contracts 100] [--limit 5] [--out <dir>]";
 
@@ -425,12 +472,11 @@ export async function predictAnalysisCommand(args: CommandArgs, asJson: boolean)
   const opts: PredictOptions = {
     now: clockNow(),
     myProbability: myP,
-    // Kalshi taker fees: ceil(M × 0.07 × C × P × (1 − P)), M = 1 by default (July 2026 schedule as reported by
-    // oddsshopper.com and quantvps.com; the official PDF was not reachable here). 0.07 is the cautious default:
-    // a fee left out invents arbitrage that does not exist.
-    feeCoefficient: fraction(argValue(args, "kalshi-fee"), "kalshi-fee", 0, 0.5) ?? 0.07,
+    // Set below for Kalshi: --kalshi-fee, else the researched coefficient × the series' live multiplier, else 0 (said).
+    feeCoefficient: 0,
     contracts: argInt(args, "contracts", { min: 1, max: 100_000 }) ?? 100,
   };
+  const feeFlag = fraction(argValue(args, "kalshi-fee"), "kalshi-fee", 0, 0.5);
   const limit = argInt(args, "limit", { min: 1, max: PREDICT_MAX_BOOKS }) ?? 5;
   const profile = loadProfile();
   const status = profile ? ruleStatus(profile.jurisdiction, "kalshi") : undefined;
@@ -452,13 +498,12 @@ export async function predictAnalysisCommand(args: CommandArgs, asJson: boolean)
         return undefined;
       }
     });
+    const fee = await kalshiAnalysisFee(query, quotes[0]?.ticker, feeFlag, opts.now);
+    opts.feeCoefficient = fee.coefficient;
     const pts = new PointList();
     quotes.forEach((q, i) => notes.push(...kalshiReadingPoints(q, books[i]?.book as OrderBook | undefined, opts, pts)));
     const bookDs = books.filter((b): b is NonNullable<typeof b> => !!b).map((b) => b.dataset);
-    const feeNote =
-      opts.feeCoefficient > 0
-        ? `Kalshi taker fee modelled as ceil_to_cent(${opts.feeCoefficient} × C × P × (1 − P)) per ${opts.contracts}-contract order (schedule of July 2026 as reported by secondary sources; some series carry a fee multiplier, and resting maker orders pay 0 or 0.0175) — check kalshi.com/docs/kalshi-fee-schedule.pdf`
-        : "no Kalshi fee modelled: the published schedule (commonly 0.07 × C × P × (1 − P), rounded up to the cent) could not be verified here — pass --kalshi-fee 0.07 after checking kalshi.com/docs/kalshi-fee-schedule.pdf";
+    const feeNote = fee.note;
     emitDatasets(
       args,
       [

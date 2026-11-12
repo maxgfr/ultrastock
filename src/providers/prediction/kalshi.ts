@@ -292,3 +292,39 @@ export async function kalshiEvents(q: { status?: "open" | "closed" | "settled"; 
     notes,
   };
 }
+
+/** A series' fee terms as Kalshi's API gives them: the kind of formula and the series' multiplier (no coefficient). */
+export interface KalshiSeriesFees {
+  series: string;
+  feeType: string;
+  feeMultiplier: number;
+  url: string;
+  fetchedAt: string;
+}
+
+/** `fee_type` and `fee_multiplier` of a series (/series/<ticker>), read live. */
+export async function kalshiSeriesFees(seriesTicker: string): Promise<KalshiSeriesFees> {
+  const t = seriesTicker.toUpperCase();
+  const res = await fetchJson<{ series?: { ticker?: string; fee_type?: string; fee_multiplier?: number | string } }>(
+    `${BASE}/series/${encodeURIComponent(t)}`,
+    PACE,
+  );
+  if (!res.ok || !res.data?.series) throw failure(res.status, `series ${t}`, res.error);
+  const s = res.data.series;
+  const multiplier = num(s.fee_multiplier);
+  if (typeof s.fee_type !== "string" || !s.fee_type || multiplier === undefined)
+    throw new ProviderError(SOURCE, `series ${t} gives no fee_type and fee_multiplier`, 502);
+  return { series: t, feeType: s.fee_type, feeMultiplier: multiplier, url: res.url, fetchedAt: res.fetchedAt };
+}
+
+/** The series a market belongs to: the market's event, then the event's series (/markets/<t>, /events/<e>). */
+export async function kalshiSeriesOfMarket(ticker: string): Promise<string> {
+  const t = ticker.toUpperCase();
+  const m = await fetchJson<{ market?: KalshiMarketRaw }>(`${BASE}/markets/${encodeURIComponent(t)}`, PACE);
+  const event = m.data?.market?.event_ticker;
+  if (!m.ok || !event) throw failure(m.status, `market ${t}`, m.error);
+  const e = await fetchJson<{ event?: KalshiEventRaw }>(`${BASE}/events/${encodeURIComponent(event)}`, PACE);
+  const series = e.data?.event?.series_ticker;
+  if (!e.ok || !series) throw failure(e.status, `event ${event}`, e.error);
+  return series;
+}

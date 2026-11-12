@@ -19669,6 +19669,139 @@ async function kalshiEvents(q = {}) {
     notes
   };
 }
+async function kalshiSeriesFees(seriesTicker) {
+  const t = seriesTicker.toUpperCase();
+  const res = await fetchJson(
+    `${BASE18}/series/${encodeURIComponent(t)}`,
+    PACE6
+  );
+  if (!res.ok || !res.data?.series) throw failure2(res.status, `series ${t}`, res.error);
+  const s = res.data.series;
+  const multiplier = num5(s.fee_multiplier);
+  if (typeof s.fee_type !== "string" || !s.fee_type || multiplier === void 0)
+    throw new ProviderError(SOURCE16, `series ${t} gives no fee_type and fee_multiplier`, 502);
+  return { series: t, feeType: s.fee_type, feeMultiplier: multiplier, url: res.url, fetchedAt: res.fetchedAt };
+}
+async function kalshiSeriesOfMarket(ticker) {
+  const t = ticker.toUpperCase();
+  const m = await fetchJson(`${BASE18}/markets/${encodeURIComponent(t)}`, PACE6);
+  const event = m.data?.market?.event_ticker;
+  if (!m.ok || !event) throw failure2(m.status, `market ${t}`, m.error);
+  const e = await fetchJson(`${BASE18}/events/${encodeURIComponent(event)}`, PACE6);
+  const series = e.data?.event?.series_ticker;
+  if (!e.ok || !series) throw failure2(e.status, `event ${event}`, e.error);
+  return series;
+}
+
+// src/trading/venue-facts.ts
+var KALSHI_QUADRATIC = "ceil_to_cent(coefficient \xD7 fee_multiplier \xD7 contracts \xD7 price \xD7 (1 \u2212 price))";
+var FEE_MAX_AGE_DAYS = 365;
+var feeSpec = (venue, what, query2, prefer) => ({
+  key: `${venue}.fees`,
+  label: `${what}: maker and taker fee, entry tier`,
+  type: "rates",
+  fields: ["maker", "taker"],
+  unit: "fraction of the notional per side (0.001 = 0.1 %)",
+  query: query2,
+  prefer,
+  maxAgeDays: FEE_MAX_AGE_DAYS,
+  note: "the lowest-volume tier, without a token discount; a percentage of the notional is the whole schedule ultrastock applies to this venue"
+});
+var VENUE_SPEC = [
+  feeSpec("binance.spot", "Binance spot", "Binance spot trading fee rate regular user {country}", "binance.com/en/fee/schedule"),
+  feeSpec("binance.usdm", "Binance USD\u24C8-M perpetual futures", "Binance USD\u24C8-M futures trading fee regular user", "binance.com/en/fee/futureFee"),
+  feeSpec("kraken.spot", "Kraken spot (Kraken Pro)", "Kraken Pro spot fee schedule lowest tier {country}", "kraken.com/features/fee-schedule"),
+  feeSpec("coinbase.spot", "Coinbase Advanced Trade spot", "Coinbase Advanced Trade fee tiers lowest tier {country}", "help.coinbase.com Advanced Trade fees"),
+  feeSpec(
+    "ibkr",
+    "Interactive Brokers stocks and ETFs (IBKR Pro, fixed)",
+    "Interactive Brokers fixed commissions stocks {country}",
+    "interactivebrokers.com commissions-stocks page"
+  ),
+  {
+    key: "ibkr.perUnit",
+    label: "Interactive Brokers stocks and ETFs: commission per share",
+    type: "amount",
+    unit: "instrument currency per share (0 where the schedule is a percentage)",
+    query: "Interactive Brokers fixed commission per share {country}",
+    prefer: "interactivebrokers.com commissions-stocks page",
+    maxAgeDays: FEE_MAX_AGE_DAYS
+  },
+  {
+    key: "ibkr.minimum",
+    label: "Interactive Brokers stocks and ETFs: minimum commission per order",
+    type: "amount",
+    unit: "instrument currency per order",
+    query: "Interactive Brokers fixed commission minimum per order {country}",
+    prefer: "interactivebrokers.com commissions-stocks page",
+    maxAgeDays: FEE_MAX_AGE_DAYS
+  },
+  {
+    key: "kalshi.feeFormula",
+    label: "Kalshi trading fee formula",
+    type: "text",
+    unit: "the formula, as ultrastock writes it",
+    query: "Kalshi fee schedule trading fee formula",
+    prefer: "kalshi.com/docs/kalshi-fee-schedule.pdf",
+    maxAgeDays: FEE_MAX_AGE_DAYS,
+    note: `write exactly "${KALSHI_QUADRATIC}" when the schedule's formula is that one (rounded up to the next cent); anything else is stored, and ultrastock then refuses to compute a Kalshi fee it does not know`
+  },
+  {
+    key: "kalshi.fees",
+    label: "Kalshi fee coefficients (taker, maker) of that formula",
+    type: "rates",
+    fields: ["taker", "maker"],
+    unit: "coefficient of contracts \xD7 price \xD7 (1 \u2212 price)",
+    query: "Kalshi fee schedule taker maker coefficient",
+    prefer: "kalshi.com/docs/kalshi-fee-schedule.pdf",
+    maxAgeDays: FEE_MAX_AGE_DAYS,
+    note: "the per-series fee_multiplier is read live from Kalshi's series API: do not fold it in here"
+  }
+];
+var templateCommand = (country2) => `ultrastock facts template venues --country ${countryCode(country2)}`;
+var RESEARCH_COMMAND = "ultrastock facts research venues";
+var VENUES = defineDomain({
+  name: "venues",
+  period: "date",
+  keysFor: () => VENUE_SPEC,
+  strict: () => false,
+  templateCommand: (c) => templateCommand(c),
+  setCommand: "ultrastock facts set venues --file <file.json>",
+  about: (c, date) => `TEMPLATE to fill by research. ultrastock contains no venue fee: every value must come from the venue's own fee page, as it applies to a resident of ${c}, read on ${date}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"; remove a key you did not research rather than guessing it. For one of the user's own accounts at another broker, add "account.<id>.fees" ({maker, taker}), "account.<id>.perUnit" and "account.<id>.minimum" (the account id letters and digits only). Tick sizes, lot steps and Kalshi's per-series fee multiplier are read live from the venues: do not store them. Then store the file with \`ultrastock facts set venues --file <this file>\`.`
+});
+function venueCountry() {
+  return loadProfile()?.jurisdiction;
+}
+function latestVenueFacts(country2, now = clockNow()) {
+  const c = countryCode(country2);
+  const today2 = now.toISOString().slice(0, 10);
+  const date = storedPeriods(VENUES, c).filter((d) => d <= today2).at(-1);
+  if (!date) return void 0;
+  const v = loadFacts(VENUES, c, date);
+  return { country: c, date, path: v.path, current: v.current, stale: v.stale };
+}
+function missingVenueFact(country2, keys, facts) {
+  const what = keys.join(", ");
+  if (!country2)
+    return `no fee is known for ${what}: no profile names the country of residence (\`ultrastock profile init\`), and ultrastock holds no fee schedule`;
+  const stale = facts?.stale.filter((s) => keys.includes(s.key)) ?? [];
+  const where = facts ? `${facts.path} does not hold ${what} as current${stale.length ? ` (${stale.map((s) => `${s.key} ${s.reason}`).join("; ")})` : ""}` : `no venue facts are stored for ${country2}`;
+  return `no fee is known for ${what}: ${where} \u2014 ultrastock holds no fee schedule. Research it: \`${RESEARCH_COMMAND} --country ${country2}\` (the template: \`${templateCommand(country2)}\`)`;
+}
+function venueFact(key, opts = {}) {
+  const country2 = opts.country ?? venueCountry();
+  if (!country2) return { missing: missingVenueFact(void 0, [key]) };
+  let facts;
+  try {
+    facts = latestVenueFacts(country2, opts.now);
+  } catch (e) {
+    if (e instanceof UsageError) return { missing: e.message };
+    throw e;
+  }
+  const fact = facts?.current[key];
+  if (!facts || !fact) return { missing: missingVenueFact(country2, [key], facts) };
+  return { value: fact.value, fact, key, basis: `researched ${key} in ${facts.path} (verified ${fact.verifiedAt}, ${fact.sources[0]})` };
+}
 
 // src/providers/prediction/manifold.ts
 var BASE19 = "https://api.manifold.markets/v0";
@@ -21939,6 +22072,38 @@ async function yieldsAnalysis(args, symbol, asJson) {
     asJson
   );
 }
+async function kalshiAnalysisFee(query2, firstTicker, flag, now) {
+  const shape = (c) => `ceil_to_cent(${c} \xD7 C \xD7 P \xD7 (1 \u2212 P)) per order`;
+  if (flag !== void 0)
+    return {
+      coefficient: flag,
+      note: flag > 0 ? `Kalshi taker fee modelled as ${shape(flag)}: --kalshi-fee ${flag} as given (the series' fee multiplier is not applied on top)` : "no Kalshi fee modelled: --kalshi-fee 0"
+    };
+  const formula = venueFact("kalshi.feeFormula", { now });
+  const fees = venueFact("kalshi.fees", { now });
+  const unknown2 = (why2) => ({
+    coefficient: 0,
+    note: `no Kalshi fee modelled \u2014 the fee is unknown: ${why2}. Costs, the pair edge and Kelly below leave the fee out, so they look better than trading would be; pass --kalshi-fee <coefficient> after reading kalshi.com/docs/kalshi-fee-schedule.pdf`
+  });
+  if ("missing" in formula) return unknown2(formula.missing);
+  if (formula.value.trim() !== KALSHI_QUADRATIC)
+    return unknown2(`the researched formula "${formula.value}" is not the one ultrastock computes (${KALSHI_QUADRATIC})`);
+  if ("missing" in fees) return unknown2(fees.missing);
+  let series;
+  try {
+    series = query2.toLowerCase().startsWith("market:") ? await kalshiSeriesOfMarket(query2.slice(7)) : query2.toUpperCase();
+    const terms = await kalshiSeriesFees(series);
+    if (terms.feeType !== "quadratic" && terms.feeType !== "quadratic_with_maker_fees")
+      return unknown2(`series ${series} charges fee_type "${terms.feeType}", which ultrastock does not compute`);
+    const c = Number((fees.value.taker * terms.feeMultiplier).toFixed(10));
+    return {
+      coefficient: c,
+      note: `Kalshi taker fee modelled as ${shape(c)}: taker coefficient ${fees.value.taker} (${fees.basis}) \xD7 fee_multiplier ${terms.feeMultiplier} of series ${series}, fee_type ${terms.feeType} (${terms.url})`
+    };
+  } catch (e) {
+    return unknown2(`the series' fee_type and fee_multiplier could not be read for ${firstTicker ?? query2} (${e.message})`);
+  }
+}
 var PREDICT_USAGE = "usage: ultrastock predict-analysis kalshi <SERIES|market:TICKER> | manifold <terms> [--my-probability 0.62] [--kalshi-fee <coef>] [--contracts 100] [--limit 5] [--out <dir>]";
 async function predictAnalysisCommand(args, asJson) {
   const [venue, ...rest] = args.positional;
@@ -21951,12 +22116,11 @@ async function predictAnalysisCommand(args, asJson) {
   const opts = {
     now: clockNow(),
     myProbability: myP,
-    // Kalshi taker fees: ceil(M × 0.07 × C × P × (1 − P)), M = 1 by default (July 2026 schedule as reported by
-    // oddsshopper.com and quantvps.com; the official PDF was not reachable here). 0.07 is the cautious default:
-    // a fee left out invents arbitrage that does not exist.
-    feeCoefficient: fraction(argValue(args, "kalshi-fee"), "kalshi-fee", 0, 0.5) ?? 0.07,
+    // Set below for Kalshi: --kalshi-fee, else the researched coefficient × the series' live multiplier, else 0 (said).
+    feeCoefficient: 0,
     contracts: argInt(args, "contracts", { min: 1, max: 1e5 }) ?? 100
   };
+  const feeFlag = fraction(argValue(args, "kalshi-fee"), "kalshi-fee", 0, 0.5);
   const limit = argInt(args, "limit", { min: 1, max: PREDICT_MAX_BOOKS }) ?? 5;
   const profile = loadProfile();
   const status2 = profile ? ruleStatus(profile.jurisdiction, "kalshi") : void 0;
@@ -21973,10 +22137,12 @@ async function predictAnalysisCommand(args, asJson) {
         return void 0;
       }
     });
+    const fee = await kalshiAnalysisFee(query2, quotes2[0]?.ticker, feeFlag, opts.now);
+    opts.feeCoefficient = fee.coefficient;
     const pts2 = new PointList();
     quotes2.forEach((q, i) => notes.push(...kalshiReadingPoints(q, books[i]?.book, opts, pts2)));
     const bookDs = books.filter((b) => !!b).map((b) => b.dataset);
-    const feeNote = opts.feeCoefficient > 0 ? `Kalshi taker fee modelled as ceil_to_cent(${opts.feeCoefficient} \xD7 C \xD7 P \xD7 (1 \u2212 P)) per ${opts.contracts}-contract order (schedule of July 2026 as reported by secondary sources; some series carry a fee multiplier, and resting maker orders pay 0 or 0.0175) \u2014 check kalshi.com/docs/kalshi-fee-schedule.pdf` : "no Kalshi fee modelled: the published schedule (commonly 0.07 \xD7 C \xD7 P \xD7 (1 \u2212 P), rounded up to the cent) could not be verified here \u2014 pass --kalshi-fee 0.07 after checking kalshi.com/docs/kalshi-fee-schedule.pdf";
+    const feeNote = fee.note;
     emitDatasets(
       args,
       [
@@ -34267,8 +34433,35 @@ function parsePredictionSymbol(symbol) {
   if (!m) return void 0;
   return { venue: m[1].toLowerCase(), ticker: m[2].toUpperCase(), outcome: m[3].toUpperCase() };
 }
-function kalshiTakerFee(contracts, price, coefficient = 0.07) {
-  return Math.ceil(coefficient * contracts * price * (1 - price) * 100 - 1e-9) / 100;
+function kalshiTakerFee(contracts, price, coefficient, multiplier) {
+  return kalshiFee(contracts, price, coefficient * multiplier);
+}
+async function kalshiTakerTerms(ticker, opts = {}) {
+  const formula = venueFact("kalshi.feeFormula", opts);
+  if ("missing" in formula) return formula;
+  if (formula.value.trim() !== KALSHI_QUADRATIC)
+    return {
+      missing: `the researched Kalshi fee formula is "${formula.value}" (${formula.basis}): ultrastock computes only ${KALSHI_QUADRATIC} \u2014 no Kalshi fee is computed`
+    };
+  const fees = venueFact("kalshi.fees", opts);
+  if ("missing" in fees) return fees;
+  let terms;
+  try {
+    terms = await kalshiSeriesFees(await kalshiSeriesOfMarket(ticker));
+  } catch (e) {
+    return { missing: `Kalshi's fee_type and fee_multiplier for ${ticker} could not be read (${e.message}): its fee is unknown` };
+  }
+  if (terms.feeType !== "quadratic" && terms.feeType !== "quadratic_with_maker_fees")
+    return {
+      missing: `Kalshi series ${terms.series} charges fee_type "${terms.feeType}": ultrastock computes only the quadratic formula \u2014 its fee is unknown`
+    };
+  return {
+    coefficient: fees.value.taker,
+    multiplier: terms.feeMultiplier,
+    feeType: terms.feeType,
+    series: terms.series,
+    basis: `${KALSHI_QUADRATIC}, taker coefficient ${fees.value.taker} (${fees.basis}), fee_multiplier ${terms.feeMultiplier} and fee_type ${terms.feeType} of series ${terms.series} (${terms.url})`
+  };
 }
 function outcomeBook(yes, outcome) {
   if (outcome === "YES") return yes;
@@ -34313,6 +34506,8 @@ async function predictionQuote(symbol) {
 async function simulatePredictionFill(o, now) {
   const p = parsePredictionSymbol(o.symbol);
   if (p?.venue !== "kalshi") return { kind: "working", reason: `${o.symbol}: paper fills exist for Kalshi contracts only` };
+  const terms = await kalshiTakerTerms(p.ticker, { now });
+  if ("missing" in terms) throw new Error(`no paper fill on Kalshi: ${terms.missing}`);
   const { book: book2 } = await kalshiOrderbook(p.ticker);
   const b = outcomeBook(book2, p.outcome);
   const limit = o.orderType === "limit" ? o.price : o.side === "buy" ? 1 : 0;
@@ -34324,9 +34519,9 @@ async function simulatePredictionFill(o, now) {
       at: now.toISOString(),
       quantity: o.quantity,
       price: Number(w.price.toFixed(4)),
-      fee: kalshiTakerFee(o.quantity, w.price),
+      fee: kalshiTakerFee(o.quantity, w.price, terms.coefficient, terms.multiplier),
       venue: "paper",
-      method: `Kalshi ${p.outcome} book walk (${w.levels} level(s)), taker fee`
+      method: `Kalshi ${p.outcome} book walk (${w.levels} level(s)), taker fee ${terms.basis}`
     }
   };
 }
@@ -46848,7 +47043,7 @@ function specFor(country2) {
   const c = country2.toUpperCase();
   return c === "FR" ? FR_SPEC : c === "US" ? US_SPEC : GENERIC_SPEC;
 }
-var templateCommand = (country2, year) => `ultrastock tax rules template --country ${countryCode(country2)} --year ${year}`;
+var templateCommand2 = (country2, year) => `ultrastock tax rules template --country ${countryCode(country2)} --year ${year}`;
 var TAX2 = defineDomain({
   name: "tax",
   period: "year",
@@ -46866,7 +47061,7 @@ var TAX2 = defineDomain({
       template: (country2) => isEngineCountry(country2) ? ENGINE_CURRENCY[country2] : null
     }
   },
-  templateCommand,
+  templateCommand: templateCommand2,
   setCommand: "ultrastock tax rules set --file <file.json>",
   about: (c, year) => `TEMPLATE to fill by research. ultrastock contains no tax law: every value must come from an official source for ${c} and the tax year ${year}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"${isEngineCountry(c) ? "" : ' and "currency"'}; then run \`ultrastock tax rules set --file <this file>\`. ${isEngineCountry(c) ? `The ${c} engine refuses until every key is researched.` : "No engine computes tax for this country: `tax report` shows the ledger's facts beside these rules, and the agent applies them. Add any other key the research finds."} The user should have a professional confirm the result.`,
   templateExtras: (c, year) => isEngineCountry(c) ? { formLines: FORM_LINES[c].map((f3) => ({ ...f3, check: `the numbering on the ${year} form` })) } : {}
@@ -46891,7 +47086,7 @@ function engineRules(country2, year) {
   const lacking = missing.filter((k) => engineKeys.has(k));
   if (lacking.length)
     throw new UsageError(
-      `${path2} lacks ${lacking.length} key(s) the ${country2} engine reads: ${lacking.join(", ")}${stale.length ? ` (stale: ${stale.map((s) => `${s.key} ${s.reason}`).join("; ")})` : ""} \u2014 research them (\`${templateCommand(country2, year)}\` lists each with a search query) and store the file again with \`${TAX2.setCommand}\``
+      `${path2} lacks ${lacking.length} key(s) the ${country2} engine reads: ${lacking.join(", ")}${stale.length ? ` (stale: ${stale.map((s) => `${s.key} ${s.reason}`).join("; ")})` : ""} \u2014 research them (\`${templateCommand2(country2, year)}\` lists each with a search query) and store the file again with \`${TAX2.setCommand}\``
     );
   return rules;
 }
@@ -47492,7 +47687,7 @@ function readiness(trades2, equity, firstTrade, now = /* @__PURE__ */ new Date()
 }
 
 // src/trading/live.ts
-var VENUES = ["binance", "kraken", "coinbase", "ibkr", "kalshi"];
+var VENUES2 = ["binance", "kraken", "coinbase", "ibkr", "kalshi"];
 var CRYPTO_VENUES = ["binance", "kraken", "coinbase"];
 var PRICE_BAND_PCT = 1;
 function venueSymbol(venue, symbol, currency, conid) {
@@ -47949,7 +48144,7 @@ async function cancelLocked(ticketId, adapter, now) {
 var USAGE = "usage: ultrastock broker status|setup <venue>|setup ntfy|balances|preview <ticket>|code <ticket>|code live|live on|live off|submit <ticket>|reconcile <ticket>|cancel <ticket>|open|limits [set]|panic [--venue binance|kraken|coinbase|ibkr|kalshi] [--env test|live] [--code <6 digits>] [--conid <id>] [--json]";
 function venueOf(args, fallback) {
   const v = (argValue(args, "venue") ?? fallback ?? "").toLowerCase();
-  if (!VENUES.includes(v)) throw new UsageError(`--venue is one of ${VENUES.join(", ")}`);
+  if (!VENUES2.includes(v)) throw new UsageError(`--venue is one of ${VENUES2.join(", ")}`);
   return v;
 }
 function envOf(args) {
@@ -47985,7 +48180,7 @@ function limitChange(args) {
     const l = argList(args, f3);
     if (!l.length) return void 0;
     if (l.length === 1 && l[0] === "none") return [];
-    for (const v of l) if (!VENUES.includes(v)) throw new UsageError(`--${f3}: unknown venue ${v}`);
+    for (const v of l) if (!VENUES2.includes(v)) throw new UsageError(`--${f3}: unknown venue ${v}`);
     return l;
   };
   const change = {
@@ -48144,7 +48339,7 @@ async function brokerCommand(args, asJson) {
   }
   if (sub === "status") {
     const env3 = envOf(args);
-    const venues = argValue(args, "venue") ? [venueOf(args)] : VENUES;
+    const venues = argValue(args, "venue") ? [venueOf(args)] : VENUES2;
     const profile = loadProfile();
     const { fills, todayNotional } = liveActivity(now);
     const lim = effectiveLimits(fills, now);
@@ -57326,7 +57521,7 @@ async function neutral(args, country2, year) {
   const envelopes = loadProfile()?.envelopes ?? [];
   const { fx, notes } = await ledgerFx(txs, rules.currency, year, { cryptoQuotes: true });
   const report2 = neutralReport({ year, transactions: txs, envelopes, fx, currency: rules.currency, rules });
-  if (missing.length) report2.warnings.push(`not researched yet (${path2}): ${missing.join(", ")} \u2014 \`${templateCommand(country2, year)}\` lists them`);
+  if (missing.length) report2.warnings.push(`not researched yet (${path2}): ${missing.join(", ")} \u2014 \`${templateCommand2(country2, year)}\` lists them`);
   for (const s of stale) report2.warnings.push(`${s.key} is stale (${s.reason}): re-research it`);
   return { report: report2, notes, path: path2 };
 }
@@ -57390,7 +57585,7 @@ async function rulesCommand(args, asJson, sub, country2, year) {
           ([k, p]) => `- ${k} = ${formatValue(p.value)} \u2014 ${p.label} (verified ${p.verifiedAt}, ${p.confidence}; ${p.sources.join(" \xB7 ")})${p.note ? ` \u2014 ${p.note}` : ""}`
         ),
         ...stale.map((s) => `stale (not used): ${s.key} \u2014 ${s.reason}`),
-        ...missing.length ? ["", `not researched: ${missing.join(", ")} \u2014 \`${templateCommand(c, y)}\``] : [],
+        ...missing.length ? ["", `not researched: ${missing.join(", ")} \u2014 \`${templateCommand2(c, y)}\``] : [],
         ...engine ? [
           "",
           `cost basis: ${engine.method}`,
@@ -57425,7 +57620,7 @@ async function taxCommand(args, asJson) {
       { country: country2, year: y, ...c },
       [
         `# Research checklist \u2014 ${country2} tax rules for ${y} (${c.path}: ${c.stored ? "stored" : "not stored yet"})`,
-        `${DISCLAIMER}. For each key: search it on the preferred official source, read the text for ${y}, fill value / sources / verifiedAt / confidence (\`${templateCommand(country2, y)}\` gives the skeleton), then \`ultrastock tax rules set --file <file.json>\`.`,
+        `${DISCLAIMER}. For each key: search it on the preferred official source, read the text for ${y}, fill value / sources / verifiedAt / confidence (\`${templateCommand2(country2, y)}\` gives the skeleton), then \`ultrastock tax rules set --file <file.json>\`.`,
         ...c.items.map(
           (i) => `- ${i.key} [${i.status}] ${i.label} (${i.type}${i.unit ? `, ${i.unit}` : ""})
     search: "${i.query}"
