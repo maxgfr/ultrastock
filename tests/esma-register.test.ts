@@ -54,7 +54,9 @@ describe("ESMA's MiCA register", () => {
     setNetMode({ kind: "fixture", dir: fixture({ [ESMA_MICA_PAGE]: PAGE, [NEW_CASPS]: CASPS, [NEW_NCASP]: NCASP }) });
     const ie = await checkMica("kraken", "IE");
     expect(ie.url).toBe(NEW_CASPS);
-    expect(ie.notes).toEqual([]);
+    // Without the venue's LEI the reading is a name match, and says it is unverified.
+    expect(ie.matchedOn).toBe("name");
+    expect(ie.notes).toEqual([expect.stringMatching(/^matched on the name only — unverified.*--key cryptoVenue\.kraken\.lei/)]);
     // Both Payward rows (one named Kraken, one only by its LEI) serve Ireland, their home state — plus the name-alike.
     expect(ie.authorised.filter((e) => e.lei === "9845003D98SCC2851458")).toHaveLength(2);
     // France: neither Payward row lists FR (one passports CY and IE, one lists none: home state only).

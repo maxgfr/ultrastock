@@ -372,6 +372,16 @@ export async function cryptoVenueGate(venue: string, code: string, opts: { micaA
     }
     try {
       const m = await checkMica(venue, c, lei ? { lei } : {});
+      // Without the venue's LEI, the register can only be matched on a name — another entity's name may contain it.
+      // What it found is listed, unverified; the order is refused until the LEI is researched.
+      if (!lei) {
+        const found = m.authorised.map((e) => `${e.name}, ${e.homeState}${e.lei ? `, LEI ${e.lei}` : ""}`);
+        return {
+          ok: false,
+          reason: `no researched LEI for the ${venue} entity that serves ${c}: ESMA's register is matched on the LEI only${found.length ? ` — by name it lists ${found.join("; ")} (unverified)` : ""}; research it: \`${leiR.research}\`, then \`${JURISDICTION.setCommand}\``,
+          mica: m,
+        };
+      }
       if (m.authorised.length)
         return { ok: true, reason: `${venue} is in ESMA's MiCA register for ${c} (${m.authorised[0]!.name}, ${m.authorised[0]!.homeState})`, mica: m };
       return {
@@ -458,6 +468,8 @@ export interface MicaCheck {
   fetchedAt: string;
   /** How the register was found and matched: a fallback copy, name matches set aside. */
   notes: string[];
+  /** "lei" when matched on the venue's researched LEI; "name" when only on names — unverified, never enough for a live order. */
+  matchedOn: "lei" | "name";
 }
 
 /** The CSV links ESMA's page carries, newest dated folder first; undefined when the page lists none. */
@@ -523,7 +535,8 @@ const VENUE_ALIASES: Record<string, string[]> = { kraken: ["kraken", "payward"] 
 /**
  * Is a crypto venue (Binance, Kraken, Coinbase…) an authorised MiCA CASP able to serve `country`? An entry serves its
  * home state, and the states it notified a passport for — an entry with no passport list serves its home state only.
- * With the venue's LEI, the register is matched on it; without, on the name, then on the LEIs of the entries it found.
+ * With the venue's LEI, the register is matched on that LEI only. Without, on the name, then on the LEIs of the entries
+ * it found — a reading labelled unverified (`matchedOn: "name"`), which the live gate never accepts.
  */
 export async function checkMica(venue: string, country = "FR", opts: { lei?: string } = {}): Promise<MicaCheck> {
   const c = country.toUpperCase();
@@ -539,12 +552,16 @@ export async function checkMica(venue: string, country = "FR", opts: { lei?: str
   const leiOf = (r: Record<string, string>) => (r.ae_lei ?? "").trim().toUpperCase();
   let hit: (r: Record<string, string>) => boolean;
   if (lei) {
-    hit = (r) => leiOf(r) === lei || (!leiOf(r) && named(r));
-    const others = [...new Set(casps.rows.filter((r) => named(r) && leiOf(r) && leiOf(r) !== lei).map(leiOf))];
+    // The LEI alone: a row with another LEI is another entity, and a row with none cannot be shown to be this one.
+    hit = (r) => leiOf(r) === lei;
+    const others = [...new Set(casps.rows.filter((r) => named(r) && leiOf(r) !== lei).map((r) => leiOf(r) || "no LEI"))];
     if (others.length) notes.push(`entries named like ${venue} under another LEI (${others.join(", ")}) are not counted: matched on LEI ${lei}`);
   } else {
     const leis = new Set(casps.rows.filter(named).map(leiOf).filter(Boolean));
     hit = (r) => named(r) || (!!leiOf(r) && leis.has(leiOf(r)));
+    notes.push(
+      `matched on the name only — unverified: another entity's name may contain "${venue}"; research the LEI of ${venue}'s entity (\`${researchCommand("jurisdiction", c, { key: `cryptoVenue.${needle}.lei` })}\`) to match on it`,
+    );
   }
   // An authorisation the register dates as ended (ac_authorisationEndDate on or before today) is no longer one; an end
   // date that cannot be read counts as ended (fail-closed). Either way the reading says which entries were set aside.
@@ -583,5 +600,5 @@ export async function checkMica(venue: string, country = "FR", opts: { lei?: str
     reason: r.ae_reason ?? "",
     decidedOn: r.ae_decision_date ?? "",
   }));
-  return { venue, authorised, warnings, url: links.casps, fetchedAt: casps.fetchedAt, notes };
+  return { venue, matchedOn: lei ? "lei" : "name", authorised, warnings, url: links.casps, fetchedAt: casps.fetchedAt, notes };
 }

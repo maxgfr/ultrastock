@@ -84,6 +84,30 @@ describe("a venue is matched on who it is, not on a word in someone else's name"
     "MFSA,MT,Krakenimpex Ltd,5299000000000000KR01,MT,Krakenimpex,Valletta,https://krakenimpex.example/,,01/02/2026,,c. exchange,FR|DE,,01/02/2026,,,,",
   ];
 
+  it("without a researched LEI, another entity whose name contains the venue's does not open live orders", async () => {
+    setNetMode({ kind: "fixture", dir: register(ROWS) });
+    installJurisdictionTestFacts({ FR: FR_ESMA });
+    const g = await cryptoVenueGate("kraken", "FR");
+    expect(g.ok).toBe(false);
+    // The reading still lists what the name found, labelled unverified, and names the research to settle it.
+    expect(g.reason).toMatch(/Krakenimpex Ltd.*unverified/);
+    expect(g.reason).toContain("--key cryptoVenue.kraken.lei");
+    expect(g.mica?.matchedOn).toBe("name");
+  });
+
+  it("with a researched LEI, the LEI alone matches: a row with a blank LEI is not the venue", async () => {
+    const rows = [...ROWS, "AMF,FR,Kraken France SAS,,FR,Kraken,Paris,https://www.kraken.com/,,01/03/2026,,c. exchange,FR,,01/03/2026,,,,"];
+    setNetMode({ kind: "fixture", dir: register(rows) });
+    const byLei = await checkMica("kraken", "FR", { lei: "9845003D98SCC2851458" });
+    expect(byLei.matchedOn).toBe("lei");
+    expect(byLei.authorised).toEqual([]);
+    installJurisdictionTestFacts({ FR: { ...FR_ESMA, "cryptoVenue.kraken.lei": "9845003D98SCC2851458" } });
+    expect((await cryptoVenueGate("kraken", "FR")).ok).toBe(false);
+    // The venue's own entity, where it does serve the country, opens the gate.
+    installJurisdictionTestFacts({ CY: { ...FR_ESMA, "cryptoVenue.kraken.lei": "9845003D98SCC2851458" } });
+    expect(await cryptoVenueGate("kraken", "CY")).toMatchObject({ ok: true, reason: expect.stringMatching(/Payward Global Solutions Limited/) });
+  });
+
   it("a researched LEI that has gone stale does not silently fall back to matching on the name", async () => {
     setNetMode({ kind: "fixture", dir: register(ROWS) });
     // Control: with the LEI fact current, the gate refuses — Payward does not serve FR, the name-alike is set aside.

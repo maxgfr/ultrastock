@@ -18062,6 +18062,14 @@ async function cryptoVenueGate(venue, code, opts = {}) {
     }
     try {
       const m = await checkMica(venue, c, lei ? { lei } : {});
+      if (!lei) {
+        const found = m.authorised.map((e) => `${e.name}, ${e.homeState}${e.lei ? `, LEI ${e.lei}` : ""}`);
+        return {
+          ok: false,
+          reason: `no researched LEI for the ${venue} entity that serves ${c}: ESMA's register is matched on the LEI only${found.length ? ` \u2014 by name it lists ${found.join("; ")} (unverified)` : ""}; research it: \`${leiR.research}\`, then \`${JURISDICTION.setCommand}\``,
+          mica: m
+        };
+      }
       if (m.authorised.length)
         return { ok: true, reason: `${venue} is in ESMA's MiCA register for ${c} (${m.authorised[0].name}, ${m.authorised[0].homeState})`, mica: m };
       return {
@@ -18168,12 +18176,15 @@ async function checkMica(venue, country2 = "FR", opts = {}) {
   const leiOf = (r3) => (r3.ae_lei ?? "").trim().toUpperCase();
   let hit;
   if (lei) {
-    hit = (r3) => leiOf(r3) === lei || !leiOf(r3) && named(r3);
-    const others = [...new Set(casps.rows.filter((r3) => named(r3) && leiOf(r3) && leiOf(r3) !== lei).map(leiOf))];
+    hit = (r3) => leiOf(r3) === lei;
+    const others = [...new Set(casps.rows.filter((r3) => named(r3) && leiOf(r3) !== lei).map((r3) => leiOf(r3) || "no LEI"))];
     if (others.length) notes.push(`entries named like ${venue} under another LEI (${others.join(", ")}) are not counted: matched on LEI ${lei}`);
   } else {
     const leis = new Set(casps.rows.filter(named).map(leiOf).filter(Boolean));
     hit = (r3) => named(r3) || !!leiOf(r3) && leis.has(leiOf(r3));
+    notes.push(
+      `matched on the name only \u2014 unverified: another entity's name may contain "${venue}"; research the LEI of ${venue}'s entity (\`${researchCommand("jurisdiction", c, { key: `cryptoVenue.${needle}.lei` })}\`) to match on it`
+    );
   }
   const today2 = clockNow().toISOString().slice(0, 10);
   const ended = [];
@@ -18203,7 +18214,7 @@ async function checkMica(venue, country2 = "FR", opts = {}) {
     reason: r3.ae_reason ?? "",
     decidedOn: r3.ae_decision_date ?? ""
   }));
-  return { venue, authorised, warnings, url: links.casps, fetchedAt: casps.fetchedAt, notes };
+  return { venue, matchedOn: lei ? "lei" : "name", authorised, warnings, url: links.casps, fetchedAt: casps.fetchedAt, notes };
 }
 
 // src/core/profile.ts
