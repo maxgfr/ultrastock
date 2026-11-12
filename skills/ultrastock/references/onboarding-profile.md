@@ -67,7 +67,9 @@ Research → set → guard:
    the sources do not settle: search further, or leave it out.
 3. `ultrastock facts set jurisdiction --file <run>/FACTS.jurisdiction.<CC>.json`
    validates and stores it (`<home>/facts/jurisdiction/<CC>-<date>.json`).
-   Researching one rule on a later day keeps the others' earlier conclusions.
+   Researching one rule (on the same day or a later one) keeps the others'
+   earlier conclusions; the newest conclusion of a rule is the one verified
+   last.
 4. `ultrastock jurisdiction show` (or `facts show jurisdiction`) lists every
    rule with its status, sources and date; `doctor` says how many are
    researched.

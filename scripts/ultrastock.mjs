@@ -17649,11 +17649,38 @@ function loadFacts(d, country2, period2) {
   }
 }
 function saveFacts(d, raw, expect = {}) {
-  const v = validateFacts(d, raw, expect);
-  const path2 = factsPath(d, v.file.country, v.file.period);
+  const fresh = validateFacts(d, raw, expect);
+  const path2 = factsPath(d, fresh.file.country, fresh.file.period);
+  const merge = { kept: [], replaced: [] };
+  let v = fresh;
+  if (existsSync14(path2)) {
+    let stored;
+    try {
+      stored = loadFacts(d, fresh.file.country, fresh.file.period).file;
+    } catch (e) {
+      merge.discarded = `the stored file did not validate (${e.message.split("\n")[0]})`;
+    }
+    const metaKeys = /* @__PURE__ */ new Set([...Object.keys(stored?.meta ?? {}), ...Object.keys(fresh.file.meta)]);
+    if (stored && [...metaKeys].some((k) => stored.meta[k] !== fresh.file.meta[k]))
+      merge.discarded = `its ${Object.entries(stored.meta).map(([k, x]) => `${k} ${x}`).join(", ")} differs from the new file's: its values are not in the new file's terms`;
+    else if (stored) {
+      for (const k of Object.keys(stored.facts)) (k in fresh.file.facts ? merge.replaced : merge.kept).push(k);
+      if (merge.kept.length) {
+        const r3 = raw;
+        v = validateFacts(d, { ...r3, facts: { ...stored.facts, ...r3.facts } }, expect);
+      }
+    }
+  }
   ensureDir(factsDir(d));
   writeFileAtomic(path2, serialise(d, v.file), 384);
-  return { ...v, path: path2 };
+  return { ...v, path: path2, merge };
+}
+function mergeLines(m) {
+  return [
+    ...m.replaced.length ? [`replaced the stored fact(s): ${m.replaced.join(", ")}`] : [],
+    ...m.kept.length ? [`kept the stored fact(s) this file does not hold: ${m.kept.join(", ")} (to drop one, delete the stored file and store a full one)`] : [],
+    ...m.discarded ? [`the stored file was replaced whole: ${m.discarded}`] : []
+  ];
 }
 function factValue(d, f3, key) {
   const fact = f3.facts[key];
@@ -47503,7 +47530,7 @@ function engineRules(country2, year) {
 }
 function saveRules(raw, expect = {}) {
   const v = saveFacts(TAX2, raw, { country: expect.country, period: expect.year });
-  return { rules: ruleSet(v), missing: v.missing, stale: v.stale, path: v.path };
+  return { rules: ruleSet(v), missing: v.missing, stale: v.stale, path: v.path, merge: v.merge };
 }
 var param = (r3, key) => factValue(TAX2, { domain: "tax", country: r3.country, period: r3.year, researchedAt: r3.researchedAt, meta: {}, facts: r3.facts }, key);
 var rulesTemplate = (country2, year) => factsTemplate(TAX2, country2, year);
@@ -58188,6 +58215,7 @@ async function rulesCommand(args, asJson, sub, country2, year) {
     const engine = isEngineCountry(v.rules.country);
     const lines = [
       `stored ${v.path} \u2014 ${Object.keys(v.rules.facts).length} researched fact(s) for ${v.rules.country} ${v.rules.year}`,
+      ...mergeLines(v.merge),
       ...v.missing.length ? [
         engine ? `the ${v.rules.country} engine refuses until these are researched: ${v.missing.join(", ")}` : `template keys not researched yet (the report lists them): ${v.missing.join(", ")}`
       ] : [],
@@ -58196,7 +58224,17 @@ async function rulesCommand(args, asJson, sub, country2, year) {
     ];
     return printResult(
       asJson,
-      { path: v.path, country: v.rules.country, year: v.rules.year, facts: Object.keys(v.rules.facts).length, missing: v.missing, stale: v.stale },
+      {
+        path: v.path,
+        country: v.rules.country,
+        year: v.rules.year,
+        facts: Object.keys(v.rules.facts).length,
+        missing: v.missing,
+        stale: v.stale,
+        kept: v.merge.kept,
+        replaced: v.merge.replaced,
+        ...v.merge.discarded ? { discarded: v.merge.discarded } : {}
+      },
       lines.join("\n")
     );
   }
@@ -58682,12 +58720,23 @@ Then: ${w.setCommand}
     const v = saveFacts(d, raw, { country: pin ? countryCode(pin) : void 0 });
     const lines = [
       `stored ${v.path} \u2014 ${Object.keys(v.file.facts).length} researched fact(s) for ${v.file.country} (${d.period} ${v.file.period})`,
+      ...mergeLines(v.merge),
       ...v.missing.length ? [`not researched yet (they read as unknown and fail closed): ${v.missing.join(", ")}`] : [],
       ...v.stale.map((s) => `stale: ${s.key} (${s.reason})`)
     ];
     return printResult(
       asJson,
-      { path: v.path, country: v.file.country, period: v.file.period, facts: Object.keys(v.file.facts), missing: v.missing, stale: v.stale },
+      {
+        path: v.path,
+        country: v.file.country,
+        period: v.file.period,
+        facts: Object.keys(v.file.facts),
+        missing: v.missing,
+        stale: v.stale,
+        kept: v.merge.kept,
+        replaced: v.merge.replaced,
+        ...v.merge.discarded ? { discarded: v.merge.discarded } : {}
+      },
       lines.join("\n")
     );
   }

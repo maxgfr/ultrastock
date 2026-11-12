@@ -356,13 +356,64 @@ export function loadFacts(d: Domain, country: string, period: number | string): 
   }
 }
 
-/** Validate and store a facts file (atomically); returns where it went and what is still missing or stale. */
-export function saveFacts(d: Domain, raw: unknown, expect: { country?: string; period?: number | string } = {}): ValidatedFacts & { path: string } {
-  const v = validateFacts(d, raw, expect);
-  const path = factsPath(d, v.file.country, v.file.period);
+/** What storing a file did to the file already stored for its country and period. */
+export interface StoredMerge {
+  /** Keys of the stored file the new one does not hold: kept as they were (their own verifiedAt and sources). */
+  kept: string[];
+  /** Keys of the stored file the new one holds: replaced by the new research. */
+  replaced: string[];
+  /** Why the stored file's keys were not kept: it did not validate, or its metadata (the tax currency) differs. */
+  discarded?: string;
+}
+
+/**
+ * Validate and store a facts file (atomically); returns where it went and what is still missing or stale. A file
+ * already stored for the country and period keeps its other keys (the file a one-key research writes holds the
+ * keys asked only): a key the new file holds replaces the stored one, and the merged file is what is validated.
+ */
+export function saveFacts(
+  d: Domain,
+  raw: unknown,
+  expect: { country?: string; period?: number | string } = {},
+): ValidatedFacts & { path: string; merge: StoredMerge } {
+  const fresh = validateFacts(d, raw, expect);
+  const path = factsPath(d, fresh.file.country, fresh.file.period);
+  const merge: StoredMerge = { kept: [], replaced: [] };
+  let v = fresh;
+  if (existsSync(path)) {
+    let stored: FactFile | undefined;
+    try {
+      stored = loadFacts(d, fresh.file.country, fresh.file.period).file;
+    } catch (e) {
+      merge.discarded = `the stored file did not validate (${(e as Error).message.split("\n")[0]})`;
+    }
+    const metaKeys = new Set([...Object.keys(stored?.meta ?? {}), ...Object.keys(fresh.file.meta)]);
+    if (stored && [...metaKeys].some((k) => stored.meta[k] !== fresh.file.meta[k]))
+      merge.discarded = `its ${Object.entries(stored.meta)
+        .map(([k, x]) => `${k} ${x}`)
+        .join(", ")} differs from the new file's: its values are not in the new file's terms`;
+    else if (stored) {
+      for (const k of Object.keys(stored.facts)) (k in fresh.file.facts ? merge.replaced : merge.kept).push(k);
+      if (merge.kept.length) {
+        const r = raw as Record<string, unknown>;
+        v = validateFacts(d, { ...r, facts: { ...stored.facts, ...(r.facts as Record<string, unknown>) } }, expect);
+      }
+    }
+  }
   ensureDir(factsDir(d));
   writeFileAtomic(path, serialise(d, v.file), 0o600);
-  return { ...v, path };
+  return { ...v, path, merge };
+}
+
+/** The lines that say what storing a file did to the one stored before (none when there was none). */
+export function mergeLines(m: StoredMerge): string[] {
+  return [
+    ...(m.replaced.length ? [`replaced the stored fact(s): ${m.replaced.join(", ")}`] : []),
+    ...(m.kept.length
+      ? [`kept the stored fact(s) this file does not hold: ${m.kept.join(", ")} (to drop one, delete the stored file and store a full one)`]
+      : []),
+    ...(m.discarded ? [`the stored file was replaced whole: ${m.discarded}`] : []),
+  ];
 }
 
 /** A fact's value from the current facts of `f` (pass `{ ...file, facts: current }`); a usage error when it is not there. */

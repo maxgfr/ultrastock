@@ -29,6 +29,7 @@ import {
   factsTemplate,
   factsTemplateCommand,
   loadLatestFacts,
+  mergeLines,
   researchCommand,
   saveFacts,
   specsFor,
@@ -143,12 +144,23 @@ export async function factsCommand(args: CommandArgs, asJson: boolean): Promise<
     const v = saveFacts(d, raw, { country: pin ? countryCode(pin) : undefined });
     const lines = [
       `stored ${v.path} — ${Object.keys(v.file.facts).length} researched fact(s) for ${v.file.country} (${d.period} ${v.file.period})`,
+      ...mergeLines(v.merge),
       ...(v.missing.length ? [`not researched yet (they read as unknown and fail closed): ${v.missing.join(", ")}`] : []),
       ...v.stale.map((s) => `stale: ${s.key} (${s.reason})`),
     ];
     return out(
       asJson,
-      { path: v.path, country: v.file.country, period: v.file.period, facts: Object.keys(v.file.facts), missing: v.missing, stale: v.stale },
+      {
+        path: v.path,
+        country: v.file.country,
+        period: v.file.period,
+        facts: Object.keys(v.file.facts),
+        missing: v.missing,
+        stale: v.stale,
+        kept: v.merge.kept,
+        replaced: v.merge.replaced,
+        ...(v.merge.discarded ? { discarded: v.merge.discarded } : {}),
+      },
       lines.join("\n"),
     );
   }

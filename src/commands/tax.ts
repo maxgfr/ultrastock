@@ -17,6 +17,7 @@ import { isEngineCountry, regimeFor } from "../tax/index.js";
 import { cryptoValuer, currentPrices, historicalFx, withCryptoQuotes } from "../tax/inputs.js";
 import { type NeutralReport, neutralReport } from "../tax/neutral.js";
 import { cryptoTradeKind, day, type Fx, isCryptoTx, isFiat, splitPair, type TaxInput, type TaxRegime, type TaxSummary, yearOf } from "../tax/regime.js";
+import { mergeLines } from "../core/researched.js";
 import { countryCode, loadRules, type RuleSet, researchChecklist, rulesTemplate, saveRules, specFor, templateCommand } from "../tax/rules.js";
 import { emitDatasets, printResult as print } from "./emit.js";
 
@@ -317,6 +318,7 @@ async function rulesCommand(args: CommandArgs, asJson: boolean, sub: string | un
     const engine = isEngineCountry(v.rules.country);
     const lines = [
       `stored ${v.path} — ${Object.keys(v.rules.facts).length} researched fact(s) for ${v.rules.country} ${v.rules.year}`,
+      ...mergeLines(v.merge),
       ...(v.missing.length
         ? [
             engine
@@ -329,7 +331,17 @@ async function rulesCommand(args: CommandArgs, asJson: boolean, sub: string | un
     ];
     return print(
       asJson,
-      { path: v.path, country: v.rules.country, year: v.rules.year, facts: Object.keys(v.rules.facts).length, missing: v.missing, stale: v.stale },
+      {
+        path: v.path,
+        country: v.rules.country,
+        year: v.rules.year,
+        facts: Object.keys(v.rules.facts).length,
+        missing: v.missing,
+        stale: v.stale,
+        kept: v.merge.kept,
+        replaced: v.merge.replaced,
+        ...(v.merge.discarded ? { discarded: v.merge.discarded } : {}),
+      },
       lines.join("\n"),
     );
   }

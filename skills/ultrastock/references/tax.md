@@ -38,8 +38,10 @@ official notices decide.
    research rather than guess it (an engine then refuses and names it).
 4. **Store.** `ultrastock tax rules set --file <file.json>` validates strictly
    (types, every value sourced and dated, the year, no unknown key for FR / US)
-   and stores it in `<home>/facts/tax/<CC>-<Y>.json`. It lists what is still
-   missing.
+   and stores it in `<home>/facts/tax/<CC>-<Y>.json`. A year already stored
+   keeps the keys the new file does not hold (re-research one key with
+   `--key` and store just it); the output says which were kept and which
+   replaced. It lists what is still missing.
 5. **Report.** `ultrastock tax report --year <Y>` (the country defaults to the
    profile's tax residence; `--country` overrides it).
 

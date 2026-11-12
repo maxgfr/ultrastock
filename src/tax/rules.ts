@@ -674,7 +674,7 @@ export function validateRules(raw: unknown, expect: { country?: string; year?: n
 /** Validate and store a rules file; returns where it went and which registered keys it still lacks. */
 export function saveRules(raw: unknown, expect: { country?: string; year?: number } = {}) {
   const v = saveFacts(TAX, raw, { country: expect.country, period: expect.year });
-  return { rules: ruleSet(v), missing: v.missing, stale: v.stale, path: v.path };
+  return { rules: ruleSet(v), missing: v.missing, stale: v.stale, path: v.path, merge: v.merge };
 }
 
 export const param = <T = number>(r: RuleSet, key: string): T =>
