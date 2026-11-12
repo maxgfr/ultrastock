@@ -50,7 +50,7 @@ for (let i = 1; i <= 60; i++) await profileCommand(commandArgs("profile", ["set"
     expect(p).toMatchObject({ horizonYears: 60, emergencyFundMonths: 60 });
   }, 60_000);
   it("refuses unknown fields and out-of-range values", () => {
-    const p = defaultProfile();
+    const p = defaultProfile("FR", "EUR");
     expect(() => setProfileField(p, "limits.yolo", "1")).toThrow(/not a profile field/);
     expect(() => setProfileField(p, "limits.maxPositionPct", "500")).toThrow(/between/);
     expect(() => setProfileField(p, "jurisdiction", "France")).toThrow(/ISO/);
@@ -64,7 +64,7 @@ describe("suitability", () => {
     expect(r.score).toBe(5);
     expect(r.points).toBe(13);
     expect(r.maxPoints).toBe(18);
-    const p = defaultProfile();
+    const p = defaultProfile("FR", "EUR");
     applySuitability(p, r);
     expect(p.riskScore).toBe(5);
     expect(p.limits.maxPositionPct).toBe(10);

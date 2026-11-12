@@ -642,15 +642,18 @@ async function studyEvent(e: MarketEvent, f: Findings, c: StudyContext): Promise
 
   // Market pricing, for an event still ahead.
   if (c.ahead && e.type === "election") {
-    const juris = loadProfile()?.jurisdiction ?? "FR";
+    const juris = loadProfile()?.jurisdiction;
     try {
       const ds = await manifoldSearch(`${market.name} ${e.date.slice(0, 4)} election`, { limit: 4, filter: "open" });
       f.input({ ...ds, title: `${e.title}: prediction markets (Manifold, play money)`, subject: e.id });
     } catch (err) {
       f.note(`${e.title}: no prediction market found (${(err as Error).message.split("\n")[0]})`);
     }
-    const pm = ruleFact(juris, "polymarket");
-    if (pm.status !== "allowed") f.note(`Polymarket is not read for a resident of ${juris} (${pm.status}: ${ruleWhy(pm, juris)})`);
+    if (!juris) f.note("Polymarket is not read: no profile says where you live (`ultrastock profile init --jurisdiction <CC>`)");
+    else {
+      const pm = ruleFact(juris, "polymarket");
+      if (pm.status !== "allowed") f.note(`Polymarket is not read for a resident of ${juris} (${pm.status}: ${ruleWhy(pm, juris)})`);
+    }
   }
   const daysTo = (Date.parse(`${e.date}T00:00:00Z`) - c.now.getTime()) / DAY;
   // The implied move for a vote (a rate decision is priced every day in the index's own options).

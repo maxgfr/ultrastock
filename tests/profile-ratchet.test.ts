@@ -17,14 +17,14 @@ const answers = {
 
 describe("profile ratchet", () => {
   it("applies any change at once while live trading has never been switched on", () => {
-    const p = defaultProfile("FR");
+    const p = defaultProfile("FR", "EUR");
     expect(requestProfileChange(p, "limits.maxDailyLossPct", 20, { ratchet: false })).toMatchObject({ applied: true });
     expect(p.limits.maxDailyLossPct).toBe(20);
   });
 
   it("once live: tightens at once, holds a loosening without a code, delays an approved one 24 hours", () => {
     const now = new Date("2026-11-10T10:00:00Z");
-    const p = defaultProfile("FR");
+    const p = defaultProfile("FR", "EUR");
     expect(requestProfileChange(p, "limits.maxDailyLossPct", 1, { ratchet: true, now })).toMatchObject({ applied: true });
     expect(p.limits.maxDailyLossPct).toBe(1);
     // Widening the breaker, moving to another country, lifting a constraint, spending the cash buffer: guards lowered.
@@ -63,7 +63,7 @@ describe("profile ratchet", () => {
   });
 
   it("puts a questionnaire's limits through the same ratchet: answering again is no way round it", () => {
-    const p = defaultProfile();
+    const p = defaultProfile("FR", "EUR");
     const r = scoreSuitability(answers);
     const before = p.limits.maxPositionPct;
     expect(r.limits.maxPositionPct).toBeGreaterThan(before);
@@ -72,7 +72,7 @@ describe("profile ratchet", () => {
     expect(held.map((h) => h.path)).toContain("limits.maxPositionPct");
     expect(p.riskScore).toBe(r.score);
     // Without the ratchet the answers apply whole, as before.
-    const q = defaultProfile();
+    const q = defaultProfile("FR", "EUR");
     expect(applySuitability(q, r).held).toEqual([]);
     expect(q.limits).toEqual(r.limits);
   });

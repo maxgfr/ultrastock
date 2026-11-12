@@ -82,7 +82,7 @@ USAGE
   ultrastock evidence <run> [--json]
   ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
   ultrastock report <run> [--answer <answer.md>] [--json]
-  ultrastock profile init [--jurisdiction FR] [--currency EUR] [--json]
+  ultrastock profile init --jurisdiction <CC> [--currency <ISO 4217>] [--json]
   ultrastock profile show|suitability [--answers <file>] [--request-code|--code <code>]|set <field> <value> [--code <code>]|code <field> <value>|envelope <id> --type PEA [--broker <name>] [--json]
   ultrastock jurisdiction show|verify [--jurisdiction FR] [--venues binance,kraken,coinbase] [--out <dir>] [--json]
   ultrastock calendar sessions|holidays|verify [--market XPAR|XNYS|XMIL|XOSL|CRYPTO] [--days <n>] [--year <yyyy>] [--json]
@@ -575,7 +575,7 @@ COMMANDS
             arbitrage net of fees (Kalshi taker fee 0.07 × C × P × (1 − P) by
             default), order-book imbalance, time to close; --my-probability adds a
             half-Kelly stake on an edge discounted by half the spread and the fee.
-            Paper only for French residents; never Polymarket here.
+            Paper only unless the jurisdiction allows Kalshi; never Polymarket here.
   crypto    Market structure: global caps and dominance, top coins, one coin,
             derivatives positioning (funding, open interest, long/short ratios),
             DeFi TVL, yields (base vs reward APY), stablecoins, fees, on-chain

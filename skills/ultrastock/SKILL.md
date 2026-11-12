@@ -102,7 +102,7 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | a price, now | `quote <symbol> --out <dir>` | [data-sources](references/data-sources.md) |
 | bars to look at or to compute on | `history <symbol> --from … --to …` | [data-sources](references/data-sources.md) |
 | a ratio, a gap, a distance to a level | `calc <dir> "<formula over E ids>" --label …` | [citation-format](references/citation-format.md) |
-| to set up who they are (first use) | `profile init`, then `profile suitability` (ask the questions), `profile envelope` | [onboarding-profile](references/onboarding-profile.md) |
+| to set up who they are (first use) | `profile init --jurisdiction <CC>`, then `profile suitability` (ask the questions), `profile envelope` | [onboarding-profile](references/onboarding-profile.md) |
 | what their country allows (Polymarket, Kalshi, US-domiciled ETFs, crypto platforms…) | `jurisdiction show` → `facts research jurisdiction --out <run>` → read the `[E#]`, conclude → `facts set jurisdiction --file <run>/FACTS.jurisdiction.<CC>.json`; `jurisdiction verify --out <dir>` | [onboarding-profile](references/onboarding-profile.md) |
 | market hours, holidays, the next sessions | `calendar sessions --market XPAR` | [data-sources](references/data-sources.md) |
 | a company's numbers: statements, filings | `fundamentals <sym> [--asof]`, `filings <US sym>` | [fundamentals-filings](references/fundamentals-filings.md) |

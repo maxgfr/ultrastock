@@ -91,8 +91,8 @@ export interface PendingChange {
 /** How long an approved loosening waits before it is in force. */
 export const PROFILE_LOOSEN_DELAY_MS = 24 * 3_600_000;
 
-/** Conservative defaults: a profile that has not been through suitability yet. */
-export function defaultProfile(jurisdiction = "FR", currency = "EUR", now = new Date()): Profile {
+/** Conservative defaults: a profile that has not been through suitability yet. The jurisdiction and currency are the user's: never assumed. */
+export function defaultProfile(jurisdiction: string, currency: string, now = new Date()): Profile {
   return {
     schema: PROFILE_SCHEMA,
     createdAt: now.toISOString(),

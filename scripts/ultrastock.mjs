@@ -18124,7 +18124,7 @@ import { existsSync as existsSync15, mkdirSync as mkdirSync10, readFileSync as r
 import { dirname as dirname4, join as join18 } from "path";
 var PROFILE_SCHEMA = 1;
 var PROFILE_LOOSEN_DELAY_MS = 24 * 36e5;
-function defaultProfile(jurisdiction = "FR", currency = "EUR", now = /* @__PURE__ */ new Date()) {
+function defaultProfile(jurisdiction, currency, now = /* @__PURE__ */ new Date()) {
   return {
     schema: PROFILE_SCHEMA,
     createdAt: now.toISOString(),
@@ -22597,7 +22597,7 @@ async function predictAnalysisCommand(args, asJson) {
   const limit = argInt(args, "limit", { min: 1, max: PREDICT_MAX_BOOKS }) ?? 5;
   const profile = loadProfile();
   const status2 = profile ? ruleStatus(profile.jurisdiction, "kalshi") : void 0;
-  const paper = `sizing is for paper trading only for French residents (no known French authorisation for Kalshi event contracts)${profile ? ` \u2014 your profile: ${profile.jurisdiction}, kalshi rule ${status2}` : " \u2014 set your jurisdiction with `ultrastock profile init`"}`;
+  const paper = profile ? `sizing is for paper trading unless Kalshi is allowed for a resident of ${profile.jurisdiction} \u2014 the kalshi rule there: ${status2}${status2 === "unknown" ? " (not researched: `ultrastock jurisdiction verify`)" : ""}` : "sizing is for paper trading: no profile says where you live, so whether Kalshi may serve you is unknown \u2014 `ultrastock profile init --jurisdiction <CC>`";
   if (venue === "kalshi") {
     const ds2 = query2.toLowerCase().startsWith("market:") ? await kalshiMarket(query2.slice(7)) : await kalshiMarkets({ status: "open", limit: Math.max(limit, 20), seriesTicker: query2.toUpperCase() });
     const quotes2 = kalshiQuotesFromPoints(ds2.points).slice(0, limit);
@@ -37570,15 +37570,18 @@ async function studyEvent(e, f3, c) {
     );
   }
   if (c.ahead && e.type === "election") {
-    const juris = loadProfile()?.jurisdiction ?? "FR";
+    const juris = loadProfile()?.jurisdiction;
     try {
       const ds = await manifoldSearch(`${market.name} ${e.date.slice(0, 4)} election`, { limit: 4, filter: "open" });
       f3.input({ ...ds, title: `${e.title}: prediction markets (Manifold, play money)`, subject: e.id });
     } catch (err) {
       f3.note(`${e.title}: no prediction market found (${err.message.split("\n")[0]})`);
     }
-    const pm = ruleFact(juris, "polymarket");
-    if (pm.status !== "allowed") f3.note(`Polymarket is not read for a resident of ${juris} (${pm.status}: ${ruleWhy(pm, juris)})`);
+    if (!juris) f3.note("Polymarket is not read: no profile says where you live (`ultrastock profile init --jurisdiction <CC>`)");
+    else {
+      const pm = ruleFact(juris, "polymarket");
+      if (pm.status !== "allowed") f3.note(`Polymarket is not read for a resident of ${juris} (${pm.status}: ${ruleWhy(pm, juris)})`);
+    }
   }
   const daysTo = (Date.parse(`${e.date}T00:00:00Z`) - c.now.getTime()) / DAY5;
   if (c.ahead && e.type === "election" && market.usEtf && daysTo > 0 && daysTo <= 60) {
@@ -55791,7 +55794,7 @@ function profileRatchetOn() {
 }
 function requireProfile() {
   const p = loadProfile(clockNow());
-  if (!p) throw new Error(`no profile yet \u2014 run \`ultrastock profile init --jurisdiction FR --currency EUR\` (it lives in ${profilePath()})`);
+  if (!p) throw new Error(`no profile yet \u2014 run \`ultrastock profile init --jurisdiction <CC> [--currency <ISO 4217>]\` (it lives in ${profilePath()})`);
   return p;
 }
 var profileLock = (fn) => withFileLockSync(`${profilePath()}.lock`, fn);
@@ -55806,7 +55809,8 @@ function changeProfile(change) {
 async function profileCommand(args, asJson) {
   const [sub = "show", ...rest] = args.positional;
   if (sub === "init") {
-    const p = defaultProfile(argValue(args, "jurisdiction") ?? "FR", argValue(args, "currency") ?? "EUR", clockNow());
+    const { jurisdiction, currency, currencyWhy } = initResidence(argValue(args, "jurisdiction"), argValue(args, "currency"));
+    const p = defaultProfile(jurisdiction, currency, clockNow());
     const path2 = profileLock(() => {
       if (loadProfile()) throw new Error(`a profile already exists at ${profilePath()} \u2014 change it with \`profile set\``);
       return saveProfile(p);
@@ -55815,7 +55819,7 @@ async function profileCommand(args, asJson) {
       asJson,
       { path: path2, profile: p },
       `profile created: ${path2}
-  jurisdiction ${p.jurisdiction}, base currency ${p.baseCurrency}, conservative default limits.
+  jurisdiction ${p.jurisdiction}, base currency ${p.baseCurrency} (${currencyWhy}), conservative default limits.
   Next: \`ultrastock profile suitability\` to ask the questionnaire.`
     );
   }
@@ -55922,9 +55926,31 @@ async function profileCommand(args, asJson) {
   }
   throw new UsageError(`unknown profile action "${sub}" \u2014 init, show, set, code, envelope, suitability`);
 }
+function initResidence(jurisdictionArg, currencyArg) {
+  if (!jurisdictionArg?.trim())
+    throw new UsageError(
+      "profile init needs --jurisdiction <CC>: the ISO 3166 alpha-2 code of the country whose rules apply to you (FR, US, DE\u2026) \u2014 ultrastock assumes none"
+    );
+  const jurisdiction = countryCode(jurisdictionArg);
+  if (currencyArg?.trim()) {
+    const c = currencyArg.trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(c)) throw new UsageError(`--currency is an ISO 4217 code such as EUR or USD, not "${currencyArg}"`);
+    return { jurisdiction, currency: c, currencyWhy: "--currency" };
+  }
+  if (euroAreaMembers().codes.includes(jurisdiction))
+    return { jurisdiction, currency: "EUR", currencyWhy: `${jurisdiction} is in the euro area; --currency to change it` };
+  const market = COUNTRY_MARKETS[jurisdiction]?.currency;
+  if (market) return { jurisdiction, currency: market, currencyWhy: `the currency of ${jurisdiction}'s market; --currency to change it` };
+  throw new UsageError(`profile init: no base currency known for ${jurisdiction} \u2014 pass --currency <ISO 4217> (the currency you count your wealth in)`);
+}
 async function jurisdictionCommand(args, asJson) {
   const [sub = "show"] = args.positional;
-  const code = (argValue(args, "jurisdiction") ?? loadProfile()?.jurisdiction ?? "FR").toUpperCase();
+  const given = argValue(args, "jurisdiction") ?? loadProfile()?.jurisdiction;
+  if (!given)
+    throw new UsageError(
+      "jurisdiction: pass --jurisdiction <CC> or create a profile (`ultrastock profile init --jurisdiction <CC>`) \u2014 no jurisdiction is assumed"
+    );
+  const code = given.toUpperCase();
   const rules = rulesFor(code);
   const flow = `ultrastock holds no jurisdiction rule: research them (\`${researchCommand("jurisdiction", code)}\` gathers the official documents and prints the worklist), store the conclusions (\`${JURISDICTION.setCommand}\`); until then each rule reads as unknown and fails closed`;
   if (sub === "show") {
@@ -61488,7 +61514,8 @@ async function doctorReport(opts = {}) {
         return { source: source2, url, ok: r3.ok, status: r3.status, ms: Date.now() - t0, ...note ? { note } : {} };
       })
     );
-    if (ruleStatus(profile.jurisdiction ?? "FR", "polymarket") !== "allowed") report2.blocks = [await checkDnsBlock("gamma-api.polymarket.com")];
+    if (!profile.jurisdiction || ruleStatus(profile.jurisdiction, "polymarket") !== "allowed")
+      report2.blocks = [await checkDnsBlock("gamma-api.polymarket.com")];
   }
   return report2;
 }
@@ -61542,7 +61569,7 @@ USAGE
   ultrastock evidence <run> [--json]
   ultrastock check <run> <answer.md> [--max-age <90m|36h|3d>] [--json]
   ultrastock report <run> [--answer <answer.md>] [--json]
-  ultrastock profile init [--jurisdiction FR] [--currency EUR] [--json]
+  ultrastock profile init --jurisdiction <CC> [--currency <ISO 4217>] [--json]
   ultrastock profile show|suitability [--answers <file>] [--request-code|--code <code>]|set <field> <value> [--code <code>]|code <field> <value>|envelope <id> --type PEA [--broker <name>] [--json]
   ultrastock jurisdiction show|verify [--jurisdiction FR] [--venues binance,kraken,coinbase] [--out <dir>] [--json]
   ultrastock calendar sessions|holidays|verify [--market XPAR|XNYS|XMIL|XOSL|CRYPTO] [--days <n>] [--year <yyyy>] [--json]
@@ -62035,7 +62062,7 @@ COMMANDS
             arbitrage net of fees (Kalshi taker fee 0.07 \xD7 C \xD7 P \xD7 (1 \u2212 P) by
             default), order-book imbalance, time to close; --my-probability adds a
             half-Kelly stake on an edge discounted by half the spread and the fee.
-            Paper only for French residents; never Polymarket here.
+            Paper only unless the jurisdiction allows Kalshi; never Polymarket here.
   crypto    Market structure: global caps and dominance, top coins, one coin,
             derivatives positioning (funding, open interest, long/short ratios),
             DeFi TVL, yields (base vs reward APY), stablecoins, fees, on-chain

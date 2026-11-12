@@ -138,7 +138,9 @@ export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) 
       }),
     );
     // Reported, never worked around: a regulator's block is the user's law.
-    if (ruleStatus(profile.jurisdiction ?? "FR", "polymarket") !== "allowed") report.blocks = [await checkDnsBlock("gamma-api.polymarket.com")];
+    // No profile, no jurisdiction: its rules are unknown, so the block is checked as for any jurisdiction that does not allow it.
+    if (!profile.jurisdiction || ruleStatus(profile.jurisdiction, "polymarket") !== "allowed")
+      report.blocks = [await checkDnsBlock("gamma-api.polymarket.com")];
   }
   return report;
 }

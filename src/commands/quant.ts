@@ -509,9 +509,9 @@ export async function predictAnalysisCommand(args: CommandArgs, asJson: boolean)
   const limit = argInt(args, "limit", { min: 1, max: PREDICT_MAX_BOOKS }) ?? 5;
   const profile = loadProfile();
   const status = profile ? ruleStatus(profile.jurisdiction, "kalshi") : undefined;
-  const paper = `sizing is for paper trading only for French residents (no known French authorisation for Kalshi event contracts)${
-    profile ? ` — your profile: ${profile.jurisdiction}, kalshi rule ${status}` : " — set your jurisdiction with `ultrastock profile init`"
-  }`;
+  const paper = profile
+    ? `sizing is for paper trading unless Kalshi is allowed for a resident of ${profile.jurisdiction} — the kalshi rule there: ${status}${status === "unknown" ? " (not researched: `ultrastock jurisdiction verify`)" : ""}`
+    : "sizing is for paper trading: no profile says where you live, so whether Kalshi may serve you is unknown — `ultrastock profile init --jurisdiction <CC>`";
 
   if (venue === "kalshi") {
     const ds = query.toLowerCase().startsWith("market:")

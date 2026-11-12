@@ -45,7 +45,10 @@ describe("profile and jurisdiction commands", () => {
   it("init, set, envelope, show, suitability questions and scoring", async () => {
     expect((await cli(["profile", "show"])).code).toBe(1);
     expect((await cli(["profile", "init", "--jurisdiction", "FR"])).out).toMatch(/profile created/);
-    expect((await cli(["profile", "init"])).code).toBe(1);
+    expect((await cli(["profile", "init", "--jurisdiction", "FR"])).code).toBe(1); // it exists already
+    const bare = await cli(["profile", "init"]);
+    expect(bare.code).toBe(2); // no jurisdiction is assumed
+    expect(bare.err).toMatch(/needs --jurisdiction/);
     expect((await cli(["profile", "set", "limits.maxPositionPct", "6"])).out).toMatch(/5 → 6/);
     expect((await cli(["profile", "set", "nope", "1"])).code).toBe(1);
     expect((await cli(["profile", "envelope", "pea", "--type", "PEA", "--broker", "X"])).out).toMatch(/PEA at X/);

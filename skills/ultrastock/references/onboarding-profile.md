@@ -2,8 +2,13 @@
 
 ## First use
 
-1. `ultrastock profile init --jurisdiction FR --currency EUR` — a conservative
-   default profile in `ULTRASTOCK_HOME/profile.json` (mode 600).
+1. Ask the user which country's rules apply to them (residence) and the
+   currency they count their wealth in, then
+   `ultrastock profile init --jurisdiction <CC> [--currency <ISO 4217>]` — a
+   conservative default profile in `ULTRASTOCK_HOME/profile.json` (mode 600).
+   `--jurisdiction` is required: no country is assumed. Without `--currency`
+   the euro is taken for a euro-area country, else the currency of the
+   country's market, and the output says so; otherwise it asks for one.
 2. `ultrastock profile suitability` prints the questionnaire. Ask the user each
    question in their language, one at a time, with the choices as written;
    never answer for them. Write the answers to a JSON file:

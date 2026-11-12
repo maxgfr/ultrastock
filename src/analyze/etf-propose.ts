@@ -604,7 +604,7 @@ export async function etfPropose(dir: string, o: EtfProposeOptions): Promise<Etf
       "etf propose needs a risk score (1–7): run `ultrastock profile suitability` (the questionnaire sets it in the profile) or pass --risk <1-7>",
     );
   const riskSource = o.risk !== undefined ? "--risk" : "profile";
-  const jurisdiction = profile?.jurisdiction ?? "FR";
+  const jurisdiction = profile?.jurisdiction ?? "FR"; // no profile: --envelope pea|cto|av are French envelopes, so the asker is French-resident
   // The researched rules of the investor's country (core/jurisdiction.ts): anything but "allowed" leaves the funds out.
   const usEtf = ruleFact(jurisdiction, "us-domiciled-etf");
   const priips = usEtf.status !== "allowed";

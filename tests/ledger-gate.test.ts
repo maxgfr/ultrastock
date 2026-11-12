@@ -236,7 +236,7 @@ describe("risk gate", () => {
     expect(blocked(riskGate(order({ price: 450 }), ctx()))).toContain("PRICE_BAND");
     expect(blocked(riskGate(order(), ctx({ breaker: { tripped: true, reason: "x", sizeMultiplier: 1 } })))).toContain("BREAKER");
     expect(blocked(riskGate(order(), ctx({ ordersToday: 3 })))).toContain("FREQUENCY");
-    const p = defaultProfile("FR");
+    const p = defaultProfile("FR", "EUR");
     p.constraints.exclusions = ["mc.pa"];
     expect(blocked(riskGate(order(), ctx({ profile: p })))).toContain("EXCLUDED");
     expect(blocked(riskGate(order({ symbol: "SPY", assetKind: "etf", domicile: "US", currency: "USD" }), ctx()))).toContain("PRIIPS");
@@ -300,7 +300,7 @@ describe("risk gate", () => {
 });
 
 describe("circuit breaker", () => {
-  const limits = defaultProfile().limits;
+  const limits = defaultProfile("FR", "EUR").limits;
   it("trips on the daily loss, and resets the next day", () => {
     const curve = [
       { at: "2026-10-22T20:00:00Z", equity: 100_000 },

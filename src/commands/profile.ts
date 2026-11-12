@@ -26,6 +26,9 @@ import { issueCode, verifyCode } from "../trading/otp.js";
 import { clockNow } from "../core/net.js";
 import { argValue, type CommandArgs, UsageError } from "../engine.js";
 import { printResult as out } from "./emit.js";
+import { COUNTRY_MARKETS } from "../analyze/events/markets.js";
+import { euroAreaMembers } from "../core/geo.js";
+import { countryCode } from "../core/researched.js";
 
 const ENVELOPES: EnvelopeType[] = ["PEA", "PEA-PME", "CTO", "AV", "PER", "CRYPTO", "TAXABLE", "IRA", "ROTH-IRA", "401K", "OTHER"];
 
@@ -42,7 +45,7 @@ export function profileRatchetOn(): boolean {
 
 function requireProfile() {
   const p = loadProfile(clockNow());
-  if (!p) throw new Error(`no profile yet — run \`ultrastock profile init --jurisdiction FR --currency EUR\` (it lives in ${profilePath()})`);
+  if (!p) throw new Error(`no profile yet — run \`ultrastock profile init --jurisdiction <CC> [--currency <ISO 4217>]\` (it lives in ${profilePath()})`);
   return p;
 }
 
@@ -62,7 +65,8 @@ function changeProfile(change: (p: Profile) => void): Profile {
 export async function profileCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const [sub = "show", ...rest] = args.positional;
   if (sub === "init") {
-    const p = defaultProfile(argValue(args, "jurisdiction") ?? "FR", argValue(args, "currency") ?? "EUR", clockNow());
+    const { jurisdiction, currency, currencyWhy } = initResidence(argValue(args, "jurisdiction"), argValue(args, "currency"));
+    const p = defaultProfile(jurisdiction, currency, clockNow());
     const path = profileLock(() => {
       if (loadProfile()) throw new Error(`a profile already exists at ${profilePath()} — change it with \`profile set\``);
       return saveProfile(p);
@@ -70,7 +74,7 @@ export async function profileCommand(args: CommandArgs, asJson: boolean): Promis
     return out(
       asJson,
       { path, profile: p },
-      `profile created: ${path}\n  jurisdiction ${p.jurisdiction}, base currency ${p.baseCurrency}, conservative default limits.\n  Next: \`ultrastock profile suitability\` to ask the questionnaire.`,
+      `profile created: ${path}\n  jurisdiction ${p.jurisdiction}, base currency ${p.baseCurrency} (${currencyWhy}), conservative default limits.\n  Next: \`ultrastock profile suitability\` to ask the questionnaire.`,
     );
   }
   if (sub === "show") {
@@ -182,9 +186,40 @@ export async function profileCommand(args: CommandArgs, asJson: boolean): Promis
   throw new UsageError(`unknown profile action "${sub}" — init, show, set, code, envelope, suitability`);
 }
 
+/**
+ * `profile init`'s residence: the jurisdiction is required (never assumed); the base currency is --currency, else the
+ * euro for a euro-area country (core/geo.ts), else the currency of the country's market as `events` knows it — and
+ * without any of these, required too.
+ */
+export function initResidence(
+  jurisdictionArg: string | undefined,
+  currencyArg: string | undefined,
+): { jurisdiction: string; currency: string; currencyWhy: string } {
+  if (!jurisdictionArg?.trim())
+    throw new UsageError(
+      "profile init needs --jurisdiction <CC>: the ISO 3166 alpha-2 code of the country whose rules apply to you (FR, US, DE…) — ultrastock assumes none",
+    );
+  const jurisdiction = countryCode(jurisdictionArg);
+  if (currencyArg?.trim()) {
+    const c = currencyArg.trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(c)) throw new UsageError(`--currency is an ISO 4217 code such as EUR or USD, not "${currencyArg}"`);
+    return { jurisdiction, currency: c, currencyWhy: "--currency" };
+  }
+  if (euroAreaMembers().codes.includes(jurisdiction))
+    return { jurisdiction, currency: "EUR", currencyWhy: `${jurisdiction} is in the euro area; --currency to change it` };
+  const market = COUNTRY_MARKETS[jurisdiction]?.currency;
+  if (market) return { jurisdiction, currency: market, currencyWhy: `the currency of ${jurisdiction}'s market; --currency to change it` };
+  throw new UsageError(`profile init: no base currency known for ${jurisdiction} — pass --currency <ISO 4217> (the currency you count your wealth in)`);
+}
+
 export async function jurisdictionCommand(args: CommandArgs, asJson: boolean): Promise<void> {
   const [sub = "show"] = args.positional;
-  const code = (argValue(args, "jurisdiction") ?? loadProfile()?.jurisdiction ?? "FR").toUpperCase();
+  const given = argValue(args, "jurisdiction") ?? loadProfile()?.jurisdiction;
+  if (!given)
+    throw new UsageError(
+      "jurisdiction: pass --jurisdiction <CC> or create a profile (`ultrastock profile init --jurisdiction <CC>`) — no jurisdiction is assumed",
+    );
+  const code = given.toUpperCase();
   const rules = rulesFor(code);
   const flow = `ultrastock holds no jurisdiction rule: research them (\`${researchCommand("jurisdiction", code)}\` gathers the official documents and prints the worklist), store the conclusions (\`${JURISDICTION.setCommand}\`); until then each rule reads as unknown and fails closed`;
   if (sub === "show") {

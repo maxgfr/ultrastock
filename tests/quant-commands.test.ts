@@ -139,7 +139,7 @@ describe("predict-analysis (fixtures)", () => {
         run(predictAnalysisCommand, ["kalshi", "KXFED"], { limit: "2", "my-probability": "0.62", "kalshi-fee": "0.07" }),
       );
       const readings = r.datasets.find((d) => /readings/.test(d.title))!;
-      expect(readings.notes.join(" ")).toMatch(/paper trading only for French residents/);
+      expect(readings.notes.join(" ")).toMatch(/sizing is for paper trading: no profile says where you live/);
       expect(readings.points.some((p) => p.key.endsWith(".quant.daysToClose"))).toBe(true);
     },
     SLOW,

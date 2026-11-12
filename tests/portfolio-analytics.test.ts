@@ -74,7 +74,7 @@ describe("risk pieces", () => {
       { label: "equity", weight: 30 },
       { label: "crypto", weight: 7 },
     ]);
-    const limits = defaultProfile().limits;
+    const limits = defaultProfile("FR", "EUR").limits;
     const checks = limitChecks(limits, { positions: [{ label: "MC.PA", weight: 12 }], sectors: [{ label: "Finance", weight: 30 }], cryptoPct: 7, cashPct: 2 });
     expect(checks.filter((c) => c.breach).map((c) => c.kind)).toEqual(["position", "sector", "crypto", "cash"]);
     expect(checks[0]!.reason).toMatch(/caps one position at 5 %/);
