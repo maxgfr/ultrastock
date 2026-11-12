@@ -83,11 +83,20 @@ interface UsLot {
   origin?: UsLot;
   /** The sales of this lot's shares, each with the units already counted as a wash-sale replacement. */
   sales?: Array<{ tx: Transaction; date: string; qty: number; used: number; event?: TaxEvent }>;
+  /** A piece a wash sale split off a purchase: that purchase (its shares are the same purchase's, never its replacement). */
+  splitFrom?: UsLot;
+  /** The loss sales whose disallowed loss this lot's basis holds: their shares are never replacement shares for it. */
+  washedBy?: Set<Transaction>;
   sheltered: boolean;
   crypto: boolean;
 }
 
 const SHELTERED = new Set(["IRA", "ROTH-IRA", "401K"]);
+/** The purchase a lot's shares come from: through a move between accounts, and through a piece a wash sale split off. */
+const purchaseOf = (l: UsLot): UsLot => {
+  const p = l.origin ?? l;
+  return p.splitFrom ?? p;
+};
 /**
  * How long shares that left an account wait for the transfer-in that receives them: a move between brokers (ACATS) or
  * wallets takes days, not months — what arrives later is other shares, from outside the ledger. Not a tax parameter.
@@ -313,6 +322,7 @@ export class UsRegime extends TaxRegime<UsKey> {
           bought: from.bought,
           replaced: from.replaced >= from.quantity - 1e-12 ? qty : 0,
           origin,
+          ...(from.washedBy ? { washedBy: new Set(from.washedBy) } : {}),
         });
         if (i > 0) lots.push(piece);
         active.add(piece);
@@ -409,7 +419,16 @@ export class UsRegime extends TaxRegime<UsKey> {
               h.replaced = h.quantity;
               return h;
             }
-            const w: UsLot = { ...h, id: lots.length, quantity: q, remaining: Math.min(q, h.remaining), replaced: q, sales: [] };
+            const w: UsLot = {
+              ...h,
+              id: lots.length,
+              quantity: q,
+              remaining: Math.min(q, h.remaining),
+              replaced: q,
+              sales: [],
+              splitFrom: h.splitFrom ?? h,
+              ...(h.washedBy ? { washedBy: new Set(h.washedBy) } : {}),
+            };
             h.quantity -= q;
             h.remaining -= w.remaining;
             lots.push(w);
@@ -420,7 +439,8 @@ export class UsRegime extends TaxRegime<UsKey> {
           };
           for (const r of lots) {
             if (need <= 1e-12) break;
-            if (!r.purchase || r.asset !== asset || r.bought < from || r.bought > to || r.id === l.id) continue;
+            // The purchase the lot sold came from — whole, or split by an earlier wash sale — is never its replacement.
+            if (!r.purchase || r.asset !== asset || r.bought < from || r.bought > to || purchaseOf(r) === purchaseOf(l)) continue;
             // Replacement shares still held — in the purchase's account or moved to another of the user's — and not used
             // by an earlier wash sale take the loss into their basis.
             const here = r.replaced >= r.quantity - 1e-12 ? 0 : active.has(r) ? r.remaining : r.quantity;
@@ -428,10 +448,12 @@ export class UsRegime extends TaxRegime<UsKey> {
             const avail = r.sheltered ? r.quantity - r.replaced : here + carried.reduce((a, c) => a + c.remaining, 0);
             // Shares of this purchase sold BEFORE this loss sale (here or after a move): §1091(a) and Reg. 1.1091-1 speak
             // of shares "acquired" within the window, and no authority settles whether shares already sold count. The
-            // text is applied — they count — and the event says so (see the warning below).
+            // text is applied — they count — and the event says so (see the warning below). Never counted: shares that
+            // already replaced a loss while held (their sale records them used), and the shares of a loss sale this lot
+            // replaced — that loss is postponed until this lot is sold (IRS Pub. 550), not pushed back onto that sale.
             const soldBefore = r.sheltered
               ? []
-              : [r, ...(carriedOf.get(r) ?? [])].flatMap((h) => (h.sales ?? []).filter((x) => x.tx !== t && x.qty - x.used > 1e-12));
+              : [r, ...(carriedOf.get(r) ?? [])].flatMap((h) => (h.sales ?? []).filter((x) => x.tx !== t && !l.washedBy?.has(x.tx) && x.qty - x.used > 1e-12));
             const availSold = soldBefore.reduce((a, x) => a + x.qty - x.used, 0);
             if (avail + availSold <= 1e-12) continue;
             const q = Math.min(need, avail + availSold);
@@ -484,6 +506,7 @@ export class UsRegime extends TaxRegime<UsKey> {
             }
             for (const [h, n] of holders) {
               const w = take(h, n);
+              (w.washedBy ??= new Set()).add(t);
               // Shares carried from r count as r's: r has that many fewer left to be a replacement.
               if (h !== r) r.quantity -= n;
               w.basis += lossPerShare;
@@ -525,7 +548,10 @@ export class UsRegime extends TaxRegime<UsKey> {
         if (event) events.push(event);
         booked.push({ lot: l, qty, event });
       }
-      for (const b of booked) if (b.lot.id !== -1) (b.lot.sales ??= []).push({ tx: t, date: day(t.date), qty: b.qty, used: 0, event: b.event });
+      // Shares that already replaced a loss sale while held are recorded used: one replacement share takes one loss.
+      for (const b of booked)
+        if (b.lot.id !== -1)
+          (b.lot.sales ??= []).push({ tx: t, date: day(t.date), qty: b.qty, used: b.lot.replaced >= b.lot.quantity - 1e-12 ? b.qty : 0, event: b.event });
     };
     for (const t of history) {
       const env = envelopeOf(t.account, input.envelopes, t.symbol, t.isin);

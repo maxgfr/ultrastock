@@ -75,7 +75,10 @@ keys and the template command.
   but sold before the loss sale: §1091 and Reg. 1.1091-1 speak only of shares
   "acquired", and no authority settles the case. The engine applies the text
   (they count) and warns on that event; tell the user to confirm with a
-  professional.
+  professional. Never counted there: shares that already replaced a loss,
+  shares of the same purchase as those sold, and the shares of a loss sale
+  whose loss the lot sold holds (Reg. 1.1091-1(e): that loss is deducted when
+  the replacement shares are sold, IRS Pub. 550).
 
 ## Any other country: the neutral facts report
 

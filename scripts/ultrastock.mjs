@@ -57039,6 +57039,10 @@ var FranceRegime = class extends TaxRegime {
 
 // src/tax/us.ts
 var SHELTERED = /* @__PURE__ */ new Set(["IRA", "ROTH-IRA", "401K"]);
+var purchaseOf = (l) => {
+  const p = l.origin ?? l;
+  return p.splitFrom ?? p;
+};
 var TRANSIT_DAYS = 30;
 var REWARD_NOTE = /\b(staking|rewards?|airdrops?|interest|income|distribution|rebate|cashback|bonus|mining|launchpool|referral)\b/i;
 var NON_US_BROKERS = /degiro|trade ?republic|bourso|fortuneo|bourse ?direct|saxo|scalable|xtb|lightyear|trading ?212|revolut|bitpanda|bitstamp|binance(?!\.?us)|bnp|cr[eé]dit|soci[eé]t[eé]|lcl|linxea|bforbank|hello ?bank|freedom ?24/i;
@@ -57197,7 +57201,8 @@ var UsRegime = class extends TaxRegime {
           acquired: from.acquired,
           bought: from.bought,
           replaced: from.replaced >= from.quantity - 1e-12 ? qty : 0,
-          origin
+          origin,
+          ...from.washedBy ? { washedBy: new Set(from.washedBy) } : {}
         });
         if (i > 0) lots.push(piece);
         active2.add(piece);
@@ -57280,7 +57285,16 @@ var UsRegime = class extends TaxRegime {
               h.replaced = h.quantity;
               return h;
             }
-            const w = { ...h, id: lots.length, quantity: q, remaining: Math.min(q, h.remaining), replaced: q, sales: [] };
+            const w = {
+              ...h,
+              id: lots.length,
+              quantity: q,
+              remaining: Math.min(q, h.remaining),
+              replaced: q,
+              sales: [],
+              splitFrom: h.splitFrom ?? h,
+              ...h.washedBy ? { washedBy: new Set(h.washedBy) } : {}
+            };
             h.quantity -= q;
             h.remaining -= w.remaining;
             lots.push(w);
@@ -57291,11 +57305,11 @@ var UsRegime = class extends TaxRegime {
           };
           for (const r3 of lots) {
             if (need <= 1e-12) break;
-            if (!r3.purchase || r3.asset !== asset || r3.bought < from || r3.bought > to || r3.id === l.id) continue;
+            if (!r3.purchase || r3.asset !== asset || r3.bought < from || r3.bought > to || purchaseOf(r3) === purchaseOf(l)) continue;
             const here = r3.replaced >= r3.quantity - 1e-12 ? 0 : active2.has(r3) ? r3.remaining : r3.quantity;
             const carried = (carriedOf.get(r3) ?? []).filter((c) => active2.has(c) && c.replaced < c.quantity - 1e-12 && c.remaining > 1e-12);
             const avail = r3.sheltered ? r3.quantity - r3.replaced : here + carried.reduce((a, c) => a + c.remaining, 0);
-            const soldBefore = r3.sheltered ? [] : [r3, ...carriedOf.get(r3) ?? []].flatMap((h) => (h.sales ?? []).filter((x) => x.tx !== t && x.qty - x.used > 1e-12));
+            const soldBefore = r3.sheltered ? [] : [r3, ...carriedOf.get(r3) ?? []].flatMap((h) => (h.sales ?? []).filter((x) => x.tx !== t && !l.washedBy?.has(x.tx) && x.qty - x.used > 1e-12));
             const availSold = soldBefore.reduce((a, x) => a + x.qty - x.used, 0);
             if (avail + availSold <= 1e-12) continue;
             const q = Math.min(need, avail + availSold);
@@ -57344,6 +57358,7 @@ var UsRegime = class extends TaxRegime {
             }
             for (const [h, n2] of holders) {
               const w = take(h, n2);
+              (w.washedBy ??= /* @__PURE__ */ new Set()).add(t);
               if (h !== r3) r3.quantity -= n2;
               w.basis += lossPerShare;
               w.acquired = new Date(Date.parse(`${w.bought}T00:00:00Z`) - held).toISOString().slice(0, 10);
@@ -57382,7 +57397,9 @@ var UsRegime = class extends TaxRegime {
         if (event) events.push(event);
         booked.push({ lot: l, qty: qty2, event });
       }
-      for (const b of booked) if (b.lot.id !== -1) (b.lot.sales ??= []).push({ tx: t, date: day3(t.date), qty: b.qty, used: 0, event: b.event });
+      for (const b of booked)
+        if (b.lot.id !== -1)
+          (b.lot.sales ??= []).push({ tx: t, date: day3(t.date), qty: b.qty, used: b.lot.replaced >= b.lot.quantity - 1e-12 ? b.qty : 0, event: b.event });
     };
     for (const t of history) {
       const env2 = envelopeOf2(t.account, input.envelopes, t.symbol, t.isin);
