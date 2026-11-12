@@ -87,7 +87,8 @@ It lists, in the tax currency at each date's ECB rate:
 
 - each disposal: date, asset, quantity, proceeds net of fees, the cost under
   FIFO **and** under the weighted average (the researched `costMethod` marks
-  one), the FIFO lots' acquisition dates and holding periods in days, and
+  one when it names that method alone and plainly; a text that names both,
+  excludes one or describes another is shown "as described", neither marked), the FIFO lots' acquisition dates and holding periods in days, and
   whether it was a crypto-to-crypto exchange;
 - income: dividends, interest, staking and other rewards, with what was
   withheld; account fees.

@@ -17,7 +17,8 @@
 // - a crypto-to-crypto trade (stablecoins included) is listed as the disposal
 //   of what was given and the acquisition of what was received, marked
 //   `exchange`, for the country's rule to decide;
-// - the cost method the researched `costMethod` names is marked `chosen`;
+// - the cost method the researched `costMethod` names alone and plainly is
+//   marked `chosen` (a text naming both, or excluding one, marks neither);
 //   both are always shown.
 import type { Envelope } from "../core/profile.js";
 import type { Transaction } from "../portfolio/ledger.js";
@@ -141,12 +142,21 @@ const REWARD_NOTE = /\b(staking|rewards?|airdrops?|interest|income|distribution|
 const EPS = 1e-12;
 const DAY_MS = 86_400_000;
 
-/** "fifo" / "average" from the researched costMethod text, else undefined (both shown, none chosen). */
+const FIFO_WORDS = /\bfifo\b|first[\s-]*in[\s,-]*first[\s-]*out|premier[\s-]*entr/i;
+const AVERAGE_WORDS = /average|weighted|\bpmp\b|moyen|pond[ée]r/i;
+/** A word that excludes or qualifies a method ("FIFO is not allowed", "pas de FIFO", "except…"). */
+const NEGATION_WORDS =
+  /\b(?:not|no|never|nor|except|excluding|excluded|prohibited|forbidden|disallowed|instead|rather|unless|pas|sans|ni|sauf|interdite?s?|exclue?s?|non)\b|\bn['’]/i;
+
+/**
+ * "fifo" / "average" when the researched costMethod text names that method alone, plainly; else undefined: a text
+ * that names both, or excludes or qualifies one, is applied as described (both shown, neither marked).
+ */
 export function chosenMethod(text: unknown): "fifo" | "average" | undefined {
-  if (typeof text !== "string") return undefined;
-  if (/\bfifo\b|first[\s-]*in/i.test(text)) return "fifo";
-  if (/average|weighted|\bpmp\b|moyen/i.test(text)) return "average";
-  return undefined;
+  if (typeof text !== "string" || NEGATION_WORDS.test(text)) return undefined;
+  const fifo = FIFO_WORDS.test(text);
+  const average = AVERAGE_WORDS.test(text);
+  return fifo && !average ? "fifo" : average && !fifo ? "average" : undefined;
 }
 
 interface Pool {
@@ -162,7 +172,10 @@ export function neutralReport(input: NeutralInput): NeutralReport {
   const chosen = chosenMethod(researched);
   if (!input.rules?.facts.costMethod)
     warnings.push("costMethod is not researched: the cost is shown under FIFO and the weighted average, neither is marked as the law's");
-  else if (!chosen) warnings.push(`costMethod "${String(researched)}" is neither FIFO nor the weighted average: both are shown, apply the researched method`);
+  else if (!chosen)
+    warnings.push(
+      `costMethod "${String(researched)}" does not name FIFO or the weighted average alone and plainly: apply it as described — both costs are shown, neither is marked`,
+    );
 
   const value = (t: Transaction, amount: number, currency = t.currency): number => {
     if (amount === 0) return 0;
@@ -383,15 +396,18 @@ export function neutralReport(input: NeutralInput): NeutralReport {
     }
     if (t.type === "dividend" || t.type === "interest") {
       const amount = value(t, t.amount ?? 0);
-      const coin = isCrypto && !isFiat(t.currency) && !isStablecoin(t.currency);
-      if (coin && typeof t.amount === "number") acquire(t.currency.toUpperCase(), d, t.amount, amount);
+      // Paid in a crypto-asset, a stablecoin included: the holding is acquired at its value that day, as in an earlier
+      // year (a stablecoin's disposals are listed: spending it later has that cost).
+      const paidInCrypto = isCrypto && !isFiat(t.currency);
+      const coin = paidInCrypto && !isStablecoin(t.currency);
+      if (paidInCrypto && typeof t.amount === "number") acquire(t.currency.toUpperCase(), d, t.amount, amount);
       income.push({
         ...where(t),
         kind: coin ? "reward" : t.type,
         symbol: t.symbol,
         amount: round2(amount),
         withheld: 0,
-        notes: coin ? [`paid in ${t.currency}: valued at that day's rate, and a holding acquired at that value`] : [],
+        notes: paidInCrypto ? [`paid in ${t.currency}: valued at that day's rate, and a holding acquired at that value`] : [],
       });
     } else if (t.type === "tax") {
       // A tax row is the cash it moved: negative when withheld, positive when handed back.

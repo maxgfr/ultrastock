@@ -151,7 +151,7 @@ export function exportNeutral(r: NeutralReport): string {
       d.costAverage,
       d.gainFifo,
       d.gainAverage,
-      r.costMethod.chosen ?? "",
+      r.costMethod.chosen ?? (r.costMethod.researched ? "as described" : ""),
       d.fees,
       d.lots.map((l) => `${l.acquired}×${l.quantity}`).join(" "),
       d.heldDaysMin === d.heldDaysMax ? (d.heldDaysMin ?? "") : `${d.heldDaysMin}-${d.heldDaysMax}`,

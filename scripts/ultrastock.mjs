@@ -56363,7 +56363,7 @@ function exportNeutral(r3) {
       d.costAverage,
       d.gainFifo,
       d.gainAverage,
-      r3.costMethod.chosen ?? "",
+      r3.costMethod.chosen ?? (r3.costMethod.researched ? "as described" : ""),
       d.fees,
       d.lots.map((l) => `${l.acquired}\xD7${l.quantity}`).join(" "),
       d.heldDaysMin === d.heldDaysMax ? d.heldDaysMin ?? "" : `${d.heldDaysMin}-${d.heldDaysMax}`,
@@ -57770,11 +57770,14 @@ var TRANSIT_DAYS2 = 30;
 var REWARD_NOTE2 = /\b(staking|rewards?|airdrops?|interest|income|distribution|rebate|cashback|bonus|mining|launchpool|referral)\b/i;
 var EPS = 1e-12;
 var DAY_MS4 = 864e5;
+var FIFO_WORDS = /\bfifo\b|first[\s-]*in[\s,-]*first[\s-]*out|premier[\s-]*entr/i;
+var AVERAGE_WORDS = /average|weighted|\bpmp\b|moyen|pond[ée]r/i;
+var NEGATION_WORDS = /\b(?:not|no|never|nor|except|excluding|excluded|prohibited|forbidden|disallowed|instead|rather|unless|pas|sans|ni|sauf|interdite?s?|exclue?s?|non)\b|\bn['’]/i;
 function chosenMethod(text2) {
-  if (typeof text2 !== "string") return void 0;
-  if (/\bfifo\b|first[\s-]*in/i.test(text2)) return "fifo";
-  if (/average|weighted|\bpmp\b|moyen/i.test(text2)) return "average";
-  return void 0;
+  if (typeof text2 !== "string" || NEGATION_WORDS.test(text2)) return void 0;
+  const fifo = FIFO_WORDS.test(text2);
+  const average = AVERAGE_WORDS.test(text2);
+  return fifo && !average ? "fifo" : average && !fifo ? "average" : void 0;
 }
 function neutralReport(input) {
   const base2 = input.currency.toUpperCase();
@@ -57783,7 +57786,10 @@ function neutralReport(input) {
   const chosen = chosenMethod(researched2);
   if (!input.rules?.facts.costMethod)
     warnings.push("costMethod is not researched: the cost is shown under FIFO and the weighted average, neither is marked as the law's");
-  else if (!chosen) warnings.push(`costMethod "${String(researched2)}" is neither FIFO nor the weighted average: both are shown, apply the researched method`);
+  else if (!chosen)
+    warnings.push(
+      `costMethod "${String(researched2)}" does not name FIFO or the weighted average alone and plainly: apply it as described \u2014 both costs are shown, neither is marked`
+    );
   const value2 = (t, amount, currency = t.currency) => {
     if (amount === 0) return 0;
     let c = currency.toUpperCase();
@@ -57980,15 +57986,16 @@ function neutralReport(input) {
     }
     if (t.type === "dividend" || t.type === "interest") {
       const amount = value2(t, t.amount ?? 0);
-      const coin = isCrypto && !isFiat(t.currency) && !isStablecoin(t.currency);
-      if (coin && typeof t.amount === "number") acquire2(t.currency.toUpperCase(), d, t.amount, amount);
+      const paidInCrypto = isCrypto && !isFiat(t.currency);
+      const coin = paidInCrypto && !isStablecoin(t.currency);
+      if (paidInCrypto && typeof t.amount === "number") acquire2(t.currency.toUpperCase(), d, t.amount, amount);
       income.push({
         ...where(t),
         kind: coin ? "reward" : t.type,
         symbol: t.symbol,
         amount: round22(amount),
         withheld: 0,
-        notes: coin ? [`paid in ${t.currency}: valued at that day's rate, and a holding acquired at that value`] : []
+        notes: paidInCrypto ? [`paid in ${t.currency}: valued at that day's rate, and a holding acquired at that value`] : []
       });
     } else if (t.type === "tax") {
       charges.push({ date: d, account: t.account, symbol: t.symbol, amount: round22(-value2(t, t.amount ?? 0)), kind: "withholding" });
@@ -58229,7 +58236,7 @@ function neutralDatasets(r3, notes) {
   const out = [
     {
       kind: "tax-facts",
-      title: `${r3.country} ${r3.year} \u2014 facts from the ledger in ${r3.currency} at each date's rate (no tax computed; cost method ${r3.costMethod.chosen ?? "not chosen"})`,
+      title: `${r3.country} ${r3.year} \u2014 facts from the ledger in ${r3.currency} at each date's rate (no tax computed; cost method ${r3.costMethod.chosen ?? (r3.costMethod.researched ? "as described" : "not chosen")})`,
       subject: `TAXFACT.${r3.country}`,
       points,
       provenance: { source: "ultrastock-tax-facts", fetchedAt, asOf: `${r3.year}-12-31`, official: false },
@@ -58246,7 +58253,7 @@ function neutralText(r3, path2) {
   return [
     `# ${r3.country} ${r3.year} \u2014 facts from the ledger, in ${c} at each date's rate`,
     `${DISCLAIMER}. No tax is computed here: apply the researched rules below to these facts.`,
-    `cost method researched: ${r3.costMethod.researched ? `"${r3.costMethod.researched}"` : "not researched"} \u2192 ${r3.costMethod.chosen ? `${r3.costMethod.chosen} (marked *)` : "both shown, none chosen"}`,
+    `cost method researched: ${r3.costMethod.researched ? `"${r3.costMethod.researched}"` : "not researched"} \u2192 ${r3.costMethod.chosen ? `${r3.costMethod.chosen} (marked *)` : r3.costMethod.researched ? "as described: both shown, neither marked" : "both shown, none chosen"}`,
     "",
     `disposals (${r3.disposals.length}):`,
     ...r3.disposals.map(

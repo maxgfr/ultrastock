@@ -230,7 +230,7 @@ function neutralDatasets(r: NeutralReport, notes: string[]): Dataset[] {
   const out: Dataset[] = [
     {
       kind: "tax-facts",
-      title: `${r.country} ${r.year} — facts from the ledger in ${r.currency} at each date's rate (no tax computed; cost method ${r.costMethod.chosen ?? "not chosen"})`,
+      title: `${r.country} ${r.year} — facts from the ledger in ${r.currency} at each date's rate (no tax computed; cost method ${r.costMethod.chosen ?? (r.costMethod.researched ? "as described" : "not chosen")})`,
       subject: `TAXFACT.${r.country}`,
       points,
       provenance: { source: "ultrastock-tax-facts", fetchedAt, asOf: `${r.year}-12-31`, official: false },
@@ -249,7 +249,7 @@ function neutralText(r: NeutralReport, path: string): string {
   return [
     `# ${r.country} ${r.year} — facts from the ledger, in ${c} at each date's rate`,
     `${DISCLAIMER}. No tax is computed here: apply the researched rules below to these facts.`,
-    `cost method researched: ${r.costMethod.researched ? `"${r.costMethod.researched}"` : "not researched"} → ${r.costMethod.chosen ? `${r.costMethod.chosen} (marked *)` : "both shown, none chosen"}`,
+    `cost method researched: ${r.costMethod.researched ? `"${r.costMethod.researched}"` : "not researched"} → ${r.costMethod.chosen ? `${r.costMethod.chosen} (marked *)` : r.costMethod.researched ? "as described: both shown, neither marked" : "both shown, none chosen"}`,
     "",
     `disposals (${r.disposals.length}):`,
     ...r.disposals.map(
