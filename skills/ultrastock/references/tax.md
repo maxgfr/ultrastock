@@ -1,104 +1,104 @@
-# Tax: France and the United States
+# Tax: your research, the ledger's facts
 
-`tax` reads the ledger through the regime of the profile's tax residence (or
-`--regime fr|us`) for one tax year. The default is last year; `harvest` uses
-this year. Every amount is converted at the ECB rate of its own date.
+**ultrastock contains no tax law.** It holds no rate, no threshold, no
+ceiling, no holding period. You look up the rules for the user's country of
+tax residence and tax year on official sources, and store them with their
+sources and the date you checked them. Without them, `tax` refuses to compute
+and says what to research.
 
-It is a **preparation aid**: the broker's IFU (FR) or 1099 (US) and the
-official notices decide. Say so once in the answer.
+Say in the answer, once: the rules are your research (with their sources),
+the figures are a preparation aid and not tax advice, and the user should have
+a professional confirm them. For FR and US the broker's IFU / 1099 and the
+official notices decide.
 
-## Verify the rules first — every year
+## The workflow — every country, every year
 
-Tax parameters change every year. For example, the 2026 social-security law
-raised the CSG on investment income, and the US brackets are indexed to
-inflation. Each parameter in `src/tax/rules.ts` carries its value, its sources,
-its `verifiedAt` date and a confidence level.
+1. **Template.** `ultrastock tax rules template --country <CC> --year <Y>`
+   prints a JSON skeleton: every key to research with `value: null`, its
+   label, type, unit, a search query and the kind of official source to
+   prefer.
+   - FR and US: the full list of keys their engines read (rates, thresholds,
+     ceilings, holding periods, windows, deadlines, penalties), plus the form
+     lines whose numbering you must check on the year's forms.
+   - Any other country: a generic list — capital gains rates and how they
+     apply, holding-period rules, cost method, crypto treatment, annual
+     allowances, dividend and interest taxation, loss carry-forward,
+     wash-sale-like rules, reporting forms. Add `--currency <code>` (the tax
+     currency); add any other key your research finds.
+2. **Research.** Web-search each key for that country and **that** tax year.
+   Prefer the official text: FR service-public.fr, impots.gouv.fr, BOFiP,
+   Légifrance; US irs.gov publications, topic pages, Rev. Procs, the Code; for
+   other countries the tax administration's own site and the tax code.
+   Secondary sources only to find the official one — then say `medium` or
+   `low` confidence.
+3. **Fill.** For each key: `value` (a rate is a fraction: 30 % is `0.3`),
+   `sources` (at least one URL), `verifiedAt` (today), `confidence`
+   (`high` / `medium` / `low`), and a `note` for anything subtle (net of fees?
+   threshold itself included?). Set `researchedAt`. Remove a key you could not
+   research rather than guess it (an engine then refuses and names it).
+4. **Store.** `ultrastock tax rules set --file <file.json>` validates strictly
+   (types, every value sourced and dated, the year, no unknown key for FR / US)
+   and stores it in `<home>/facts/tax/<CC>-<Y>.json`. It lists what is still
+   missing.
+5. **Report.** `ultrastock tax report --year <Y>` (the country defaults to the
+   profile's tax residence; `--country` overrides it).
 
-1. Run `ultrastock tax verify --regime fr --year <year>`. It lists every
-   parameter, with a search query and its sources. When the year has no rules
-   yet, it names the year it falls back to.
-2. Web-search each parameter that matters to the user's question. Prefer the
-   official text: BOFiP, impots.gouv, service-public, Légifrance, irs.gov.
-3. If a value changed, tell the user. Do not use the stale figure, and say the
-   code needs updating (value, sources, verifiedAt).
+`tax rules show` prints the stored research; `tax verify` is the checklist —
+each key, its status (missing / researched / stale), its query and source.
+Run it when a year starts or the law changed, and re-research what it flags.
+A file of one year is never used for another.
 
-Parameters marked `medium` confidence rest on consistent secondary sources
-only.
+## France and the United States: the engines
 
-## France (`--regime fr`)
+The engines compute with your stored values only. A missing file, a missing
+key or a file for another year is refused with the file's path, the missing
+keys and the template command.
 
-- **Securities on a CTO.** The gain is the net sale price minus the weighted
-  average cost (PMP) of that security across the household's ordinary
-  accounts, fees included.
-  - A net loss is carried forward 10 years (`--carryforward 2024=1200,2023=300`).
-  - The forms are 3VG / 3VH, and 2074 for the detail (`tax export --format 2074`).
-- **PFU or the progressive scale.** The PFU is 12.8 % of income tax plus the
-  prélèvements sociaux.
-  - `--tmi 30` compares it with the scale: the 40 % dividend allowance and the
-    deductible CSG.
-  - The 2OP option covers **all** the household's investment income for the
-    year.
-- **Dividends** go in 2DC and interest in 2TR.
-  - At a French broker, the 12.8 % instalment is withheld (2CK).
-  - At a foreign broker (IBKR, Degiro, Trade Republic…), the user pays it with
-    **2778-DIV** by the 15th of the next month.
-- **Foreign withholding.** For US shares with a W-8BEN it is 15 %. It is
-  credited in 2AB, up to the French tax on that income.
-- **Foreign accounts.** Each one goes on **form 3916**, and each crypto
-  account abroad on **3916-bis**. The penalties per undeclared account are
-  listed in the output.
-- **PEA / PEA-PME.** Nothing is taxed inside the plan.
-  - A withdrawal is taxed on its share of the plan's gain. It needs the plan's
-    value that day: `--envelope-value pea:2026-03-02=52000`.
-  - After 5 years: social levies only.
-  - Before 5 years: the plan closes, and 12.8 % is added.
-- **Assurance-vie.** The gain share of a withdrawal is taxed at 7.5 % after 8
-  years, beyond the 4 600 € / 9 200 € allowance (`--household couple`), and
-  at 12.8 % before 8 years. Social levies are 17.2 %.
-- **Crypto (CGI art. 150 VH bis, form 2086).** Only disposals for fiat or
-  goods are taxed. Crypto-to-crypto trades, stablecoins included, are
-  deferred.
-  - The gain is the price minus the total acquisition price × price / the
-    portfolio's value at that moment. ultrastock values the holdings at each
-    disposal's daily close.
-  - The year is exempt when disposals total 305 € or less.
-  - Crypto losses only offset crypto gains of the same year.
-  - The boxes are 3AN / 3BN. `tax export --format 2086` fills the form's
-    lines.
+- **France** — securities at the household's weighted average cost (PMP);
+  the flat tax (PFU) against the progressive scale with `--tmi`; loss
+  carry-forward (`--carryforward 2024=1200`); PEA / PEA-PME and assurance-vie
+  withdrawals (`--envelope-value pea:2026-03-02=52000`, `--household couple`);
+  crypto by the global portfolio formula of CGI art. 150 VH bis (one
+  portfolio, whatever the platform or pair); foreign withholding credits;
+  2778-DIV, 3916 / 3916-bis obligations. Exports: `--format 2074`, `2086`.
+- **United States** — lots per account (`--lot-method fifo|hifo|lifo`), the
+  basis carried by asset in dollars at the acquisition date whatever the pair
+  (BTCEUR, BTCUSD, BTCUSDT are BTC); short / long term; wash sales; netting
+  and the loss limit (`--carryforward short=…,long=…`); the long-term brackets
+  with `--income` and `--filing`; NIIT; FBAR / 8938; PFICs. Exports:
+  `--format 8949`, `koinly`.
+- **Wash sale, an open question.** Replacement shares bought within the window
+  but sold before the loss sale: §1091 and Reg. 1.1091-1 speak only of shares
+  "acquired", and no authority settles the case. The engine applies the text
+  (they count) and warns on that event; tell the user to confirm with a
+  professional.
 
-## United States (`--regime us`)
+## Any other country: the neutral facts report
 
-- **Lots.** FIFO by default, or `--lot-method hifo|lifo`. The method must match
-  the broker's standing instruction.
-- **Holding period.** A sale after the first anniversary is long-term.
-- **Wash sales.** A loss is disallowed when the same security is bought within
-  30 days before or after the sale, in any account, an IRA included (then the
-  loss is lost for good). The loss moves into the replacement's basis (code W
-  on the 8949). Crypto is not covered as of the verification date; verify
-  each year.
-- **Losses.** Short-term nets against short-term and long-term against
-  long-term, then across. Up to $3,000 ($1,500 married filing separately) of
-  net loss deducts from ordinary income, and the rest carries forward
-  (`--carryforward short=…,long=…`).
-- **Rates.**
-  - `--income <taxable ordinary income> --filing single|joint|separate|head`
-    places long-term gains and qualified dividends in the 0 / 15 / 20 %
-    brackets and computes the 3.8 % NIIT.
-  - `--marginal-rate` taxes the short-term part.
-- **Foreign accounts.** FBAR and Form 8938 obligations are flagged. PEA and AV
-  are foreign accounts, and non-US funds are PFICs (Form 8621).
-- **Exports:** `tax export --format 8949`, and `--format koinly` for the crypto
-  transactions.
+`tax report --country <CC>` (or `--neutral` for FR / US) computes **no tax**.
+It lists, in the tax currency at each date's ECB rate:
 
-## Harvesting — `tax harvest`
+- each disposal: date, asset, quantity, proceeds net of fees, the cost under
+  FIFO **and** under the weighted average (the researched `costMethod` marks
+  one), the FIFO lots' acquisition dates and holding periods in days, and
+  whether it was a crypto-to-crypto exchange;
+- income: dividends, interest, staking and other rewards, with what was
+  withheld; account fees.
 
-`tax harvest` lists open positions under water and what selling them would
-save this year, at today's prices.
-- **FR:** there is no wash-sale rule, but a same-day sale and repurchase done
-  purely for tax can be challenged. For crypto, the global formula realises a
-  loss only when the portfolio is worth less than its acquisition price.
-- **US:** it flags the wash-sale risk and the date before which the user must
-  not rebuy.
+The researched rules are printed beside the facts. **You** apply them —
+rates, exemptions after a holding period, allowances, loss rules — and show
+the arithmetic with `calc`, citing the facts' `[E#]` and the rules' sources.
+`tax export --format neutral` (CSV) or `neutral-json` writes the report.
 
-Selling is the user's decision, through `plan` and the risk gate like any
-order.
+## Harvesting — `tax harvest` (FR, US)
+
+Open positions under water and what selling would save this year at today's
+prices, with the researched rates. The US flags the wash-sale risk and the
+date before which not to rebuy. Selling is the user's decision, through
+`plan` and the risk gate like any order.
+
+## Importing statements
+
+A generic CSV whose fee or tax rows carry both signs is refused until
+`portfolio import … --fee-sign charge-negative|charge-positive` says which
+sign is a charge: it is the file's convention, never guessed.

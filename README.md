@@ -10,7 +10,8 @@ The agent analyses, debates, decides and writes. `ultrastock check` refuses
 any answer that states a number the evidence does not hold. From there the
 same tool sizes the trade within the user's limits, runs it through a
 deterministic risk gate, paper-trades it, journals the call and settles it
-against the market. It prepares the tax return. It can also send a real order,
+against the market. It lays out the facts for the tax return beside the rules
+the agent researched for the user's country and year. It can also send a real order,
 but only behind hard guards and a code only the human can read.
 
 ```bash
@@ -75,7 +76,7 @@ answer prove it:
 | Learning | `decide`, `journal`, `watch`, `knowledge`, `report` | The user's own journal |
 | Dashboard | `serve` — a local, read-only web page of the book (positions, cash, P&L, XIRR, breaker, value over time), its risk, stress, income, location and look-through figures, the ledger, the journal, the watchlist, the tickets; `/api/…` as JSON | The user's own state; the same quote and rate sources as `portfolio` |
 | Research | `backtest` (walk-forward, CPCV, deflated Sharpe, PBO, Monte Carlo, review), `strategy`, `stats` | The same price sources |
-| Tax | `tax report/lots/harvest/rules/verify/export` (FR and US) | Sourced, yearly parameters, with a verification checklist |
+| Tax | `tax rules template/set/show`, `tax verify`, `tax report/lots/harvest/export` | No tax law built in: the agent researches each year's rules on official sources and stores them with their sources; FR and US engines, a neutral facts report for any other country |
 
 Optional free keys add sources: FRED, CoinGecko, a Solana RPC.
 `doctor --probe` lists what is reachable and what is active, and the maturity
@@ -114,9 +115,12 @@ of each command: **stable**, **beta** (unofficial sources) or
 - **Jurisdiction.** Polymarket is blocked for France (ANJ) and not even
   paper-traded. Kalshi is paper only from France. A block is never worked
   around.
-- **Tax figures** carry their sources and verification date. The skill makes
-  the agent re-check each year's parameters by web search before stating an
-  amount.
+- **No tax law is built in.** ultrastock holds no rate, threshold or holding
+  period. The agent looks up the rules for the user's country and tax year on
+  official sources and stores them with their sources and dates
+  (`tax rules template` → research → `tax rules set`); without them `tax`
+  refuses and says what to research. The values are the agent's research, not
+  ultrastock's: the user should have a professional confirm them.
 
 ## Commands
 

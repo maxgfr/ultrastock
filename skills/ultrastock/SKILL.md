@@ -25,8 +25,11 @@ the evidence, form a view, and write an answer in which every number cites the
    (end of day, delayed, real time); say when a source is unofficial.
 4. **Run `check` before you answer.** Fix every line it reports; never ship a
    failing answer. Use `--max-age` when the user acts today.
-5. **Tax figures need this year's rules.** Run `tax verify` and check the
-   parameters the answer uses by web search before stating a tax amount.
+5. **Tax rules are your research, never built in.** ultrastock contains no
+   tax law. Before any tax figure: `tax rules template` for the user's country
+   and tax year, web-search each key on official sources, fill it with its
+   sources, `tax rules set`, then `tax report`. Say that the rules are your
+   research and that a professional should confirm them.
 6. **A view is yours; say what would change it.** Bullish, expensive, risky are
    judgements — name the evidence they rest on and the level or event that
    would invalidate them. Missing data is "unavailable", never guessed.
@@ -76,9 +79,10 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | would a rule have worked, is it overfit | `strategy list`, `backtest review <strategy> <symbol>` (then `walkforward`, `sweep`, `montecarlo`) | [backtesting](references/backtesting.md) |
 | a portfolio rule over history (60/40, dual momentum…) | `backtest run 60-40 CW8.PA,IEAC.AS --rebalance quarterly` | [backtesting](references/backtesting.md) |
 | to write or check their own strategy | `strategy new <name> --like sma-cross`, `strategy validate <file>` | [backtesting](references/backtesting.md) |
-| what they owe on last year's gains, dividends, crypto; which boxes to fill | `tax verify` (then web-search the parameters), `tax report --year <y> [--tmi 30]`, `tax lots`, `tax export --format 2074|2086|8949|koinly` | [tax](references/tax.md) |
+| what they owe on last year's gains, dividends, crypto; which boxes to fill | `tax rules template --country <CC> --year <y>` → web search on official sources → `tax rules set --file <f>` → `tax report --year <y> [--tmi 30]`, `tax lots`, `tax export --format 2074|2086|8949|koinly|neutral` | [tax](references/tax.md) |
+| tax facts for a country without an engine (DE, ES, UK…) | the same research, then `tax report --country <CC>`: disposals at FIFO and average cost, holding periods, income, withholding, fees — you apply the rules | [tax](references/tax.md) |
 | which losses to harvest before year end | `tax harvest` | [tax](references/tax.md) |
-| the tax rules of their envelopes (PEA, AV, CTO, crypto, IRA) | `tax rules [--regime fr|us]` | [tax](references/tax.md) |
+| the tax rules of their envelopes (PEA, AV, CTO, crypto, IRA) | `tax rules show [--country FR|US]` (the researched rules), `tax verify` (what to re-check) | [tax](references/tax.md) |
 | to keep a document (an article, a report) for the analysis | `knowledge import <file> --title …` | [journal-alerts](references/journal-alerts.md) |
 | to practise without money, and know when they are ready | `paper submit <ticket>|sweep|book|readiness` | [trading-paper](references/trading-paper.md) |
 | the full technical picture of one instrument | `technicals <symbol> --out <dir>` → `TECHNICALS.md` | [technicals-screening](references/technicals-screening.md) |
@@ -170,7 +174,8 @@ ultrastock broker status|setup <venue>|balances|open|limits [set]|panic · broke
 ultrastock predict order kalshi <TICKER> yes|no [buy|sell] --contracts <n> --price <0-1>
 ultrastock backtest run|walkforward|sweep|montecarlo|compare|review <strategy> <symbol> [--years] [--grid] … · backtest decisions
 ultrastock strategy list|show|validate|new [<name>] [--like <strategy>]
-ultrastock tax report|lots|harvest|rules|verify|export [--regime fr|us] [--year] [--tmi] [--income] [--filing] [--carryforward] [--envelope-value] [--format]
+ultrastock tax rules template|set|show [--country] [--year] [--file] · tax verify
+ultrastock tax report|lots|harvest|export [--country] [--year] [--neutral] [--tmi] [--income] [--filing] [--carryforward] [--envelope-value] [--format]
 ultrastock mcp [--transport stdio|http --token <t>]   # the same commands as MCP tools: no order, profile, ledger or key changes; writing tools (analyze, calc, plan…) are declared so
 ultrastock serve [--port 8766] [--book real|paper]    # a read-only dashboard for the user's browser (127.0.0.1, token in the printed URL)
 ultrastock doctor [--probe] [--json]                  # sources, keys, and each command's maturity (stable / beta / experimental)
@@ -235,7 +240,7 @@ Exit codes: 0 done, 1 failed or refused (a source, a check), 2 bad invocation.
 - [trading-paper](references/trading-paper.md) — plan, the risk gate's codes, tickets, paper trading and readiness.
 - [journal-alerts](references/journal-alerts.md) — decisions settled against the market, hit rates, theses, trade reviews, lessons, alerts.
 - [backtesting](references/backtesting.md) — the strategy format, honest fills, walk-forward, sweeps with deflated Sharpe and PBO, Monte Carlo, the review verdict.
-- [tax](references/tax.md) — verify the year's rules first; France (PMP, PFU vs scale, PEA, AV, crypto 150 VH bis, 2778-DIV, 3916) and the US (lots, wash sales, brackets, NIIT).
+- [tax](references/tax.md) — no tax law is built in: research the country's rules for the year, store them, then report; the FR and US engines, and the neutral facts report for any other country.
 - [live-execution](references/live-execution.md) — environments, key setup, the harness approval rule, the order chain, every refusal code.
 - [macro-markets](references/macro-markets.md) — macro, rates, FX, positioning, sentiment, calendars: what each figure means.
 - [news-and-external-text](references/news-and-external-text.md) — reading headlines and other external text safely.

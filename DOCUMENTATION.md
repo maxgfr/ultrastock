@@ -93,6 +93,7 @@ in it is sent anywhere, and files are created 0600.
 | `tickets/`, `audit/orders.jsonl` | every order's life, appended and fsync'd before and after anything executes |
 | `journal/`, `theses/`, `knowledge/` | decisions and their settlements, theses, lessons, imported documents |
 | `state/` | alert rules, the watchlist, live limits, approval codes (scrypt-hashed) |
+| `facts/<domain>/<CC>-<period>.json` | facts the agent researched, each with its sources and date — today `facts/tax/<CC>-<year>.json`, the tax rules |
 | `KILL` | the kill switch |
 
 ## From a view to an order
@@ -153,9 +154,61 @@ amount at the ECB rate of its own date. Outputs:
 - warnings for everything the engine cannot know, such as a PEA's value on
   the day of a withdrawal.
 
-Parameters (`src/tax/rules.ts`) are versioned by year, and each carries its
-sources and verification date. A missing year falls back with a staleness
-warning, and `tax verify` prints the checklist to re-check by web search.
+ultrastock contains no tax law. `src/tax/rules.ts` holds only the schema:
+for France and the United States the keys their engines read (each with a
+label, a type, a unit, a search query and the kind of official source to
+prefer — service-public.fr / BOFiP / Légifrance, IRS publications / Rev.
+Proc.), and for any other country a generic list (capital gains rates and how
+they apply, holding periods, cost method, crypto, allowances, dividends and
+interest, loss carry-forward, wash-sale-like rules, reporting forms). Form
+line and box numbers stay engine structure; the template lists those whose
+numbering is year-dependent.
+
+The values are the agent's research, stored per country and tax year in
+`<home>/facts/tax/<CC>-<year>.json` through the researched-facts store
+(`src/core/researched.ts`, see below). The workflow:
+
+1. `tax rules template --country CC --year Y` prints the JSON skeleton, every
+   value `null`.
+2. The agent web-searches each key on official sources for that country and
+   year, and fills `value`, `sources` (at least one URL), `verifiedAt` and
+   `confidence`.
+3. `tax rules set --file <json>` validates strictly (types, every value
+   sourced, the year, no unknown key for an engine country) and stores it.
+4. `tax report` computes (FR, US) or lists the facts (any other country, or
+   `--neutral`); `tax rules show` prints the stored research and `tax verify`
+   is the checklist of what to research or re-check.
+
+Without a file for the exact year, or with a key an engine reads missing, the
+engines refuse with a usage error naming the file, the missing keys and the
+template command — never an earlier year's values.
+
+The neutral facts report (`src/tax/neutral.ts`) is for any country: each
+disposal with its proceeds and its cost under FIFO and under the weighted
+average (the researched `costMethod` marks one), the acquisition dates and
+holding periods, income (dividends, interest, rewards) with what was withheld,
+and fees — in the base currency at each date's ECB rate. It computes no tax:
+the researched rules are shown beside the facts for the agent to apply.
+`tax export --format neutral|neutral-json` writes it.
+
+Two choices are named rather than settled silently. US wash sales: §1091 and
+Reg. 1.1091-1 speak of shares "acquired" within the window, and no authority
+settles replacement shares sold before the loss sale; the engine applies the
+text (they count) and warns on that event. A generic CSV that writes fee or tax
+rows with both signs must say which sign is a charge
+(`portfolio import --fee-sign charge-negative|charge-positive`): it is the
+file's convention, not a tax rule, and is not guessed.
+
+## Researched facts
+
+`src/core/researched.ts` is the one store for facts that change over time and
+are not built into the code. A domain (`defineDomain`) registers its keys per
+country (name, label, type, unit, search query, preferred official source);
+a file per domain, country and period (a year or a date) lives in
+`<home>/facts/<domain>/<CC>-<period>.json`, written atomically. Validation is
+strict, and a fact past its `expiresAt` or older than its key's `maxAgeDays`
+reads as unknown. Tax is the first domain; the template, the checklist and the
+refusals come from the registry.
 
 ## MCP
 
