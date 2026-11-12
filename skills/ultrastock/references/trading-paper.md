@@ -77,7 +77,10 @@ to change.
   to orders in its stated currency (`ibkr.currency`,
   `account.<id>.currency`). With neither, **paper refuses to fill**:
   research the fees or import the account's statements. A paper `plan` says
-  which fee its fill would pay, or that none is known yet.
+  which fee its fill would pay, or that none is known yet. Getting out is
+  the exception: a sell of what the paper book holds is filled with its fee
+  marked unknown (booked without one, said on the fill), and that fill is
+  left out of the paper record `paper readiness` measures.
 - `paper sweep` works limit orders against the bars traded since.
 - `paper book` lists the paper positions.
 - `paper readiness` says whether the paper record supports real money:

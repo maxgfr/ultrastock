@@ -32,6 +32,11 @@ export interface Fill {
   method: string;
   /** A paper fill read from a fixture, not the market: booked at the wall clock, never part of the paper record. */
   replayed?: boolean;
+  /**
+   * Why no fee was known for this fill: a paper exit (a sell of what is held) is filled anyway — a position is never
+   * trapped — booked without a fee (`fee` is then 0, not a figure) and never part of the paper record.
+   */
+  feeUnknown?: string;
 }
 
 export interface Ticket {

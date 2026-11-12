@@ -13,7 +13,9 @@
 //   fees          the user's own fees on that account (real ledger), else the venue's schedule
 //                 as the agent researched it (trading/fees.ts) — none built in. Without
 //                 either there is no paper fill: a fill without its fee would flatter the
-//                 record the live gate measures. Crossing the book pays the taker rate; a
+//                 record the live gate measures. Except getting out: a sell of what is
+//                 held (risk-reducing at its check) is filled with its fee marked unknown,
+//                 booked without one, and left out of the paper record — said on the fill. Crossing the book pays the taker rate; a
 //                 resting limit reached later (`paper sweep`) the maker rate.
 import { join } from "node:path";
 import { withFileLock } from "../core/lock.js";
@@ -26,12 +28,32 @@ import { executionRefusal, type Fill, listTickets, loadTicket, type Ticket, tran
 import { simulatePredictionFill } from "./prediction.js";
 import type { Order } from "./riskgate.js";
 
-/** The fee a paper fill pays, or the refusal: no fill is made without a known fee. */
-function paperFee(order: Order, market: string, side: "maker" | "taker", now: Date): Exclude<FeeLookup, { missing: string }> {
+type PaperFee = Exclude<FeeLookup, { missing: string }> | { unknown: string };
+
+/**
+ * The fee a paper fill pays, or the refusal: no fill is made without a known fee — but an exit (a sell of what is held)
+ * is never trapped by a fee nobody researched: it gets the fee marked unknown instead.
+ */
+function paperFee(order: Order, market: string, side: "maker" | "taker", now: Date, exit: boolean): PaperFee {
   const f = feeLookup(order, market, side, { now });
-  if ("missing" in f) throw new Error(`no paper fill: ${f.missing}`);
-  return f;
+  if (!("missing" in f)) return f;
+  if (exit) return { unknown: f.missing };
+  throw new Error(`no paper fill: ${f.missing}`);
 }
+
+/** A fill's fee and the words its method ends with. */
+function feeOf(fee: PaperFee, quantity: number, price: number): { fee: number; basis: string; feeUnknown?: string } {
+  if ("unknown" in fee)
+    return {
+      fee: 0,
+      basis: `unknown (${fee.unknown}) — an exit is filled anyway, booked without a fee and left out of the paper record`,
+      feeUnknown: fee.unknown,
+    };
+  return { fee: feeFor(fee.model, quantity, price), basis: fee.basis };
+}
+
+/** Whether a paper ticket is getting out: a sell its risk check found risk-reducing (what the book holds). */
+const isExit = (t: Ticket): boolean => t.order.side === "sell" && t.check?.riskReducing === true;
 
 /** Volume-weighted price of walking `levels` (price, quantity) for `quantity`; undefined when the book is too thin. */
 export function walkBook(levels: ReadonlyArray<readonly [number, number]>, quantity: number): { price: number; levels: number } | undefined {
@@ -51,11 +73,11 @@ export function walkBook(levels: ReadonlyArray<readonly [number, number]>, quant
 export type PaperOutcome = { kind: "fill"; fill: Fill; note?: string } | { kind: "working"; reason: string };
 
 /** What filling this order now would give, without booking anything. */
-export async function simulateFill(order: Order, now: Date): Promise<PaperOutcome> {
+export async function simulateFill(order: Order, now: Date, opts: { exit?: boolean } = {}): Promise<PaperOutcome> {
   if (order.assetKind === "prediction") return simulatePredictionFill(order, now);
   const resolved = await resolveSymbol(order.symbol);
   const market = resolved.instrument.market;
-  const fee = paperFee(order, market, "taker", now);
+  const fee = paperFee(order, market, "taker", now, opts.exit === true);
   if (market === "crypto") {
     const res = await fetchJson<{ bids: [string, string][]; asks: [string, string][] }>(
       `https://api.binance.com/api/v3/depth?symbol=${resolved.instrument.venueId}&limit=100`,
@@ -68,15 +90,17 @@ export async function simulateFill(order: Order, now: Date): Promise<PaperOutcom
       const levels = order.orderType === "limit" ? side.filter(([p]) => (order.side === "buy" ? p <= order.price : p >= order.price)) : side;
       const w = walkBook(levels, order.quantity);
       if (!w) return { kind: "working", reason: "not enough depth inside the limit for the whole quantity" };
+      const f = feeOf(fee, order.quantity, w.price);
       return {
         kind: "fill",
         fill: {
           at: now.toISOString(),
           quantity: order.quantity,
           price: w.price,
-          fee: feeFor(fee.model, order.quantity, w.price),
+          fee: f.fee,
           venue: "paper",
-          method: `Binance order-book walk (${w.levels} level(s)); fee: ${fee.basis}`,
+          method: `Binance order-book walk (${w.levels} level(s)); fee: ${f.basis}`,
+          ...(f.feeUnknown ? { feeUnknown: f.feeUnknown } : {}),
         },
       };
     }
@@ -88,15 +112,17 @@ export async function simulateFill(order: Order, now: Date): Promise<PaperOutcom
     return { kind: "working", reason: `the limit ${order.price} has not been reached (last ${q.price})` };
   const price = order.orderType === "limit" ? (order.side === "buy" ? Math.min(px, order.price) : Math.max(px, order.price)) : px;
   const eod = q.provenance.delay === "eod";
+  const f = feeOf(fee, order.quantity, price);
   return {
     kind: "fill",
     fill: {
       at: now.toISOString(),
       quantity: order.quantity,
       price,
-      fee: feeFor(fee.model, order.quantity, price),
+      fee: f.fee,
       venue: "paper",
-      method: `last price ${q.price} ± ${slippageBp(market)} bp slippage (an assumption, not measured); fee: ${fee.basis}`,
+      method: `last price ${q.price} ± ${slippageBp(market)} bp slippage (an assumption, not measured); fee: ${f.basis}`,
+      ...(f.feeUnknown ? { feeUnknown: f.feeUnknown } : {}),
     },
     note: eod ? `filled at the last official close ${q.at}: end-of-day data, the real fill would be at the next session's price` : undefined,
   };
@@ -126,7 +152,8 @@ async function book(t: Ticket, fill: Fill): Promise<void> {
         symbol: t.order.symbol,
         quantity: fill.quantity,
         price: fill.price,
-        fee: fill.fee,
+        // An exit filled with no fee known books none: an unknown fee is not a fee of 0.
+        ...(fill.feeUnknown ? {} : { fee: fill.fee }),
         currency: t.order.currency,
         origin: `ticket:${t.id}`,
         note: fill.method,
@@ -152,7 +179,7 @@ export async function paperSubmit(id: string, now = new Date()): Promise<{ ticke
     if (t.order.venue !== "paper") throw new Error(`ticket ${id} is for ${t.order.venue}, not paper — live venues have their own, stricter path`);
     const refusal = executionRefusal(t, now);
     if (refusal) throw new Error(refusal);
-    const simulated = await simulateFill(t.order, now);
+    const simulated = await simulateFill(t.order, now, { exit: isExit(t) });
     const outcome: PaperOutcome = simulated.kind === "fill" ? { ...simulated, fill: asBooked(simulated.fill) } : simulated;
     // A user's cancel takes the ticket's lock only: the fill is booked under it, once the ticket is still checked.
     if (outcome.kind === "working") return { ticket: await transition(id, "working", outcome.reason, undefined, now, ["checked"]), outcome };
@@ -210,18 +237,20 @@ export async function paperSweep(now = new Date()): Promise<Array<{ id: string; 
     const price = gapped ? bar.open : t.order.price;
     const market = resolved.instrument.market;
     // A resting limit reached by the market pays the maker rate; one the open gapped through, the taker rate.
-    const fee = feeLookup(t.order, market, gapped ? "taker" : "maker", { now });
-    if ("missing" in fee) {
-      out.push({ id: t.id, result: `not filled: ${fee.missing}` });
+    const looked = feeLookup(t.order, market, gapped ? "taker" : "maker", { now });
+    if ("missing" in looked && !isExit(t)) {
+      out.push({ id: t.id, result: `not filled: ${looked.missing}` });
       continue;
     }
+    const f = feeOf("missing" in looked ? { unknown: looked.missing } : looked, t.order.quantity, price);
     const fill: Fill = asBooked({
       at: bar.date.length > 10 ? bar.date : `${bar.date}T00:00:00.000Z`,
       quantity: t.order.quantity,
       price,
-      fee: feeFor(fee.model, t.order.quantity, price),
+      fee: f.fee,
       venue: "paper",
-      method: `${gapped ? `opened through the limit on ${bar.date}: filled at the open` : `traded through the limit on ${bar.date}`}; fee: ${fee.basis}`,
+      method: `${gapped ? `opened through the limit on ${bar.date}: filled at the open` : `traded through the limit on ${bar.date}`}; fee: ${f.basis}`,
+      ...(f.feeUnknown ? { feeUnknown: f.feeUnknown } : {}),
     });
     // The bars were read without the lock: the ticket may have been filled, swept or cancelled since.
     const booked = await paperLock(() =>
@@ -264,13 +293,17 @@ export interface PaperRecord {
 export function paperRecord(txs: readonly Transaction[], tickets: readonly Ticket[]): PaperRecord {
   const paper = tickets.filter((t) => t.order.venue === "paper" && t.status === "filled" && t.fills.length > 0);
   const replayed = new Set(paper.filter((t) => t.fills.some((f) => f.replayed)).map((t) => `ticket:${t.id}`));
-  const counted = new Set(paper.map((t) => `ticket:${t.id}`).filter((o) => !replayed.has(o)));
+  // An exit filled with no fee known: its result would be flattered by the fee it did not pay.
+  const feeless = new Set(paper.filter((t) => t.fills.some((f) => f.feeUnknown) && !replayed.has(`ticket:${t.id}`)).map((t) => `ticket:${t.id}`));
+  const counted = new Set(paper.map((t) => `ticket:${t.id}`).filter((o) => !replayed.has(o) && !feeless.has(o)));
   const trade = (t: Transaction) => t.type === "buy" || t.type === "sell" || t.type === "transfer-in" || t.type === "transfer-out";
   let typed = 0;
   let onReplay = 0;
+  let unknownFee = 0;
   const kept = txs.filter((t) => {
     if (!trade(t) || counted.has(t.origin)) return true;
     if (replayed.has(t.origin)) onReplay++;
+    else if (feeless.has(t.origin)) unknownFee++;
     else typed++;
     return false;
   });
@@ -278,6 +311,10 @@ export function paperRecord(txs: readonly Transaction[], tickets: readonly Ticke
   if (typed)
     excluded.push(`${typed} paper ledger row(s) not filled by a paper ticket (typed with \`portfolio add\`, imported, transferred) are not part of the record`);
   if (onReplay) excluded.push(`${onReplay} paper fill(s) made on a replayed fixture are not part of the record: the market was not live`);
+  if (unknownFee)
+    excluded.push(
+      `${unknownFee} paper fill(s) booked with an unknown fee (exits filled so a position is never trapped) are not part of the record: their result would be flattered by the fee they did not pay`,
+    );
   const first = kept
     .filter((t) => t.type === "buy")
     .map((t) => t.date)
