@@ -56440,10 +56440,15 @@ async function jurisdictionCommand(args, asJson) {
       points: [
         { key: `${v}.crypto.liveAllowed.${code}`, label: `${v}: live crypto orders allowed for a ${code} resident`, value: g.ok },
         ...m ? [
-          { key: `${v}.mica.authorised.${code}`, label: `${v} authorised MiCA CASP serving ${code}`, value: m.authorised.length > 0 },
+          // A match on the name alone is no authorisation: only the venue's researched LEI identifies it in the register.
+          {
+            key: `${v}.mica.authorised.${code}`,
+            label: `${v} authorised MiCA CASP serving ${code}${m.matchedOn === "name" ? " (unverified: matched on the name, no researched LEI)" : ""}`,
+            value: m.matchedOn === "lei" && m.authorised.length > 0
+          },
           ...m.authorised.map((e, i) => ({
             key: `${v}.mica.entity.${i}`,
-            label: `${v} authorised entity`,
+            label: m.matchedOn === "lei" ? `${v} authorised entity` : `${v} candidate entity (name match, unverified)`,
             value: `${e.name}${e.lei ? ` (LEI ${e.lei})` : ""} \u2014 ${e.homeState}, ${e.authority}, since ${e.authorisedOn}`
           })),
           ...m.warnings.map((w, i) => ({
