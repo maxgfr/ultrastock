@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.15.0](https://github.com/maxgfr/ultrastock/compare/v1.14.1...v1.15.0) (2026-11-12)
+
+
+### Features
+
+* **people:** find funds by EDGAR's 13F filer list and research people on the web ([2fcce10](https://github.com/maxgfr/ultrastock/commit/2fcce1029a2ddc25ec5fb8d3d2859682f0b6806b))
+* **people:** track public figures' disclosed trades and positions ([08015a8](https://github.com/maxgfr/ultrastock/commit/08015a8230a966d521e35a912a2973d7d76ef35b))
+
 ## [1.14.1](https://github.com/maxgfr/ultrastock/compare/v1.14.0...v1.14.1) (2026-11-12)
 
 
