@@ -32,12 +32,14 @@ official notices decide.
    Secondary sources only to find the official one — then say `medium` or
    `low` confidence.
 3. **Fill.** For each key: `value` (a rate is a fraction: 30 % is `0.3`),
-   `sources` (at least one URL), `verifiedAt` (today), `confidence`
+   `sources` (at least one URL of a public page), `verifiedAt` (today), `confidence`
    (`high` / `medium` / `low`), and a `note` for anything subtle (net of fees?
    threshold itself included?). Set `researchedAt`. Remove a key you could not
    research rather than guess it (an engine then refuses and names it).
 4. **Store.** `ultrastock tax rules set --file <file.json>` validates strictly
-   (types, every value sourced and dated, the year, no unknown key for FR / US)
+   (types — years and days whole numbers, rates and thresholds in order — every
+   value sourced and dated, the year — next year at the latest — no unknown key
+   for FR / US)
    and stores it in `<home>/facts/tax/<CC>-<Y>.json`. A year already stored
    keeps the keys the new file does not hold (re-research one key with
    `--key` and store just it); the output says which were kept and which

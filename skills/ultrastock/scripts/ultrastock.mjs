@@ -17471,18 +17471,22 @@ var isIsoDate = (s) => {
 };
 var isUrl = (s) => {
   if (typeof s !== "string" || !/^https?:\/\/\S+$/.test(s)) return false;
+  let host;
   try {
-    new URL(s);
-    return true;
+    host = new URL(s).hostname.toLowerCase();
   } catch {
     return false;
   }
+  const labels = host.split(".");
+  if (labels.length < 2 || labels.some((l) => !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(l))) return false;
+  if (!/^(?:[a-z]{2,63}|xn--[a-z0-9-]+)$/.test(labels.at(-1) ?? "")) return false;
+  return labels.at(-1) !== "localhost" && labels.at(-1) !== "local" && labels.at(-1) !== "internal";
 };
 var isPlainObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 var FREE_KEY = /^[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)*$/;
 var DAY_MS3 = 864e5;
 var today = () => clockNow().toISOString().slice(0, 10);
-var TEMPLATE_FACT_FIELDS = /* @__PURE__ */ new Set(["type", "unit", "fields", "values", "query", "prefer", "maxAgeDays", "usedBy", "evidence"]);
+var TEMPLATE_FACT_FIELDS = /* @__PURE__ */ new Set(["type", "unit", "fields", "values", "integer", "ordered", "query", "prefer", "maxAgeDays", "usedBy", "evidence"]);
 var FACT_FIELDS = /* @__PURE__ */ new Set(["value", "label", "sources", "verifiedAt", "confidence", "expiresAt", "note"]);
 var TEMPLATE_TOP_FIELDS = /* @__PURE__ */ new Set(["_about", "formLines"]);
 function typeProblem(spec, v) {
@@ -17492,7 +17496,8 @@ function typeProblem(spec, v) {
       return num17(v) && v >= 0 && v <= 1 ? void 0 : "a rate is a number between 0 and 1 (a fraction, not a percent)";
     case "amount":
     case "number":
-      return num17(v) && v >= 0 ? void 0 : `a ${spec.type} is a number \u2265 0`;
+      if (!(num17(v) && v >= 0)) return `a ${spec.type} is a number \u2265 0`;
+      return spec.integer && !Number.isInteger(v) ? `a whole number (${v} is not one)` : void 0;
     case "date":
       return isIsoDate(v) ? void 0 : "a date is written YYYY-MM-DD";
     case "text":
@@ -17510,7 +17515,10 @@ function typeProblem(spec, v) {
       const parts = [
         missing.length ? `missing field(s) ${missing.join(", ")}` : "",
         extra.length ? `unknown field(s) ${extra.join(", ")}` : "",
-        bad.length ? `field(s) ${bad.map(([k]) => k).join(", ")} must be ${spec.type === "rates" ? "rates between 0 and 1" : "numbers \u2265 0"}` : ""
+        bad.length ? `field(s) ${bad.map(([k]) => k).join(", ")} must be ${spec.type === "rates" ? "rates between 0 and 1" : "numbers \u2265 0"}` : "",
+        ...missing.length || bad.length ? [] : (spec.ordered ?? []).map(
+          (chain2) => chain2.some((f3, i) => i > 0 && v[f3] < v[chain2[i - 1]]) ? `${chain2.join(" \u2264 ")} must not decrease (${chain2.map((f3) => `${f3} ${String(v[f3])}`).join(", ")})` : ""
+        )
       ].filter(Boolean);
       return parts.length ? parts.join("; ") : void 0;
     }
@@ -17521,7 +17529,10 @@ function typeProblem(spec, v) {
     case "time":
       return typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? void 0 : 'a time of day written HH:MM (24 h), such as "16:00"';
     case "any":
-      return v === null || v === void 0 ? "no value" : void 0;
+      if (v === null || v === void 0) return "no value";
+      if (typeof v === "string" && !v.trim() || Array.isArray(v) && !v.length || isPlainObject(v) && !Object.keys(v).length)
+        return "an empty value is no research \u2014 fill it or remove the key";
+      return void 0;
   }
 }
 function validateFacts(d, raw, expect = {}) {
@@ -17536,6 +17547,7 @@ function validateFacts(d, raw, expect = {}) {
   const period2 = raw[p];
   const periodOk = p === "year" ? typeof period2 === "number" && Number.isInteger(period2) && period2 >= 1900 && period2 <= 2200 : isIsoDate(period2);
   if (!periodOk) problems.push(p === "year" ? '"year" is an integer such as 2025' : '"date" is written YYYY-MM-DD');
+  else if (p === "year" && period2 > Number(now.slice(0, 4)) + 1) problems.push(`"year" ${String(period2)} is after next year`);
   else if (p === "date" && period2 > now) problems.push(`"date" ${String(period2)} is in the future`);
   if (expect.country && country2 && country2 !== expect.country.toUpperCase()) problems.push(`the file is for ${country2}, not ${expect.country.toUpperCase()}`);
   if (expect.period !== void 0 && periodOk && period2 !== expect.period)
@@ -17577,7 +17589,7 @@ function validateFacts(d, raw, expect = {}) {
       if (spec && f3.type !== void 0 && f3.type !== spec.type) problems.push(`${at}.type: "${String(f3.type)}", the key is a ${spec.type}`);
       if (typeof f3.label !== "string" || !f3.label.trim()) problems.push(`${at}.label: a non-empty string`);
       if (!Array.isArray(f3.sources) || !f3.sources.length) problems.push(`${at}.sources: at least one URL of the text the value was read from`);
-      else for (const s of f3.sources) if (!isUrl(s)) problems.push(`${at}.sources: "${String(s)}" is not an http(s) URL`);
+      else for (const s of f3.sources) if (!isUrl(s)) problems.push(`${at}.sources: "${String(s)}" is not an http(s) URL of a public web page`);
       if (!isIsoDate(f3.verifiedAt)) problems.push(`${at}.verifiedAt: the date it was checked, YYYY-MM-DD`);
       else if (f3.verifiedAt > now) problems.push(`${at}.verifiedAt: ${f3.verifiedAt} is in the future`);
       if (f3.confidence !== "high" && f3.confidence !== "medium" && f3.confidence !== "low") problems.push(`${at}.confidence: "high", "medium" or "low"`);
@@ -47015,6 +47027,7 @@ var FR_SPEC = [
     key: "losses.carryforwardYears",
     label: "years a net capital loss on securities can be carried forward",
     type: "number",
+    integer: true,
     unit: "years",
     query: "moins-values mobili\xE8res report ann\xE9es imputation {period} BOI-RPPM-PVBMI",
     prefer: FR_OFFICIAL,
@@ -47051,6 +47064,7 @@ var FR_SPEC = [
     key: "pea.minYears",
     label: "PEA age after which withdrawals are free of income tax (and do not close the plan)",
     type: "number",
+    integer: true,
     unit: "years",
     query: "PEA retrait apr\xE8s combien d'ann\xE9es exon\xE9ration imp\xF4t sur le revenu {period}",
     prefer: FR_OFFICIAL,
@@ -47088,6 +47102,7 @@ var FR_SPEC = [
     key: "av.minYears",
     label: "assurance-vie contract age for the reduced rate and the allowance",
     type: "number",
+    integer: true,
     unit: "years",
     query: "assurance-vie dur\xE9e du contrat abattement taux r\xE9duit {period}",
     prefer: FR_OFFICIAL,
@@ -47133,6 +47148,7 @@ var FR_SPEC = [
     key: "div2778.dueDay",
     label: "day of the month after a payment by which form 2778-DIV and its payment are due",
     type: "number",
+    integer: true,
     unit: "day of the following month",
     query: "formulaire 2778-DIV date limite d\xE9p\xF4t paiement {period}",
     prefer: FR_OFFICIAL,
@@ -47179,6 +47195,12 @@ var US_SPEC = [
     type: "amounts",
     unit: "USD of taxable income",
     fields: ["singleLow", "singleMid", "jointLow", "jointMid", "separateLow", "separateMid", "headLow", "headMid"],
+    ordered: [
+      ["singleLow", "singleMid"],
+      ["jointLow", "jointMid"],
+      ["separateLow", "separateMid"],
+      ["headLow", "headMid"]
+    ],
     query: "IRS Rev. Proc. inflation adjustments {period} maximum zero rate amount long-term capital gains brackets",
     prefer: US_OFFICIAL,
     usedBy: "engine",
@@ -47190,6 +47212,7 @@ var US_SPEC = [
     type: "rates",
     unit: "fraction of 1",
     fields: ["low", "mid", "high"],
+    ordered: [["low", "mid", "high"]],
     query: "IRS topic 409 capital gains rates {period}",
     prefer: US_OFFICIAL,
     usedBy: "engine"
@@ -47216,6 +47239,7 @@ var US_SPEC = [
     key: "longTerm.holdingYears",
     label: "holding period a sale must exceed (counted by anniversary) for a long-term gain",
     type: "number",
+    integer: true,
     unit: "years",
     query: "IRS holding period long-term capital gain more than {period} publication 550",
     prefer: US_OFFICIAL,
@@ -47225,6 +47249,7 @@ var US_SPEC = [
     key: "washSale.windowDays",
     label: "days before and after a loss sale in which buying substantially identical stock makes it a wash sale",
     type: "number",
+    integer: true,
     unit: "days on each side",
     query: "IRC 1091 wash sale days before after publication 550 {period}",
     prefer: `${US_OFFICIAL} (\xA71091, Reg. 1.1091-1)`,
@@ -47243,6 +47268,7 @@ var US_SPEC = [
     key: "qualifiedDividend.holdingDays",
     label: "days a share must be held (more than) within the window around the ex-dividend date for a qualified dividend",
     type: "number",
+    integer: true,
     unit: "days",
     query: "qualified dividends holding period days publication 550 {period}",
     prefer: US_OFFICIAL,
@@ -47345,6 +47371,7 @@ var US_SPEC = [
     key: "roth.qualifiedYears",
     label: "years since the first Roth IRA contribution before a distribution can be qualified",
     type: "number",
+    integer: true,
     unit: "years",
     query: "Roth IRA five-year rule qualified distribution {period}",
     prefer: US_OFFICIAL,

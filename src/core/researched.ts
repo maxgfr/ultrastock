@@ -38,6 +38,10 @@ export interface FactSpec {
   fields?: readonly string[];
   /** For `text`: the only values accepted (a status such as allowed | restricted | blocked | unknown). */
   values?: readonly string[];
+  /** For `number`: a whole number (years, days, a day of the month), never a fraction. */
+  integer?: boolean;
+  /** For `rates` / `amounts`: chains of fields whose values never decrease along the chain (low ≤ mid ≤ high). */
+  ordered?: readonly (readonly string[])[];
   /** A web search to start from; `{period}` and `{country}` are filled in. */
   query: string;
   /** The kind of official source to prefer. */
@@ -131,14 +135,22 @@ export const isIsoDate = (s: unknown): s is string => {
   const d = new Date(`${s}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
 };
+/**
+ * The http(s) URL of a public web page: a host name of dotted labels ending in a TLD of letters ("https://.",
+ * "https://TODO", "http://localhost", an IP address are no page a value was read from).
+ */
 const isUrl = (s: unknown): boolean => {
   if (typeof s !== "string" || !/^https?:\/\/\S+$/.test(s)) return false;
+  let host: string;
   try {
-    new URL(s);
-    return true;
+    host = new URL(s).hostname.toLowerCase();
   } catch {
     return false;
   }
+  const labels = host.split(".");
+  if (labels.length < 2 || labels.some((l) => !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(l))) return false;
+  if (!/^(?:[a-z]{2,63}|xn--[a-z0-9-]+)$/.test(labels.at(-1) ?? "")) return false;
+  return labels.at(-1) !== "localhost" && labels.at(-1) !== "local" && labels.at(-1) !== "internal";
 };
 const isPlainObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const FREE_KEY = /^[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)*$/;
@@ -146,19 +158,20 @@ const DAY_MS = 86_400_000;
 const today = () => clockNow().toISOString().slice(0, 10);
 
 /** Fields a template carries for the agent: accepted in a file and dropped when it is stored. */
-const TEMPLATE_FACT_FIELDS = new Set(["type", "unit", "fields", "values", "query", "prefer", "maxAgeDays", "usedBy", "evidence"]);
+const TEMPLATE_FACT_FIELDS = new Set(["type", "unit", "fields", "values", "integer", "ordered", "query", "prefer", "maxAgeDays", "usedBy", "evidence"]);
 const FACT_FIELDS = new Set(["value", "label", "sources", "verifiedAt", "confidence", "expiresAt", "note"]);
 const TEMPLATE_TOP_FIELDS = new Set(["_about", "formLines"]);
 
 /** Whether `v` is a value of `spec`'s type: a problem in words, or undefined. */
-export function typeProblem(spec: Pick<FactSpec, "type" | "fields" | "values">, v: unknown): string | undefined {
+export function typeProblem(spec: Pick<FactSpec, "type" | "fields" | "values" | "integer" | "ordered">, v: unknown): string | undefined {
   const num = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
   switch (spec.type) {
     case "rate":
       return num(v) && v >= 0 && v <= 1 ? undefined : "a rate is a number between 0 and 1 (a fraction, not a percent)";
     case "amount":
     case "number":
-      return num(v) && v >= 0 ? undefined : `a ${spec.type} is a number ≥ 0`;
+      if (!(num(v) && v >= 0)) return `a ${spec.type} is a number ≥ 0`;
+      return spec.integer && !Number.isInteger(v) ? `a whole number (${v} is not one)` : undefined;
     case "date":
       return isIsoDate(v) ? undefined : "a date is written YYYY-MM-DD";
     case "text":
@@ -177,6 +190,13 @@ export function typeProblem(spec: Pick<FactSpec, "type" | "fields" | "values">, 
         missing.length ? `missing field(s) ${missing.join(", ")}` : "",
         extra.length ? `unknown field(s) ${extra.join(", ")}` : "",
         bad.length ? `field(s) ${bad.map(([k]) => k).join(", ")} must be ${spec.type === "rates" ? "rates between 0 and 1" : "numbers ≥ 0"}` : "",
+        ...(missing.length || bad.length
+          ? []
+          : (spec.ordered ?? []).map((chain) =>
+              chain.some((f, i) => i > 0 && (v[f] as number) < (v[chain[i - 1] as string] as number))
+                ? `${chain.join(" ≤ ")} must not decrease (${chain.map((f) => `${f} ${String(v[f])}`).join(", ")})`
+                : "",
+            )),
       ].filter(Boolean);
       return parts.length ? parts.join("; ") : undefined;
     }
@@ -193,7 +213,11 @@ export function typeProblem(spec: Pick<FactSpec, "type" | "fields" | "values">, 
     case "time":
       return typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? undefined : 'a time of day written HH:MM (24 h), such as "16:00"';
     case "any":
-      return v === null || v === undefined ? "no value" : undefined;
+      if (v === null || v === undefined) return "no value";
+      // An empty string, list or object is no research: fill it or remove the key.
+      if ((typeof v === "string" && !v.trim()) || (Array.isArray(v) && !v.length) || (isPlainObject(v) && !Object.keys(v).length))
+        return "an empty value is no research — fill it or remove the key";
+      return undefined;
   }
 }
 
@@ -225,6 +249,8 @@ export function validateFacts(d: Domain, raw: unknown, expect: { country?: strin
   const period = raw[p];
   const periodOk = p === "year" ? typeof period === "number" && Number.isInteger(period) && period >= 1900 && period <= 2200 : isIsoDate(period);
   if (!periodOk) problems.push(p === "year" ? '"year" is an integer such as 2025' : '"date" is written YYYY-MM-DD');
+  // Next year's rules may be published already; a later year's are a typo.
+  else if (p === "year" && (period as number) > Number(now.slice(0, 4)) + 1) problems.push(`"year" ${String(period)} is after next year`);
   // A file dated ahead (a typo in the year) would read as the newest research until that day: refused like a future researchedAt.
   else if (p === "date" && (period as string) > now) problems.push(`"date" ${String(period)} is in the future`);
   if (expect.country && country && country !== expect.country.toUpperCase()) problems.push(`the file is for ${country}, not ${expect.country.toUpperCase()}`);
@@ -267,7 +293,7 @@ export function validateFacts(d: Domain, raw: unknown, expect: { country?: strin
       if (spec && f.type !== undefined && f.type !== spec.type) problems.push(`${at}.type: "${String(f.type)}", the key is a ${spec.type}`);
       if (typeof f.label !== "string" || !f.label.trim()) problems.push(`${at}.label: a non-empty string`);
       if (!Array.isArray(f.sources) || !f.sources.length) problems.push(`${at}.sources: at least one URL of the text the value was read from`);
-      else for (const s of f.sources) if (!isUrl(s)) problems.push(`${at}.sources: "${String(s)}" is not an http(s) URL`);
+      else for (const s of f.sources) if (!isUrl(s)) problems.push(`${at}.sources: "${String(s)}" is not an http(s) URL of a public web page`);
       if (!isIsoDate(f.verifiedAt)) problems.push(`${at}.verifiedAt: the date it was checked, YYYY-MM-DD`);
       else if (f.verifiedAt > now) problems.push(`${at}.verifiedAt: ${f.verifiedAt} is in the future`);
       if (f.confidence !== "high" && f.confidence !== "medium" && f.confidence !== "low") problems.push(`${at}.confidence: "high", "medium" or "low"`);
