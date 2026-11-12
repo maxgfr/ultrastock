@@ -8,7 +8,10 @@
 // BLOCK blocks the order. Orders that only REDUCE risk (selling what is held)
 // pass the breaker, the caps and the profile's exclusions (crypto, options,
 // prediction markets, the exclusion list — what never to BUY): getting out
-// must always be possible.
+// must always be possible. The same holds for the jurisdiction: a rule that is
+// unknown, stale or even blocked for what is held (a US-domiciled ETF, a
+// prediction market's contracts) gives a WARNING on the sell, never a block;
+// a buy stays fail-closed.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { contentHash } from "../engine.js";
@@ -160,7 +163,11 @@ export function riskGate(o: Order, c: GateContext): GateResult {
     const venue = /^([A-Z]+):/i.exec(o.symbol)?.[1]?.toLowerCase() ?? o.venue;
     const r = ruleFact(j, venue);
     const why = ruleWhy(r, j);
-    if (r.status === "blocked") add("JURISDICTION", "block", `${venue} is blocked for residents of ${j}: not traded, not even on paper — ${why}`);
+    // Getting out: selling the contracts held passes whatever the rule now says (it was "allowed" when they were bought,
+    // or the research has merely aged out) — said, never blocked.
+    if (riskReducing && r.status !== "allowed")
+      add("JURISDICTION", "warn", `${venue} is ${r.status} for residents of ${j}: selling what is held passes (getting out must always be possible) — ${why}`);
+    else if (r.status === "blocked") add("JURISDICTION", "block", `${venue} is blocked for residents of ${j}: not traded, not even on paper — ${why}`);
     else if (r.status !== "allowed" && venue === "polymarket")
       add("JURISDICTION", "block", `${venue} is ${r.status} for residents of ${j}: not read, not paper-traded — ${why}`);
     else if (o.venue !== "paper" && r.status !== "allowed") add("JURISDICTION", "block", `${venue} is ${r.status} for residents of ${j}: paper only — ${why}`);

@@ -25307,7 +25307,9 @@ function riskGate(o, c) {
     const venue = /^([A-Z]+):/i.exec(o.symbol)?.[1]?.toLowerCase() ?? o.venue;
     const r3 = ruleFact(j, venue);
     const why2 = ruleWhy(r3, j);
-    if (r3.status === "blocked") add2("JURISDICTION", "block", `${venue} is blocked for residents of ${j}: not traded, not even on paper \u2014 ${why2}`);
+    if (riskReducing && r3.status !== "allowed")
+      add2("JURISDICTION", "warn", `${venue} is ${r3.status} for residents of ${j}: selling what is held passes (getting out must always be possible) \u2014 ${why2}`);
+    else if (r3.status === "blocked") add2("JURISDICTION", "block", `${venue} is blocked for residents of ${j}: not traded, not even on paper \u2014 ${why2}`);
     else if (r3.status !== "allowed" && venue === "polymarket")
       add2("JURISDICTION", "block", `${venue} is ${r3.status} for residents of ${j}: not read, not paper-traded \u2014 ${why2}`);
     else if (o.venue !== "paper" && r3.status !== "allowed") add2("JURISDICTION", "block", `${venue} is ${r3.status} for residents of ${j}: paper only \u2014 ${why2}`);
@@ -25481,6 +25483,7 @@ async function recordCheck(id, gate, now = /* @__PURE__ */ new Date()) {
         verdict: gate.verdict,
         fingerprint: gate.fingerprint,
         checks: gate.checks,
+        ...gate.riskReducing ? { riskReducing: true } : {},
         // Replayed, or recorded into a directory whose fixture.json sets the clock: either way not the market now.
         ...netMode().kind !== "live" ? { replayed: true } : {}
       };
@@ -48481,7 +48484,10 @@ async function preconditions(p) {
   const now = p.now ?? /* @__PURE__ */ new Date();
   const o = p.ticket.order;
   const R = [];
+  const W = [];
   const no = (code, reason) => R.push({ code, reason });
+  const exit = o.side === "sell" && p.ticket.check?.riskReducing === true;
+  const jurisdictionNo = (code, reason) => exit ? W.push({ code, reason: `${reason} \u2014 selling what is held passes (getting out must always be possible)` }) : no(code, reason);
   const profile = loadProfile();
   if (!profile) no("NO_PROFILE", "no investor profile: `ultrastock profile init --jurisdiction <CC>` first");
   if (p.env === "live") {
@@ -48502,7 +48508,7 @@ async function preconditions(p) {
   if (o.venue !== p.venue) no("VENUE_MISMATCH", `the ticket was planned for ${o.venue}, not ${p.venue}`);
   if (profile && p.env === "live" && CRYPTO_VENUES2.includes(p.venue)) {
     const g = await cryptoVenueGate(p.venue, profile.jurisdiction, { micaAuthorised: p.micaAuthorised });
-    if (!g.ok) no("BLOCKED_JURISDICTION", g.reason);
+    if (!g.ok) jurisdictionNo("BLOCKED_JURISDICTION", g.reason);
   }
   if (existsSync34(killSwitchPath())) no("KILL_SWITCH", `the kill switch is on (${killSwitchPath()})`);
   if (profile) {
@@ -48519,7 +48525,7 @@ async function preconditions(p) {
     if (p.venue !== "kalshi") no("ASSET", "event contracts trade live on Kalshi only in this version");
     const k = profile ? ruleFact(profile.jurisdiction, "kalshi") : void 0;
     if (p.env === "live" && k?.status !== "allowed")
-      no(
+      jurisdictionNo(
         "BLOCKED_JURISDICTION",
         `Kalshi is ${k?.status ?? "unknown"} for residents of ${profile?.jurisdiction ?? "an unknown country"}: no live orders (paper only)${k && profile ? ` \u2014 ${ruleWhy(k, profile.jurisdiction)}` : ""}`
       );
@@ -48539,7 +48545,7 @@ async function preconditions(p) {
     for (const coin of [...new Set(legs)].filter(isDollarStablecoin).sort()) {
       const r3 = ruleFact(profile.jurisdiction, stablecoinKey(coin));
       if (r3.status !== "allowed")
-        no("BLOCKED_JURISDICTION", `${coin} is ${r3.status} for residents of ${profile.jurisdiction}: ${ruleWhy(r3, profile.jurisdiction)}`);
+        jurisdictionNo("BLOCKED_JURISDICTION", `${coin} is ${r3.status} for residents of ${profile.jurisdiction}: ${ruleWhy(r3, profile.jurisdiction)}`);
     }
   }
   if (isDollarStablecoin(o.currency)) {
@@ -48592,7 +48598,7 @@ async function preconditions(p) {
     const v = verifyCode(p.ticket.id, orderBinding(o, p.venue, p.env, p.venueSym), p.code, now);
     if (!v.ok) no("CODE", v.reason);
   } else if (!p.code) no("CODE", "an out-of-band approval code is needed (`broker code <ticket>`), once the other conditions hold");
-  return { refusals: R, notional, book: book2 };
+  return { refusals: R, warnings: W, notional, book: book2 };
 }
 var liveRecordOf = (t) => t.live;
 var liveOf = liveRecordOf;
@@ -48697,7 +48703,7 @@ async function submitLocked(p, now) {
       ticket: t,
       refusals: [{ code: "PENDING", reason: `this ticket already went to ${prev.venue} (${prev.state}): \`broker reconcile ${t.id}\` before anything else` }]
     };
-  const { refusals, notional } = await preconditions({ ...p, ticket: t, now });
+  const { refusals, warnings, notional } = await preconditions({ ...p, ticket: t, now });
   if (refusals.length) {
     audit({ event: "live-refused", ticket: t.id, venue: p.venue, env: p.env, refusals });
     return { ticket: t, refusals };
@@ -48728,7 +48734,17 @@ async function submitLocked(p, now) {
   };
   const before = killed();
   if (before) return before;
-  audit({ event: "live-intent", ticket: t.id, venue: p.venue, env: p.env, clientOrderId: order.clientOrderId, order, notional, fingerprint: t.fingerprint });
+  audit({
+    event: "live-intent",
+    ticket: t.id,
+    venue: p.venue,
+    env: p.env,
+    clientOrderId: order.clientOrderId,
+    order,
+    notional,
+    fingerprint: t.fingerprint,
+    ...warnings.length ? { warnings } : {}
+  });
   await transition(
     t.id,
     "submitted",
@@ -49159,9 +49175,10 @@ async function brokerCommand(args, asJson) {
     const blocking = pre.refusals.filter((r3) => r3.code !== "CODE");
     return printResult(
       asJson,
-      { venue, env: env2, preview: p, refusals: blocking },
+      { venue, env: env2, preview: p, refusals: blocking, warnings: pre.warnings },
       [
         `${venue} ${env2} preview of ${t.id}: ${p.ok ? "the venue accepts it" : `the venue refuses it \u2014 ${p.message ?? ""}`}`,
+        ...pre.warnings.map((w) => `  warning ${w.code}: ${w.reason}`),
         ...blocking.length ? ["ultrastock would still refuse to send it:", ...blocking.map((r3) => `  ${r3.code}: ${r3.reason}`)] : ["every ultrastock condition holds except the approval code: `broker code` then `broker submit`"]
       ].join("\n")
     );

@@ -82,7 +82,7 @@ either switch for the user.
 |---|---|
 | `LIVE_OFF`, `NODE`, `NOT_READY` | live is not switched on, Node is too old, or the paper record is not ready |
 | `VENUE_OFF`, `VENUE_MISMATCH` | the venue is not switched on, or the ticket was planned for another venue |
-| `BLOCKED_JURISDICTION` | live: the researched rules of the profile's country do not let the order go — crypto: `crypto-casp` blocked or unknown, or the venue not found on the register `crypto-register` names (ESMA's MiCA register is read at order time; another register needs the venue's own `cryptoVenue.<venue>` fact); Kalshi: `kalshi` not "allowed"; an order priced in a dollar stablecoin: `stablecoin.<coin>` (e.g. `stablecoin.usdt`) not "allowed" — a live plan quoted in one says what the research concluded. A rule never researched or stale reads as unknown: the reason names the `facts research jurisdiction` command |
+| `BLOCKED_JURISDICTION` | live: the researched rules of the profile's country do not let the order go — crypto: `crypto-casp` blocked or unknown, the venue researched as blocked or restricted (`cryptoVenue.<venue>`), or the venue not found on the register `crypto-register` names (ESMA's MiCA register is read at order time and matched on the venue's researched LEI, `cryptoVenue.<venue>.lei`; an ended authorisation or a listing among the non-compliant entities refuses; another register needs the venue's own `cryptoVenue.<venue>` fact); Kalshi: `kalshi` not "allowed"; a dollar stablecoin on either side of the pair (bought, sold or quoted in): `stablecoin.<coin>` (e.g. `stablecoin.usdt`) not "allowed" — a live plan quoted in one says what the research concluded. A rule never researched or stale reads as unknown: the reason names the `facts research jurisdiction` command. On a sell of what is held it is a warning, not a refusal (below) |
 | `KILL_SWITCH`, `BREAKER` | `<home>/KILL` exists, or a loss limit tripped |
 | `TICKET` | not checked, older than 15 minutes, or changed since the check |
 | `MARKET_ORDER`, `ASSET`, `NO_SHORT` | live orders are limit orders only, on spot shares, ETFs, crypto or Kalshi contracts; no selling what is not held |
@@ -110,6 +110,14 @@ refusal is the user's law until an official source says otherwise.
 
 ## Always allowed
 
+- Getting out: a sell of what is held (risk-reducing at `ticket check`, and
+  on the venue's balance) is not refused by a jurisdiction rule. Where the
+  research is unknown, stale, or even says blocked — the crypto regime, the
+  venue, a stablecoin, Kalshi, a US-domiciled ETF — `ticket check` and
+  `broker preview` show it as a warning and the sell may go; every other
+  condition (limits, the venue's grid, the code…) still holds. Buys stay
+  fail-closed. Tell the user what the warning says: the rule may have
+  changed since the position was opened.
 - Cancelling: `broker cancel <id>`.
 - `broker panic`: sets the kill switch and cancels ultrastock's working orders.
   It sells nothing; closing positions is a decision. While the switch is on,

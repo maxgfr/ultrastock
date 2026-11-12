@@ -357,9 +357,10 @@ export async function brokerCommand(args: CommandArgs, asJson: boolean): Promise
     const blocking = pre.refusals.filter((r) => r.code !== "CODE");
     return out(
       asJson,
-      { venue, env, preview: p, refusals: blocking },
+      { venue, env, preview: p, refusals: blocking, warnings: pre.warnings },
       [
         `${venue} ${env} preview of ${t.id}: ${p.ok ? "the venue accepts it" : `the venue refuses it — ${p.message ?? ""}`}`,
+        ...pre.warnings.map((w) => `  warning ${w.code}: ${w.reason}`),
         ...(blocking.length
           ? ["ultrastock would still refuse to send it:", ...blocking.map((r) => `  ${r.code}: ${r.reason}`)]
           : ["every ultrastock condition holds except the approval code: `broker code` then `broker submit`"]),

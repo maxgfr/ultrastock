@@ -24,6 +24,12 @@
 //      minimums (read live: trading/brokers/rules.ts);
 //   9. a valid out-of-band code bound to this ticket's fingerprint.
 //
+// Getting out must always be possible: for a sell the risk gate found
+// risk-reducing (what is held, the balance checked in 5.), the jurisdiction
+// conditions of 2. — and Kalshi's — are WARNINGS, not refusals, when the
+// research is unknown, stale or even blocked; every other condition still
+// holds. Buys stay fail-closed.
+//
 // Then: a lock, an audit line BEFORE, exactly one request, an audit line
 // AFTER. A timeout is "unknown": the ticket stays submitted and nothing is
 // sent again until `reconcile` has asked the venue by clientOrderId.
@@ -176,11 +182,19 @@ export interface PreconditionInput {
 }
 
 /** Every reason the order may not go now; empty when it may. */
-export async function preconditions(p: PreconditionInput): Promise<{ refusals: Refusal[]; notional: number; book?: { bid: number; ask: number } }> {
+export async function preconditions(
+  p: PreconditionInput,
+): Promise<{ refusals: Refusal[]; warnings: Refusal[]; notional: number; book?: { bid: number; ask: number } }> {
   const now = p.now ?? new Date();
   const o = p.ticket.order;
   const R: Refusal[] = [];
+  const W: Refusal[] = [];
   const no = (code: string, reason: string) => R.push({ code, reason });
+  // A jurisdiction rule refuses new risk; on a sell of what is held (risk-reducing at the check) it is said, not
+  // enforced: getting out must always be possible (riskgate.ts applies the same rule at `check`).
+  const exit = o.side === "sell" && p.ticket.check?.riskReducing === true;
+  const jurisdictionNo = (code: string, reason: string) =>
+    exit ? W.push({ code, reason: `${reason} — selling what is held passes (getting out must always be possible)` }) : no(code, reason);
   const profile = loadProfile();
   if (!profile) no("NO_PROFILE", "no investor profile: `ultrastock profile init --jurisdiction <CC>` first");
 
@@ -208,7 +222,7 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
   // the user's country decides, and the register it names is checked (core/jurisdiction.ts cryptoVenueGate).
   if (profile && p.env === "live" && CRYPTO_VENUES.includes(p.venue)) {
     const g = await cryptoVenueGate(p.venue, profile.jurisdiction, { micaAuthorised: p.micaAuthorised });
-    if (!g.ok) no("BLOCKED_JURISDICTION", g.reason);
+    if (!g.ok) jurisdictionNo("BLOCKED_JURISDICTION", g.reason);
   }
   if (existsSync(killSwitchPath())) no("KILL_SWITCH", `the kill switch is on (${killSwitchPath()})`);
   if (profile) {
@@ -226,7 +240,7 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
     if (p.venue !== "kalshi") no("ASSET", "event contracts trade live on Kalshi only in this version");
     const k = profile ? ruleFact(profile.jurisdiction, "kalshi") : undefined;
     if (p.env === "live" && k?.status !== "allowed")
-      no(
+      jurisdictionNo(
         "BLOCKED_JURISDICTION",
         `Kalshi is ${k?.status ?? "unknown"} for residents of ${profile?.jurisdiction ?? "an unknown country"}: no live orders (paper only)${k && profile ? ` — ${ruleWhy(k, profile.jurisdiction)}` : ""}`,
       );
@@ -251,7 +265,7 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
     for (const coin of [...new Set(legs)].filter(isDollarStablecoin).sort()) {
       const r = ruleFact(profile.jurisdiction, stablecoinKey(coin));
       if (r.status !== "allowed")
-        no("BLOCKED_JURISDICTION", `${coin} is ${r.status} for residents of ${profile.jurisdiction}: ${ruleWhy(r, profile.jurisdiction)}`);
+        jurisdictionNo("BLOCKED_JURISDICTION", `${coin} is ${r.status} for residents of ${profile.jurisdiction}: ${ruleWhy(r, profile.jurisdiction)}`);
     }
   }
   // A dollar stablecoin is priced live: off its peg beyond the threshold, or unreadable, no real order is priced in it.
@@ -311,7 +325,7 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
     const v = verifyCode(p.ticket.id, orderBinding(o, p.venue, p.env, p.venueSym), p.code, now);
     if (!v.ok) no("CODE", v.reason);
   } else if (!p.code) no("CODE", "an out-of-band approval code is needed (`broker code <ticket>`), once the other conditions hold");
-  return { refusals: R, notional, book };
+  return { refusals: R, warnings: W, notional, book };
 }
 
 export interface LiveRecord {
@@ -493,7 +507,7 @@ async function submitLocked(p: PreconditionInput, now: Date): Promise<{ ticket: 
       ticket: t,
       refusals: [{ code: "PENDING", reason: `this ticket already went to ${prev.venue} (${prev.state}): \`broker reconcile ${t.id}\` before anything else` }],
     };
-  const { refusals, notional } = await preconditions({ ...p, ticket: t, now });
+  const { refusals, warnings, notional } = await preconditions({ ...p, ticket: t, now });
   if (refusals.length) {
     audit({ event: "live-refused", ticket: t.id, venue: p.venue, env: p.env, refusals });
     return { ticket: t, refusals };
@@ -525,7 +539,17 @@ async function submitLocked(p: PreconditionInput, now: Date): Promise<{ ticket: 
   };
   const before = killed();
   if (before) return before;
-  audit({ event: "live-intent", ticket: t.id, venue: p.venue, env: p.env, clientOrderId: order.clientOrderId, order, notional, fingerprint: t.fingerprint });
+  audit({
+    event: "live-intent",
+    ticket: t.id,
+    venue: p.venue,
+    env: p.env,
+    clientOrderId: order.clientOrderId,
+    order,
+    notional,
+    fingerprint: t.fingerprint,
+    ...(warnings.length ? { warnings } : {}),
+  });
   // Mark the ticket as submitted BEFORE the request: a crash in flight leaves it "unknown", never resendable.
   // Checked under the ticket's lock: a cancel by the user since the preconditions read it stops the send.
   await transition(
