@@ -1,13 +1,15 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
 import { EvidenceStore } from "../src/core/evidence.js";
 import { setNetMode } from "../src/core/net.js";
+import { homeDir } from "../src/core/paths.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
 import { appendTransactions } from "../src/portfolio/ledger.js";
 import { FIXTURES } from "./helpers/fixtures.js";
+import { installJurisdictionTestFacts } from "./helpers/jurisdiction-facts.js";
 
 afterEach(() => {
   setNetMode({ kind: "live" });
@@ -55,13 +57,27 @@ describe("profile and jurisdiction commands", () => {
     );
     expect((await cli(["profile", "suitability", "--answers", answers])).out).toMatch(/risk score 5\/7/);
     expect(JSON.parse((await cli(["profile", "show", "--json"])).out).riskScore).toBe(5);
+    // Nothing researched: every rule is unknown, and the command to research it is named.
+    const before = (await cli(["jurisdiction", "show"])).out;
+    expect(before).toMatch(/polymarket: UNKNOWN — not researched for FR/);
+    expect(before).toContain("ultrastock facts research jurisdiction --country FR");
+    installJurisdictionTestFacts();
     expect((await cli(["jurisdiction", "show"])).out).toMatch(/polymarket: BLOCKED/);
   });
   it("refuses Polymarket for a French resident without touching the network", async () => {
     await cli(["profile", "init", "--jurisdiction", "FR"]);
+    installJurisdictionTestFacts();
     const r = await cli(["predict", "polymarket", "election"]);
     expect(r.code).toBe(1);
-    expect(r.err).toMatch(/BLOCKED_JURISDICTION/);
+    expect(r.err).toMatch(/Polymarket is blocked for residents of FR \(BLOCKED_JURISDICTION\)/);
+  });
+  it("refuses Polymarket where it was never researched, naming the research command", async () => {
+    rmSync(homeDir(), { recursive: true, force: true });
+    await cli(["profile", "init", "--jurisdiction", "DE"]);
+    const r = await cli(["predict", "polymarket", "election"]);
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/Polymarket is unknown for residents of DE \(BLOCKED_JURISDICTION\)/);
+    expect(r.err).toContain("ultrastock facts research jurisdiction --country DE --key polymarket --out <run>");
   });
 });
 

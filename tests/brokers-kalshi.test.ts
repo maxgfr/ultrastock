@@ -9,6 +9,7 @@ import { LOOSEN_DELAY_MS, requestLimits } from "../src/trading/limits.js";
 import { preconditions, venueSymbol } from "../src/trading/live.js";
 import { orderFingerprint, type Order } from "../src/trading/riskgate.js";
 import { createTicket, loadTicket, recordCheck } from "../src/trading/tickets.js";
+import { installJurisdictionTestFacts } from "./helpers/jurisdiction-facts.js";
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const pem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
@@ -124,7 +125,17 @@ describe("Kalshi live orders and the jurisdiction", () => {
     expect(p.refusals.map((r) => r.code)).toContain("BLOCKED_JURISDICTION");
   });
 
-  it("does not refuse a US resident on the jurisdiction (other guards still apply)", async () => {
+  it("refuses a resident of a country whose Kalshi rule was never researched, naming the research command", async () => {
+    saveProfile(defaultProfile("US", "USD"));
+    requestLimits({ maxOrder: 250, maxDaily: 500, venues: ["kalshi"], attestedNoWithdraw: [] }, true, new Date(Date.now() - LOOSEN_DELAY_MS - 1000));
+    const p = await preconditions({ ticket: await ticket(), venue: "kalshi", env: "live", adapter, venueSym: "FED-1:YES" });
+    const r = p.refusals.find((x) => x.code === "BLOCKED_JURISDICTION");
+    expect(r?.reason).toMatch(/not researched for US/);
+    expect(r?.reason).toContain("ultrastock facts research jurisdiction --country US --key kalshi --out <run>");
+  });
+
+  it("does not refuse a US resident on the jurisdiction once researched as allowed (other guards still apply)", async () => {
+    installJurisdictionTestFacts();
     saveProfile(defaultProfile("US", "USD"));
     requestLimits({ maxOrder: 250, maxDaily: 500, venues: ["kalshi"], attestedNoWithdraw: [] }, true, new Date(Date.now() - LOOSEN_DELAY_MS - 1000));
     const p = await preconditions({ ticket: await ticket(), venue: "kalshi", env: "live", adapter, venueSym: "FED-1:YES" });

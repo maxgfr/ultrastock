@@ -7,7 +7,7 @@
 // Coinbase preview-only and IBKR's paper account; `--env live` is real money.
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { checkMica } from "../core/jurisdiction.js";
+import { cryptoVenueGate } from "../core/jurisdiction.js";
 import { clockNow } from "../core/net.js";
 import { loadProfile } from "../core/profile.js";
 import { argList, argValue, type CommandArgs, UsageError } from "../engine.js";
@@ -277,10 +277,11 @@ export async function brokerCommand(args: CommandArgs, asJson: boolean): Promise
     for (const v of venues) {
       const c = readCredentials(v, env);
       const row: Record<string, unknown> = { venue: v, env, key: c ? c.source : "none", on: lim.limits.venues.includes(v) };
-      if (CRYPTO_VENUES.includes(v) && profile && profile.jurisdiction !== "US")
-        row.mica = await checkMica(v, profile.jurisdiction)
-          .then((m) => (m.authorised.length ? `authorised (${m.authorised[0]!.homeState})` : "NOT in ESMA's register for your country"))
-          .catch((e) => `register unavailable: ${(e as Error).message}`);
+      // The researched regime of the user's country, and the register it names (the same check a live order runs).
+      if (CRYPTO_VENUES.includes(v) && profile)
+        row.authorisation = await cryptoVenueGate(v, profile.jurisdiction)
+          .then((g) => `${g.ok ? "live orders allowed" : "NO live orders"}: ${g.reason}`)
+          .catch((e) => `NO live orders: the check failed (${(e as Error).message})`);
       if (c)
         try {
           const p = await adapterFor(v, env).permissions();
@@ -306,7 +307,7 @@ export async function brokerCommand(args: CommandArgs, asJson: boolean): Promise
         `env ${env} · kill switch ${existsSync(killSwitchPath()) ? "ON" : "off"} · live switch ${liveSwitchOn() ? "on" : "off"} · ULTRASTOCK_LIVE ${process.env.ULTRASTOCK_LIVE === "1" ? "on" : "off"} · tier "${lim.tier}" (${lim.limits.maxOrder}/order, ${lim.limits.maxDaily}/day, ${todayNotional.toFixed(2)} used today)`,
         ...rows.map(
           (r) =>
-            `  ${String(r.venue).padEnd(9)} key: ${r.key}${r.on ? "" : " · not switched on"}${r.mica ? ` · MiCA: ${r.mica}` : ""}${r.permissions ? ` · ${r.permissions}` : ""}`,
+            `  ${String(r.venue).padEnd(9)} key: ${r.key}${r.on ? "" : " · not switched on"}${r.authorisation ? ` · jurisdiction: ${r.authorisation}` : ""}${r.permissions ? ` · ${r.permissions}` : ""}`,
         ),
       ].join("\n"),
     );

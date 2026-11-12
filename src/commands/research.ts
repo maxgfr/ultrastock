@@ -46,7 +46,7 @@ function printTodo(todo: ResearchTodo, dir: string, notes: string[]): string {
   return `${lines.join("\n")}\n`;
 }
 
-function readWebResults(file: string): unknown {
+export function readWebResults(file: string): unknown {
   try {
     return JSON.parse(file === "-" ? readFileSync(0, "utf8") : readFileSync(file, "utf8"));
   } catch (e) {

@@ -37,6 +37,7 @@ import { decideCommand, journalCommand, knowledgeCommand, watchCommand, watchlis
 import { morningCommand } from "./commands/morning.js";
 import { jurisdictionCommand, profileCommand } from "./commands/profile.js";
 import { taxCommand } from "./commands/tax.js";
+import { factsCommand } from "./commands/facts.js";
 import { paperCommand, planCommand, portfolioCommand, ticketCommand } from "./commands/trading.js";
 import { catalystsCommand, regimeCommand, sectorsCommand } from "./commands/regime.js";
 import { screenCommand } from "./commands/screen.js";
@@ -139,6 +140,8 @@ USAGE
   ultrastock decide <run> <decision.json> [--json]
   ultrastock tax rules template --country CC --year YYYY [--currency <code>] | tax rules set --file <rules.json> [--country CC] [--year YYYY] | tax rules show [--country CC] [--year YYYY] [--json]
   ultrastock tax verify [--country CC] [--year YYYY] [--json]
+  ultrastock facts research <jurisdiction|tax> [--country CC] [--key k,…] [--year YYYY] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]
+  ultrastock facts template|show <jurisdiction|tax> [--country CC] [--key k,…] [--year YYYY] [--json] | facts set <domain> --file <facts.json> [--country CC] [--json]
   ultrastock tax report [--country CC|--regime fr|us] [--year YYYY] [--neutral] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,…|short=…,long=…] [--envelope-value <account>:<date>=<value>] [--lot-method fifo|hifo|lifo] [--household single|couple] [--out <dir>] [--json]
   ultrastock tax lots|harvest [--country FR|US] [--year YYYY] [--json]
   ultrastock tax export --format 8949|2086|2074|koinly|neutral|neutral-json [--country CC] [--year YYYY] [--neutral] [--out <dir>]
@@ -222,9 +225,12 @@ COMMANDS
             risk score and limits (the risk gate's rules), envelopes (PEA, CTO,
             AV…). \`suitability\` prints the questionnaire to ask; with --answers it
             scores it (1–7) and sets the limits. Every change is kept in history.
-  jurisdiction  What the investor's country allows, rule by rule with sources;
-            \`verify\` checks crypto venues against ESMA's MiCA register and
-            regulator DNS blocks, and lists what a web search must confirm.
+  jurisdiction  What the investor's country allows, rule by rule, as the agent
+            researched it (\`facts research jurisdiction\`): each with its
+            sources and date, unknown when never researched or stale; \`verify\`
+            runs a live order's crypto check per venue (the researched regime,
+            then ESMA's MiCA register when it is the country's), regulator DNS
+            blocks, and lists what to research again.
   calendar  Exchange sessions, holidays and early closes, computed from the
             exchanges' rules; \`verify\` lists what to confirm for a year;
             econ / earnings / dividends list the day's scheduled events.
@@ -471,6 +477,20 @@ COMMANDS
             Koinly, or the neutral report (neutral, neutral-json). Every amount
             is converted at the ECB rate of its date. A preparation aid, not
             tax advice: a professional should confirm.
+  facts     Rules that differ by country and change — what the investor's
+            country allows (jurisdiction: Polymarket, Kalshi, US-domiciled
+            ETFs, crypto platforms and the register that lists them, foreign
+            account reporting, PFIC), the tax rules (tax) — are not in ultrastock:
+            the agent researches them. research gathers, per key, the official
+            documents (the keyless search cascade of research --engine-search,
+            or your own hits with --web-results, one list per key) into the run
+            as evidence [E#] and writes FACTS.<domain>.<CC>.md (what to read)
+            and .json (what to fill); set --file stores the filled file
+            (strictly validated: a value of the key's type, sources, verifiedAt,
+            confidence); show says what is stored, current or stale; template
+            prints the skeleton. A rule never researched, past its age limit or
+            concluded unknown fails closed: no live order, no US-domiciled ETF
+            proposed, no Polymarket read — and the refusal names the command.
   journal   The learning loop: settle decisions at +5/+20/+60 sessions against a
             benchmark (alpha, right or wrong), hit rates by rating, post-trade
             reviews (the plan first, then the outcome in R, with best and worst
@@ -499,7 +519,8 @@ COMMANDS
             it is checked (≤ 15 min, unchanged), a limit order within 1 % of the
             venue's book, inside the per-order and per-day limits of the
             experience tier, on a venue switched on and authorised for the
-            jurisdiction (MiCA register for crypto platforms), with a key that
+            jurisdiction as researched (facts research jurisdiction: the
+            regime, then ESMA's MiCA register or the venue's own fact), with a key that
             cannot withdraw, no kill switch, no tripped breaker — and a 6-digit
             code sent out of band (desktop notification, the private ntfy
             topic stored in the keychain — setup ntfy —, the user's
@@ -839,6 +860,7 @@ export const COMMANDS = [
   "decide",
   "journal",
   "tax",
+  "facts",
   "knowledge",
   "watch",
   "watchlist",
@@ -966,6 +988,7 @@ const SPEC: CliSpec = {
     ticket: ["status", ...NET],
     paper: ["out", ...NET],
     decide: ["json"],
+    facts: ["country", "key", "year", "file", "web-results", "engine-search", "limit", "browser", "no-wayback", "out", ...NET],
     tax: [
       "regime",
       "country",
@@ -1071,7 +1094,7 @@ function arity(args: CommandArgs): number {
     args.command === "morning"
   )
     return 0;
-  if (args.command === "check" || args.command === "calc") return 2;
+  if (args.command === "check" || args.command === "calc" || args.command === "facts") return 2;
   if (args.command === "profile") return 3;
   if (args.command === "crypto" || args.command === "calendar" || args.command === "macro" || args.command === "crypto-analysis") return 2;
   if (
@@ -1279,6 +1302,7 @@ async function run(args: CommandArgs): Promise<void> {
   if (cmd === "decide") return decideCommand(args, asJson);
   if (cmd === "journal") return journalCommand(args, asJson);
   if (cmd === "tax") return taxCommand(args, asJson);
+  if (cmd === "facts") return factsCommand(args, asJson);
   if (cmd === "knowledge") return knowledgeCommand(args, asJson);
   if (cmd === "watch") return watchCommand(args, asJson);
   if (cmd === "watchlist") return watchlistCommand(args, asJson);

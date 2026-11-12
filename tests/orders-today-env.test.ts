@@ -3,6 +3,7 @@ import { rmSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { homeDir } from "../src/core/paths.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
+import { installJurisdictionTestFacts } from "./helpers/jurisdiction-facts.js";
 import { readLedger } from "../src/portfolio/ledger.js";
 import type { BrokerAdapter, Environment, LiveOrder, OrderResult } from "../src/trading/brokers/types.js";
 import { ordersToday } from "../src/trading/context.js";
@@ -54,6 +55,8 @@ const liveBefore = process.env.ULTRASTOCK_LIVE;
 beforeEach(() => {
   rmSync(homeDir(), { recursive: true, force: true });
   saveProfile(defaultProfile("FR", "EUR"));
+  // TEST facts: FR's crypto platforms on ESMA's register, the register answer pinned by micaAuthorised.
+  installJurisdictionTestFacts();
   requestLimits({ maxOrder: 250, maxDaily: 500, venues: ["kraken"], attestedNoWithdraw: [] }, true, new Date(Date.now() - LOOSEN_DELAY_MS - 1000));
   captured = [];
 });

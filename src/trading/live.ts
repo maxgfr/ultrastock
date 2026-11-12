@@ -6,8 +6,10 @@
 //      env "test" (Binance testnet, Kraken validate, Coinbase preview, IBKR
 //      paper): none of those, but everything below.
 //   2. the venue is switched on in the live limits; live, a crypto platform
-//      must be an authorised MiCA CASP serving the profile's country (Binance
-//      is not, for France — its testnet stays usable);
+//      must be authorised for the profile's country as the agent researched
+//      it (`facts research jurisdiction`): the regime, then the register it
+//      names — ESMA's MiCA register is read here, any other needs the venue's
+//      own researched fact; unresearched refuses (a testnet stays usable);
 //   3. no kill switch, the breaker is not tripped;
 //   4. the ticket is checked by the risk gate, unchanged since, within 15 min;
 //   5. a limit order (no market orders live), spot, no short: a sell needs
@@ -25,7 +27,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { writeFileAtomic } from "../engine.js";
 import { createHash } from "node:crypto";
-import { checkMica, ruleStatus } from "../core/jurisdiction.js";
+import { cryptoVenueGate, ruleFact, ruleWhy } from "../core/jurisdiction.js";
 import { withFileLock } from "../core/lock.js";
 import { homeDir } from "../core/paths.js";
 import { loadProfile } from "../core/profile.js";
@@ -163,7 +165,7 @@ export interface PreconditionInput {
   venueSym: string;
   code?: string;
   now?: Date;
-  /** For tests: skip the network-bound jurisdiction lookup with a fixed answer. */
+  /** For tests: skip the network-bound register lookup (ESMA's MiCA register) with a fixed answer. */
   micaAuthorised?: boolean;
 }
 
@@ -196,21 +198,11 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
   const { limits, tier } = effectiveLimits(fills, now);
   if (!limits.venues.includes(p.venue)) no("VENUE_OFF", `${p.venue} is not switched on for live orders (\`broker limits set --venues …\`)`);
   if (o.venue !== p.venue) no("VENUE_MISMATCH", `the ticket was planned for ${o.venue}, not ${p.venue}`);
-  // The authorisation matters for real money; a testnet or a validate-only call moves none.
-  if (profile && p.env === "live" && CRYPTO_VENUES.includes(p.venue) && profile.jurisdiction !== "US") {
-    let ok = p.micaAuthorised;
-    if (ok === undefined) {
-      try {
-        ok = (await checkMica(p.venue, profile.jurisdiction)).authorised.length > 0;
-      } catch {
-        ok = false;
-      }
-    }
-    if (!ok)
-      no(
-        "BLOCKED_JURISDICTION",
-        `${p.venue} is not an authorised MiCA crypto-asset service provider for ${profile.jurisdiction} in ESMA's register: no live orders there`,
-      );
+  // The authorisation matters for real money; a testnet or a validate-only call moves none. The researched regime of
+  // the user's country decides, and the register it names is checked (core/jurisdiction.ts cryptoVenueGate).
+  if (profile && p.env === "live" && CRYPTO_VENUES.includes(p.venue)) {
+    const g = await cryptoVenueGate(p.venue, profile.jurisdiction, { micaAuthorised: p.micaAuthorised });
+    if (!g.ok) no("BLOCKED_JURISDICTION", g.reason);
   }
   if (existsSync(killSwitchPath())) no("KILL_SWITCH", `the kill switch is on (${killSwitchPath()})`);
   if (profile) {
@@ -226,9 +218,12 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
   if (o.assetKind === "prediction") {
     // Event contracts: Kalshi only (Polymarket's order signing is not implemented), and only where the jurisdiction allows it.
     if (p.venue !== "kalshi") no("ASSET", "event contracts trade live on Kalshi only in this version");
-    const status = profile ? ruleStatus(profile.jurisdiction, "kalshi") : "unknown";
-    if (p.env === "live" && status !== "allowed")
-      no("BLOCKED_JURISDICTION", `Kalshi is ${status} for residents of ${profile?.jurisdiction ?? "an unknown country"}: no live orders (paper only)`);
+    const k = profile ? ruleFact(profile.jurisdiction, "kalshi") : undefined;
+    if (p.env === "live" && k?.status !== "allowed")
+      no(
+        "BLOCKED_JURISDICTION",
+        `Kalshi is ${k?.status ?? "unknown"} for residents of ${profile?.jurisdiction ?? "an unknown country"}: no live orders (paper only)${k && profile ? ` — ${ruleWhy(k, profile.jurisdiction)}` : ""}`,
+      );
   } else if (!["crypto", "equity", "etf"].includes(o.assetKind))
     no("ASSET", `${o.assetKind} is not tradable live in this version (spot shares, ETFs and crypto only)`);
 

@@ -1,6 +1,6 @@
 // Market data commands beyond prices: option chains, crypto market structure,
 // prediction markets, and a cross-venue snapshot.
-import { ruleStatus } from "../core/jurisdiction.js";
+import { ruleFact, ruleWhy } from "../core/jurisdiction.js";
 import { loadProfile } from "../core/profile.js";
 import { argInt, argValue, type CommandArgs, jsonLine, UsageError } from "../engine.js";
 import { binanceFuturesPositioning } from "../providers/crypto/binance-futures.js";
@@ -98,12 +98,15 @@ export async function predictCommand(args: CommandArgs, asJson: boolean): Promis
   const profile = loadProfile();
   if (venue === "polymarket") {
     if (!profile)
-      throw new UsageError("Polymarket is blocked in some jurisdictions (France: ANJ). Set yours first: `ultrastock profile init --jurisdiction <CC>`");
-    const status = ruleStatus(profile.jurisdiction, "polymarket");
-    if (status === "blocked")
+      throw new UsageError(
+        "Polymarket is read only where your country's researched rule allows it: set your jurisdiction first (`ultrastock profile init --jurisdiction <CC>`), then `ultrastock facts research jurisdiction --key polymarket --out <run>`",
+      );
+    // Read only where the research concluded "allowed": blocked, restricted, unknown or never researched all refuse.
+    const r = ruleFact(profile.jurisdiction, "polymarket");
+    if (r.status !== "allowed")
       throw new ProviderError(
         "jurisdiction",
-        `Polymarket is blocked for residents of ${profile.jurisdiction} (BLOCKED_JURISDICTION) — not read, not paper-traded. See \`ultrastock jurisdiction show\`; Kalshi and Manifold remain available.`,
+        `Polymarket is ${r.status} for residents of ${profile.jurisdiction} (BLOCKED_JURISDICTION) — not read, not paper-traded: ${ruleWhy(r, profile.jurisdiction)}. Kalshi and Manifold remain available.`,
         403,
       );
     const ds = query.startsWith("book:")

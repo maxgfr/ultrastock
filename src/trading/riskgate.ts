@@ -12,7 +12,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { contentHash } from "../engine.js";
-import { ruleStatus } from "../core/jurisdiction.js";
+import { ruleFact, ruleWhy } from "../core/jurisdiction.js";
 import { homeDir } from "../core/paths.js";
 import type { Profile } from "../core/profile.js";
 
@@ -28,7 +28,7 @@ export interface Order {
   /** Protective stop (required for a buy). */
   stop?: number;
   assetKind: "equity" | "etf" | "index" | "crypto" | "fund" | "option" | "prediction";
-  /** For ETFs: the fund's domicile country (US-domiciled ETFs are restricted for EU retail). */
+  /** For ETFs: the fund's domicile country (a US-domiciled one passes only where the researched rule allows it). */
   domicile?: string;
   sector?: string;
   venue: string;
@@ -143,16 +143,28 @@ export function riskGate(o: Order, c: GateContext): GateResult {
   else if (band > 2) add("PRICE_BAND", "warn", `the order price is ${pct(band)} away from the last price ${c.lastPrice}`);
 
   // 3. Jurisdiction and the investor's constraints.
+  // The rules are the agent's researched conclusions (core/jurisdiction.ts): unresearched, stale or unknown fails closed.
   const j = c.profile.jurisdiction;
-  if (o.assetKind === "etf" && o.domicile === "US" && ruleStatus(j, "us-domiciled-etf") === "restricted")
-    add("PRIIPS", "block", `a US-domiciled ETF has no PRIIPs KID: not sold to retail investors in ${j} — use its UCITS equivalent`);
+  if (o.assetKind === "etf" && o.domicile === "US") {
+    const r = ruleFact(j, "us-domiciled-etf");
+    if (r.status !== "allowed")
+      add(
+        "PRIIPS",
+        riskReducing ? "warn" : "block",
+        `a US-domiciled ETF for a resident of ${j}: retail access is ${r.status} — ${ruleWhy(r, j)}${riskReducing ? "; selling what is held passes" : "; use its UCITS equivalent"}`,
+      );
+  }
   if (o.assetKind === "prediction") {
-    // The contract's own venue decides: blocked → never, not even on paper; otherwise paper only until "allowed".
+    // The contract's own venue decides: blocked → never, not even on paper; otherwise paper only until "allowed" —
+    // except Polymarket, which is not even read unless "allowed", so no paper ticket either.
     const venue = /^([A-Z]+):/i.exec(o.symbol)?.[1]?.toLowerCase() ?? o.venue;
-    const status = ruleStatus(j, venue);
-    if (status === "blocked") add("JURISDICTION", "block", `${venue} is blocked for residents of ${j}: not traded, not even on paper`);
-    else if (o.venue !== "paper" && status !== "allowed") add("JURISDICTION", "block", `${venue} is ${status} for residents of ${j}: paper only`);
-    else if (status !== "allowed") add("JURISDICTION", "warn", `${venue} is ${status} for residents of ${j}: paper only`);
+    const r = ruleFact(j, venue);
+    const why = ruleWhy(r, j);
+    if (r.status === "blocked") add("JURISDICTION", "block", `${venue} is blocked for residents of ${j}: not traded, not even on paper — ${why}`);
+    else if (r.status !== "allowed" && venue === "polymarket")
+      add("JURISDICTION", "block", `${venue} is ${r.status} for residents of ${j}: not read, not paper-traded — ${why}`);
+    else if (o.venue !== "paper" && r.status !== "allowed") add("JURISDICTION", "block", `${venue} is ${r.status} for residents of ${j}: paper only — ${why}`);
+    else if (r.status !== "allowed") add("JURISDICTION", "warn", `${venue} is ${r.status} for residents of ${j}: paper only — ${why}`);
   }
   // The constraints say what never to BUY: selling what is held of it is getting out, which must stay possible
   // (a constraint set after the buy, a symbol excluded since) — said, not blocked.

@@ -66,6 +66,7 @@ export const MATURITY: Record<string, Maturity> = {
   decide: "stable",
   journal: "stable",
   tax: "beta",
+  facts: "beta",
   knowledge: "stable",
   watch: "stable",
   watchlist: "stable",

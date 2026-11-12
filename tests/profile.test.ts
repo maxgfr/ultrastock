@@ -6,6 +6,7 @@ import { checkMica, ruleStatus, rulesFor, verifyChecklist } from "../src/core/ju
 import { defaultProfile, loadProfile, saveProfile, setProfileField, upsertEnvelope } from "../src/core/profile.js";
 import { applySuitability, QUESTIONS, scoreSuitability } from "../src/core/suitability.js";
 import { withFixture } from "./helpers/fixtures.js";
+import { installJurisdictionTestFacts } from "./helpers/jurisdiction-facts.js";
 import { inParallelProcesses, SRC } from "./helpers/processes.js";
 
 const base = {
@@ -85,11 +86,18 @@ describe("suitability", () => {
 });
 
 describe("jurisdiction", () => {
-  it("knows France's rules and fails closed elsewhere", () => {
+  it("holds no rule of its own: every rule is unknown until researched, then reads the stored conclusion", () => {
+    expect(ruleStatus("FR", "polymarket")).toBe("unknown");
+    expect(rulesFor("FR").rules.every((r) => r.status === "unknown" && !r.researched)).toBe(true);
+    installJurisdictionTestFacts();
     expect(ruleStatus("FR", "polymarket")).toBe("blocked");
     expect(ruleStatus("FR", "us-domiciled-etf")).toBe("restricted");
     expect(ruleStatus("DE", "polymarket")).toBe("unknown");
-    expect(rulesFor("FR").rules.every((r) => r.sources.length > 0 && /^\d{4}-\d{2}-\d{2}$/.test(r.verifiedAt))).toBe(true);
+    expect(
+      rulesFor("FR")
+        .rules.filter((r) => r.researched)
+        .every((r) => r.sources.length > 0 && /^\d{4}-\d{2}-\d{2}$/.test(r.verifiedAt)),
+    ).toBe(true);
     expect(verifyChecklist("FR").length).toBe(rulesFor("FR").rules.length);
   });
   it("reads ESMA's MiCA registers", async () => {

@@ -7,6 +7,7 @@ import { listTickets } from "../src/trading/tickets.js";
 import { defaultProfile } from "../src/core/profile.js";
 import { kalshiTakerFee, outcomeBook, parsePredictionSymbol, walkOutcome } from "../src/trading/prediction.js";
 import { type GateContext, type Order, riskGate } from "../src/trading/riskgate.js";
+import { clearJurisdictionFacts, installJurisdictionTestFacts } from "./helpers/jurisdiction-facts.js";
 
 const contract = (o: Partial<Order> = {}): Order => ({
   account: "kalshi",
@@ -71,6 +72,7 @@ describe("prediction contracts", () => {
   });
 
   it("the gate: blocked venues never (even paper), unverified ones paper only, the stake is the risk", () => {
+    installJurisdictionTestFacts();
     const paper = riskGate(contract(), ctx("FR"));
     expect(codes(paper, "block")).toEqual([]);
     expect(codes(paper, "warn")).toContain("JURISDICTION");
@@ -84,6 +86,18 @@ describe("prediction contracts", () => {
     const off = ctx("FR");
     off.profile.constraints.allowPredictionMarkets = false;
     expect(codes(riskGate(contract(), off), "block")).toContain("NO_PREDICTION");
+  });
+
+  it("the gate fails closed on a rule never researched: Kalshi paper only, Polymarket not even on paper", () => {
+    clearJurisdictionFacts();
+    const kalshi = riskGate(contract(), ctx("DE"));
+    expect(kalshi.checks.find((c) => c.code === "JURISDICTION")).toMatchObject({ status: "warn", reason: expect.stringMatching(/not researched for DE/) });
+    expect(codes(riskGate(contract({ venue: "kalshi" }), ctx("DE")), "block")).toContain("JURISDICTION");
+    const poly = riskGate(contract({ symbol: "POLYMARKET:SOME-MARKET:YES" }), ctx("DE"));
+    expect(poly.checks.find((c) => c.code === "JURISDICTION")).toMatchObject({
+      status: "block",
+      reason: expect.stringContaining("ultrastock facts research jurisdiction --country DE --key polymarket --out <run>"),
+    });
   });
 });
 

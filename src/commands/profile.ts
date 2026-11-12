@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { registerDatasets, formatDatasets, type Dataset } from "../core/datasets.js";
-import { checkDnsBlock, checkMica, rulesFor, verifyChecklist } from "../core/jurisdiction.js";
+import { checkDnsBlock, cryptoVenueGate, JURISDICTION, researchCommand, rulesFor, verifyChecklist } from "../core/jurisdiction.js";
 import { withFileLockSync } from "../core/lock.js";
 import {
   defaultProfile,
@@ -185,46 +185,58 @@ export async function jurisdictionCommand(args: CommandArgs, asJson: boolean): P
   const [sub = "show"] = args.positional;
   const code = (argValue(args, "jurisdiction") ?? loadProfile()?.jurisdiction ?? "FR").toUpperCase();
   const rules = rulesFor(code);
+  const flow = `ultrastock holds no jurisdiction rule: research them (\`${researchCommand(code)}\` gathers the official documents and prints the worklist), store the conclusions (\`${JURISDICTION.setCommand}\`); until then each rule reads as unknown and fails closed`;
   if (sub === "show") {
     const text = [
-      `${rules.name} (${rules.code})`,
-      ...rules.rules.map((r) => `- ${r.id}: ${r.status.toUpperCase()} — ${r.summary}\n    verified ${r.verifiedAt}: ${r.sources.map((s) => s.url).join(" ")}`),
+      `${rules.name} (${rules.code}) — researched jurisdiction rules`,
+      ...rules.rules.map((r) =>
+        r.researched
+          ? `- ${r.id}: ${r.status.toUpperCase()} — ${r.summary}\n    researched ${r.verifiedAt}: ${r.sources.map((x) => x.url).join(" ")}`
+          : `- ${r.id}: UNKNOWN — ${r.summary}`,
+      ),
     ];
-    if (!rules.rules.length) text.push("- no rules recorded for this jurisdiction: every venue is unknown — readable and paper-tradable, never live-tradable");
-    return out(asJson, rules, text.join("\n"));
+    if (rules.rules.some((r) => !r.researched)) text.push("", flow);
+    return out(asJson, { ...rules, research: researchCommand(code) }, text.join("\n"));
   }
   if (sub !== "verify") throw new UsageError(`unknown jurisdiction action "${sub}" — show or verify`);
   const venues = (argValue(args, "venues") ?? "binance,kraken,coinbase")
     .split(",")
-    .map((v) => v.trim())
+    .map((v) => v.trim().toLowerCase())
     .filter(Boolean);
   const dir = argValue(args, "out") ? resolve(argValue(args, "out")!) : undefined;
   const now = clockNow().toISOString();
   const datasets: Dataset[] = [];
   for (const v of venues) {
-    const m = await checkMica(v, code);
+    // The check a live order runs: the researched regime, then the register it names (ESMA's is read here).
+    const g = await cryptoVenueGate(v, code);
+    const m = g.mica;
     datasets.push({
       kind: "jurisdiction",
-      title: `MiCA authorisation — ${v} for ${code} residents`,
+      title: `Crypto platform authorisation — ${v} for ${code} residents`,
       subject: v,
       points: [
-        { key: `${v}.mica.authorised.${code}`, label: `${v} authorised MiCA CASP serving ${code}`, value: m.authorised.length > 0 },
-        ...m.authorised.map((e, i) => ({
-          key: `${v}.mica.entity.${i}`,
-          label: `${v} authorised entity`,
-          value: `${e.name} (${e.homeState}, ${e.authority}, since ${e.authorisedOn})`,
-        })),
-        ...m.warnings.map((w, i) => ({
-          key: `${v}.mica.warning.${i}`,
-          label: `${v} non-compliance notice`,
-          value: `${w.name} — ${w.authority}, ${w.decidedOn}: ${w.reason}`,
-          untrusted: true,
-        })),
+        { key: `${v}.crypto.liveAllowed.${code}`, label: `${v}: live crypto orders allowed for a ${code} resident`, value: g.ok },
+        ...(m
+          ? [
+              { key: `${v}.mica.authorised.${code}`, label: `${v} authorised MiCA CASP serving ${code}`, value: m.authorised.length > 0 },
+              ...m.authorised.map((e, i) => ({
+                key: `${v}.mica.entity.${i}`,
+                label: `${v} authorised entity`,
+                value: `${e.name}${e.lei ? ` (LEI ${e.lei})` : ""} — ${e.homeState}, ${e.authority}, since ${e.authorisedOn}`,
+              })),
+              ...m.warnings.map((w, i) => ({
+                key: `${v}.mica.warning.${i}`,
+                label: `${v} non-compliance notice`,
+                value: `${w.name} — ${w.authority}, ${w.decidedOn}: ${w.reason}`,
+                untrusted: true,
+              })),
+            ]
+          : []),
       ],
-      provenance: { source: "esma-mica-register", url: m.url, fetchedAt: m.fetchedAt, official: true, asOf: m.fetchedAt.slice(0, 10) },
-      notes: m.authorised.length
-        ? []
-        : [`${v} is not in ESMA's MiCA CASP register for ${code}: treat it as unauthorised for live use until the AMF says otherwise`],
+      provenance: m
+        ? { source: "esma-mica-register", url: m.url, fetchedAt: m.fetchedAt, official: true, asOf: m.fetchedAt.slice(0, 10) }
+        : { source: "researched-jurisdiction-facts", fetchedAt: now, official: false, asOf: now.slice(0, 10) },
+      notes: [g.reason, ...(m?.notes ?? [])],
     });
   }
   const dns = await checkDnsBlock("gamma-api.polymarket.com");
@@ -237,9 +249,14 @@ export async function jurisdictionCommand(args: CommandArgs, asJson: boolean): P
   });
   const registered = registerDatasets(dir, datasets);
   const checklist = verifyChecklist(code);
-  if (asJson) return out(true, { registered: registered.map((r) => ({ title: r.dataset.title, ids: r.ids, items: r.items })), checklist }, "");
+  if (asJson)
+    return out(
+      true,
+      { registered: registered.map((r) => ({ title: r.dataset.title, ids: r.ids, items: r.items })), checklist, research: researchCommand(code) },
+      "",
+    );
   process.stdout.write(formatDatasets(registered));
   process.stdout.write(
-    `\n## To confirm by web search (rules change; then update the rule's verifiedAt)\n${checklist.map((c) => `- ${c.rule} (verified ${c.verifiedAt}): "${c.query}" — ${c.sources.join(" ")}`).join("\n")}\n`,
+    `\n## To research (rules change — ${flow})\n${checklist.map((c) => `- ${c.rule}: ${c.current}${c.verifiedAt ? ` (researched ${c.verifiedAt})` : ""} — search "${c.query}"${c.sources.length ? `, re-check ${c.sources.join(" ")}` : ""}`).join("\n")}\n`,
   );
 }

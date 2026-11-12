@@ -2,7 +2,7 @@
 // recent enough for live trading, which external tools are installed, and —
 // with --probe — whether each data source answers right now, and how fast.
 import { MATURITY } from "./core/maturity.js";
-import { checkDnsBlock, ruleStatus } from "./core/jurisdiction.js";
+import { checkDnsBlock, researchCommand, rulesFor, ruleStatus } from "./core/jurisdiction.js";
 import { fetchText } from "./core/net.js";
 import { dataCacheDir, homeDir } from "./core/paths.js";
 import { loadProfile } from "./core/profile.js";
@@ -37,6 +37,8 @@ export interface DoctorReport {
   home: string;
   cache: string;
   profile: { exists: boolean; jurisdiction?: string; riskScore?: number; envelopes?: number };
+  /** The profile country's researched jurisdiction rules: how many hold a current conclusion, and the command to research the rest. */
+  jurisdiction?: { country: string; researched: number; total: number; unresearched: string[]; research: string };
   tools: Record<string, ToolReport>;
   crible: { dataDir: string; bootstrapped: boolean; tag: string; runner: string; freshness?: CribleFreshness };
   /** The optional local search containers, probed only with --probe. */
@@ -110,6 +112,17 @@ export async function doctorReport(opts: { probe?: boolean; has?: (cmd: string) 
     secContact: !!process.env.ULTRASTOCK_SEC_CONTACT?.trim(),
     maturity: byMaturity(),
   };
+  if (profile.jurisdiction) {
+    const rules = rulesFor(profile.jurisdiction).rules;
+    const unresearched = rules.filter((r) => !r.researched).map((r) => r.id);
+    report.jurisdiction = {
+      country: profile.jurisdiction,
+      researched: rules.length - unresearched.length,
+      total: rules.length,
+      unresearched,
+      research: researchCommand(profile.jurisdiction),
+    };
+  }
   const fresh = report.crible.bootstrapped ? await cribleFreshness().catch(() => undefined) : undefined;
   if (fresh) report.crible.freshness = fresh;
   if (opts.probe) {
@@ -136,6 +149,11 @@ export function formatDoctor(r: DoctorReport): string {
     `  state       ${r.home}`,
     `  cache       ${r.cache}`,
     `  profile     ${r.profile.exists ? `${r.profile.jurisdiction ?? "?"}, risk score ${r.profile.riskScore ?? "not assessed — run profile suitability"}, ${r.profile.envelopes ?? 0} envelope(s)` : "none — run `ultrastock profile init`"}`,
+    ...(r.jurisdiction
+      ? [
+          `  rules       ${r.jurisdiction.country}: ${r.jurisdiction.researched} of ${r.jurisdiction.total} jurisdiction rules researched${r.jurisdiction.unresearched.length ? ` (missing or stale: ${r.jurisdiction.unresearched.join(", ")} — they fail closed; research them: \`${r.jurisdiction.research}\`)` : ""}`,
+        ]
+      : []),
     `  sec         ${r.secContact ? "contact set (ULTRASTOCK_SEC_CONTACT)" : "no contact — set ULTRASTOCK_SEC_CONTACT to your e-mail: SEC EDGAR's fair-access policy asks for one and may block anonymous tools"}`,
     ...(r.services ?? []).map((s) => `  ${s.name.padEnd(11)} ${s.up ? `up at ${s.url}` : `not running — \`ultrastock ${s.name} up\` (optional, Docker)`}`),
     `  crible      ${r.crible.bootstrapped ? "dataset ready" : "no dataset yet (first `screen --engine crible` bootstraps it, ~1 min)"} in ${r.crible.dataDir} (pinned ${r.crible.tag})`,

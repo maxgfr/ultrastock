@@ -29,7 +29,7 @@ import { commandArgs, datasetsOf } from "../../commands/emit.js";
 import type { Dataset, Point } from "../../core/datasets.js";
 import { clockNow } from "../../core/net.js";
 import { loadProfile } from "../../core/profile.js";
-import { ruleStatus } from "../../core/jurisdiction.js";
+import { ruleFact, ruleWhy } from "../../core/jurisdiction.js";
 import { sanitizeExternalText } from "../../core/untrusted.js";
 import { writeArtifact } from "../../engine.js";
 import { type ElectionEvent, type ElectionKind, electionCalendar } from "../../providers/macro/elections.js";
@@ -640,7 +640,8 @@ async function studyEvent(e: MarketEvent, f: Findings, c: StudyContext): Promise
     } catch (err) {
       f.note(`${e.title}: no prediction market found (${(err as Error).message.split("\n")[0]})`);
     }
-    if (ruleStatus(juris, "polymarket") !== "allowed") f.note(`Polymarket is not read for a resident of ${juris}`);
+    const pm = ruleFact(juris, "polymarket");
+    if (pm.status !== "allowed") f.note(`Polymarket is not read for a resident of ${juris} (${pm.status}: ${ruleWhy(pm, juris)})`);
   }
   const daysTo = (Date.parse(`${e.date}T00:00:00Z`) - c.now.getTime()) / DAY;
   // The implied move for a vote (a rate decision is priced every day in the index's own options).
