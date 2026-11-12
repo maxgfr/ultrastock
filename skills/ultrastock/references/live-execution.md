@@ -10,7 +10,7 @@ approve, never retry, and never work around a refusal.
 | `--env` | Binance | Kraken | Coinbase | IBKR | Kalshi |
 |---|---|---|---|---|---|
 | `test` (default) | testnet | `validate=true` (nothing placed) | preview only | paper account (`DU…`) | demo exchange |
-| `live` | real | real | real | real (`U…`) | real — where the jurisdiction allows it |
+| `live` | real | real | real | real (`U…`) | real — where the researched jurisdiction rule allows it |
 
 **Live needs** two switches, both the user's: the live switch, turned on with
 an out-of-band code (`broker code live`, then `broker live on --code <code>`;
@@ -82,7 +82,7 @@ either switch for the user.
 |---|---|
 | `LIVE_OFF`, `NODE`, `NOT_READY` | live is not switched on, Node is too old, or the paper record is not ready |
 | `VENUE_OFF`, `VENUE_MISMATCH` | the venue is not switched on, or the ticket was planned for another venue |
-| `BLOCKED_JURISDICTION` | live: the crypto platform is not an authorised MiCA CASP for the profile's country (**Binance, for France**), or Kalshi is not "allowed" there (**France**) |
+| `BLOCKED_JURISDICTION` | live: the researched rules of the profile's country do not let the order go — crypto: `crypto-casp` blocked or unknown, or the venue not found on the register `crypto-register` names (ESMA's MiCA register is read at order time; another register needs the venue's own `cryptoVenue.<venue>` fact); Kalshi: `kalshi` not "allowed". A rule never researched or stale reads as unknown: the reason names the `facts research jurisdiction` command |
 | `KILL_SWITCH`, `BREAKER` | `<home>/KILL` exists, or a loss limit tripped |
 | `TICKET` | not checked, older than 15 minutes, or changed since the check |
 | `MARKET_ORDER`, `ASSET`, `NO_SHORT` | live orders are limit orders only, on spot shares, ETFs, crypto or Kalshi contracts; no selling what is not held |
@@ -91,6 +91,18 @@ either switch for the user.
 | `PRICE_BAND` | the limit is more than 1 % beyond the venue's best price right now |
 | `CODE` | no code, an expired code, a wrong code, or a code issued for a different order |
 | `PENDING` | this ticket already went out: reconcile it first |
+
+## The jurisdiction: research → set → guard
+
+ultrastock holds no rule about any country: the guards read the conclusions
+you researched (see `onboarding-profile.md`, "The jurisdiction"). Before the
+user's first live order on a venue, check `ultrastock jurisdiction show`: a
+rule marked unknown refuses the order. Research it with
+`ultrastock facts research jurisdiction --key <rule> --out <run>`, read the
+documents, conclude, store it with `facts set jurisdiction --file …`, and
+`jurisdiction verify --venues <venue>` shows the check a live order will run.
+Never store a conclusion the sources do not support to unblock an order: a
+refusal is the user's law until an official source says otherwise.
 
 ## Always allowed
 

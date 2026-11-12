@@ -103,7 +103,8 @@ plan ─► ticket (draft) ─► ticket check ─► risk gate ─► checked (
                                              │ block → blocked, with reason codes
 checked ─► paper submit ─► fill on the live book / last price ± slippage ─► paper ledger
 checked ─► broker preview (venue dry run) ─► broker code (out of band) ─► broker submit
-             └─ preconditions: live switch, venue on, jurisdiction (MiCA), kill switch,
+             └─ preconditions: live switch, venue on, jurisdiction (researched: the
+                crypto regime, then ESMA's MiCA register or the venue's fact), kill switch,
                 breaker, limit order, no short, tier limits, no withdrawal right,
                 1 % price band, the code bound to the fingerprint, the venue,
                 the environment and the venue symbol
@@ -207,8 +208,52 @@ country (name, label, type, unit, search query, preferred official source);
 a file per domain, country and period (a year or a date) lives in
 `<home>/facts/<domain>/<CC>-<period>.json`, written atomically. Validation is
 strict, and a fact past its `expiresAt` or older than its key's `maxAgeDays`
-reads as unknown. Tax is the first domain; the template, the checklist and the
-refusals come from the registry.
+reads as unknown. A `text` key may list its only accepted `values` (a status);
+a domain may accept keys outside its list with their own spec (`extraKey`: a
+per-venue key such as `cryptoVenue.kraken`). A `date` domain is read with
+`loadLatestFacts`: each key's newest fact across the stored dates, so
+researching one key on a later day keeps the others' earlier conclusions.
+
+The domains:
+
+| Domain | Keyed by | Keys | Read by |
+|---|---|---|---|
+| `tax` | country, tax year | the FR / US engines' rates, thresholds and periods; free keys elsewhere | `tax` (see above) |
+| `jurisdiction` | country, research date | `polymarket`, `kalshi` (90 days), `us-domiciled-etf`, `crypto-casp`, `crypto-register` (`esma-mica`, `other`, `none`), `foreign-accounts`, `pfic` (US only) (180 days); `cryptoVenue.<venue>` and `cryptoVenue.<venue>.lei` | the risk gate (PRIIPS, JURISDICTION), live preconditions (Kalshi, crypto platforms), `broker status`, `predict polymarket`, `events`, `etf propose`, `analyze` / `etf`, `doctor`, `jurisdiction show|verify` |
+| `funds` | fund domicile, research date | `withholding` | the domicile line of `analyze` / `etf` |
+
+Every jurisdiction key is a status — `allowed`, `restricted`, `blocked` or
+`unknown` — with a note saying what the sources state (`crypto-register`
+names a register). `src/core/jurisdiction.ts` declares the keys and reads
+them (`ruleFact`, `ruleStatus`, `rulesFor`, `cryptoVenueGate`); it holds no
+status. A key never researched, stale, or concluded unknown reads as unknown,
+and every reader fails closed on it with a refusal naming
+`ultrastock facts research jurisdiction --country CC --key <key> --out <run>`.
+A crypto platform passes when `crypto-casp` is `allowed`, or `restricted`
+with the venue on the register `crypto-register` names: ESMA's MiCA register
+is read at order time (its CSV links discovered on ESMA's MiCA page, the
+first dated path only as a reported fallback; matched on the venue's LEI when
+`cryptoVenue.<venue>.lei` is stored, else on its name and then the LEIs that
+name found; an entry serves its home state and the states it passports to —
+an entry with no passport list serves its home state only); any other
+register needs the venue's own `cryptoVenue.<venue>` fact. The one per-country
+hint left in code is the ANJ's DNS block page host, used only to report a DNS
+block (`doctor`, `jurisdiction verify`), never to allow or refuse anything.
+
+`facts research <domain> [--country] [--key] --out <run>` (src/research/facts.ts)
+builds each key's queries (its `query`, and the same with `site:` for each
+host its `prefer` names), runs the keyless search cascade of
+`research --engine-search` — or takes the agent's own hits (`--web-results`,
+one list per key, `angle` = the key) — reads the top hits on official hosts
+(government suffixes, a list of regulators, the preferred hosts; a key with
+none gets its best other hit, flagged unofficial) through the research reader
+(HTML, PDFs, the Wayback rung, `--browser`), registers each as a document
+`[E#]`, and writes `FACTS.<domain>.<CC>.md` (per key: the documents to read,
+the fact to fill) and `FACTS.<domain>.<CC>.json` (the template with each key's
+`evidence`). Nothing is concluded by the CLI: the model reads, fills the JSON
+and stores it with `facts set <domain> --file`. `facts template|show <domain>`
+print the skeleton and what is stored; `facts … tax` runs `tax rules …`. The
+MCP server exposes `facts show|template` only.
 
 ## MCP
 

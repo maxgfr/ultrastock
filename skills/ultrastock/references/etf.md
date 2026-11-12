@@ -27,11 +27,14 @@ ultrastock etf propose --envelope pea --risk 5 --amount 10000 --out <run>    # �
   hint, else **unknown — check the KID or the broker**. Never deduced from the
   domicile (CW8 is Luxembourg-domiciled and PEA-eligible).
 - **Domicile**: the fund's country (else the ISIN prefix), with what it means for
-  withholding tax on dividends (qualitative — no rate is stated without a
-  source).
-- **PRIIPs**: a US-domiciled ETF has no KID, so an EU retail investor cannot buy
-  it — for a French profile ETF.md proposes **UCITS twins** (same index, ranked
-  by TER then AUM), and `plan` blocks the order (the risk gate's PRIIPS check).
+  withholding tax on dividends — the sentence you researched for that domicile
+  (`facts research funds --country IE --out <run>`, then `facts set funds`),
+  else "not researched" and the command. ultrastock states no treaty or rate.
+- **Retail access to a US-domiciled ETF** is the profile country's researched
+  rule `us-domiciled-etf` (in the EU/EEA, the PRIIPs key information
+  document): unless it reads "allowed" — not researched included — ETF.md
+  proposes **UCITS twins** (same index, ranked by TER then AUM), and `plan`
+  blocks the order (the risk gate's PRIIPS check, with the research command).
 - **Holdings** (physical funds): top 10, sectors, countries, line count (iShares,
   Amundi, SEC N-PORT for US funds), and the weighted multiples of the top lines
   from crible with their coverage.
@@ -97,12 +100,13 @@ sleeve's first line; weights are whole percentages summing to 100. A
 `--max-funds` below the plan's sleeves (one fund each for the equity and the
 rest) is a usage error that names the minimum.
 
-- **Envelope.** A PEA holds no bond fund (funds ≥ 75 % in EU-company shares,
-  or swap funds built to qualify): that part is placed **outside**, in a CTO
-  or an assurance-vie, and PROPOSAL.md says so — never silently dropped. A
-  PEA bucket with no eligible fund (world small caps) folds into the world
-  line. PEA eligibility is the issuer's flag (Amundi FUND_PEA) or "PEA" in the
-  name (a hint); no other issuer publishes the flag keylessly (iShares'
+- **Envelope.** Inside a PEA, a line keeps only funds whose issuer flags them
+  eligible (Amundi FUND_PEA) or that say "PEA" in their name (a hint) —
+  ultrastock asserts no eligibility rule of its own. A line no such fund fills
+  (the bonds, in practice) is placed **outside**, in a CTO or an
+  assurance-vie, and PROPOSAL.md says so — never silently dropped; an equity
+  line with no eligible fund (world small caps) folds into the world line.
+  PEA eligibility is the issuer's flag or the name hint; no other issuer publishes the flag keylessly (iShares'
   screener is gone, BNP Paribas Easy, Xtrackers and HSBC expose none, Euronext
   gives the SRD only). For an assurance-vie: the fund list is the insurer's —
   say "check your contract's list".
@@ -111,7 +115,9 @@ rest) is a usage error that names the minimum.
   Treasury / Euro Aggregate / iBoxx Euro Sovereigns…), listed in the currency
   asked, kept when: plain index (no factor, sector or maturity slice — an ESG
   version only when no plain one qualifies, said so), UCITS and not
-  US-domiciled for an EU resident (PRIIPs), not leveraged or inverse, not
+  US-domiciled unless the researched `us-domiciled-etf` rule reads "allowed"
+  (for a US profile, not non-US unless the researched `pfic` rule reads
+  "allowed"), not leveraged or inverse, not
   currency-hedged unless `--hedged`, AUM ≥ 100 M (reporting currency), launched
   ≥ 1 year ago when known (age then only weighs in the score), the distribution asked (income: distributing).
   Younger funds that pass everything else are named in the notes.

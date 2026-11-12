@@ -25,11 +25,15 @@ the evidence, form a view, and write an answer in which every number cites the
    (end of day, delayed, real time); say when a source is unofficial.
 4. **Run `check` before you answer.** Fix every line it reports; never ship a
    failing answer. Use `--max-age` when the user acts today.
-5. **Tax rules are your research, never built in.** ultrastock contains no
-   tax law. Before any tax figure: `tax rules template` for the user's country
-   and tax year, web-search each key on official sources, fill it with its
-   sources, `tax rules set`, then `tax report`. Say that the rules are your
-   research and that a professional should confirm them.
+5. **Rules that vary by country are your research, never built in.**
+   ultrastock contains no tax law and no jurisdiction rule (Polymarket,
+   Kalshi, US-domiciled ETFs, crypto platforms and their register, foreign
+   accounts, PFIC). `facts research <jurisdiction|tax|funds> --out <run>`
+   gathers the official documents per key as `[E#]` and writes the JSON to
+   fill; read them, conclude, `facts set <domain> --file <json>` (tax: also
+   `tax rules set`). A rule not researched, stale or "unknown" fails closed —
+   the refusal names the command. Say that the rules are your research and
+   that a professional should confirm them.
 6. **A view is yours; say what would change it.** Bullish, expensive, risky are
    judgements — name the evidence they rest on and the level or event that
    would invalidate them. Missing data is "unavailable", never guessed.
@@ -99,7 +103,7 @@ Pick one absolute `--out <dir>` per task and pass it to every command, so
 | bars to look at or to compute on | `history <symbol> --from … --to …` | [data-sources](references/data-sources.md) |
 | a ratio, a gap, a distance to a level | `calc <dir> "<formula over E ids>" --label …` | [citation-format](references/citation-format.md) |
 | to set up who they are (first use) | `profile init`, then `profile suitability` (ask the questions), `profile envelope` | [onboarding-profile](references/onboarding-profile.md) |
-| what their country allows (PEA, MiCA, Polymarket…) | `jurisdiction show`, `jurisdiction verify --out <dir>` | [onboarding-profile](references/onboarding-profile.md) |
+| what their country allows (Polymarket, Kalshi, US-domiciled ETFs, crypto platforms…) | `jurisdiction show` → `facts research jurisdiction --out <run>` → read the `[E#]`, conclude → `facts set jurisdiction --file <run>/FACTS.jurisdiction.<CC>.json`; `jurisdiction verify --out <dir>` | [onboarding-profile](references/onboarding-profile.md) |
 | market hours, holidays, the next sessions | `calendar sessions --market XPAR` | [data-sources](references/data-sources.md) |
 | a company's numbers: statements, filings | `fundamentals <sym> [--asof]`, `filings <US sym>` | [fundamentals-filings](references/fundamentals-filings.md) |
 | who is buying: insiders, institutions, Congress, short sellers | `insiders`, `holdings <manager>`, `congress`, `short` | [fundamentals-filings](references/fundamentals-filings.md) |
@@ -175,6 +179,7 @@ ultrastock predict order kalshi <TICKER> yes|no [buy|sell] --contracts <n> --pri
 ultrastock backtest run|walkforward|sweep|montecarlo|compare|review <strategy> <symbol> [--years] [--grid] … · backtest decisions
 ultrastock strategy list|show|validate|new [<name>] [--like <strategy>]
 ultrastock tax rules template|set|show [--country] [--year] [--file] · tax verify
+ultrastock facts research <jurisdiction|funds|tax> [--country CC] [--key k,…] [--web-results <file>] --out <run> · facts template|set|show <domain> [--file]
 ultrastock tax report|lots|harvest|export [--country] [--year] [--neutral] [--tmi] [--income] [--filing] [--carryforward] [--envelope-value] [--format]
 ultrastock mcp [--transport stdio|http --token <t>]   # the same commands as MCP tools: no order, profile, ledger or key changes; writing tools (analyze, calc, plan…) are declared so
 ultrastock serve [--port 8766] [--book real|paper]    # a read-only dashboard for the user's browser (127.0.0.1, token in the printed URL)

@@ -92,14 +92,16 @@ of each command: **stable**, **beta** (unofficial sources) or
 - **A deterministic risk gate.** Every check has a reason code: stop, risk per
   trade, position, sector and crypto caps, cash buffer, the kill switch, the
   circuit breaker (daily, weekly and monthly loss), the overtrading guard,
-  PRIIPs and the jurisdiction.
+  and the researched jurisdiction rules (a US-domiciled ETF, a prediction
+  market venue).
 - **Live orders behind every guard.**
   - The switches: the live switch, turned on by the user with an
     out-of-band code (`broker code live`, `broker live on --code`), and
     `ULTRASTOCK_LIVE=1` in their shell, plus a ready paper record.
-  - Venue and key: the venue must be authorised for the user's country (the
-    ESMA MiCA register for crypto platforms; Binance is not, for France), and
-    the key must not be able to withdraw.
+  - Venue and key: the venue must be authorised for the user's country as
+    the agent researched it (for a crypto platform: the regime, then the
+    register it names — ESMA's MiCA register is read at order time), and the
+    key must not be able to withdraw.
   - The order: a limit within 1 % of the venue's book, inside the per-order
     and per-day limits of the experience tier.
   - Approval: a **6-digit code delivered out of band**, never in the agent's
@@ -112,9 +114,15 @@ of each command: **stable**, **beta** (unofficial sources) or
 - **Keys stay in the OS keychain**, are never taken on a command line, and
   are redacted everywhere. No withdrawal or transfer endpoint exists in the
   code.
-- **Jurisdiction.** Polymarket is blocked for France (ANJ) and not even
-  paper-traded. Kalshi is paper only from France. A block is never worked
-  around.
+- **No jurisdiction rule is built in.** Whether Polymarket or Kalshi may be
+  used, whether a US-domiciled ETF may be sold to a retail investor, which
+  register lists the authorised crypto platforms: the agent researches each
+  rule on official sources (`facts research jurisdiction` gathers the
+  documents as `[E#]`), concludes, and stores the conclusion with its sources
+  (`facts set jurisdiction`). A rule never researched, stale or concluded
+  unknown fails closed: Polymarket is not read, a US-domiciled ETF is not
+  proposed, no live crypto or Kalshi order goes — and the refusal names the
+  command. A block is never worked around.
 - **No tax law is built in.** ultrastock holds no rate, threshold or holding
   period. The agent looks up the rules for the user's country and tax year on
   official sources and stores them with their sources and dates
