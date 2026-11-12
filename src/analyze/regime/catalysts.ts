@@ -34,6 +34,7 @@ import { toTradingViewTicker, tradingviewScan } from "../../providers/markets/tr
 import { monthDayYear } from "../../providers/nasdaq.js";
 import { cboeChain } from "../../providers/options/cboe.js";
 import { resultsReactionsDataset } from "../events/earnings.js";
+import { settlementAt } from "../quant/options.js";
 import type { OptionContract } from "../../providers/options/chain.js";
 import { resolveSymbol } from "../../providers/router.js";
 import { type Instrument, ProviderError } from "../../providers/types.js";
@@ -132,12 +133,12 @@ export function projectNextExDate(pastExDates: readonly string[]): { date: strin
   return gap > 0 ? { date: shiftDay(d[d.length - 1]!, gap), gapDays: gap } : undefined;
 }
 
-/** OptionChain contracts as the analytics' ChainOption: years to expiry from `now`, IV from percent to a fraction. */
+/** A US (Cboe) chain's contracts as the analytics' ChainOption: years to expiry from `now` to the New York close (`settlementAt`, daylight saving included), IV from percent to a fraction. */
 export function toChainOptions(contracts: readonly OptionContract[], now: Date): ChainOption[] {
   return contracts.map((c) => ({
     right: c.right,
     strike: c.strike,
-    t: Math.max(0, (Date.parse(`${c.expiry}T21:00:00Z`) - now.getTime()) / (365 * 86_400_000)),
+    t: Math.max(0, (settlementAt("cboe", c.expiry).getTime() - now.getTime()) / (365 * 86_400_000)),
     expiry: c.expiry,
     ...(c.bid !== undefined ? { bid: c.bid } : {}),
     ...(c.ask !== undefined ? { ask: c.ask } : {}),

@@ -29432,7 +29432,7 @@ function toChainOptions(contracts, now) {
   return contracts.map((c) => ({
     right: c.right,
     strike: c.strike,
-    t: Math.max(0, (Date.parse(`${c.expiry}T21:00:00Z`) - now.getTime()) / (365 * 864e5)),
+    t: Math.max(0, (settlementAt("cboe", c.expiry).getTime() - now.getTime()) / (365 * 864e5)),
     expiry: c.expiry,
     ...c.bid !== void 0 ? { bid: c.bid } : {},
     ...c.ask !== void 0 ? { ask: c.ask } : {},
