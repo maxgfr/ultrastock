@@ -49589,14 +49589,22 @@ function locationFactsNote(lf) {
 }
 var unresearched = (year, country2 = "FR") => ({ country: country2, year, sources: [], missing: Object.values(KEYS3) });
 var SP_CTO = { label: "service-public.fr \u2014 Plus-values sur valeurs mobili\xE8res", url: "https://www.service-public.fr/particuliers/vosdroits/F21618" };
-var PRIIPS = { label: "Regulation (EU) 1286/2014 (PRIIPs)", url: "https://eur-lex.europa.eu/eli/reg/2014/1286/oj" };
 var researched = (lf) => lf.sources.map((url) => ({ label: `researched ${lf.country} tax fact (${lf.year})`, url }));
+var ruleSources = (r3, country2) => r3.sources.map((url) => ({ label: `researched ${country2} jurisdiction rule ${r3.id}`, url }));
+function foreignAccountClause(r3, country2) {
+  if (r3.status === "allowed") return "";
+  if (r3.status === "restricted") return `an account held abroad must be declared: ${r3.note}`;
+  if (r3.status === "blocked") return `the ${country2} research says residents may not hold an account abroad: ${r3.note}`;
+  return `whether an account held abroad must be declared is unknown: ${ruleWhy(r3, country2)}`;
+}
 function locationRules(lf = unresearched((/* @__PURE__ */ new Date()).getUTCFullYear())) {
   const src2 = researched(lf);
   const pea = lf.peaMinYears !== void 0 ? `gains and dividends are free of income tax after ${lf.peaMinYears} years (social levies remain)` : "the PEA shelters gains and dividends (its holding period is not researched for this tax year)";
   const av = lf.avMinYears !== void 0 ? `an assurance-vie contract that lists it defers tax (allowance after ${lf.avMinYears} years)` : "an assurance-vie contract that lists it defers tax (its holding period is not researched for this tax year)";
   const treaty = lf.usTreatyRate !== void 0 ? `file a W-8BEN for the ${Number((lf.usTreatyRate * 100).toFixed(2))} % US treaty rate on dividends; ` : "";
-  const priips = ruleStatus(lf.country, "us-domiciled-etf") === "restricted";
+  const usEtf = ruleFact(lf.country, "us-domiciled-etf");
+  const abroad = ruleFact(lf.country, "foreign-accounts");
+  const abroadClause = foreignAccountClause(abroad, lf.country);
   return {
     "eu-share": {
       id: "eu-share",
@@ -49623,22 +49631,22 @@ function locationRules(lf = unresearched((/* @__PURE__ */ new Date()).getUTCFull
       id: "us-etf",
       applies: "a US-domiciled ETF",
       ranking: ["CTO", "TAXABLE"],
-      why: priips ? "no PRIIPs key information document: EU brokers do not sell it to retail clients \u2014 an existing line stays in a CTO; buy the UCITS equivalent instead" : "not PEA-eligible: a CTO",
-      sources: [...priips ? [PRIIPS] : [], SP_CTO]
+      why: usEtf.status === "allowed" ? `not PEA-eligible: a CTO (retail access allowed: ${ruleWhy(usEtf, lf.country)})` : `retail access to US-domiciled ETFs is ${usEtf.status} for ${lf.country} (${ruleWhy(usEtf, lf.country)}) \u2014 an existing line stays in a CTO; buy the UCITS equivalent instead`,
+      sources: [...ruleSources(usEtf, lf.country), SP_CTO]
     },
     "non-eu-share": {
       id: "non-eu-share",
       applies: "shares of a company incorporated outside the EU/EEA (US, UK, Switzerland\u2026)",
       ranking: ["CTO", "TAXABLE"],
-      why: `not PEA-eligible: a CTO (${treaty}declare an account held abroad on form 3916)`,
-      sources: [...src2, SP_CTO]
+      why: `not PEA-eligible: a CTO${treaty || abroadClause ? ` (${[treaty.replace(/; $/, ""), abroadClause].filter(Boolean).join("; ")})` : ""}`,
+      sources: [...src2, ...ruleSources(abroad, lf.country), SP_CTO]
     },
     crypto: {
       id: "crypto",
       applies: "crypto-assets",
       ranking: ["CRYPTO"],
-      why: "no tax wrapper takes crypto: an exchange account (form 3916-bis for an account abroad)",
-      sources: [...src2]
+      why: `no tax wrapper takes crypto: an exchange account${abroadClause ? ` (${abroadClause})` : ""}`,
+      sources: [...src2, ...ruleSources(abroad, lf.country)]
     },
     unknown: {
       id: "unknown",

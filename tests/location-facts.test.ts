@@ -4,6 +4,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { bestEnvelope, locationFacts, locationFactsNote, locationRules } from "../src/analyze/portfolio/location.js";
 import { sellTaxNote } from "../src/analyze/portfolio/rebalance.js";
+import { clearJurisdictionFacts, installJurisdictionTestFacts } from "./helpers/jurisdiction-facts.js";
 import { clearTaxRules, installTaxTestRules } from "./helpers/tax-rules.js";
 
 const MC = { symbol: "MC.PA", assetClass: "equity", isin: "FR0000121014", envelopes: ["CTO" as const] };
@@ -58,5 +59,29 @@ describe("a sell's tax note", () => {
       expect(note).not.toMatch(/France|French|PFU|CGI|flat tax|withdrawal/);
       expect(note).toMatch(/DE tax resident is not built in.*tax rules template --country DE --year 2026/);
     }
+  });
+});
+
+describe("location advice from the researched jurisdiction rules", () => {
+  beforeEach(() => {
+    clearTaxRules();
+    clearJurisdictionFacts();
+  });
+
+  it("quotes US-ETF access and the duty to declare an account abroad as researched, never as fixed text", () => {
+    let rules = locationRules(locationFacts(2026));
+    // Nothing researched: no PRIIPs claim and no form number, only what to research.
+    for (const id of ["us-etf", "non-eu-share", "crypto"]) expect(rules[id]!.why).not.toMatch(/PRIIPs|3916/);
+    expect(rules["us-etf"]!.why).toMatch(
+      /retail access to US-domiciled ETFs is unknown for FR .*facts research jurisdiction --country FR --key us-domiciled-etf/,
+    );
+    expect(rules.crypto!.why).toMatch(/whether an account held abroad must be declared is unknown: .*--key foreign-accounts/);
+
+    installJurisdictionTestFacts();
+    rules = locationRules(locationFacts(2026));
+    expect(rules["us-etf"]!.why).toMatch(/is restricted for FR \(TEST conclusion for FR: restricted/);
+    expect(rules["us-etf"]!.sources[0]!.url).toBe("https://example.invalid/ultrastock-test-data-not-law");
+    expect(rules["non-eu-share"]!.why).toMatch(/an account held abroad must be declared: TEST conclusion for FR: restricted/);
+    expect(rules.crypto!.why).toMatch(/an account held abroad must be declared/);
   });
 });

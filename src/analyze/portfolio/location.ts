@@ -9,12 +9,18 @@
 // advice, which says so and names the command to research it. For any other
 // residence no advice is given at all (run-book.ts locationAnalysis).
 //
+// What a holding's location depends on beyond tax — whether a US-domiciled
+// ETF may be sold to a retail investor (PRIIPs in the EU), whether an account
+// held abroad must be declared — is the researched "jurisdiction" fact of the
+// tax residence (core/jurisdiction.ts: us-domiciled-etf, foreign-accounts),
+// quoted with its sources; not researched, the advice says so.
+//
 // Eligibility is a FIRST PASS: the ISIN's country prefix (usually the
 // issuer's country of incorporation) against the EU/EEA list of core/geo.ts
 // for shares, the issuer's own flag (Amundi's FUND_PEA) for funds. Always
 // "confirm with the broker": the broker refuses an ineligible order anyway.
 import { euEeaMembers, isEuEea } from "../../core/geo.js";
-import { ruleStatus } from "../../core/jurisdiction.js";
+import { type RuleReading, ruleFact, ruleWhy } from "../../core/jurisdiction.js";
 import type { EnvelopeType } from "../../core/profile.js";
 import { loadRules, TAX, templateCommand } from "../../tax/rules.js";
 import { isinCountry } from "./risk.js";
@@ -80,8 +86,16 @@ export function locationFactsNote(lf: LocationFacts): string | undefined {
 export const unresearched = (year: number, country = "FR"): LocationFacts => ({ country, year, sources: [], missing: Object.values(KEYS) });
 
 const SP_CTO = { label: "service-public.fr — Plus-values sur valeurs mobilières", url: "https://www.service-public.fr/particuliers/vosdroits/F21618" };
-const PRIIPS = { label: "Regulation (EU) 1286/2014 (PRIIPs)", url: "https://eur-lex.europa.eu/eli/reg/2014/1286/oj" };
 const researched = (lf: LocationFacts) => lf.sources.map((url) => ({ label: `researched ${lf.country} tax fact (${lf.year})`, url }));
+const ruleSources = (r: RuleReading, country: string) => r.sources.map((url) => ({ label: `researched ${country} jurisdiction rule ${r.id}`, url }));
+
+/** What an account held abroad means for the residence, as researched (foreign-accounts): a clause, or what to research. */
+function foreignAccountClause(r: RuleReading, country: string): string {
+  if (r.status === "allowed") return "";
+  if (r.status === "restricted") return `an account held abroad must be declared: ${r.note}`;
+  if (r.status === "blocked") return `the ${country} research says residents may not hold an account abroad: ${r.note}`;
+  return `whether an account held abroad must be declared is unknown: ${ruleWhy(r, country)}`;
+}
 
 /**
  * The French location rules, written with the researched facts of `lf`: a holding period, a ceiling or a treaty
@@ -99,7 +113,10 @@ export function locationRules(lf: LocationFacts = unresearched(new Date().getUTC
       ? `an assurance-vie contract that lists it defers tax (allowance after ${lf.avMinYears} years)`
       : "an assurance-vie contract that lists it defers tax (its holding period is not researched for this tax year)";
   const treaty = lf.usTreatyRate !== undefined ? `file a W-8BEN for the ${Number((lf.usTreatyRate * 100).toFixed(2))} % US treaty rate on dividends; ` : "";
-  const priips = ruleStatus(lf.country, "us-domiciled-etf") === "restricted";
+  // Anything but "allowed" keeps a US-domiciled ETF out (fail-closed), as etf propose and the risk gate do.
+  const usEtf = ruleFact(lf.country, "us-domiciled-etf");
+  const abroad = ruleFact(lf.country, "foreign-accounts");
+  const abroadClause = foreignAccountClause(abroad, lf.country);
   return {
     "eu-share": {
       id: "eu-share",
@@ -126,24 +143,25 @@ export function locationRules(lf: LocationFacts = unresearched(new Date().getUTC
       id: "us-etf",
       applies: "a US-domiciled ETF",
       ranking: ["CTO", "TAXABLE"],
-      why: priips
-        ? "no PRIIPs key information document: EU brokers do not sell it to retail clients — an existing line stays in a CTO; buy the UCITS equivalent instead"
-        : "not PEA-eligible: a CTO",
-      sources: [...(priips ? [PRIIPS] : []), SP_CTO],
+      why:
+        usEtf.status === "allowed"
+          ? `not PEA-eligible: a CTO (retail access allowed: ${ruleWhy(usEtf, lf.country)})`
+          : `retail access to US-domiciled ETFs is ${usEtf.status} for ${lf.country} (${ruleWhy(usEtf, lf.country)}) — an existing line stays in a CTO; buy the UCITS equivalent instead`,
+      sources: [...ruleSources(usEtf, lf.country), SP_CTO],
     },
     "non-eu-share": {
       id: "non-eu-share",
       applies: "shares of a company incorporated outside the EU/EEA (US, UK, Switzerland…)",
       ranking: ["CTO", "TAXABLE"],
-      why: `not PEA-eligible: a CTO (${treaty}declare an account held abroad on form 3916)`,
-      sources: [...src, SP_CTO],
+      why: `not PEA-eligible: a CTO${treaty || abroadClause ? ` (${[treaty.replace(/; $/, ""), abroadClause].filter(Boolean).join("; ")})` : ""}`,
+      sources: [...src, ...ruleSources(abroad, lf.country), SP_CTO],
     },
     crypto: {
       id: "crypto",
       applies: "crypto-assets",
       ranking: ["CRYPTO"],
-      why: "no tax wrapper takes crypto: an exchange account (form 3916-bis for an account abroad)",
-      sources: [...src],
+      why: `no tax wrapper takes crypto: an exchange account${abroadClause ? ` (${abroadClause})` : ""}`,
+      sources: [...src, ...ruleSources(abroad, lf.country)],
     },
     unknown: {
       id: "unknown",
