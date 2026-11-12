@@ -9,8 +9,8 @@ import type { NeutralReport } from "./neutral.js";
 import { day, splitPair, type TaxEvent } from "./regime.js";
 
 export const EXPORT_FORMATS = ["8949", "2086", "2074", "koinly", "neutral", "neutral-json"] as const;
-/** The formats an engine writes (FR, US); the neutral ones exist for every country. */
-export const ENGINE_FORMATS = ["8949", "2086", "2074", "koinly"] as const;
+/** The formats an engine writes (FR, US); the neutral ones and Koinly's transaction list (no rule read) exist for every country. */
+export const ENGINE_FORMATS = ["8949", "2086", "2074"] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
 
 export function export8949(events: readonly TaxEvent[]): string {

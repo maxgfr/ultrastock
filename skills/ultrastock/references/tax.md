@@ -25,6 +25,9 @@ official notices decide.
      allowances, dividend and interest taxation, loss carry-forward,
      wash-sale-like rules, reporting forms. Add `--currency <code>` (the tax
      currency); add any other key your research finds.
+   - `facts template tax … --key k,…` narrows the template to those keys
+     (`facts show tax … --key` the stored ones): storing the filled file keeps
+     the year's other keys.
 2. **Research.** Web-search each key for that country and **that** tax year.
    Prefer the official text: FR service-public.fr, impots.gouv.fr, BOFiP,
    Légifrance; US irs.gov publications, topic pages, Rev. Procs, the Code; for
@@ -70,7 +73,8 @@ keys and the template command.
   (BTCEUR, BTCUSD, BTCUSDT are BTC); short / long term; wash sales; netting
   and the loss limit (`--carryforward short=…,long=…`); the long-term brackets
   with `--income` and `--filing`; NIIT; FBAR / 8938; PFICs. Exports:
-  `--format 8949`, `koinly`.
+  `--format 8949`. `--format koinly` (the crypto transactions as Koinly reads
+  them) reads no rule: it works for any country, researched or not.
 - **Wash sale, an open question.** Replacement shares bought within the window
   but sold before the loss sale: §1091 and Reg. 1.1091-1 speak only of shares
   "acquired", and no authority settles the case. The engine applies the text

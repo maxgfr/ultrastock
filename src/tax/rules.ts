@@ -695,8 +695,8 @@ export function saveRules(raw: unknown, expect: { country?: string; year?: numbe
 export const param = <T = number>(r: RuleSet, key: string): T =>
   factValue<T>(TAX, { domain: "tax", country: r.country, period: r.year, researchedAt: r.researchedAt, meta: {}, facts: r.facts }, key);
 
-/** The JSON skeleton to research and fill for a country and a tax year. */
-export const rulesTemplate = (country: string, year: number) => factsTemplate(TAX, country, year);
+/** The JSON skeleton to research and fill for a country and a tax year (every key, or the `keys` asked). */
+export const rulesTemplate = (country: string, year: number, keys?: readonly string[]) => factsTemplate(TAX, country, year, { keys });
 
 /** What to (re-)research for a country and a year, with the stored file's status on each key and the form lines to check. */
 export function researchChecklist(

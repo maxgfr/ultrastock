@@ -17,8 +17,8 @@ import { isEngineCountry, regimeFor } from "../tax/index.js";
 import { cryptoValuer, currentPrices, historicalFx, withCryptoQuotes } from "../tax/inputs.js";
 import { type NeutralReport, neutralReport } from "../tax/neutral.js";
 import { cryptoTradeKind, day, type Fx, isCryptoTx, isFiat, splitPair, type TaxInput, type TaxRegime, type TaxSummary, yearOf } from "../tax/regime.js";
-import { mergeLines } from "../core/researched.js";
-import { countryCode, loadRules, type RuleSet, researchChecklist, rulesTemplate, saveRules, specFor, templateCommand } from "../tax/rules.js";
+import { mergeLines, specsFor } from "../core/researched.js";
+import { countryCode, loadRules, type RuleSet, researchChecklist, rulesTemplate, saveRules, specFor, TAX, templateCommand } from "../tax/rules.js";
 import { emitDatasets, printResult as print } from "./emit.js";
 
 const USAGE =
@@ -296,7 +296,7 @@ async function rulesCommand(args: CommandArgs, asJson: boolean, sub: string | un
     const c = country();
     const y = year();
     const currency = argValue(args, "currency");
-    const t = rulesTemplate(c, y);
+    const t = rulesTemplate(c, y, argList(args, "key"));
     if (currency && t.currency === null) t.currency = currency.toUpperCase();
     return void process.stdout.write(`${JSON.stringify(t, null, asJson ? undefined : 2)}\n`);
   }
@@ -348,9 +348,18 @@ async function rulesCommand(args: CommandArgs, asJson: boolean, sub: string | un
   if (sub === undefined || sub === "show") {
     const c = country();
     const y = year();
-    const { rules, missing, stale, path } = loadRules(c, y);
+    const stored = loadRules(c, y);
+    const { path } = stored;
+    // --key narrows to those keys: each one stored, or one the country's list registers (else a usage error naming them).
+    const keys = argList(args, "key");
+    const unstored = keys.filter((k) => !(k in stored.rules.facts));
+    if (unstored.length) specsFor(TAX, c, unstored);
+    const asked = (k: string) => !keys.length || keys.includes(k);
+    const rules = { ...stored.rules, facts: Object.fromEntries(Object.entries(stored.rules.facts).filter(([k]) => asked(k))) };
+    const missing = stored.missing.filter(asked);
+    const stale = stored.stale.filter((s) => asked(s.key));
     let engine: { method: string; envelopes: ReturnType<TaxRegime["envelopeRules"]>; withholding: string[] } | undefined;
-    if (isEngineCountry(c) && !missing.length) {
+    if (isEngineCountry(c) && !stored.missing.length && !keys.length) {
       const regime = regimeFor(c, y);
       engine = { method: regime.costBasisMethod(), envelopes: regime.envelopeRules(), withholding: regime.withholdingRules() };
     }
@@ -439,21 +448,19 @@ export async function taxCommand(args: CommandArgs, asJson: boolean): Promise<vo
       const { report } = await neutral(args, country, y);
       body = format === "neutral" ? exportNeutral(report) : `${JSON.stringify(report, null, 2)}\n`;
       if (format === "neutral-json") ext = "json";
+    } else if (format === "koinly") {
+      // The ledger's crypto transactions as Koinly reads them: no researched rule, no rate, no engine.
+      const txs = bookTransactions(args);
+      const envelopes = loadProfile()?.envelopes ?? [];
+      body = exportKoinly(
+        txs.filter((t) => yearOf(t.date) === y),
+        (t) => isCryptoTx(t, envelopes),
+      );
     } else {
       const regime = regimeFor(country, y);
       const { input } = await buildInput(args, regime, y);
-      const events = format === "koinly" ? [] : regime.realize(input);
-      body =
-        format === "8949"
-          ? export8949(events)
-          : format === "2086"
-            ? export2086(events)
-            : format === "2074"
-              ? export2074(events)
-              : exportKoinly(
-                  input.transactions.filter((t) => yearOf(t.date) === y),
-                  (t) => isCryptoTx(t, input.envelopes),
-                );
+      const events = regime.realize(input);
+      body = format === "8949" ? export8949(events) : format === "2086" ? export2086(events) : export2074(events);
     }
     const out = argValue(args, "out");
     if (!out) return void process.stdout.write(body);

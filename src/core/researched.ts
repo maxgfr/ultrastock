@@ -156,6 +156,11 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> => !!v && typeo
 const FREE_KEY = /^[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)*$/;
 const DAY_MS = 86_400_000;
 const today = () => clockNow().toISOString().slice(0, 10);
+/**
+ * The latest date a research may carry: the user's own date, which is ahead of UTC by up to 14 hours east of Greenwich —
+ * so today in UTC plus one day. A later date is in the future (a typo), refused.
+ */
+const latestDay = () => new Date(clockNow().getTime() + DAY_MS).toISOString().slice(0, 10);
 
 /** Fields a template carries for the agent: accepted in a file and dropped when it is stored. */
 const TEMPLATE_FACT_FIELDS = new Set(["type", "unit", "fields", "values", "integer", "ordered", "query", "prefer", "maxAgeDays", "usedBy", "evidence"]);
@@ -242,6 +247,7 @@ export function validateFacts(d: Domain, raw: unknown, expect: { country?: strin
   const p = d.period;
   if (!isPlainObject(raw)) throw new UsageError(`a ${d.name} facts file is a JSON object {"country", "${p}", "researchedAt", "facts"}`);
   const now = today();
+  const latest = latestDay();
   const top = new Set(["country", p, "researchedAt", "note", "facts", ...Object.keys(d.meta ?? {})]);
   for (const k of Object.keys(raw)) if (!top.has(k) && !TEMPLATE_TOP_FIELDS.has(k)) problems.push(`unknown top-level field "${k}"`);
   const country = typeof raw.country === "string" ? raw.country.trim().toUpperCase() : "";
@@ -252,12 +258,12 @@ export function validateFacts(d: Domain, raw: unknown, expect: { country?: strin
   // Next year's rules may be published already; a later year's are a typo.
   else if (p === "year" && (period as number) > Number(now.slice(0, 4)) + 1) problems.push(`"year" ${String(period)} is after next year`);
   // A file dated ahead (a typo in the year) would read as the newest research until that day: refused like a future researchedAt.
-  else if (p === "date" && (period as string) > now) problems.push(`"date" ${String(period)} is in the future`);
+  else if (p === "date" && (period as string) > latest) problems.push(`"date" ${String(period)} is in the future`);
   if (expect.country && country && country !== expect.country.toUpperCase()) problems.push(`the file is for ${country}, not ${expect.country.toUpperCase()}`);
   if (expect.period !== undefined && periodOk && period !== expect.period)
     problems.push(`the file is for ${p} ${String(period)}, not ${expect.period} — research ${expect.period}'s facts: another ${p}'s are not used`);
   if (!isIsoDate(raw.researchedAt)) problems.push('"researchedAt" is the date of the research, YYYY-MM-DD');
-  else if (raw.researchedAt > now) problems.push(`"researchedAt" ${raw.researchedAt} is in the future`);
+  else if (raw.researchedAt > latest) problems.push(`"researchedAt" ${raw.researchedAt} is in the future`);
   if (raw.note !== undefined && typeof raw.note !== "string") problems.push('"note" is a string');
   const meta: Record<string, string> = {};
   for (const [k, m] of Object.entries(d.meta ?? {})) {
@@ -295,7 +301,7 @@ export function validateFacts(d: Domain, raw: unknown, expect: { country?: strin
       if (!Array.isArray(f.sources) || !f.sources.length) problems.push(`${at}.sources: at least one URL of the text the value was read from`);
       else for (const s of f.sources) if (!isUrl(s)) problems.push(`${at}.sources: "${String(s)}" is not an http(s) URL of a public web page`);
       if (!isIsoDate(f.verifiedAt)) problems.push(`${at}.verifiedAt: the date it was checked, YYYY-MM-DD`);
-      else if (f.verifiedAt > now) problems.push(`${at}.verifiedAt: ${f.verifiedAt} is in the future`);
+      else if (f.verifiedAt > latest) problems.push(`${at}.verifiedAt: ${f.verifiedAt} is in the future`);
       if (f.confidence !== "high" && f.confidence !== "medium" && f.confidence !== "low") problems.push(`${at}.confidence: "high", "medium" or "low"`);
       if (f.expiresAt !== undefined && !isIsoDate(f.expiresAt)) problems.push(`${at}.expiresAt: YYYY-MM-DD`);
       if (f.note !== undefined && typeof f.note !== "string") problems.push(`${at}.note: a string`);
@@ -572,9 +578,10 @@ export function loadLatestFacts(d: Domain, country: string, opts: { upTo?: numbe
   const facts: LatestFacts["facts"] = {};
   const staleReason = new Map<string, string>();
   const paths: string[] = [];
-  // A `date` file dated after today is no research yet (validation refuses one): it is never read, upTo or not.
-  const now = d.period === "date" ? today() : undefined;
-  const upTo = opts.upTo === undefined ? now : now !== undefined && String(opts.upTo) > now ? now : String(opts.upTo);
+  // A `date` file dated after the latest day a research may carry is no research (validation refuses one): it is
+  // never read, upTo or not.
+  const latest = d.period === "date" ? latestDay() : undefined;
+  const upTo = opts.upTo === undefined ? latest : latest !== undefined && String(opts.upTo) > latest ? latest : String(opts.upTo);
   for (const period of storedPeriods(d, c).filter((p) => upTo === undefined || String(p) <= upTo)) {
     const v = loadFacts(d, c, period);
     paths.push(v.path);

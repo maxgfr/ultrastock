@@ -42,7 +42,7 @@ import { printResult as out } from "./emit.js";
 import { readWebResults } from "./research.js";
 import { taxCommand } from "./tax.js";
 
-export const FACTS_USAGE = `usage: ultrastock facts research|template|set|show <${FACT_DOMAIN_NAMES.join("|")}> [--country CC] [--key k,…] [--year YYYY] [--file <facts.json>] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]`;
+export const FACTS_USAGE = `usage: ultrastock facts research|template|set|show <${FACT_DOMAIN_NAMES.join("|")}> [--country CC] [--key k,…] [--year YYYY] [--currency <code> (tax template)] [--file <facts.json>] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]`;
 
 const SUBS = ["research", "template", "set", "show"] as const;
 
@@ -66,6 +66,11 @@ export function factsInvocation(args: CommandArgs): FactsInvocation {
   const fd = factDomain(name, FACTS_USAGE);
   const keys = argList(args, "key");
   const s = sub as FactsInvocation["sub"];
+  // The currency a tax file's amounts are in is set in the tax template only; no other domain has one.
+  if (argValue(args, "currency") !== undefined && !(fd.domain === TAX && s === "template"))
+    throw new UsageError(
+      `--currency sets the currency of a tax template (\`facts template tax --country CC --currency <code>\`); \`facts ${s} ${fd.domain.name}\` has none`,
+    );
   if (s === "set") {
     if (!argValue(args, "file"))
       throw new UsageError(

@@ -17486,6 +17486,7 @@ var isPlainObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 var FREE_KEY = /^[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)*$/;
 var DAY_MS3 = 864e5;
 var today = () => clockNow().toISOString().slice(0, 10);
+var latestDay = () => new Date(clockNow().getTime() + DAY_MS3).toISOString().slice(0, 10);
 var TEMPLATE_FACT_FIELDS = /* @__PURE__ */ new Set(["type", "unit", "fields", "values", "integer", "ordered", "query", "prefer", "maxAgeDays", "usedBy", "evidence"]);
 var FACT_FIELDS = /* @__PURE__ */ new Set(["value", "label", "sources", "verifiedAt", "confidence", "expiresAt", "note"]);
 var TEMPLATE_TOP_FIELDS = /* @__PURE__ */ new Set(["_about", "formLines"]);
@@ -17540,6 +17541,7 @@ function validateFacts(d, raw, expect = {}) {
   const p = d.period;
   if (!isPlainObject(raw)) throw new UsageError(`a ${d.name} facts file is a JSON object {"country", "${p}", "researchedAt", "facts"}`);
   const now = today();
+  const latest2 = latestDay();
   const top = /* @__PURE__ */ new Set(["country", p, "researchedAt", "note", "facts", ...Object.keys(d.meta ?? {})]);
   for (const k of Object.keys(raw)) if (!top.has(k) && !TEMPLATE_TOP_FIELDS.has(k)) problems.push(`unknown top-level field "${k}"`);
   const country2 = typeof raw.country === "string" ? raw.country.trim().toUpperCase() : "";
@@ -17548,12 +17550,12 @@ function validateFacts(d, raw, expect = {}) {
   const periodOk = p === "year" ? typeof period2 === "number" && Number.isInteger(period2) && period2 >= 1900 && period2 <= 2200 : isIsoDate(period2);
   if (!periodOk) problems.push(p === "year" ? '"year" is an integer such as 2025' : '"date" is written YYYY-MM-DD');
   else if (p === "year" && period2 > Number(now.slice(0, 4)) + 1) problems.push(`"year" ${String(period2)} is after next year`);
-  else if (p === "date" && period2 > now) problems.push(`"date" ${String(period2)} is in the future`);
+  else if (p === "date" && period2 > latest2) problems.push(`"date" ${String(period2)} is in the future`);
   if (expect.country && country2 && country2 !== expect.country.toUpperCase()) problems.push(`the file is for ${country2}, not ${expect.country.toUpperCase()}`);
   if (expect.period !== void 0 && periodOk && period2 !== expect.period)
     problems.push(`the file is for ${p} ${String(period2)}, not ${expect.period} \u2014 research ${expect.period}'s facts: another ${p}'s are not used`);
   if (!isIsoDate(raw.researchedAt)) problems.push('"researchedAt" is the date of the research, YYYY-MM-DD');
-  else if (raw.researchedAt > now) problems.push(`"researchedAt" ${raw.researchedAt} is in the future`);
+  else if (raw.researchedAt > latest2) problems.push(`"researchedAt" ${raw.researchedAt} is in the future`);
   if (raw.note !== void 0 && typeof raw.note !== "string") problems.push('"note" is a string');
   const meta2 = {};
   for (const [k, m] of Object.entries(d.meta ?? {})) {
@@ -17591,7 +17593,7 @@ function validateFacts(d, raw, expect = {}) {
       if (!Array.isArray(f3.sources) || !f3.sources.length) problems.push(`${at}.sources: at least one URL of the text the value was read from`);
       else for (const s of f3.sources) if (!isUrl(s)) problems.push(`${at}.sources: "${String(s)}" is not an http(s) URL of a public web page`);
       if (!isIsoDate(f3.verifiedAt)) problems.push(`${at}.verifiedAt: the date it was checked, YYYY-MM-DD`);
-      else if (f3.verifiedAt > now) problems.push(`${at}.verifiedAt: ${f3.verifiedAt} is in the future`);
+      else if (f3.verifiedAt > latest2) problems.push(`${at}.verifiedAt: ${f3.verifiedAt} is in the future`);
       if (f3.confidence !== "high" && f3.confidence !== "medium" && f3.confidence !== "low") problems.push(`${at}.confidence: "high", "medium" or "low"`);
       if (f3.expiresAt !== void 0 && !isIsoDate(f3.expiresAt)) problems.push(`${at}.expiresAt: YYYY-MM-DD`);
       if (f3.note !== void 0 && typeof f3.note !== "string") problems.push(`${at}.note: a string`);
@@ -17776,8 +17778,8 @@ function loadLatestFacts(d, country2, opts = {}) {
   const facts = {};
   const staleReason2 = /* @__PURE__ */ new Map();
   const paths = [];
-  const now = d.period === "date" ? today() : void 0;
-  const upTo = opts.upTo === void 0 ? now : now !== void 0 && String(opts.upTo) > now ? now : String(opts.upTo);
+  const latest2 = d.period === "date" ? latestDay() : void 0;
+  const upTo = opts.upTo === void 0 ? latest2 : latest2 !== void 0 && String(opts.upTo) > latest2 ? latest2 : String(opts.upTo);
   for (const period2 of storedPeriods(d, c).filter((p) => upTo === void 0 || String(p) <= upTo)) {
     const v = loadFacts(d, c, period2);
     paths.push(v.path);
@@ -47560,7 +47562,7 @@ function saveRules(raw, expect = {}) {
   return { rules: ruleSet(v), missing: v.missing, stale: v.stale, path: v.path, merge: v.merge };
 }
 var param = (r3, key) => factValue(TAX2, { domain: "tax", country: r3.country, period: r3.year, researchedAt: r3.researchedAt, meta: {}, facts: r3.facts }, key);
-var rulesTemplate = (country2, year) => factsTemplate(TAX2, country2, year);
+var rulesTemplate = (country2, year, keys) => factsTemplate(TAX2, country2, year, { keys });
 function researchChecklist(country2, year) {
   const c = countryCode(country2);
   return { ...factsChecklist(TAX2, c, year), formLines: isEngineCountry(c) ? FORM_LINES[c] : [] };
@@ -56235,7 +56237,7 @@ import { join as join56, resolve as resolve18 } from "path";
 
 // src/tax/export.ts
 var EXPORT_FORMATS = ["8949", "2086", "2074", "koinly", "neutral", "neutral-json"];
-var ENGINE_FORMATS = ["8949", "2086", "2074", "koinly"];
+var ENGINE_FORMATS = ["8949", "2086", "2074"];
 function export8949(events) {
   const rows = events.filter((e) => (e.kind === "securities-disposal" || e.kind === "crypto-disposal") && e.lines).sort((a, b) => (a.term ?? "").localeCompare(b.term ?? "") || a.date.localeCompare(b.date)).map((e) => [e.term === "long" ? "II" : "I", e.lines.a, e.lines.b, e.lines.c, e.lines.d, e.lines.e, e.lines.f, e.lines.g, e.lines.h, e.account]);
   return toCsv([
@@ -58295,7 +58297,7 @@ async function rulesCommand(args, asJson, sub, country2, year) {
     const c = country2();
     const y = year();
     const currency = argValue(args, "currency");
-    const t = rulesTemplate(c, y);
+    const t = rulesTemplate(c, y, argList(args, "key"));
     if (currency && t.currency === null) t.currency = currency.toUpperCase();
     return void process.stdout.write(`${JSON.stringify(t, null, asJson ? void 0 : 2)}
 `);
@@ -58343,9 +58345,17 @@ async function rulesCommand(args, asJson, sub, country2, year) {
   if (sub === void 0 || sub === "show") {
     const c = country2();
     const y = year();
-    const { rules, missing, stale, path: path2 } = loadRules(c, y);
+    const stored = loadRules(c, y);
+    const { path: path2 } = stored;
+    const keys = argList(args, "key");
+    const unstored = keys.filter((k) => !(k in stored.rules.facts));
+    if (unstored.length) specsFor(TAX2, c, unstored);
+    const asked = (k) => !keys.length || keys.includes(k);
+    const rules = { ...stored.rules, facts: Object.fromEntries(Object.entries(stored.rules.facts).filter(([k]) => asked(k))) };
+    const missing = stored.missing.filter(asked);
+    const stale = stored.stale.filter((s) => asked(s.key));
     let engine;
-    if (isEngineCountry(c) && !missing.length) {
+    if (isEngineCountry(c) && !stored.missing.length && !keys.length) {
       const regime = regimeFor(c, y);
       engine = { method: regime.costBasisMethod(), envelopes: regime.envelopeRules(), withholding: regime.withholdingRules() };
     }
@@ -58430,14 +58440,18 @@ async function taxCommand(args, asJson) {
       body = format === "neutral" ? exportNeutral(report2) : `${JSON.stringify(report2, null, 2)}
 `;
       if (format === "neutral-json") ext = "json";
+    } else if (format === "koinly") {
+      const txs = bookTransactions(args);
+      const envelopes = loadProfile()?.envelopes ?? [];
+      body = exportKoinly(
+        txs.filter((t) => yearOf2(t.date) === y),
+        (t) => isCryptoTx(t, envelopes)
+      );
     } else {
       const regime2 = regimeFor(country2, y);
       const { input } = await buildInput(args, regime2, y);
-      const events = format === "koinly" ? [] : regime2.realize(input);
-      body = format === "8949" ? export8949(events) : format === "2086" ? export2086(events) : format === "2074" ? export2074(events) : exportKoinly(
-        input.transactions.filter((t) => yearOf2(t.date) === y),
-        (t) => isCryptoTx(t, input.envelopes)
-      );
+      const events = regime2.realize(input);
+      body = format === "8949" ? export8949(events) : format === "2086" ? export2086(events) : export2074(events);
     }
     const out = argValue(args, "out");
     if (!out) return void process.stdout.write(body);
@@ -58739,7 +58753,7 @@ function worklistMarkdown(w) {
 }
 
 // src/commands/facts.ts
-var FACTS_USAGE = `usage: ultrastock facts research|template|set|show <${FACT_DOMAIN_NAMES.join("|")}> [--country CC] [--key k,\u2026] [--year YYYY] [--file <facts.json>] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]`;
+var FACTS_USAGE = `usage: ultrastock facts research|template|set|show <${FACT_DOMAIN_NAMES.join("|")}> [--country CC] [--key k,\u2026] [--year YYYY] [--currency <code> (tax template)] [--file <facts.json>] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]`;
 var SUBS = ["research", "template", "set", "show"];
 function factsInvocation(args) {
   const [sub, name] = args.positional;
@@ -58747,6 +58761,10 @@ function factsInvocation(args) {
   const fd = factDomain(name, FACTS_USAGE);
   const keys = argList(args, "key");
   const s = sub;
+  if (argValue(args, "currency") !== void 0 && !(fd.domain === TAX2 && s === "template"))
+    throw new UsageError(
+      `--currency sets the currency of a tax template (\`facts template tax --country CC --currency <code>\`); \`facts ${s} ${fd.domain.name}\` has none`
+    );
   if (s === "set") {
     if (!argValue(args, "file"))
       throw new UsageError(
@@ -61955,7 +61973,7 @@ USAGE
   ultrastock tax rules template --country CC --year YYYY [--currency <code>] | tax rules set --file <rules.json> [--country CC] [--year YYYY] | tax rules show [--country CC] [--year YYYY] [--json]
   ultrastock tax verify [--country CC] [--year YYYY] [--json]
   ultrastock facts research <tax|jurisdiction|funds|venues|geo|calendar> [--country CC] [--key k,\u2026] [--year YYYY] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]
-  ultrastock facts template|show <tax|jurisdiction|funds|venues|geo|calendar> [--country CC] [--key k,\u2026] [--year YYYY] [--json] | facts set <domain> --file <facts.json> [--country CC] [--json]
+  ultrastock facts template|show <tax|jurisdiction|funds|venues|geo|calendar> [--country CC] [--key k,\u2026] [--year YYYY] [--currency <code> (tax template)] [--json] | facts set <domain> --file <facts.json> [--country CC] [--json]
   ultrastock tax report [--country CC|--regime fr|us] [--year YYYY] [--neutral] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,\u2026|short=\u2026,long=\u2026] [--envelope-value <account>:<date>=<value>] [--lot-method fifo|hifo|lifo] [--household single|couple] [--out <dir>] [--json]
   ultrastock tax lots|harvest [--country FR|US] [--year YYYY] [--json]
   ultrastock tax export --format 8949|2086|2074|koinly|neutral|neutral-json [--country CC] [--year YYYY] [--neutral] [--out <dir>]
@@ -62803,7 +62821,7 @@ var SPEC = {
     ticket: ["status", ...NET],
     paper: ["out", ...NET],
     decide: ["json"],
-    facts: ["country", "key", "year", "file", "web-results", "engine-search", "limit", "browser", "no-wayback", "out", ...NET],
+    facts: ["country", "key", "year", "currency", "file", "web-results", "engine-search", "limit", "browser", "no-wayback", "out", ...NET],
     tax: [
       "regime",
       "country",
