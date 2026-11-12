@@ -17906,6 +17906,7 @@ function jurisdictionKeys(country2) {
 var VENUE_KEY = /^cryptoVenue\.([a-z0-9]+)$/;
 var VENUE_LEI_KEY = /^cryptoVenue\.([a-z0-9]+)\.lei$/;
 var STABLECOIN_KEY = /^stablecoin\.([a-z0-9]+)$/;
+var LEI_SHAPE = /^[A-Z0-9]{18}[0-9]{2}$/;
 var stablecoinKey = (coin) => `stablecoin.${coin.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
 var JURISDICTION = defineDomain({
   name: "jurisdiction",
@@ -18048,8 +18049,17 @@ async function cryptoVenueGate(venue, code, opts = {}) {
         ok: opts.micaAuthorised,
         reason: opts.micaAuthorised ? "authorised (test answer)" : `${venue} is not in ESMA's MiCA register for ${c} (test answer)`
       };
-    const leiValue = factReading(c, `cryptoVenue.${venue}.lei`).value;
-    const lei = typeof leiValue === "string" ? leiValue : void 0;
+    const leiKey = `cryptoVenue.${venue}.lei`;
+    const leiR = factReading(c, leiKey);
+    const leiValue = typeof leiR.value === "string" ? leiR.value.trim().toUpperCase() : void 0;
+    const lei = leiValue && LEI_SHAPE.test(leiValue) ? leiValue : void 0;
+    if (leiR.fact && !lei) {
+      const why2 = leiR.unresearched ?? `the stored value "${String(leiR.value)}" is not a 20-character LEI`;
+      return {
+        ok: false,
+        reason: `the LEI of the ${venue} entity that serves ${c} is unusable (${why2}): ESMA's register is not matched on the name instead \u2014 research it again: \`${leiR.research}\`, then \`${JURISDICTION.setCommand}\``
+      };
+    }
     try {
       const m = await checkMica(venue, c, lei ? { lei } : {});
       if (m.authorised.length)

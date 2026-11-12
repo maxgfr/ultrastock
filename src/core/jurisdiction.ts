@@ -165,6 +165,8 @@ export function jurisdictionKeys(country: string): FactSpec[] {
 const VENUE_KEY = /^cryptoVenue\.([a-z0-9]+)$/;
 const VENUE_LEI_KEY = /^cryptoVenue\.([a-z0-9]+)\.lei$/;
 const STABLECOIN_KEY = /^stablecoin\.([a-z0-9]+)$/;
+/** ISO 17442: 18 alphanumeric characters and two check digits. */
+const LEI_SHAPE = /^[A-Z0-9]{18}[0-9]{2}$/;
 
 /** The key of a stablecoin's researched availability for residents: `stablecoin.usdt`. */
 export const stablecoinKey = (coin: string): string => `stablecoin.${coin.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
@@ -356,8 +358,18 @@ export async function cryptoVenueGate(venue: string, code: string, opts: { micaA
         ok: opts.micaAuthorised,
         reason: opts.micaAuthorised ? "authorised (test answer)" : `${venue} is not in ESMA's MiCA register for ${c} (test answer)`,
       };
-    const leiValue = factReading(c, `cryptoVenue.${venue}.lei`).value;
-    const lei = typeof leiValue === "string" ? leiValue : undefined;
+    // A researched LEI that went stale, or does not read as one, is not a reason to match on the name again: refuse.
+    const leiKey = `cryptoVenue.${venue}.lei`;
+    const leiR = factReading(c, leiKey);
+    const leiValue = typeof leiR.value === "string" ? leiR.value.trim().toUpperCase() : undefined;
+    const lei = leiValue && LEI_SHAPE.test(leiValue) ? leiValue : undefined;
+    if (leiR.fact && !lei) {
+      const why = leiR.unresearched ?? `the stored value "${String(leiR.value)}" is not a 20-character LEI`;
+      return {
+        ok: false,
+        reason: `the LEI of the ${venue} entity that serves ${c} is unusable (${why}): ESMA's register is not matched on the name instead — research it again: \`${leiR.research}\`, then \`${JURISDICTION.setCommand}\``,
+      };
+    }
     try {
       const m = await checkMica(venue, c, lei ? { lei } : {});
       if (m.authorised.length)
