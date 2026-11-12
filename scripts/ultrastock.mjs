@@ -18158,6 +18158,10 @@ async function esmaRegister(url) {
   });
   return r3;
 }
+var memberState = (code) => {
+  const c = code.trim().toUpperCase();
+  return c === "EL" ? "GR" : c;
+};
 function registerDate(d) {
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(d.trim());
   if (!m) return void 0;
@@ -18166,7 +18170,7 @@ function registerDate(d) {
 }
 var VENUE_ALIASES = { kraken: ["kraken", "payward"] };
 async function checkMica(venue, country2 = "FR", opts = {}) {
-  const c = country2.toUpperCase();
+  const c = memberState(country2);
   const needle = venue.toLowerCase();
   const aliases = VENUE_ALIASES[needle] ?? [needle];
   const lei = opts.lei?.trim().toUpperCase();
@@ -18202,10 +18206,10 @@ async function checkMica(venue, country2 = "FR", opts = {}) {
     name: r3.ae_lei_name ?? "",
     lei: leiOf(r3),
     commercialName: r3.ae_commercial_name ?? "",
-    homeState: (r3.ae_homeMemberState ?? "").toUpperCase(),
+    homeState: memberState(r3.ae_homeMemberState ?? ""),
     authority: r3.ae_competentAuthority ?? "",
     authorisedOn: r3.ac_authorisationNotificationDate ?? "",
-    passportedTo: (r3.ac_serviceCode_cou ?? "").split("|").map((s) => s.trim().toUpperCase()).filter(Boolean),
+    passportedTo: (r3.ac_serviceCode_cou ?? "").split("|").map(memberState).filter(Boolean),
     website: r3.ae_website ?? ""
   })).filter((e) => e.homeState === c || e.passportedTo.includes(c));
   if (ended.length) notes.push(`entries whose authorisation ended are not counted (${[...new Set(ended)].join("; ")})`);

@@ -161,3 +161,20 @@ describe("a venue the research itself concluded is blocked", () => {
     expect((await cryptoVenueGate("coinbase", "FR", { micaAuthorised: true })).ok).toBe(false);
   });
 });
+
+describe("the register writes Greece both ways", () => {
+  it("reads a passport written EL (the EU's code for Greece) for a resident of GR", async () => {
+    setNetMode({
+      kind: "fixture",
+      dir: register([
+        "CSSF,LU,Coinbase Luxembourg S.A.,984500F14CA4571AAC11,LU,Coinbase,Luxembourg,https://coinbase.com,,20/06/2025,,c. exchange,AT|BE|EL|FR,,20/06/2025,,,,",
+        "HCMC,EL,Athens Crypto S.A.,213800ABCDEFGHIJ1234,EL,Athens Crypto,Athens,https://athens.example,,01/03/2026,,c. exchange,,,01/03/2026,,,,",
+      ]),
+    });
+    const m = await checkMica("coinbase", "GR");
+    expect(m.authorised.map((e) => e.name)).toEqual(["Coinbase Luxembourg S.A."]);
+    // A home state written EL serves a resident of GR, and a country given as EL reads the same rows.
+    expect((await checkMica("athens", "GR")).authorised.map((e) => e.homeState)).toEqual(["GR"]);
+    expect((await checkMica("coinbase", "EL")).authorised).toHaveLength(1);
+  });
+});

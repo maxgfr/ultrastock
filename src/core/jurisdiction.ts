@@ -526,6 +526,12 @@ async function esmaRegister(url: string): Promise<{ rows: Record<string, string>
   return r!;
 }
 
+/** A member state as ISO 3166 writes it: the EU's own code for Greece (EL), which the register uses, is GR. */
+const memberState = (code: string): string => {
+  const c = code.trim().toUpperCase();
+  return c === "EL" ? "GR" : c;
+};
+
 /** The register's dd/mm/yyyy date as yyyy-mm-dd; undefined when it is not one. */
 function registerDate(d: string): string | undefined {
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(d.trim());
@@ -544,7 +550,7 @@ const VENUE_ALIASES: Record<string, string[]> = { kraken: ["kraken", "payward"] 
  * it found — a reading labelled unverified (`matchedOn: "name"`), which the live gate never accepts.
  */
 export async function checkMica(venue: string, country = "FR", opts: { lei?: string } = {}): Promise<MicaCheck> {
-  const c = country.toUpperCase();
+  const c = memberState(country);
   const needle = venue.toLowerCase();
   const aliases = VENUE_ALIASES[needle] ?? [needle];
   const lei = opts.lei?.trim().toUpperCase();
@@ -587,13 +593,10 @@ export async function checkMica(venue: string, country = "FR", opts: { lei?: str
       name: r.ae_lei_name ?? "",
       lei: leiOf(r),
       commercialName: r.ae_commercial_name ?? "",
-      homeState: (r.ae_homeMemberState ?? "").toUpperCase(),
+      homeState: memberState(r.ae_homeMemberState ?? ""),
       authority: r.ae_competentAuthority ?? "",
       authorisedOn: r.ac_authorisationNotificationDate ?? "",
-      passportedTo: (r.ac_serviceCode_cou ?? "")
-        .split("|")
-        .map((s) => s.trim().toUpperCase())
-        .filter(Boolean),
+      passportedTo: (r.ac_serviceCode_cou ?? "").split("|").map(memberState).filter(Boolean),
       website: r.ae_website ?? "",
     }))
     .filter((e) => e.homeState === c || e.passportedTo.includes(c));
