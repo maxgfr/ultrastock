@@ -18615,6 +18615,16 @@ function coinPoints(c, vs = "usd") {
   if (desc) out.push({ key: `${s}.profile.description`, label: `${s} description (project's own words)`, value: desc, untrusted: true });
   return out;
 }
+async function coingeckoCategorySymbols(category, limit = 250) {
+  const n2 = Math.min(Math.max(limit, 1), 250);
+  const r3 = await get3(
+    `/coins/markets?vs_currency=usd&category=${encodeURIComponent(category)}&order=market_cap_desc&per_page=${n2}&page=1`,
+    `the ${category} category`
+  );
+  if (!Array.isArray(r3.data) || !r3.data.length) throw new ProviderError(SOURCE10, `the ${category} category returned no coin`);
+  const symbols = [...new Set(r3.data.filter((c) => typeof c?.id === "string").map((c) => coinSubject(c.symbol, c.id)))];
+  return { symbols, url: r3.url, fetchedAt: r3.fetchedAt };
+}
 async function coingeckoCoin(id, vs = "usd") {
   if (!/^[a-z0-9-]{1,80}$/i.test(id)) throw new ProviderError(SOURCE10, `"${id}" is not a CoinGecko coin id (use coingeckoSearch to find one)`, 400);
   const path2 = `/coins/${id.toLowerCase()}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`;
@@ -30808,7 +30818,7 @@ async function euRegime(now = clockNow()) {
     ]
   };
 }
-var STABLE_SYMBOLS = /* @__PURE__ */ new Set([
+var STABLE_SYMBOLS_FALLBACK = /* @__PURE__ */ new Set([
   "USDT",
   "USDC",
   "DAI",
@@ -30833,12 +30843,12 @@ var STABLE_SYMBOLS = /* @__PURE__ */ new Set([
   "LUSD",
   "CRVUSD"
 ]);
-function altBreadth(ds) {
+function altBreadth(ds, stable = STABLE_SYMBOLS_FALLBACK) {
   const subjects = new Set(ds.points.filter((p) => p.key.endsWith(".market.change.30d")).map((p) => p.key.slice(0, -".market.change.30d".length)));
   let up = 0;
   let total = 0;
   for (const s of subjects) {
-    if (s === "BTC" || STABLE_SYMBOLS.has(s)) continue;
+    if (s === "BTC" || stable.has(s)) continue;
     const ch = pointNumber(ds, `${s}.market.change.30d`);
     const price = pointNumber(ds, `${s}.market.price`);
     if (ch === void 0 || price !== void 0 && price > 0.97 && price < 1.03 && Math.abs(ch) < 0.5) continue;
@@ -30847,14 +30857,27 @@ function altBreadth(ds) {
   }
   return { up, total, pct: total ? up / total * 100 : void 0 };
 }
+async function stablecoinSymbols() {
+  try {
+    const r3 = await coingeckoCategorySymbols("stablecoins");
+    return { symbols: new Set(r3.symbols), live: true, note: `stablecoins left out: CoinGecko's stablecoins category (${r3.symbols.length} coins, ${r3.url})` };
+  } catch (e) {
+    return {
+      symbols: STABLE_SYMBOLS_FALLBACK,
+      live: false,
+      note: `stablecoins left out by ultrastock's fallback list (${STABLE_SYMBOLS_FALLBACK.size} symbols), which may be incomplete \u2014 CoinGecko's stablecoins category could not be read (${e.message.slice(0, 120)}); a coin flat at ~1 USD is still left out`
+    };
+  }
+}
 async function cryptoRegimeReport(now = clockNow()) {
   const ns = "CRYPTO.regime";
-  const [hist, side2] = await Promise.all([
+  const [hist, side2, stables] = await Promise.all([
     dailyHistories(["BTCUSDT"], REGIME_HISTORY_DAYS, now),
     settle({
       "CoinGecko top 50": () => coingeckoMarkets({ limit: 50 }),
       "Binance futures funding": () => binanceFuturesPositioning("BTC", { fundingLimit: 21, days: 2 })
-    })
+    }),
+    stablecoinSymbols()
   ]);
   const notes = [...hist.failed.map((f3) => `history unavailable \u2014 ${f3}`), ...side2.failed.map((f3) => `unavailable \u2014 ${f3}`)];
   const sec = new Sections("CRYPTO");
@@ -30889,7 +30912,7 @@ async function cryptoRegimeReport(now = clockNow()) {
   if (cg) {
     const p = { ...cg.provenance };
     provs.push(p);
-    const ab = altBreadth(cg);
+    const ab = altBreadth(cg, stables.symbols);
     const pts = [];
     if (ab.pct !== void 0) {
       inputs.altBreadthPct = ab.pct;
@@ -30910,7 +30933,8 @@ async function cryptoRegimeReport(now = clockNow()) {
     if (dd !== void 0) inputs.btcDrawdownPct = dd;
     sec.push(pickPoints(cg, ["BTC.market.price", "BTC.market.ath", "BTC.market.ath.change", "BTC.market.change.30d"], "BTC on CoinGecko"));
     sec.add("Crypto breadth (CoinGecko, unofficial)", p, pts, [
-      "wrapped and staked tokens are counted as alts; stablecoins are left out by symbol and by a ~1 USD flat-price test"
+      "wrapped and staked tokens are counted as alts; stablecoins are left out by symbol and by a ~1 USD flat-price test",
+      stables.note
     ]);
   }
   const fut = side2.ok["Binance futures funding"];

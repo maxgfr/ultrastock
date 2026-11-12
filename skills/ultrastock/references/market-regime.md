@@ -10,7 +10,7 @@ call is an `[E#]`.
 |---|---|---|
 | us | SPY trend (close vs the 200-day, 50 vs 200, slope), RSP/SPY breadth, HYG/LQD credit, distribution days and the follow-through state on SPY and QQQ, VIX/VIX3M term structure, CNN Fear & Greed (read contrarian), % of US large caps above their 200-day | IWM/SPY, XLY/XLP, SPY/TLT; the HY and IG option-adjusted spreads (FRED, ICE BofA) with their 20-observation change, high yield flagged "widening" at +50 bp |
 | eu | CAC 40 trend, euro-area large-cap breadth, VIX term structure | CW8, the ECB AAA 2s10s |
-| crypto | BTC trend and 30-day return, alt breadth (top 50), funding, drawdown from the high | — |
+| crypto | BTC trend and 30-day return, alt breadth (top 50, stablecoins left out by CoinGecko's live stablecoins category — or, when it does not answer, a fallback list the notes call possibly incomplete), funding, drawdown from the high | — |
 
 - **Zones** run from risk-on to defensive. The exposure coach turns the zone
   into a **maximum exposure** and a stance on new entries (normal, selective,

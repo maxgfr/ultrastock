@@ -6,6 +6,7 @@
 //   /coins/markets?vs_currency=…  top coins by market cap: price, cap, volume, 24h/7d/30d change, ATH
 //   /coins/<id>                   one coin: categories, links, supply (circulating/total/max), FDV, description
 //   /search?query=…               coin ids for a name or ticker
+//   /coins/markets?category=…     the coins CoinGecko files under a category (stablecoins)
 //
 // The keyless tier allows roughly 5–15 calls a minute and answers 429 beyond:
 // calls are paced 2.5 s apart. With ULTRASTOCK_COINGECKO_API_KEY set, the key
@@ -217,6 +218,21 @@ export function coinPoints(c: CoinGeckoCoin, vs = "usd"): Point[] {
   const desc = c.description?.en?.trim();
   if (desc) out.push({ key: `${s}.profile.description`, label: `${s} description (project's own words)`, value: desc, untrusted: true });
   return out;
+}
+
+/**
+ * The tickers (as `coinSubject` writes them) of the coins CoinGecko files under a category — "stablecoins" — by market
+ * cap, at most `limit` (one page). The category is CoinGecko's curation: new coins join it as they list.
+ */
+export async function coingeckoCategorySymbols(category: string, limit = 250): Promise<{ symbols: string[]; url: string; fetchedAt: string }> {
+  const n = Math.min(Math.max(limit, 1), 250);
+  const r = await get<CoinGeckoMarketRow[]>(
+    `/coins/markets?vs_currency=usd&category=${encodeURIComponent(category)}&order=market_cap_desc&per_page=${n}&page=1`,
+    `the ${category} category`,
+  );
+  if (!Array.isArray(r.data) || !r.data.length) throw new ProviderError(SOURCE, `the ${category} category returned no coin`);
+  const symbols = [...new Set(r.data.filter((c) => typeof c?.id === "string").map((c) => coinSubject(c.symbol, c.id)))];
+  return { symbols, url: r.url, fetchedAt: r.fetchedAt };
 }
 
 /** One coin by CoinGecko id ("bitcoin", "solana"): supply, FDV, categories, links. */

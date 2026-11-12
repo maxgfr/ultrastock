@@ -30,7 +30,7 @@ import {
 import type { Dataset, Point } from "../../core/datasets.js";
 import { clockNow } from "../../core/net.js";
 import { binanceFuturesPositioning } from "../../providers/crypto/binance-futures.js";
-import { coingeckoMarkets } from "../../providers/crypto/coingecko.js";
+import { coingeckoCategorySymbols, coingeckoMarkets } from "../../providers/crypto/coingecko.js";
 import { ecbYieldCurve } from "../../providers/macro/ecb.js";
 import { fredSeries } from "../../providers/macro/fred.js";
 import { cnnFearGreed, vixTermStructure } from "../../providers/macro/sentiment.js";
@@ -641,8 +641,12 @@ export async function euRegime(now: Date = clockNow()): Promise<Report> {
   };
 }
 
-/** Coins that track a fiat currency: not part of "alt breadth". */
-const STABLE_SYMBOLS = new Set([
+/**
+ * Coins that track a fiat currency, as known when this list was last written: the FALLBACK of alt breadth when
+ * CoinGecko's own stablecoins category cannot be read (`stablecoinSymbols`) — incomplete as soon as a new one lists,
+ * which the ~1 USD flat-price test in `altBreadth` partly catches, and the output says so.
+ */
+export const STABLE_SYMBOLS_FALLBACK: ReadonlySet<string> = new Set([
   "USDT",
   "USDC",
   "DAI",
@@ -673,12 +677,12 @@ const STABLE_SYMBOLS = new Set([
  * BTC and stablecoins left out, whose 30-day change is positive. A proxy for
  * "above the 50-day average", which would need a history per coin.
  */
-export function altBreadth(ds: Dataset): { up: number; total: number; pct?: number } {
+export function altBreadth(ds: Dataset, stable: ReadonlySet<string> = STABLE_SYMBOLS_FALLBACK): { up: number; total: number; pct?: number } {
   const subjects = new Set(ds.points.filter((p) => p.key.endsWith(".market.change.30d")).map((p) => p.key.slice(0, -".market.change.30d".length)));
   let up = 0;
   let total = 0;
   for (const s of subjects) {
-    if (s === "BTC" || STABLE_SYMBOLS.has(s)) continue;
+    if (s === "BTC" || stable.has(s)) continue;
     const ch = pointNumber(ds, `${s}.market.change.30d`);
     const price = pointNumber(ds, `${s}.market.price`);
     // A coin pinned at ~1 USD that moved under 0.5 % in a month is a stablecoin missing from the list.
@@ -689,15 +693,33 @@ export function altBreadth(ds: Dataset): { up: number; total: number; pct?: numb
   return { up, total, pct: total ? (up / total) * 100 : undefined };
 }
 
+/**
+ * The stablecoins to leave out of alt breadth: CoinGecko's stablecoins category, read live; when it cannot be read
+ * (rate limited, offline, a replay that never recorded it), the fallback list — with a note that it may be incomplete.
+ */
+export async function stablecoinSymbols(): Promise<{ symbols: ReadonlySet<string>; live: boolean; note: string }> {
+  try {
+    const r = await coingeckoCategorySymbols("stablecoins");
+    return { symbols: new Set(r.symbols), live: true, note: `stablecoins left out: CoinGecko's stablecoins category (${r.symbols.length} coins, ${r.url})` };
+  } catch (e) {
+    return {
+      symbols: STABLE_SYMBOLS_FALLBACK,
+      live: false,
+      note: `stablecoins left out by ultrastock's fallback list (${STABLE_SYMBOLS_FALLBACK.size} symbols), which may be incomplete — CoinGecko's stablecoins category could not be read (${(e as Error).message.slice(0, 120)}); a coin flat at ~1 USD is still left out`,
+    };
+  }
+}
+
 /** The crypto regime: BTC trend and 30-day return, alt breadth, funding, drawdown from the high. */
 export async function cryptoRegimeReport(now: Date = clockNow()): Promise<Report> {
   const ns = "CRYPTO.regime";
-  const [hist, side] = await Promise.all([
+  const [hist, side, stables] = await Promise.all([
     dailyHistories(["BTCUSDT"], REGIME_HISTORY_DAYS, now),
     settle<Dataset | Dataset[]>({
       "CoinGecko top 50": () => coingeckoMarkets({ limit: 50 }),
       "Binance futures funding": () => binanceFuturesPositioning("BTC", { fundingLimit: 21, days: 2 }),
     }),
+    stablecoinSymbols(),
   ]);
   const notes = [...hist.failed.map((f) => `history unavailable — ${f}`), ...side.failed.map((f) => `unavailable — ${f}`)];
   const sec = new Sections("CRYPTO");
@@ -734,7 +756,7 @@ export async function cryptoRegimeReport(now: Date = clockNow()): Promise<Report
   if (cg) {
     const p = { ...cg.provenance };
     provs.push(p);
-    const ab = altBreadth(cg);
+    const ab = altBreadth(cg, stables.symbols);
     const pts: Point[] = [];
     if (ab.pct !== undefined) {
       inputs.altBreadthPct = ab.pct;
@@ -756,6 +778,7 @@ export async function cryptoRegimeReport(now: Date = clockNow()): Promise<Report
     sec.push(pickPoints(cg, ["BTC.market.price", "BTC.market.ath", "BTC.market.ath.change", "BTC.market.change.30d"], "BTC on CoinGecko"));
     sec.add("Crypto breadth (CoinGecko, unofficial)", p, pts, [
       "wrapped and staked tokens are counted as alts; stablecoins are left out by symbol and by a ~1 USD flat-price test",
+      stables.note,
     ]);
   }
 
