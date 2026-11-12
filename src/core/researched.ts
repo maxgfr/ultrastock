@@ -225,6 +225,8 @@ export function validateFacts(d: Domain, raw: unknown, expect: { country?: strin
   const period = raw[p];
   const periodOk = p === "year" ? typeof period === "number" && Number.isInteger(period) && period >= 1900 && period <= 2200 : isIsoDate(period);
   if (!periodOk) problems.push(p === "year" ? '"year" is an integer such as 2025' : '"date" is written YYYY-MM-DD');
+  // A file dated ahead (a typo in the year) would read as the newest research until that day: refused like a future researchedAt.
+  else if (p === "date" && (period as string) > now) problems.push(`"date" ${String(period)} is in the future`);
   if (expect.country && country && country !== expect.country.toUpperCase()) problems.push(`the file is for ${country}, not ${expect.country.toUpperCase()}`);
   if (expect.period !== undefined && periodOk && period !== expect.period)
     problems.push(`the file is for ${p} ${String(period)}, not ${expect.period} — research ${expect.period}'s facts: another ${p}'s are not used`);
@@ -484,18 +486,26 @@ export interface LatestFacts {
 /**
  * A country's newest fact for each key across every stored file of a `date` domain: research a single key on a new day
  * and the other keys keep their earlier file's fact (each with its own age check). Every file is validated: an invalid
- * one is a usage error naming it. `upTo` leaves out the files dated after it (a period written for a later day).
+ * one is a usage error naming it. `upTo` leaves out the files dated after it (a period written for a later day); a
+ * file dated after today is left out whatever `upTo` says. A key's newest fact is the one verified last, then the one
+ * of the later file: a file's date alone never outranks a later verification.
  */
 export function loadLatestFacts(d: Domain, country: string, opts: { upTo?: number | string } = {}): LatestFacts {
   const c = countryCode(country);
   const facts: LatestFacts["facts"] = {};
   const staleReason = new Map<string, string>();
   const paths: string[] = [];
-  for (const period of storedPeriods(d, c).filter((p) => opts.upTo === undefined || String(p) <= String(opts.upTo))) {
+  // A `date` file dated after today is no research yet (validation refuses one): it is never read, upTo or not.
+  const now = d.period === "date" ? today() : undefined;
+  const upTo = opts.upTo === undefined ? now : now !== undefined && String(opts.upTo) > now ? now : String(opts.upTo);
+  for (const period of storedPeriods(d, c).filter((p) => upTo === undefined || String(p) <= upTo)) {
     const v = loadFacts(d, c, period);
     paths.push(v.path);
     const stale = new Map(v.stale.map((x) => [x.key, x.reason]));
     for (const [k, f] of Object.entries(v.file.facts)) {
+      // The newest research of a key is the one verified last (files are read oldest first: a tie goes to the later file).
+      const had = facts[k];
+      if (had && had.verifiedAt > f.verifiedAt) continue;
       facts[k] = { ...f, period, path: v.path };
       if (stale.has(k)) staleReason.set(k, stale.get(k)!);
       else staleReason.delete(k);

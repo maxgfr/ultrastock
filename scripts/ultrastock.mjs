@@ -17536,6 +17536,7 @@ function validateFacts(d, raw, expect = {}) {
   const period2 = raw[p];
   const periodOk = p === "year" ? typeof period2 === "number" && Number.isInteger(period2) && period2 >= 1900 && period2 <= 2200 : isIsoDate(period2);
   if (!periodOk) problems.push(p === "year" ? '"year" is an integer such as 2025' : '"date" is written YYYY-MM-DD');
+  else if (p === "date" && period2 > now) problems.push(`"date" ${String(period2)} is in the future`);
   if (expect.country && country2 && country2 !== expect.country.toUpperCase()) problems.push(`the file is for ${country2}, not ${expect.country.toUpperCase()}`);
   if (expect.period !== void 0 && periodOk && period2 !== expect.period)
     problems.push(`the file is for ${p} ${String(period2)}, not ${expect.period} \u2014 research ${expect.period}'s facts: another ${p}'s are not used`);
@@ -17736,11 +17737,15 @@ function loadLatestFacts(d, country2, opts = {}) {
   const facts = {};
   const staleReason2 = /* @__PURE__ */ new Map();
   const paths = [];
-  for (const period2 of storedPeriods(d, c).filter((p) => opts.upTo === void 0 || String(p) <= String(opts.upTo))) {
+  const now = d.period === "date" ? today() : void 0;
+  const upTo = opts.upTo === void 0 ? now : now !== void 0 && String(opts.upTo) > now ? now : String(opts.upTo);
+  for (const period2 of storedPeriods(d, c).filter((p) => upTo === void 0 || String(p) <= upTo)) {
     const v = loadFacts(d, c, period2);
     paths.push(v.path);
     const stale = new Map(v.stale.map((x) => [x.key, x.reason]));
     for (const [k, f3] of Object.entries(v.file.facts)) {
+      const had = facts[k];
+      if (had && had.verifiedAt > f3.verifiedAt) continue;
       facts[k] = { ...f3, period: period2, path: v.path };
       if (stale.has(k)) staleReason2.set(k, stale.get(k));
       else staleReason2.delete(k);
