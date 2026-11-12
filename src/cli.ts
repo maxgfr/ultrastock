@@ -139,9 +139,9 @@ USAGE
   ultrastock decide <run> <decision.json> [--json]
   ultrastock tax rules template --country CC --year YYYY [--currency <code>] | tax rules set --file <rules.json> [--country CC] [--year YYYY] | tax rules show [--country CC] [--year YYYY] [--json]
   ultrastock tax verify [--country CC] [--year YYYY] [--json]
-  ultrastock tax report [--country FR|US|--regime fr|us] [--year YYYY] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,…|short=…,long=…] [--envelope-value <account>:<date>=<value>] [--lot-method fifo|hifo|lifo] [--household single|couple] [--out <dir>] [--json]
+  ultrastock tax report [--country CC|--regime fr|us] [--year YYYY] [--neutral] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,…|short=…,long=…] [--envelope-value <account>:<date>=<value>] [--lot-method fifo|hifo|lifo] [--household single|couple] [--out <dir>] [--json]
   ultrastock tax lots|harvest [--country FR|US] [--year YYYY] [--json]
-  ultrastock tax export --format 8949|2086|2074|koinly [--country FR|US] [--year YYYY] [--out <dir>]
+  ultrastock tax export --format 8949|2086|2074|koinly|neutral|neutral-json [--country CC] [--year YYYY] [--neutral] [--out <dir>]
   ultrastock journal settle|hits|review|digest [--book real|paper] [--json]
   ultrastock journal thesis list|add|show|move [<id>] [<state>] [--symbol] [--thesis] [--invalidation] [--catalysts] [--review-by] [--note] [--outcome] [--ticket-id] [--json]
   ultrastock journal lesson <text> [--tags <a,b>] | journal lessons [--tag <t>] [--json]
@@ -463,10 +463,14 @@ COMMANDS
             pea:2026-03-02=52000), crypto by art. 150 VH bis, the form boxes
             and obligations; US: FIFO/HIFO/LIFO lots, wash sales, short/long
             term, the loss limit, the long-term brackets with --income and
-            --filing, NIIT. lots: every realised event; harvest: positions
-            under water; export: CSV for 8949, 2086, 2074 or Koinly. Every
-            amount is converted at the ECB rate of its date. A preparation aid,
-            not tax advice: a professional should confirm.
+            --filing, NIIT. Any other country (or --neutral): the neutral facts
+            report — each disposal with its cost under FIFO and the weighted
+            average, holding periods, income, withholding, fees — beside the
+            researched rules, with no tax computed. lots: every realised event;
+            harvest: positions under water; export: CSV for 8949, 2086, 2074,
+            Koinly, or the neutral report (neutral, neutral-json). Every amount
+            is converted at the ECB rate of its date. A preparation aid, not
+            tax advice: a professional should confirm.
   journal   The learning loop: settle decisions at +5/+20/+60 sessions against a
             benchmark (alpha, right or wrong), hit rates by rating, post-trade
             reviews (the plan first, then the outcome in R, with best and worst
@@ -745,6 +749,7 @@ export const VALUE_FLAGS = [
 ];
 export const BOOL_FLAGS = [
   "json",
+  "neutral",
   "all",
   "confirm",
   "no-news",
@@ -964,6 +969,7 @@ const SPEC: CliSpec = {
       "country",
       "file",
       "currency",
+      "neutral",
       "year",
       "book",
       "tmi",

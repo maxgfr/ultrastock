@@ -1,6 +1,6 @@
 // tax report | lots | harvest | rules template|set|show | verify | export — the
-// ledger through the tax engine of the profile's tax residence (FR, US), for a
-// tax year.
+// ledger through the tax engine of the profile's tax residence (FR, US) or the
+// neutral facts report (any country, or --neutral), for a tax year.
 //
 // ultrastock contains no tax law: every rate, threshold and period comes from
 // the rules the agent researched and stored (`tax rules set`); without them for
@@ -10,17 +10,18 @@ import { join, resolve } from "node:path";
 import type { Dataset, Point } from "../core/datasets.js";
 import { clockNow } from "../core/net.js";
 import { loadProfile } from "../core/profile.js";
-import { argList, argValue, type CommandArgs, UsageError } from "../engine.js";
+import { argBool, argList, argValue, type CommandArgs, UsageError } from "../engine.js";
 import { buildBook, readLedger, type Transaction } from "../portfolio/ledger.js";
-import { EXPORT_FORMATS, type ExportFormat, export2074, export2086, export8949, exportKoinly } from "../tax/export.js";
+import { ENGINE_FORMATS, EXPORT_FORMATS, type ExportFormat, export2074, export2086, export8949, exportKoinly, exportNeutral } from "../tax/export.js";
 import { isEngineCountry, regimeFor } from "../tax/index.js";
 import { cryptoValuer, currentPrices, historicalFx, withCryptoQuotes } from "../tax/inputs.js";
+import { type NeutralReport, neutralReport } from "../tax/neutral.js";
 import { cryptoTradeKind, day, type Fx, isCryptoTx, isFiat, splitPair, type TaxInput, type TaxRegime, type TaxSummary, yearOf } from "../tax/regime.js";
 import { countryCode, loadRules, type RuleSet, researchChecklist, rulesTemplate, saveRules, specFor, templateCommand } from "../tax/rules.js";
 import { emitDatasets, printResult as print } from "./emit.js";
 
 const USAGE =
-  "usage: ultrastock tax report|lots|harvest|verify|export|rules template|set|show [--country CC] [--regime fr|us] [--year YYYY] [--file <rules.json>] [--currency <code>] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,… | short=…,long=…] [--envelope-value <account>:<YYYY-MM-DD>=<value>,…] [--lot-method fifo|hifo|lifo] [--household single|couple] [--format 8949|2086|2074|koinly] [--out <dir>] [--json]";
+  "usage: ultrastock tax report|lots|harvest|verify|export|rules template|set|show [--country CC] [--regime fr|us] [--year YYYY] [--neutral] [--file <rules.json>] [--currency <code>] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,… | short=…,long=…] [--envelope-value <account>:<YYYY-MM-DD>=<value>,…] [--lot-method fifo|hifo|lifo] [--household single|couple] [--format 8949|2086|2074|koinly|neutral|neutral-json] [--out <dir>] [--json]";
 
 const DISCLAIMER =
   "ultrastock contains no tax law: every rule here is the agent's research (sources and dates beside each) — a preparation aid, not tax advice; have a professional confirm";
@@ -203,6 +204,90 @@ function summaryDatasets(s: TaxSummary, regime: TaxRegime, notes: string[]): Dat
   ];
 }
 
+function neutralDatasets(r: NeutralReport, notes: string[]): Dataset[] {
+  const fetchedAt = clockNow().toISOString();
+  const P = `TAXFACT.${r.country}.${r.year}`;
+  const t = r.totals;
+  const pt = (key: string, label: string, value: number, unit: string | undefined = r.currency): Point => ({ key: `${P}.${key}`, label, value, unit });
+  const points: Point[] = [
+    pt("disposals", "disposals in the year", t.disposals, undefined),
+    pt("exchanges", "of which crypto-to-crypto exchanges", t.exchanges, undefined),
+    pt("proceeds", "disposal proceeds, net of fees", t.proceeds),
+    pt("cost.fifo", "cost of the disposals under FIFO", t.costFifo),
+    pt("cost.average", "cost of the disposals under the weighted average", t.costAverage),
+    pt("gain.fifo", "proceeds minus FIFO cost (no tax rule applied)", t.gainFifo),
+    pt("gain.average", "proceeds minus average cost (no tax rule applied)", t.gainAverage),
+    pt("fees.trades", "fees paid on trades", t.tradeFees),
+    pt("income.dividends", "dividends received (gross)", t.dividends),
+    pt("income.interest", "interest received (gross)", t.interest),
+    pt("income.rewards", "staking and other rewards with a known value", t.rewards),
+    pt("withheld", "tax withheld (net of refunds)", t.withheld),
+    pt("fees.account", "account fees (net of refunds)", t.accountFees),
+  ];
+  const out: Dataset[] = [
+    {
+      kind: "tax-facts",
+      title: `${r.country} ${r.year} — facts from the ledger in ${r.currency} at each date's rate (no tax computed; cost method ${r.costMethod.chosen ?? "not chosen"})`,
+      subject: `TAXFACT.${r.country}`,
+      points,
+      provenance: { source: "ultrastock-tax-facts", fetchedAt, asOf: `${r.year}-12-31`, official: false },
+      notes: [...r.warnings, ...notes, `${DISCLAIMER}; the agent applies the researched rules to these facts`],
+    },
+  ];
+  if (r.rules) out.push(rulesDataset(r.rules, fetchedAt));
+  return out;
+}
+
+function neutralText(r: NeutralReport, path: string): string {
+  const c = r.currency;
+  const held = (d: NeutralReport["disposals"][number]) =>
+    d.heldDaysMin === undefined ? "?" : d.heldDaysMin === d.heldDaysMax ? `${d.heldDaysMin} d` : `${d.heldDaysMin}–${d.heldDaysMax} d`;
+  const mark = (m: "fifo" | "average") => (r.costMethod.chosen === m ? "*" : "");
+  return [
+    `# ${r.country} ${r.year} — facts from the ledger, in ${c} at each date's rate`,
+    `${DISCLAIMER}. No tax is computed here: apply the researched rules below to these facts.`,
+    `cost method researched: ${r.costMethod.researched ? `"${r.costMethod.researched}"` : "not researched"} → ${r.costMethod.chosen ? `${r.costMethod.chosen} (marked *)` : "both shown, none chosen"}`,
+    "",
+    `disposals (${r.disposals.length}):`,
+    ...r.disposals.map(
+      (d) =>
+        `  ${d.date}  ${d.asset.padEnd(12)} ${String(d.quantity).padStart(12)}  proceeds ${d.proceeds}  cost FIFO${mark("fifo")} ${d.costFifo} / average${mark("average")} ${d.costAverage}  gain FIFO ${d.gainFifo} / average ${d.gainAverage}  fees ${d.fees}  held ${held(d)} (acquired ${d.lots.map((l) => l.acquired).join(", ") || "?"})  → ${d.received}${d.exchange ? " [exchange]" : ""}  ${d.account}${d.notes.length ? `\n      ${d.notes.join("; ")}` : ""}`,
+    ),
+    "",
+    `income (${r.income.length}):`,
+    ...r.income.map(
+      (i) =>
+        `  ${i.date}  ${i.kind.padEnd(9)} ${(i.symbol ?? "").padEnd(12)} ${i.amount ?? "value unknown"} ${c}  withheld ${i.withheld}  ${i.account}${i.notes.length ? `  (${i.notes.join("; ")})` : ""}`,
+    ),
+    "",
+    `withholding and fees (${r.charges.length}):`,
+    ...r.charges.map((x) => `  ${x.date}  ${x.kind.padEnd(12)} ${(x.symbol ?? "").padEnd(12)} ${x.amount} ${c}  ${x.account}`),
+    "",
+    `totals: proceeds ${r.totals.proceeds}, cost FIFO ${r.totals.costFifo} / average ${r.totals.costAverage}, gain FIFO ${r.totals.gainFifo} / average ${r.totals.gainAverage}, trade fees ${r.totals.tradeFees}; dividends ${r.totals.dividends}, interest ${r.totals.interest}, rewards ${r.totals.rewards}, withheld ${r.totals.withheld}, account fees ${r.totals.accountFees} (${c})`,
+    "",
+    `researched rules (${path}):`,
+    ...Object.entries(r.rules?.facts ?? {}).map(
+      ([k, p]) =>
+        `  - ${k} = ${formatValue(p.value)} — ${p.label} (verified ${p.verifiedAt}, ${p.confidence}; ${p.sources.join(" · ")})${p.note ? ` — ${p.note}` : ""}`,
+    ),
+    ...(r.warnings.length ? ["", "warnings:", ...r.warnings.map((w) => `  - ${w}`)] : []),
+    "",
+    "",
+  ].join("\n");
+}
+
+async function neutral(args: CommandArgs, country: string, year: number): Promise<{ report: NeutralReport; notes: string[]; path: string }> {
+  // The researched rules first: no fetch for a report the agent has not researched.
+  const { rules, path, missing, stale } = loadRules(country, year);
+  const txs = bookTransactions(args);
+  const envelopes = loadProfile()?.envelopes ?? [];
+  const { fx, notes } = await ledgerFx(txs, rules.currency, year, { cryptoQuotes: true });
+  const report = neutralReport({ year, transactions: txs, envelopes, fx, currency: rules.currency, rules });
+  if (missing.length) report.warnings.push(`not researched yet (${path}): ${missing.join(", ")} — \`${templateCommand(country, year)}\` lists them`);
+  for (const s of stale) report.warnings.push(`${s.key} is stale (${s.reason}): re-research it`);
+  return { report, notes, path };
+}
+
 async function rulesCommand(args: CommandArgs, asJson: boolean, sub: string | undefined, country: () => string, year: () => number): Promise<void> {
   if (sub === "template") {
     const c = country();
@@ -319,31 +404,59 @@ export async function taxCommand(args: CommandArgs, asJson: boolean): Promise<vo
     );
   }
 
-  // The engine refuses here, before any request, when the country has none or its researched rules are missing.
-  const regime = regimeFor(country, y);
-  if (sub === "export") {
-    const format = (argValue(args, "format") ?? (country === "US" ? "8949" : "2074")) as ExportFormat;
-    if (!(EXPORT_FORMATS as readonly string[]).includes(format)) throw new UsageError(`--format is one of ${EXPORT_FORMATS.join(", ")}`);
-    const { input } = await buildInput(args, regime, y);
-    const events = format === "koinly" ? [] : regime.realize(input);
-    const csv =
-      format === "8949"
-        ? export8949(events)
-        : format === "2086"
-          ? export2086(events)
-          : format === "2074"
-            ? export2074(events)
-            : exportKoinly(
-                input.transactions.filter((t) => yearOf(t.date) === y),
-                (t) => isCryptoTx(t, input.envelopes),
-              );
-    const out = argValue(args, "out");
-    if (!out) return void process.stdout.write(csv);
-    mkdirSync(resolve(out), { recursive: true });
-    const file = join(resolve(out), `tax-${country.toLowerCase()}-${y}-${format}.csv`);
-    writeFileSync(file, csv, { mode: 0o600 });
-    return print(asJson, { file, rows: csv.split("\r\n").length - 2 }, `written ${file}`);
+  const wantsNeutral = argBool(args, "neutral") || !isEngineCountry(country);
+  if (sub === "report" && wantsNeutral) {
+    const { report, notes, path } = await neutral(args, country, y);
+    if (asJson) return print(true, { ...report, notes, rulesFile: path, disclaimer: DISCLAIMER }, "");
+    process.stdout.write(neutralText(report, path));
+    return emitDatasets(args, neutralDatasets(report, notes), false);
   }
+  if (sub === "export") {
+    const engineFormat = !isEngineCountry(country) || argBool(args, "neutral") ? "neutral" : country === "US" ? "8949" : "2074";
+    const format = (argValue(args, "format") ?? engineFormat) as ExportFormat;
+    if (!(EXPORT_FORMATS as readonly string[]).includes(format)) throw new UsageError(`--format is one of ${EXPORT_FORMATS.join(", ")}`);
+    if ((ENGINE_FORMATS as readonly string[]).includes(format) && !isEngineCountry(country))
+      throw new UsageError(
+        `--format ${format} is a form of an engine (${ENGINE_FORMATS.join(", ")}: FR or US); for ${country} use --format neutral or neutral-json`,
+      );
+    let body: string;
+    let ext = "csv";
+    if (format === "neutral" || format === "neutral-json") {
+      const { report } = await neutral(args, country, y);
+      body = format === "neutral" ? exportNeutral(report) : `${JSON.stringify(report, null, 2)}\n`;
+      if (format === "neutral-json") ext = "json";
+    } else {
+      const regime = regimeFor(country, y);
+      const { input } = await buildInput(args, regime, y);
+      const events = format === "koinly" ? [] : regime.realize(input);
+      body =
+        format === "8949"
+          ? export8949(events)
+          : format === "2086"
+            ? export2086(events)
+            : format === "2074"
+              ? export2074(events)
+              : exportKoinly(
+                  input.transactions.filter((t) => yearOf(t.date) === y),
+                  (t) => isCryptoTx(t, input.envelopes),
+                );
+    }
+    const out = argValue(args, "out");
+    if (!out) return void process.stdout.write(body);
+    mkdirSync(resolve(out), { recursive: true });
+    const file = join(resolve(out), `tax-${country.toLowerCase()}-${y}-${format}.${ext}`);
+    writeFileSync(file, body, { mode: 0o600 });
+    return print(asJson, { file, rows: ext === "csv" ? body.split("\r\n").length - 2 : undefined }, `written ${file}`);
+  }
+  if (!isEngineCountry(country)) {
+    if (sub === "lots" || sub === "harvest")
+      throw new UsageError(
+        `tax ${sub} needs a tax engine (FR, US): for ${country}, \`tax report\` lists the disposals and lots as facts beside the researched rules`,
+      );
+    throw new UsageError(USAGE);
+  }
+  // The engine refuses here, before any request, when the researched rules are missing or incomplete.
+  const regime = regimeFor(country, y);
   if (sub === "report" || sub === "lots") {
     const { input, notes } = await buildInput(args, regime, y);
     const s = regime.annualSummary(input);

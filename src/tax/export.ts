@@ -1,11 +1,16 @@
 // Files for the return and for the tools people already use: Form 8949 rows,
 // the 2086 columns (one per taxable crypto disposal), the 2074 disposals
-// detail, and Koinly's universal CSV (to cross-check crypto with Koinly).
+// detail, Koinly's universal CSV (to cross-check crypto with Koinly), and the
+// neutral facts report for any country (CSV or JSON). Form column and line
+// numbers here are the forms' own structure, not tax values.
 import { toCsv } from "../core/csv.js";
 import type { Transaction } from "../portfolio/ledger.js";
+import type { NeutralReport } from "./neutral.js";
 import { day, splitPair, type TaxEvent } from "./regime.js";
 
-export const EXPORT_FORMATS = ["8949", "2086", "2074", "koinly"] as const;
+export const EXPORT_FORMATS = ["8949", "2086", "2074", "koinly", "neutral", "neutral-json"] as const;
+/** The formats an engine writes (FR, US); the neutral ones exist for every country. */
+export const ENGINE_FORMATS = ["8949", "2086", "2074", "koinly"] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
 
 export function export8949(events: readonly TaxEvent[]): string {
@@ -104,4 +109,81 @@ export function exportKoinly(txs: readonly Transaction[], isCrypto: (t: Transact
     ],
     ...rows,
   ]);
+}
+
+/** The neutral facts report as one CSV: a `section` column (disposal, income, charge), amounts in the base currency. */
+export function exportNeutral(r: NeutralReport): string {
+  const head = [
+    "section",
+    "date",
+    "account",
+    "envelope",
+    "asset",
+    "symbol",
+    "kind",
+    "quantity",
+    `proceeds (${r.currency})`,
+    `cost FIFO (${r.currency})`,
+    `cost average (${r.currency})`,
+    `gain FIFO (${r.currency})`,
+    `gain average (${r.currency})`,
+    "cost method chosen",
+    `fees (${r.currency})`,
+    "acquired",
+    "held days",
+    "received",
+    `amount (${r.currency})`,
+    `withheld (${r.currency})`,
+    "notes",
+  ];
+  const rows: Array<Array<string | number>> = [
+    ...r.disposals.map((d) => [
+      "disposal",
+      d.date,
+      d.account,
+      d.envelope,
+      d.asset,
+      d.symbol ?? "",
+      d.exchange ? "exchange" : "sale",
+      d.quantity,
+      d.proceeds,
+      d.costFifo,
+      d.costAverage,
+      d.gainFifo,
+      d.gainAverage,
+      r.costMethod.chosen ?? "",
+      d.fees,
+      d.lots.map((l) => `${l.acquired}×${l.quantity}`).join(" "),
+      d.heldDaysMin === d.heldDaysMax ? (d.heldDaysMin ?? "") : `${d.heldDaysMin}-${d.heldDaysMax}`,
+      d.received,
+      "",
+      "",
+      d.notes.join("; "),
+    ]),
+    ...r.income.map((i) => [
+      "income",
+      i.date,
+      i.account,
+      i.envelope,
+      "",
+      i.symbol ?? "",
+      i.kind,
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      i.amount ?? "",
+      i.withheld,
+      i.notes.join("; "),
+    ]),
+    ...r.charges.map((c) => ["charge", c.date, c.account, "", "", c.symbol ?? "", c.kind, "", "", "", "", "", "", "", "", "", "", "", c.amount, "", ""]),
+  ];
+  return toCsv([head, ...rows]);
 }

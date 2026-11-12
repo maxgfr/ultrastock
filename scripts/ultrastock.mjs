@@ -46329,7 +46329,7 @@ var TAX2 = defineDomain({
   },
   templateCommand,
   setCommand: "ultrastock tax rules set --file <file.json>",
-  about: (c, year) => `TEMPLATE to fill by research. ultrastock contains no tax law: every value must come from an official source for ${c} and the tax year ${year}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"${isEngineCountry(c) ? "" : ' and "currency"'}; then run \`ultrastock tax rules set --file <this file>\`. ${isEngineCountry(c) ? `The ${c} engine refuses until every key is researched.` : "No engine computes tax for this country: the agent applies these rules itself. Add any other key the research finds."} The user should have a professional confirm the result.`,
+  about: (c, year) => `TEMPLATE to fill by research. ultrastock contains no tax law: every value must come from an official source for ${c} and the tax year ${year}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"${isEngineCountry(c) ? "" : ' and "currency"'}; then run \`ultrastock tax rules set --file <this file>\`. ${isEngineCountry(c) ? `The ${c} engine refuses until every key is researched.` : "No engine computes tax for this country: `tax report` shows the ledger's facts beside these rules, and the agent applies them. Add any other key the research finds."} The user should have a professional confirm the result.`,
   templateExtras: (c, year) => isEngineCountry(c) ? { formLines: FORM_LINES[c].map((f3) => ({ ...f3, check: `the numbering on the ${year} form` })) } : {}
 });
 var ruleSet = (v) => ({
@@ -48074,7 +48074,7 @@ var TOOLS = [
   },
   {
     name: "tax",
-    description: "Tax from the ledger with the rules the agent researched (ultrastock contains no tax law): verify lists what to research for the country and year, rules shows the stored research, report, lots and harvest run the FR / US engine. Storing research (`tax rules set`) is not exposed here.",
+    description: "Tax from the ledger with the rules the agent researched (ultrastock contains no tax law): verify lists what to research for the country and year, rules shows the stored research, report runs the FR / US engine or the neutral facts report (any other country, or neutral), lots and harvest need an engine. Storing research (`tax rules set`) is not exposed here.",
     command: ["tax"],
     params: {
       action: {
@@ -48085,6 +48085,7 @@ var TOOLS = [
         enum: ["report", "lots", "rules", "verify", "harvest"]
       },
       country: { kind: "string", description: "ISO 3166 alpha-2 country of tax residence (default: the profile's)" },
+      neutral: { kind: "boolean", description: "report: the neutral facts report even for FR / US" },
       regime: { kind: "string", description: "fr or us (same as country)" },
       year: { kind: "number", description: "tax year" },
       tmi: { kind: "number", description: "FR marginal rate, e.g. 30" },
@@ -54669,7 +54670,8 @@ import { existsSync as existsSync42, mkdirSync as mkdirSync31, readFileSync as r
 import { join as join56, resolve as resolve18 } from "path";
 
 // src/tax/export.ts
-var EXPORT_FORMATS = ["8949", "2086", "2074", "koinly"];
+var EXPORT_FORMATS = ["8949", "2086", "2074", "koinly", "neutral", "neutral-json"];
+var ENGINE_FORMATS = ["8949", "2086", "2074", "koinly"];
 function export8949(events) {
   const rows = events.filter((e) => (e.kind === "securities-disposal" || e.kind === "crypto-disposal") && e.lines).sort((a, b) => (a.term ?? "").localeCompare(b.term ?? "") || a.date.localeCompare(b.date)).map((e) => [e.term === "long" ? "II" : "I", e.lines.a, e.lines.b, e.lines.c, e.lines.d, e.lines.e, e.lines.f, e.lines.g, e.lines.h, e.account]);
   return toCsv([
@@ -54757,6 +54759,81 @@ function exportKoinly(txs, isCrypto) {
     ],
     ...rows
   ]);
+}
+function exportNeutral(r3) {
+  const head = [
+    "section",
+    "date",
+    "account",
+    "envelope",
+    "asset",
+    "symbol",
+    "kind",
+    "quantity",
+    `proceeds (${r3.currency})`,
+    `cost FIFO (${r3.currency})`,
+    `cost average (${r3.currency})`,
+    `gain FIFO (${r3.currency})`,
+    `gain average (${r3.currency})`,
+    "cost method chosen",
+    `fees (${r3.currency})`,
+    "acquired",
+    "held days",
+    "received",
+    `amount (${r3.currency})`,
+    `withheld (${r3.currency})`,
+    "notes"
+  ];
+  const rows = [
+    ...r3.disposals.map((d) => [
+      "disposal",
+      d.date,
+      d.account,
+      d.envelope,
+      d.asset,
+      d.symbol ?? "",
+      d.exchange ? "exchange" : "sale",
+      d.quantity,
+      d.proceeds,
+      d.costFifo,
+      d.costAverage,
+      d.gainFifo,
+      d.gainAverage,
+      r3.costMethod.chosen ?? "",
+      d.fees,
+      d.lots.map((l) => `${l.acquired}\xD7${l.quantity}`).join(" "),
+      d.heldDaysMin === d.heldDaysMax ? d.heldDaysMin ?? "" : `${d.heldDaysMin}-${d.heldDaysMax}`,
+      d.received,
+      "",
+      "",
+      d.notes.join("; ")
+    ]),
+    ...r3.income.map((i) => [
+      "income",
+      i.date,
+      i.account,
+      i.envelope,
+      "",
+      i.symbol ?? "",
+      i.kind,
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      i.amount ?? "",
+      i.withheld,
+      i.notes.join("; ")
+    ]),
+    ...r3.charges.map((c) => ["charge", c.date, c.account, "", "", c.symbol ?? "", c.kind, "", "", "", "", "", "", "", "", "", "", "", c.amount, "", ""])
+  ];
+  return toCsv([head, ...rows]);
 }
 
 // src/tax/fr.ts
@@ -56069,12 +56146,295 @@ function regimeFor(country2, year) {
   if (c === "FR") return new FranceRegime(year);
   if (c === "US") return new UsRegime(year);
   throw new UsageError(
-    `no tax engine for "${country2}" \u2014 ultrastock has engines for ${ENGINE_COUNTRIES.join(", ")}; for another country the research can still be stored and shown (\`tax rules template|set|show\`)`
+    `no tax engine for "${country2}" \u2014 ultrastock has engines for ${ENGINE_COUNTRIES.join(", ")}; for any other country \`tax report\` gives the neutral facts report beside the rules the agent researched`
   );
 }
 
+// src/tax/neutral.ts
+var TRANSIT_DAYS2 = 30;
+var REWARD_NOTE2 = /\b(staking|rewards?|airdrops?|interest|income|distribution|rebate|cashback|bonus|mining|launchpool|referral)\b/i;
+var EPS = 1e-12;
+var DAY_MS4 = 864e5;
+function chosenMethod(text2) {
+  if (typeof text2 !== "string") return void 0;
+  if (/\bfifo\b|first[\s-]*in/i.test(text2)) return "fifo";
+  if (/average|weighted|\bpmp\b|moyen/i.test(text2)) return "average";
+  return void 0;
+}
+function neutralReport(input) {
+  const base2 = input.currency.toUpperCase();
+  const warnings = [];
+  const researched = input.rules?.facts.costMethod?.value;
+  const chosen = chosenMethod(researched);
+  if (!input.rules?.facts.costMethod)
+    warnings.push("costMethod is not researched: the cost is shown under FIFO and the weighted average, neither is marked as the law's");
+  else if (!chosen) warnings.push(`costMethod "${String(researched)}" is neither FIFO nor the weighted average: both are shown, apply the researched method`);
+  const value2 = (t, amount, currency = t.currency) => {
+    if (amount === 0) return 0;
+    let c = currency.toUpperCase();
+    if (isStablecoin(c)) c = c.startsWith("EUR") ? "EUR" : "USD";
+    if (c === base2) return amount;
+    const rate2 = input.fx(c, day3(t.date));
+    if (rate2 === void 0)
+      throw new Error(`no ${c}\u2192${base2} rate for ${day3(t.date)} (transaction ${t.id}) \u2014 the report needs every amount converted at its date`);
+    return amount * rate2;
+  };
+  const isinOf = /* @__PURE__ */ new Map();
+  for (const t of input.transactions) if (t.symbol && t.isin) isinOf.set(t.symbol.toUpperCase(), t.isin.toUpperCase());
+  const crypto = (t) => isCryptoTx(t, input.envelopes);
+  const assetOf2 = (t) => crypto(t) ? splitPair(t.symbol ?? t.currency, t.currency).base : t.isin?.toUpperCase() ?? isinOf.get((t.symbol ?? "").toUpperCase()) ?? (t.symbol ?? "").toUpperCase();
+  const history = chronological(input.transactions.filter((t) => yearOf2(t.date) <= input.year));
+  const matched = /* @__PURE__ */ new Map();
+  const outs = history.filter((t) => t.type === "transfer-out");
+  for (const t of history) {
+    if (t.type !== "transfer-in" || t.price !== void 0 || REWARD_NOTE2.test(t.note ?? "")) continue;
+    let need = t.quantity ?? 0;
+    for (const o of outs) {
+      if (need <= EPS) break;
+      if (o.account === t.account || assetOf2(o) !== assetOf2(t)) continue;
+      if (day3(o.date) > day3(t.date) || day3(t.date) > addDays2(day3(o.date), TRANSIT_DAYS2)) continue;
+      const left = (o.quantity ?? 0) - (matched.get(o) ?? 0);
+      if (left <= EPS) continue;
+      const q = Math.min(need, left);
+      matched.set(o, (matched.get(o) ?? 0) + q);
+      matched.set(t, (matched.get(t) ?? 0) + q);
+      need -= q;
+    }
+  }
+  const pools = /* @__PURE__ */ new Map();
+  const pool = (a) => {
+    let p = pools.get(a);
+    if (!p) pools.set(a, p = { lots: [], quantity: 0, cost: 0 });
+    return p;
+  };
+  const acquire2 = (asset, date, quantity, cost) => {
+    if (quantity <= EPS) return;
+    const p = pool(asset);
+    p.lots.push({ acquired: date, quantity, perUnit: cost / quantity });
+    p.quantity += quantity;
+    p.cost += cost;
+  };
+  const take = (asset, date, quantity) => {
+    const p = pool(asset);
+    const slices = [];
+    let left = quantity;
+    while (left > EPS && p.lots.length) {
+      const l = p.lots[0];
+      const q = Math.min(left, l.quantity);
+      slices.push({ acquired: l.acquired, quantity: q, cost: q * l.perUnit, heldDays: Math.round((Date.parse(date) - Date.parse(l.acquired)) / DAY_MS4) });
+      l.quantity -= q;
+      left -= q;
+      if (l.quantity <= EPS) p.lots.shift();
+    }
+    const held = Math.min(quantity, p.quantity);
+    const average = p.quantity > EPS ? p.cost / p.quantity * held : 0;
+    p.cost -= average;
+    p.quantity -= held;
+    if (p.quantity <= EPS) {
+      p.quantity = 0;
+      p.cost = 0;
+    }
+    return { slices, average, short: left > 1e-9 ? left : 0 };
+  };
+  const disposals = [];
+  const income = [];
+  const charges = [];
+  let tradeFees = 0;
+  const splitDone = /* @__PURE__ */ new Set();
+  const inYear = (t) => yearOf2(t.date) === input.year;
+  const where = (t) => ({ date: day3(t.date), account: t.account, envelope: envelopeOf2(t.account, input.envelopes, t.symbol, t.isin).type });
+  const dispose = (t, asset, quantity, proceeds, fees, received, exchange, isCrypto, notes = []) => {
+    const d = day3(t.date);
+    const { slices, average, short } = take(asset, d, quantity);
+    if (!inYear(t)) return;
+    const n2 = [...notes];
+    if (short) {
+      n2.push(`${round22(short * 1e6) / 1e6} ${asset} sold beyond the recorded acquisitions: no cost for them \u2014 import the history`);
+      warnings.push(`${asset} disposed on ${d}: ${round22(short * 1e6) / 1e6} more than the ledger's acquisitions (cost 0 for them)`);
+    }
+    const costFifo = slices.reduce((a, s) => a + s.cost, 0);
+    const days = slices.map((s) => s.heldDays);
+    disposals.push({
+      ...where(t),
+      asset,
+      symbol: t.symbol,
+      crypto: isCrypto,
+      quantity: round22(quantity * 1e8) / 1e8,
+      proceeds: round22(proceeds),
+      fees: round22(fees),
+      received,
+      exchange,
+      costFifo: round22(costFifo),
+      costAverage: round22(average),
+      gainFifo: round22(proceeds - costFifo),
+      gainAverage: round22(proceeds - average),
+      lots: slices.map((s) => ({ ...s, quantity: round22(s.quantity * 1e8) / 1e8, cost: round22(s.cost) })),
+      acquiredFirst: slices[0]?.acquired,
+      acquiredLast: slices.at(-1)?.acquired,
+      heldDaysMin: days.length ? Math.min(...days) : void 0,
+      heldDaysMax: days.length ? Math.max(...days) : void 0,
+      notes: n2
+    });
+  };
+  for (const t of history) {
+    const isCrypto = crypto(t);
+    const d = day3(t.date);
+    if (t.type === "buy" || t.type === "sell") {
+      const q = t.quantity ?? 0;
+      if (!isCrypto) {
+        const asset = assetOf2(t);
+        const w2 = value2(t, gross2(t));
+        const f4 = value2(t, t.fee ?? 0);
+        if (inYear(t)) tradeFees += f4;
+        if (t.type === "buy") acquire2(asset, d, q, w2 + f4);
+        else dispose(t, asset, q, w2 - f4, f4, t.currency.toUpperCase(), false, false);
+        continue;
+      }
+      const b = splitPair(t.symbol ?? t.currency, t.currency).base;
+      const quote2 = t.currency.toUpperCase();
+      const bFiat = isFiat(b);
+      const qFiat = isFiat(quote2);
+      const w = bFiat && !qFiat && !isStablecoin(quote2) ? value2(t, q, b) : value2(t, gross2(t));
+      const f3 = value2(t, t.fee ?? 0);
+      if (inYear(t)) tradeFees += f3;
+      const convert = isConvertLeg(t);
+      if (t.type === "buy") {
+        if (!bFiat) acquire2(b, d, q, w + f3);
+        if (!qFiat) dispose(t, quote2, gross2(t) + (t.fee ?? 0), w + f3, f3, b, !bFiat, true, [`${quote2} given for ${q} ${b}`]);
+      } else {
+        if (!bFiat)
+          dispose(t, b, q, w - f3, f3, convert ? "crypto (convert)" : quote2, convert || !qFiat, true, convert ? [`${t.note}: no fiat changed hands`] : []);
+        if (!qFiat) acquire2(quote2, d, gross2(t) - (t.fee ?? 0), w - f3);
+      }
+      continue;
+    }
+    if (t.type === "split") {
+      const asset = assetOf2(t);
+      const once = `${asset}|${d}|${t.quantity ?? 1}`;
+      if (splitDone.has(once)) continue;
+      splitDone.add(once);
+      const r3 = t.quantity ?? 1;
+      const p = pool(asset);
+      for (const l of p.lots) {
+        l.quantity *= r3;
+        l.perUnit /= r3;
+      }
+      p.quantity *= r3;
+      continue;
+    }
+    if (t.type === "transfer-in" || t.type === "transfer-out") {
+      const asset = assetOf2(t);
+      const q = t.quantity ?? 0;
+      const own = matched.get(t) ?? 0;
+      const rest = q - own;
+      if (rest <= EPS) continue;
+      if (t.type === "transfer-out") {
+        take(asset, d, rest);
+        if (inYear(t))
+          warnings.push(
+            `${rest} ${asset} left ${t.account} on ${d} with no transfer-in to another of your accounts: listed as gone, not as a disposal \u2014 say what it was (a gift, a payment, a sale elsewhere)`
+          );
+        continue;
+      }
+      const reward = REWARD_NOTE2.test(t.note ?? "");
+      if (t.price !== void 0) {
+        acquire2(asset, d, rest, value2(t, rest * t.price));
+        if (reward && inYear(t))
+          income.push({ ...where(t), kind: "reward", symbol: t.symbol, amount: round22(value2(t, rest * t.price)), withheld: 0, notes: [t.note ?? "reward"] });
+        continue;
+      }
+      acquire2(asset, d, rest, 0);
+      if (!inYear(t)) continue;
+      if (reward)
+        income.push({
+          ...where(t),
+          kind: "reward",
+          symbol: t.symbol,
+          withheld: 0,
+          notes: [`${t.note}: ${rest} ${asset} received without a price \u2014 its value when received is not in the ledger (cost 0 here)`]
+        });
+      else
+        warnings.push(
+          `${rest} ${asset} arrived in ${t.account} on ${d} with no price and no matching transfer-out: cost 0 \u2014 give its original cost as the transfer-in's price`
+        );
+      continue;
+    }
+    if (!inYear(t)) {
+      if ((t.type === "interest" || t.type === "dividend") && isCrypto && !isFiat(t.currency) && typeof t.amount === "number")
+        acquire2(t.currency.toUpperCase(), d, t.amount, value2(t, t.amount));
+      continue;
+    }
+    if (t.type === "dividend" || t.type === "interest") {
+      const amount = value2(t, t.amount ?? 0);
+      const coin = isCrypto && !isFiat(t.currency) && !isStablecoin(t.currency);
+      if (coin && typeof t.amount === "number") acquire2(t.currency.toUpperCase(), d, t.amount, amount);
+      income.push({
+        ...where(t),
+        kind: coin ? "reward" : t.type,
+        symbol: t.symbol,
+        amount: round22(amount),
+        withheld: 0,
+        notes: coin ? [`paid in ${t.currency}: valued at that day's rate, and a holding acquired at that value`] : []
+      });
+    } else if (t.type === "tax") {
+      charges.push({ date: d, account: t.account, symbol: t.symbol, amount: round22(-value2(t, t.amount ?? 0)), kind: "withholding" });
+    } else if (t.type === "fee") {
+      charges.push({ date: d, account: t.account, symbol: t.symbol, amount: round22(-value2(t, t.amount ?? 0)), kind: "account fee" });
+    }
+  }
+  for (const i of income) {
+    const w = charges.filter((c) => c.kind === "withholding" && c.date === i.date && c.account === i.account && (c.symbol ?? "") === (i.symbol ?? ""));
+    i.withheld = round22(w.reduce((a, c) => a + c.amount, 0));
+  }
+  const sum = (xs, f3) => round22(xs.reduce((a, x) => a + (f3(x) ?? 0), 0));
+  const totals = {
+    disposals: disposals.length,
+    exchanges: disposals.filter((x) => x.exchange).length,
+    proceeds: sum(disposals, (x) => x.proceeds),
+    costFifo: sum(disposals, (x) => x.costFifo),
+    costAverage: sum(disposals, (x) => x.costAverage),
+    gainFifo: sum(disposals, (x) => x.gainFifo),
+    gainAverage: sum(disposals, (x) => x.gainAverage),
+    tradeFees: round22(tradeFees),
+    dividends: sum(
+      income.filter((x) => x.kind === "dividend"),
+      (x) => x.amount
+    ),
+    interest: sum(
+      income.filter((x) => x.kind === "interest"),
+      (x) => x.amount
+    ),
+    rewards: sum(
+      income.filter((x) => x.kind === "reward"),
+      (x) => x.amount
+    ),
+    withheld: sum(
+      charges.filter((x) => x.kind === "withholding"),
+      (x) => x.amount
+    ),
+    accountFees: sum(
+      charges.filter((x) => x.kind === "account fee"),
+      (x) => x.amount
+    )
+  };
+  if (income.some((i) => i.amount === void 0))
+    warnings.push("some rewards have no value in the ledger: their income is unknown \u2014 give each transfer-in its value when received");
+  return {
+    country: input.rules?.country ?? "",
+    year: input.year,
+    currency: base2,
+    costMethod: { researched: typeof researched === "string" ? researched : void 0, chosen },
+    disposals,
+    income,
+    charges,
+    totals,
+    rules: input.rules,
+    warnings
+  };
+}
+
 // src/commands/tax.ts
-var USAGE4 = "usage: ultrastock tax report|lots|harvest|verify|export|rules template|set|show [--country CC] [--regime fr|us] [--year YYYY] [--file <rules.json>] [--currency <code>] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,\u2026 | short=\u2026,long=\u2026] [--envelope-value <account>:<YYYY-MM-DD>=<value>,\u2026] [--lot-method fifo|hifo|lifo] [--household single|couple] [--format 8949|2086|2074|koinly] [--out <dir>] [--json]";
+var USAGE4 = "usage: ultrastock tax report|lots|harvest|verify|export|rules template|set|show [--country CC] [--regime fr|us] [--year YYYY] [--neutral] [--file <rules.json>] [--currency <code>] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,\u2026 | short=\u2026,long=\u2026] [--envelope-value <account>:<YYYY-MM-DD>=<value>,\u2026] [--lot-method fifo|hifo|lifo] [--household single|couple] [--format 8949|2086|2074|koinly|neutral|neutral-json] [--out <dir>] [--json]";
 var DISCLAIMER = "ultrastock contains no tax law: every rule here is the agent's research (sources and dates beside each) \u2014 a preparation aid, not tax advice; have a professional confirm";
 var rate = (raw) => {
   if (raw === void 0) return void 0;
@@ -56230,6 +56590,83 @@ function summaryDatasets(s, regime, notes) {
     rulesDataset(regime.rules, fetchedAt)
   ];
 }
+function neutralDatasets(r3, notes) {
+  const fetchedAt = clockNow().toISOString();
+  const P = `TAXFACT.${r3.country}.${r3.year}`;
+  const t = r3.totals;
+  const pt2 = (key, label2, value2, unit = r3.currency) => ({ key: `${P}.${key}`, label: label2, value: value2, unit });
+  const points = [
+    pt2("disposals", "disposals in the year", t.disposals, void 0),
+    pt2("exchanges", "of which crypto-to-crypto exchanges", t.exchanges, void 0),
+    pt2("proceeds", "disposal proceeds, net of fees", t.proceeds),
+    pt2("cost.fifo", "cost of the disposals under FIFO", t.costFifo),
+    pt2("cost.average", "cost of the disposals under the weighted average", t.costAverage),
+    pt2("gain.fifo", "proceeds minus FIFO cost (no tax rule applied)", t.gainFifo),
+    pt2("gain.average", "proceeds minus average cost (no tax rule applied)", t.gainAverage),
+    pt2("fees.trades", "fees paid on trades", t.tradeFees),
+    pt2("income.dividends", "dividends received (gross)", t.dividends),
+    pt2("income.interest", "interest received (gross)", t.interest),
+    pt2("income.rewards", "staking and other rewards with a known value", t.rewards),
+    pt2("withheld", "tax withheld (net of refunds)", t.withheld),
+    pt2("fees.account", "account fees (net of refunds)", t.accountFees)
+  ];
+  const out = [
+    {
+      kind: "tax-facts",
+      title: `${r3.country} ${r3.year} \u2014 facts from the ledger in ${r3.currency} at each date's rate (no tax computed; cost method ${r3.costMethod.chosen ?? "not chosen"})`,
+      subject: `TAXFACT.${r3.country}`,
+      points,
+      provenance: { source: "ultrastock-tax-facts", fetchedAt, asOf: `${r3.year}-12-31`, official: false },
+      notes: [...r3.warnings, ...notes, `${DISCLAIMER}; the agent applies the researched rules to these facts`]
+    }
+  ];
+  if (r3.rules) out.push(rulesDataset(r3.rules, fetchedAt));
+  return out;
+}
+function neutralText(r3, path2) {
+  const c = r3.currency;
+  const held = (d) => d.heldDaysMin === void 0 ? "?" : d.heldDaysMin === d.heldDaysMax ? `${d.heldDaysMin} d` : `${d.heldDaysMin}\u2013${d.heldDaysMax} d`;
+  const mark = (m) => r3.costMethod.chosen === m ? "*" : "";
+  return [
+    `# ${r3.country} ${r3.year} \u2014 facts from the ledger, in ${c} at each date's rate`,
+    `${DISCLAIMER}. No tax is computed here: apply the researched rules below to these facts.`,
+    `cost method researched: ${r3.costMethod.researched ? `"${r3.costMethod.researched}"` : "not researched"} \u2192 ${r3.costMethod.chosen ? `${r3.costMethod.chosen} (marked *)` : "both shown, none chosen"}`,
+    "",
+    `disposals (${r3.disposals.length}):`,
+    ...r3.disposals.map(
+      (d) => `  ${d.date}  ${d.asset.padEnd(12)} ${String(d.quantity).padStart(12)}  proceeds ${d.proceeds}  cost FIFO${mark("fifo")} ${d.costFifo} / average${mark("average")} ${d.costAverage}  gain FIFO ${d.gainFifo} / average ${d.gainAverage}  fees ${d.fees}  held ${held(d)} (acquired ${d.lots.map((l) => l.acquired).join(", ") || "?"})  \u2192 ${d.received}${d.exchange ? " [exchange]" : ""}  ${d.account}${d.notes.length ? `
+      ${d.notes.join("; ")}` : ""}`
+    ),
+    "",
+    `income (${r3.income.length}):`,
+    ...r3.income.map(
+      (i) => `  ${i.date}  ${i.kind.padEnd(9)} ${(i.symbol ?? "").padEnd(12)} ${i.amount ?? "value unknown"} ${c}  withheld ${i.withheld}  ${i.account}${i.notes.length ? `  (${i.notes.join("; ")})` : ""}`
+    ),
+    "",
+    `withholding and fees (${r3.charges.length}):`,
+    ...r3.charges.map((x) => `  ${x.date}  ${x.kind.padEnd(12)} ${(x.symbol ?? "").padEnd(12)} ${x.amount} ${c}  ${x.account}`),
+    "",
+    `totals: proceeds ${r3.totals.proceeds}, cost FIFO ${r3.totals.costFifo} / average ${r3.totals.costAverage}, gain FIFO ${r3.totals.gainFifo} / average ${r3.totals.gainAverage}, trade fees ${r3.totals.tradeFees}; dividends ${r3.totals.dividends}, interest ${r3.totals.interest}, rewards ${r3.totals.rewards}, withheld ${r3.totals.withheld}, account fees ${r3.totals.accountFees} (${c})`,
+    "",
+    `researched rules (${path2}):`,
+    ...Object.entries(r3.rules?.facts ?? {}).map(
+      ([k, p]) => `  - ${k} = ${formatValue(p.value)} \u2014 ${p.label} (verified ${p.verifiedAt}, ${p.confidence}; ${p.sources.join(" \xB7 ")})${p.note ? ` \u2014 ${p.note}` : ""}`
+    ),
+    ...r3.warnings.length ? ["", "warnings:", ...r3.warnings.map((w) => `  - ${w}`)] : [],
+    "",
+    ""
+  ].join("\n");
+}
+async function neutral(args, country2, year) {
+  const { rules, path: path2, missing, stale } = loadRules(country2, year);
+  const txs = bookTransactions(args);
+  const envelopes = loadProfile()?.envelopes ?? [];
+  const { fx, notes } = await ledgerFx(txs, rules.currency, year, { cryptoQuotes: true });
+  const report2 = neutralReport({ year, transactions: txs, envelopes, fx, currency: rules.currency, rules });
+  if (missing.length) report2.warnings.push(`not researched yet (${path2}): ${missing.join(", ")} \u2014 \`${templateCommand(country2, year)}\` lists them`);
+  for (const s of stale) report2.warnings.push(`${s.key} is stale (${s.reason}): re-research it`);
+  return { report: report2, notes, path: path2 };
+}
 async function rulesCommand(args, asJson, sub, country2, year) {
   if (sub === "template") {
     const c = country2();
@@ -56337,23 +56774,52 @@ async function taxCommand(args, asJson) {
       ].join("\n")
     );
   }
-  const regime = regimeFor(country2, y);
-  if (sub === "export") {
-    const format = argValue(args, "format") ?? (country2 === "US" ? "8949" : "2074");
-    if (!EXPORT_FORMATS.includes(format)) throw new UsageError(`--format is one of ${EXPORT_FORMATS.join(", ")}`);
-    const { input } = await buildInput(args, regime, y);
-    const events = format === "koinly" ? [] : regime.realize(input);
-    const csv = format === "8949" ? export8949(events) : format === "2086" ? export2086(events) : format === "2074" ? export2074(events) : exportKoinly(
-      input.transactions.filter((t) => yearOf2(t.date) === y),
-      (t) => isCryptoTx(t, input.envelopes)
-    );
-    const out = argValue(args, "out");
-    if (!out) return void process.stdout.write(csv);
-    mkdirSync31(resolve18(out), { recursive: true });
-    const file = join56(resolve18(out), `tax-${country2.toLowerCase()}-${y}-${format}.csv`);
-    writeFileSync14(file, csv, { mode: 384 });
-    return printResult(asJson, { file, rows: csv.split("\r\n").length - 2 }, `written ${file}`);
+  const wantsNeutral = argBool(args, "neutral") || !isEngineCountry(country2);
+  if (sub === "report" && wantsNeutral) {
+    const { report: report2, notes, path: path2 } = await neutral(args, country2, y);
+    if (asJson) return printResult(true, { ...report2, notes, rulesFile: path2, disclaimer: DISCLAIMER }, "");
+    process.stdout.write(neutralText(report2, path2));
+    return emitDatasets(args, neutralDatasets(report2, notes), false);
   }
+  if (sub === "export") {
+    const engineFormat = !isEngineCountry(country2) || argBool(args, "neutral") ? "neutral" : country2 === "US" ? "8949" : "2074";
+    const format = argValue(args, "format") ?? engineFormat;
+    if (!EXPORT_FORMATS.includes(format)) throw new UsageError(`--format is one of ${EXPORT_FORMATS.join(", ")}`);
+    if (ENGINE_FORMATS.includes(format) && !isEngineCountry(country2))
+      throw new UsageError(
+        `--format ${format} is a form of an engine (${ENGINE_FORMATS.join(", ")}: FR or US); for ${country2} use --format neutral or neutral-json`
+      );
+    let body;
+    let ext = "csv";
+    if (format === "neutral" || format === "neutral-json") {
+      const { report: report2 } = await neutral(args, country2, y);
+      body = format === "neutral" ? exportNeutral(report2) : `${JSON.stringify(report2, null, 2)}
+`;
+      if (format === "neutral-json") ext = "json";
+    } else {
+      const regime2 = regimeFor(country2, y);
+      const { input } = await buildInput(args, regime2, y);
+      const events = format === "koinly" ? [] : regime2.realize(input);
+      body = format === "8949" ? export8949(events) : format === "2086" ? export2086(events) : format === "2074" ? export2074(events) : exportKoinly(
+        input.transactions.filter((t) => yearOf2(t.date) === y),
+        (t) => isCryptoTx(t, input.envelopes)
+      );
+    }
+    const out = argValue(args, "out");
+    if (!out) return void process.stdout.write(body);
+    mkdirSync31(resolve18(out), { recursive: true });
+    const file = join56(resolve18(out), `tax-${country2.toLowerCase()}-${y}-${format}.${ext}`);
+    writeFileSync14(file, body, { mode: 384 });
+    return printResult(asJson, { file, rows: ext === "csv" ? body.split("\r\n").length - 2 : void 0 }, `written ${file}`);
+  }
+  if (!isEngineCountry(country2)) {
+    if (sub === "lots" || sub === "harvest")
+      throw new UsageError(
+        `tax ${sub} needs a tax engine (FR, US): for ${country2}, \`tax report\` lists the disposals and lots as facts beside the researched rules`
+      );
+    throw new UsageError(USAGE4);
+  }
+  const regime = regimeFor(country2, y);
   if (sub === "report" || sub === "lots") {
     const { input, notes } = await buildInput(args, regime, y);
     const s = regime.annualSummary(input);
@@ -59419,9 +59885,9 @@ USAGE
   ultrastock decide <run> <decision.json> [--json]
   ultrastock tax rules template --country CC --year YYYY [--currency <code>] | tax rules set --file <rules.json> [--country CC] [--year YYYY] | tax rules show [--country CC] [--year YYYY] [--json]
   ultrastock tax verify [--country CC] [--year YYYY] [--json]
-  ultrastock tax report [--country FR|US|--regime fr|us] [--year YYYY] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,\u2026|short=\u2026,long=\u2026] [--envelope-value <account>:<date>=<value>] [--lot-method fifo|hifo|lifo] [--household single|couple] [--out <dir>] [--json]
+  ultrastock tax report [--country CC|--regime fr|us] [--year YYYY] [--neutral] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,\u2026|short=\u2026,long=\u2026] [--envelope-value <account>:<date>=<value>] [--lot-method fifo|hifo|lifo] [--household single|couple] [--out <dir>] [--json]
   ultrastock tax lots|harvest [--country FR|US] [--year YYYY] [--json]
-  ultrastock tax export --format 8949|2086|2074|koinly [--country FR|US] [--year YYYY] [--out <dir>]
+  ultrastock tax export --format 8949|2086|2074|koinly|neutral|neutral-json [--country CC] [--year YYYY] [--neutral] [--out <dir>]
   ultrastock journal settle|hits|review|digest [--book real|paper] [--json]
   ultrastock journal thesis list|add|show|move [<id>] [<state>] [--symbol] [--thesis] [--invalidation] [--catalysts] [--review-by] [--note] [--outcome] [--ticket-id] [--json]
   ultrastock journal lesson <text> [--tags <a,b>] | journal lessons [--tag <t>] [--json]
@@ -59743,10 +60209,14 @@ COMMANDS
             pea:2026-03-02=52000), crypto by art. 150 VH bis, the form boxes
             and obligations; US: FIFO/HIFO/LIFO lots, wash sales, short/long
             term, the loss limit, the long-term brackets with --income and
-            --filing, NIIT. lots: every realised event; harvest: positions
-            under water; export: CSV for 8949, 2086, 2074 or Koinly. Every
-            amount is converted at the ECB rate of its date. A preparation aid,
-            not tax advice: a professional should confirm.
+            --filing, NIIT. Any other country (or --neutral): the neutral facts
+            report \u2014 each disposal with its cost under FIFO and the weighted
+            average, holding periods, income, withholding, fees \u2014 beside the
+            researched rules, with no tax computed. lots: every realised event;
+            harvest: positions under water; export: CSV for 8949, 2086, 2074,
+            Koinly, or the neutral report (neutral, neutral-json). Every amount
+            is converted at the ECB rate of its date. A preparation aid, not
+            tax advice: a professional should confirm.
   journal   The learning loop: settle decisions at +5/+20/+60 sessions against a
             benchmark (alpha, right or wrong), hit rates by rating, post-trade
             reviews (the plan first, then the outcome in R, with best and worst
@@ -60024,6 +60494,7 @@ var VALUE_FLAGS = [
 ];
 var BOOL_FLAGS = [
   "json",
+  "neutral",
   "all",
   "confirm",
   "no-news",
@@ -60242,6 +60713,7 @@ var SPEC = {
       "country",
       "file",
       "currency",
+      "neutral",
       "year",
       "book",
       "tmi",

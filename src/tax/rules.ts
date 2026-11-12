@@ -627,7 +627,7 @@ export const TAX = defineDomain<ParamSpec>({
   templateCommand,
   setCommand: "ultrastock tax rules set --file <file.json>",
   about: (c, year) =>
-    `TEMPLATE to fill by research. ultrastock contains no tax law: every value must come from an official source for ${c} and the tax year ${year}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"${isEngineCountry(c) ? "" : ' and "currency"'}; then run \`ultrastock tax rules set --file <this file>\`. ${isEngineCountry(c) ? `The ${c} engine refuses until every key is researched.` : "No engine computes tax for this country: the agent applies these rules itself. Add any other key the research finds."} The user should have a professional confirm the result.`,
+    `TEMPLATE to fill by research. ultrastock contains no tax law: every value must come from an official source for ${c} and the tax year ${year}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"${isEngineCountry(c) ? "" : ' and "currency"'}; then run \`ultrastock tax rules set --file <this file>\`. ${isEngineCountry(c) ? `The ${c} engine refuses until every key is researched.` : "No engine computes tax for this country: `tax report` shows the ledger's facts beside these rules, and the agent applies them. Add any other key the research finds."} The user should have a professional confirm the result.`,
   templateExtras: (c, year) => (isEngineCountry(c) ? { formLines: FORM_LINES[c].map((f) => ({ ...f, check: `the numbering on the ${year} form` })) } : {}),
 });
 

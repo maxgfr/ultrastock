@@ -69,6 +69,9 @@ describe("the engines refuse without researched rules", () => {
       await expect(taxCommand({ command: "tax", positional: ["report"], values: { country: "FR", year: "2025" }, bools: new Set() }, true)).rejects.toThrow(
         /no FR tax facts for 2025/,
       );
+      await expect(taxCommand({ command: "tax", positional: ["report"], values: { country: "DE", year: "2025" }, bools: new Set() }, true)).rejects.toThrow(
+        /no DE tax facts for 2025.*--country DE --year 2025/,
+      );
     } finally {
       vi.unstubAllGlobals();
     }
