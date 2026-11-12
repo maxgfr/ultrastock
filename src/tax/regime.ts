@@ -357,3 +357,70 @@ export abstract class TaxRegime<K extends string = string> {
 export function chronological(txs: readonly Transaction[]): Transaction[] {
   return inReplayOrder(txs);
 }
+
+const ISIN_RE = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
+
+/**
+ * Which security a row moves, as one key per holding, learnt from the whole ledger:
+ * - in one account, the rows of a ticker are one holding whatever ISINs they carry (a redomiciliation or a reverse
+ *   split changes the ISIN under the same shares), and the rows of an ISIN are one holding whatever ticker;
+ * - across accounts and tickers, the ISIN links the same security (shares moved between brokers that use different
+ *   tickers);
+ * - a row without an ISIN is its account's ticker: it never takes the ISIN another account books that ticker under
+ *   (tickers are per exchange). A ticker no row of its account gives an ISIN is linked by the ticker to the other
+ *   accounts' — to their security when they all book that ticker as one, else to the others without an ISIN.
+ * The key is the class's first ISIN in the ledger, else its ticker (crypto rows are keyed by their base elsewhere).
+ */
+export function securityKeys(txs: readonly Transaction[]): (t: Pick<Transaction, "account" | "symbol" | "isin">) => string {
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    let r = x;
+    for (let p = parent.get(r); p !== undefined && p !== r; p = parent.get(r)) r = p;
+    for (let y = x, p = parent.get(y); p !== undefined && p !== r; y = p, p = parent.get(y)) parent.set(y, r);
+    if (!parent.has(r)) parent.set(r, r);
+    return r;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(rb, ra);
+  };
+  const isinOf = (t: Pick<Transaction, "symbol" | "isin">): string | undefined => {
+    const i = t.isin?.trim().toUpperCase();
+    if (i) return i;
+    const s = (t.symbol ?? "").trim().toUpperCase();
+    return ISIN_RE.test(s) ? s : undefined;
+  };
+  const group = (t: Pick<Transaction, "account" | "symbol">) => `g:${t.account}|${(t.symbol ?? "").trim().toUpperCase()}`;
+  const firstIsin: string[] = [];
+  const groups = new Map<string, string>();
+  for (const t of txs) {
+    const i = isinOf(t);
+    if (i) {
+      find(`i:${i}`);
+      firstIsin.push(i);
+    }
+    if (!t.symbol) continue;
+    const g = group(t);
+    groups.set(g, (t.symbol ?? "").trim().toUpperCase());
+    find(g);
+    if (i) union(`i:${i}`, g);
+  }
+  // Which roots hold an ISIN, once every row's own ISIN is linked.
+  const withIsin = new Set(firstIsin.map((i) => find(`i:${i}`)));
+  const classesOf = new Map<string, Set<string>>();
+  for (const [g, sym] of groups) if (withIsin.has(find(g))) classesOf.set(sym, (classesOf.get(sym) ?? new Set()).add(find(g)));
+  for (const [g, sym] of groups) {
+    if (withIsin.has(find(g))) continue;
+    const classes = classesOf.get(sym);
+    union(classes?.size === 1 ? [...classes][0]! : `s:${sym}`, g);
+  }
+  const label = new Map<string, string>();
+  for (const i of firstIsin) if (!label.has(find(`i:${i}`))) label.set(find(`i:${i}`), i);
+  return (t) => {
+    const i = isinOf(t);
+    const node = t.symbol ? group(t) : i ? `i:${i}` : undefined;
+    if (!node || !parent.has(node)) return i ?? (t.symbol ?? "").trim().toUpperCase();
+    return label.get(find(node)) ?? (t.symbol ?? "").trim().toUpperCase();
+  };
+}

@@ -11,7 +11,8 @@
 // holding periods, loss rules) is the agent's job — confirmed by a
 // professional. Choices it cannot avoid are named, never hidden:
 // - lots are pooled per asset across the user's accounts (a security by its
-//   ISIN, a crypto-asset by its base whatever the pair); a move between two
+//   ISIN, or by its ticker in one account whose rows carry none, or several;
+//   a crypto-asset by its base whatever the pair); a move between two
 //   of the user's accounts is neither a disposal nor an acquisition;
 // - a crypto-to-crypto trade (stablecoins included) is listed as the disposal
 //   of what was given and the acquisition of what was received, marked
@@ -32,6 +33,7 @@ import {
   isFiat,
   isStablecoin,
   round2,
+  securityKeys,
   splitPair,
   yearOf,
 } from "./regime.js";
@@ -173,14 +175,11 @@ export function neutralReport(input: NeutralInput): NeutralReport {
     return amount * rate;
   };
 
-  // A security is its ISIN, learnt from every row that carries both; a crypto-asset is the base of its pair.
-  const isinOf = new Map<string, string>();
-  for (const t of input.transactions) if (t.symbol && t.isin) isinOf.set(t.symbol.toUpperCase(), t.isin.toUpperCase());
+  // A security is one account's ticker whatever ISINs it carries, linked across accounts and tickers by its ISIN (a row
+  // without one never takes another account's: securityKeys); a crypto-asset is the base of its pair.
+  const securityOf = securityKeys(input.transactions);
   const crypto = (t: Transaction) => isCryptoTx(t, input.envelopes);
-  const assetOf = (t: Transaction): string =>
-    crypto(t)
-      ? splitPair(t.symbol ?? t.currency, t.currency).base
-      : (t.isin?.toUpperCase() ?? isinOf.get((t.symbol ?? "").toUpperCase()) ?? (t.symbol ?? "").toUpperCase());
+  const assetOf = (t: Transaction): string => (crypto(t) ? splitPair(t.symbol ?? t.currency, t.currency).base : securityOf(t));
 
   const history = chronological(input.transactions.filter((t) => yearOf(t.date) <= input.year));
   // Moves between the user's own accounts: each unpriced transfer-in takes the transfer-outs of the same asset from

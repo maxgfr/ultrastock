@@ -47,6 +47,7 @@ import {
   isStablecoin,
   pct,
   round2,
+  securityKeys,
   splitPair,
   type TaxEvent,
   type TaxInput,
@@ -113,18 +114,12 @@ const NON_US_BROKERS =
 
 /**
  * What a row moves: the crypto-asset whatever the pair a platform quotes it in (BTCEUR, BTCUSD and BTCUSDT hold BTC),
- * or the security — its ISIN when the ledger knows it (from this row or another row of the same symbol), so the same
- * shares booked under two brokers' tickers are one asset; else its symbol.
+ * or the security (`securityKeys`): one account's ticker whatever ISINs it carries, linked across accounts and tickers
+ * by the ISIN — so the same shares booked under two brokers' tickers are one asset, and a row without an ISIN never
+ * takes the one another account books its ticker under.
  */
-const assetOf = (t: Transaction, crypto: boolean, isinOf: ReadonlyMap<string, string>) =>
-  crypto ? splitPair(t.symbol ?? "", t.currency).base : (t.isin?.toUpperCase() ?? isinOf.get((t.symbol ?? "").toUpperCase()) ?? (t.symbol ?? "").toUpperCase());
-
-/** The ISIN of each symbol, learnt from every row that carries both. */
-function isinsOf(txs: readonly Transaction[]): Map<string, string> {
-  const m = new Map<string, string>();
-  for (const t of txs) if (t.symbol && t.isin) m.set(t.symbol.toUpperCase(), t.isin.toUpperCase());
-  return m;
-}
+const assetOf = (t: Transaction, crypto: boolean, securityOf: (t: Transaction) => string) =>
+  crypto ? splitPair(t.symbol ?? "", t.currency).base : securityOf(t);
 
 /**
  * A crypto row that moves no virtual currency the engine taxes: a stablecoin traded as such (dollars here), or fiat
@@ -190,7 +185,7 @@ export class UsRegime extends TaxRegime<UsKey> {
   private lots(
     input: TaxInput,
     history: Transaction[],
-    isinOf: ReadonlyMap<string, string>,
+    securityOf: (t: Transaction) => string,
   ): { lots: UsLot[]; byTx: Map<Transaction, UsLot>; received: Map<Transaction, UsLot> } {
     const lots: UsLot[] = [];
     const byTx = new Map<Transaction, UsLot>();
@@ -229,7 +224,7 @@ export class UsRegime extends TaxRegime<UsKey> {
         id: lots.length,
         account: t.account,
         symbol: (t.symbol ?? "").toUpperCase(),
-        asset: assetOf(t, crypto, isinOf),
+        asset: assetOf(t, crypto, securityOf),
         currency: t.currency.toUpperCase(),
         acquired: day(t.date),
         bought: day(t.date),
@@ -258,8 +253,8 @@ export class UsRegime extends TaxRegime<UsKey> {
       : chronological(
           input.transactions.filter((t) => t.type === "buy" && day(t.date) > yearEnd && day(t.date) <= addDays(yearEnd, this.param("washSale.windowDays"))),
         );
-    const isinOf = isinsOf(input.transactions);
-    const { lots, byTx, received } = this.lots(input, [...history, ...after], isinOf);
+    const securityOf = securityKeys(input.transactions);
+    const { lots, byTx, received } = this.lots(input, [...history, ...after], securityOf);
     const events: TaxEvent[] = [];
     const warnings: string[] = [];
     const active = new Set<UsLot>();
@@ -596,7 +591,7 @@ export class UsRegime extends TaxRegime<UsKey> {
           continue;
         }
         const proceeds = t.type === "sell" ? this.toBase(t, gross(t), input) - this.toBase(t, t.fee ?? 0, input) : 0;
-        dispose(t, assetOf(t, crypto, isinOf), sym, t.quantity ?? 0, proceeds, crypto);
+        dispose(t, assetOf(t, crypto, securityOf), sym, t.quantity ?? 0, proceeds, crypto);
         continue;
       }
       if (SHELTERED.has(env.type)) continue;

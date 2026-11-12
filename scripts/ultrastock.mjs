@@ -47713,6 +47713,59 @@ var TaxRegime = class {
 function chronological(txs) {
   return inReplayOrder(txs);
 }
+var ISIN_RE2 = /^[A-Z]{2}[A-Z0-9]{9}\d$/;
+function securityKeys(txs) {
+  const parent = /* @__PURE__ */ new Map();
+  const find = (x) => {
+    let r3 = x;
+    for (let p = parent.get(r3); p !== void 0 && p !== r3; p = parent.get(r3)) r3 = p;
+    for (let y = x, p = parent.get(y); p !== void 0 && p !== r3; y = p, p = parent.get(y)) parent.set(y, r3);
+    if (!parent.has(r3)) parent.set(r3, r3);
+    return r3;
+  };
+  const union = (a, b) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(rb, ra);
+  };
+  const isinOf = (t) => {
+    const i = t.isin?.trim().toUpperCase();
+    if (i) return i;
+    const s = (t.symbol ?? "").trim().toUpperCase();
+    return ISIN_RE2.test(s) ? s : void 0;
+  };
+  const group = (t) => `g:${t.account}|${(t.symbol ?? "").trim().toUpperCase()}`;
+  const firstIsin = [];
+  const groups = /* @__PURE__ */ new Map();
+  for (const t of txs) {
+    const i = isinOf(t);
+    if (i) {
+      find(`i:${i}`);
+      firstIsin.push(i);
+    }
+    if (!t.symbol) continue;
+    const g = group(t);
+    groups.set(g, (t.symbol ?? "").trim().toUpperCase());
+    find(g);
+    if (i) union(`i:${i}`, g);
+  }
+  const withIsin = new Set(firstIsin.map((i) => find(`i:${i}`)));
+  const classesOf = /* @__PURE__ */ new Map();
+  for (const [g, sym3] of groups) if (withIsin.has(find(g))) classesOf.set(sym3, (classesOf.get(sym3) ?? /* @__PURE__ */ new Set()).add(find(g)));
+  for (const [g, sym3] of groups) {
+    if (withIsin.has(find(g))) continue;
+    const classes = classesOf.get(sym3);
+    union(classes?.size === 1 ? [...classes][0] : `s:${sym3}`, g);
+  }
+  const label2 = /* @__PURE__ */ new Map();
+  for (const i of firstIsin) if (!label2.has(find(`i:${i}`))) label2.set(find(`i:${i}`), i);
+  return (t) => {
+    const i = isinOf(t);
+    const node = t.symbol ? group(t) : i ? `i:${i}` : void 0;
+    if (!node || !parent.has(node)) return i ?? (t.symbol ?? "").trim().toUpperCase();
+    return label2.get(find(node)) ?? (t.symbol ?? "").trim().toUpperCase();
+  };
+}
 
 // src/trading/otp.ts
 import { execFileSync as execFileSync2 } from "child_process";
@@ -57046,12 +57099,7 @@ var purchaseOf = (l) => {
 var TRANSIT_DAYS = 30;
 var REWARD_NOTE = /\b(staking|rewards?|airdrops?|interest|income|distribution|rebate|cashback|bonus|mining|launchpool|referral)\b/i;
 var NON_US_BROKERS = /degiro|trade ?republic|bourso|fortuneo|bourse ?direct|saxo|scalable|xtb|lightyear|trading ?212|revolut|bitpanda|bitstamp|binance(?!\.?us)|bnp|cr[eé]dit|soci[eé]t[eé]|lcl|linxea|bforbank|hello ?bank|freedom ?24/i;
-var assetOf = (t, crypto, isinOf) => crypto ? splitPair(t.symbol ?? "", t.currency).base : t.isin?.toUpperCase() ?? isinOf.get((t.symbol ?? "").toUpperCase()) ?? (t.symbol ?? "").toUpperCase();
-function isinsOf(txs) {
-  const m = /* @__PURE__ */ new Map();
-  for (const t of txs) if (t.symbol && t.isin) m.set(t.symbol.toUpperCase(), t.isin.toUpperCase());
-  return m;
-}
+var assetOf = (t, crypto, securityOf) => crypto ? splitPair(t.symbol ?? "", t.currency).base : securityOf(t);
 var dollarLike = (t, crypto) => {
   if (!crypto) return false;
   const base2 = splitPair(t.symbol ?? "", t.currency).base;
@@ -57090,7 +57138,7 @@ var UsRegime = class extends TaxRegime {
    * Every purchase becomes a lot up front, so a later replacement buy can absorb a disallowed loss — the crypto-asset a
    * sale is paid in too (`received`, by sale).
    */
-  lots(input, history, isinOf) {
+  lots(input, history, securityOf) {
     const lots = [];
     const byTx = /* @__PURE__ */ new Map();
     const received = /* @__PURE__ */ new Map();
@@ -57127,7 +57175,7 @@ var UsRegime = class extends TaxRegime {
         id: lots.length,
         account: t.account,
         symbol: (t.symbol ?? "").toUpperCase(),
-        asset: assetOf(t, crypto, isinOf),
+        asset: assetOf(t, crypto, securityOf),
         currency: t.currency.toUpperCase(),
         acquired: day3(t.date),
         bought: day3(t.date),
@@ -57151,8 +57199,8 @@ var UsRegime = class extends TaxRegime {
     const after = until ? [] : chronological(
       input.transactions.filter((t) => t.type === "buy" && day3(t.date) > yearEnd && day3(t.date) <= addDays2(yearEnd, this.param("washSale.windowDays")))
     );
-    const isinOf = isinsOf(input.transactions);
-    const { lots, byTx, received } = this.lots(input, [...history, ...after], isinOf);
+    const securityOf = securityKeys(input.transactions);
+    const { lots, byTx, received } = this.lots(input, [...history, ...after], securityOf);
     const events = [];
     const warnings = [];
     const active2 = /* @__PURE__ */ new Set();
@@ -57443,7 +57491,7 @@ var UsRegime = class extends TaxRegime {
           continue;
         }
         const proceeds = t.type === "sell" ? this.toBase(t, gross2(t), input) - this.toBase(t, t.fee ?? 0, input) : 0;
-        dispose(t, assetOf(t, crypto, isinOf), sym3, t.quantity ?? 0, proceeds, crypto);
+        dispose(t, assetOf(t, crypto, securityOf), sym3, t.quantity ?? 0, proceeds, crypto);
         continue;
       }
       if (SHELTERED.has(env2.type)) continue;
@@ -57746,10 +57794,9 @@ function neutralReport(input) {
       throw new Error(`no ${c}\u2192${base2} rate for ${day3(t.date)} (transaction ${t.id}) \u2014 the report needs every amount converted at its date`);
     return amount * rate2;
   };
-  const isinOf = /* @__PURE__ */ new Map();
-  for (const t of input.transactions) if (t.symbol && t.isin) isinOf.set(t.symbol.toUpperCase(), t.isin.toUpperCase());
+  const securityOf = securityKeys(input.transactions);
   const crypto = (t) => isCryptoTx(t, input.envelopes);
-  const assetOf2 = (t) => crypto(t) ? splitPair(t.symbol ?? t.currency, t.currency).base : t.isin?.toUpperCase() ?? isinOf.get((t.symbol ?? "").toUpperCase()) ?? (t.symbol ?? "").toUpperCase();
+  const assetOf2 = (t) => crypto(t) ? splitPair(t.symbol ?? t.currency, t.currency).base : securityOf(t);
   const history = chronological(input.transactions.filter((t) => yearOf2(t.date) <= input.year));
   const matched = /* @__PURE__ */ new Map();
   const outs = history.filter((t) => t.type === "transfer-out");
