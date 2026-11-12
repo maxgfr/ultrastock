@@ -10,7 +10,9 @@
 // benchmark that cannot be read) is waited for SETTLE_GRACE_SESSIONS sessions
 // past that end; then the horizon settles on the last close there is, marked
 // `partial` — the symbol's last close when its own history stops, the raw
-// return when the benchmark's does. A symbol with no close after the decision
+// return when the benchmark's does. A decision on the benchmark itself has no
+// alpha to measure (it is 0 by construction): it is judged on its raw return,
+// and says so. A symbol with no close after the decision
 // day (or none at all) has nothing to measure: UNRESOLVED_AFTER_DAYS calendar
 // days past the horizon's end, the horizon is recorded `unresolved` with the
 // reason, once, and stays out of the hit rates and every reader of settled calls.
@@ -49,6 +51,8 @@ export interface Settlement {
    * benchmark's history does not reach that close.
    */
   partial?: true;
+  /** The decision was on the benchmark itself: no alpha, judged on the raw return. */
+  benchmarkItself?: true;
   settledAt: string;
 }
 
@@ -173,7 +177,11 @@ export async function settleDecisions(
       if (!matured.length) continue;
       const from = new Date(Date.parse(start) - 10 * 86_400_000);
       const series = await getHistory(r, { from, to: now });
-      const benchSym = defaultBenchmark(r.instrument.market, r.instrument.mic);
+      const convention = defaultBenchmark(r.instrument.market, r.instrument.mic);
+      // A call on the benchmark itself would be scored on an alpha of 0 — never right for a buy or a sell: its raw return judges it.
+      const itself = convention !== undefined && [d.symbol, r.instrument.symbol].some((x) => x.toUpperCase() === convention.toUpperCase());
+      if (itself) notes.add(`${d.symbol} is the benchmark itself: judged on its raw return, no alpha`);
+      const benchSym = itself ? undefined : convention;
       // A benchmark that cannot be read — its history or the symbol itself (a profile benchmark the router refuses) —
       // is the module's rule above: the grace, then the raw return, marked partial. It never blocks the settlement.
       const bench = benchSym
@@ -267,6 +275,7 @@ export async function settleDecisions(
           alphaPct: alpha === undefined ? undefined : Number(alpha.toFixed(4)),
           hit: judge(d.rating, alpha ?? ret, h),
           ...(partial ? { partial: true as const } : {}),
+          ...(itself ? { benchmarkItself: true as const } : {}),
           settledAt: now.toISOString(),
         };
         settled.push(st);
@@ -294,7 +303,7 @@ export async function settleDecisions(
         [
           ...fresh.map(
             (s) =>
-              `SETTLED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions → ${s.endDate}]: return ${s.returnPct} %${s.alphaPct !== undefined ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} — ${s.hit ? "right" : "wrong"}${s.partial ? " (partial: the history stops short)" : ""}\n`,
+              `SETTLED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions → ${s.endDate}]: return ${s.returnPct} %${s.alphaPct !== undefined ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""}${s.benchmarkItself ? " (the benchmark itself: judged on the raw return)" : ""} — ${s.hit ? "right" : "wrong"}${s.partial ? " (partial: the history stops short)" : ""}\n`,
           ),
           ...freshUnresolved.map(
             (s) => `UNRESOLVED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions → ${s.endDate}]: ${s.reason} — not scored\n`,

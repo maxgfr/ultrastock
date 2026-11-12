@@ -45016,7 +45016,10 @@ async function settleDecisions(now = clockNow()) {
       if (!matured.length) continue;
       const from = new Date(Date.parse(start) - 10 * 864e5);
       const series = await getHistory(r3, { from, to: now });
-      const benchSym = defaultBenchmark(r3.instrument.market, r3.instrument.mic);
+      const convention = defaultBenchmark(r3.instrument.market, r3.instrument.mic);
+      const itself = convention !== void 0 && [d.symbol, r3.instrument.symbol].some((x) => x.toUpperCase() === convention.toUpperCase());
+      if (itself) notes.add(`${d.symbol} is the benchmark itself: judged on its raw return, no alpha`);
+      const benchSym = itself ? void 0 : convention;
       const bench = benchSym ? await resolveSymbol(benchSym).then((b) => getHistory(b, { from, to: now })).catch((e) => {
         notes.add(`benchmark ${benchSym} could not be read (${e.message}): horizons settle on the raw return once the grace is over`);
         return void 0;
@@ -45094,6 +45097,7 @@ async function settleDecisions(now = clockNow()) {
           alphaPct: alpha === void 0 ? void 0 : Number(alpha.toFixed(4)),
           hit: judge(d.rating, alpha ?? ret2, h),
           ...partial ? { partial: true } : {},
+          ...itself ? { benchmarkItself: true } : {},
           settledAt: now.toISOString()
         };
         settled.push(st);
@@ -45118,7 +45122,7 @@ async function settleDecisions(now = clockNow()) {
         join44(journalDir(), "decisions.md"),
         [
           ...fresh.map(
-            (s) => `SETTLED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions \u2192 ${s.endDate}]: return ${s.returnPct} %${s.alphaPct !== void 0 ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""} \u2014 ${s.hit ? "right" : "wrong"}${s.partial ? " (partial: the history stops short)" : ""}
+            (s) => `SETTLED [${s.decisionId} | ${s.symbol} | ${s.rating} | +${s.horizon} sessions \u2192 ${s.endDate}]: return ${s.returnPct} %${s.alphaPct !== void 0 ? `, alpha ${s.alphaPct} % vs ${s.benchmark}` : ""}${s.benchmarkItself ? " (the benchmark itself: judged on the raw return)" : ""} \u2014 ${s.hit ? "right" : "wrong"}${s.partial ? " (partial: the history stops short)" : ""}
 `
           ),
           ...freshUnresolved.map(

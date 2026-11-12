@@ -5,6 +5,8 @@
 //    benchmark` used to accept and a profile edited by hand may still hold ("a US ISIN — use the ticker") — must not
 //    put the whole decision in `errors` on every run: the module's rule for "a benchmark that cannot be read" is to
 //    wait out the grace and settle on the raw return, marked partial.
+// 2. A decision ON the benchmark itself has an alpha of exactly 0, and `judge` scores a buy right only when
+//    alpha > 0: every buy (or sell) of the user's own benchmark was recorded wrong, whatever the price did.
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -94,5 +96,18 @@ describe("journal settle against the profile's benchmark", () => {
     expect(r.errors).toEqual([]);
     expect(r.settled.map((s) => s.horizon)).toEqual([5, 20, 60]);
     expect(r.notes.join("\n")).toMatch(/benchmark US78462F1030 could not be read/);
+  });
+
+  it("does not score a buy of the benchmark itself wrong for having no alpha against itself", async () => {
+    benchmark("wld");
+    // WLD closes at 100 up to the decision day and at 120 from the next session on: the buy made 20 %.
+    histories.bars = { WLD: weekdays("2026-02-16", "2026-06-30", (day) => (day <= "2026-03-02" ? 100 : 120)) };
+    decide("WLD", "buy");
+    const r = await settleDecisions(now);
+    expect(r.settled.map((s) => s.returnPct)).toEqual([20, 20, 20]);
+    // Actual at HEAD: benchmark "WLD", alphaPct 0, hit false on all three horizons.
+    expect(r.settled.map((s) => s.hit)).toEqual([true, true, true]);
+    expect(r.settled.map((s) => [s.alphaPct, s.benchmark, s.benchmarkItself])).toEqual(Array(3).fill([undefined, undefined, true]));
+    expect(r.notes.join("\n")).toMatch(/WLD is the benchmark itself: judged on its raw return/);
   });
 });

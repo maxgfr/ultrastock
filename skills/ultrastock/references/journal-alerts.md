@@ -16,7 +16,7 @@
   symbol's and the benchmark's histories hold a bar on or after its end date:
   `settle` lists it under `waiting`, with the history that falls short and its
   last bar. Ten sessions after the end with no such bar (a delisted or renamed
-  name, a benchmark that never answers), it settles on the last close
+  name, a benchmark that never answers or that the router refuses), it settles on the last close
   available, marked `partial`. A symbol with no close after the decision day,
   or none at all, has nothing to settle on: 30 days after the end, the horizon
   is recorded `unresolved` with its reason. It is not scored, so it counts in
@@ -24,6 +24,8 @@
   - A buy or overweight is right when the alpha is positive.
   - A sell or underweight is right when it is negative.
   - A hold is right when |alpha| stays under a band of 2 % a month.
+  - A call on the benchmark itself has no alpha (it is 0 by construction): it
+    is judged on its raw return, marked `benchmarkItself`.
 - `journal hits` gives the hit rate and the mean alpha by rating and horizon.
   This is the honest record of how good the calls have been. Quote it before
   asking the user to trust a new call.
