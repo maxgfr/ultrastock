@@ -55551,6 +55551,7 @@ function isLongTerm(acquired, sold, years) {
   const anniversary = `${ay}-${String(m).padStart(2, "0")}-${String(day4).padStart(2, "0")}`;
   return sold.slice(0, 10) > anniversary;
 }
+var WASH_AMBIGUITY_SOURCES = "https://www.law.cornell.edu/cfr/text/26/1.1091-1, https://www.irs.gov/publications/p550";
 var UsRegime = class extends TaxRegime {
   id = "us";
   currency = "USD";
@@ -55744,6 +55745,7 @@ var UsRegime = class extends TaxRegime {
           },
           qty: left
         });
+      const booked = [];
       for (const { lot: l, qty: qty2 } of consumed) {
         const proceeds = perUnit * qty2;
         const cost = l.basis * qty2;
@@ -55761,7 +55763,7 @@ var UsRegime = class extends TaxRegime {
               h.replaced = h.quantity;
               return h;
             }
-            const w = { ...h, id: lots.length, quantity: q, remaining: Math.min(q, h.remaining), replaced: q };
+            const w = { ...h, id: lots.length, quantity: q, remaining: Math.min(q, h.remaining), replaced: q, sales: [] };
             h.quantity -= q;
             h.remaining -= w.remaining;
             lots.push(w);
@@ -55776,8 +55778,10 @@ var UsRegime = class extends TaxRegime {
             const here = r3.replaced >= r3.quantity - 1e-12 ? 0 : active2.has(r3) ? r3.remaining : r3.quantity;
             const carried = (carriedOf.get(r3) ?? []).filter((c) => active2.has(c) && c.replaced < c.quantity - 1e-12 && c.remaining > 1e-12);
             const avail = r3.sheltered ? r3.quantity - r3.replaced : here + carried.reduce((a, c) => a + c.remaining, 0);
-            if (avail <= 1e-12) continue;
-            const q = Math.min(need, avail);
+            const soldBefore = r3.sheltered ? [] : [r3, ...carriedOf.get(r3) ?? []].flatMap((h) => (h.sales ?? []).filter((x) => x.tx !== t && x.qty - x.used > 1e-12));
+            const availSold = soldBefore.reduce((a, x) => a + x.qty - x.used, 0);
+            if (avail + availSold <= 1e-12) continue;
+            const q = Math.min(need, avail + availSold);
             const loss = lossPerShare * q;
             disallowed += loss;
             need -= q;
@@ -55787,7 +55791,34 @@ var UsRegime = class extends TaxRegime {
               continue;
             }
             const holders = [];
-            let left2 = q;
+            let left2 = Math.min(q, avail);
+            let leftSold = q - left2;
+            for (const x of soldBefore) {
+              if (leftSold <= 1e-12) break;
+              const n2 = Math.min(leftSold, x.qty - x.used);
+              x.used += n2;
+              leftSold -= n2;
+              const adj = lossPerShare * n2;
+              const ambiguity = `wash sale against ${round22(n2)} share(s) bought ${r3.bought} in ${r3.account} and sold on ${x.date}, before this loss sale: \xA71091 and Reg. 1.1091-1 speak only of shares "acquired" within the window and no authority settles whether shares already sold count \u2014 ultrastock applies the text (the ${round22(adj)} $ loss is disallowed here and added to those shares' basis, lowering the gain of their ${x.date} sale by as much); confirm with a tax professional (${WASH_AMBIGUITY_SOURCES})`;
+              notes.push(ambiguity);
+              warnings.push(`${sym3} ${day3(t.date)}: ${ambiguity}`);
+              const ev = x.event;
+              if (ev && ev.cost !== void 0 && ev.gain !== void 0) {
+                ev.cost = round22(ev.cost + adj);
+                ev.gain = round22(ev.gain - adj);
+                ev.formula = `${ev.formula ?? ""} + wash-sale basis ${round22(adj)} (loss of ${day3(t.date)})`;
+                if (ev.lines) {
+                  ev.lines.e = ev.cost;
+                  ev.lines.h = ev.gain;
+                }
+                ev.notes.push(
+                  `${round22(n2)} of these shares were replacement shares for the loss sale of ${day3(t.date)}: ${round22(adj)} $ added to their basis (holding period not moved back \u2014 confirm with a tax professional)`
+                );
+              } else
+                warnings.push(
+                  `${sym3}: the replacement shares sold on ${x.date} were reported in another year \u2014 their basis rises by ${round22(adj)} $ there (an amended return): confirm with a tax professional`
+                );
+            }
             for (const [h, has] of [[r3, here], ...carried.map((c) => [c, c.remaining])]) {
               if (left2 <= 1e-12) break;
               const n2 = Math.min(left2, has);
@@ -55808,31 +55839,33 @@ var UsRegime = class extends TaxRegime {
         }
         const term = this.longTerm(l.acquired, day3(t.date)) ? "long" : "short";
         if (l.id === -1) notes.push("no recorded lot: basis 0 \u2014 import the purchase");
-        if (inYear(t))
-          events.push({
-            ...base2,
-            kind: l.crypto ? "crypto-disposal" : "securities-disposal",
-            quantity: round22(qty2 * 1e6) / 1e6,
-            proceeds: round22(proceeds),
-            cost: round22(cost),
-            gain: round22(gain),
-            term,
-            acquired: l.acquired,
-            washSaleDisallowed: disallowed ? round22(disallowed) : void 0,
-            formula: `${round22(proceeds)} \u2212 ${round22(cost)}${disallowed ? ` + wash-sale ${round22(disallowed)}` : ""}`,
-            lines: {
-              a: `${round22(qty2 * 1e6) / 1e6} ${sym3}`,
-              b: l.acquired,
-              c: day3(t.date),
-              d: round22(proceeds),
-              e: round22(cost),
-              f: disallowed ? "W" : "",
-              g: disallowed ? round22(disallowed) : 0,
-              h: round22(gain)
-            },
-            notes
-          });
+        const event = inYear(t) ? {
+          ...base2,
+          kind: l.crypto ? "crypto-disposal" : "securities-disposal",
+          quantity: round22(qty2 * 1e6) / 1e6,
+          proceeds: round22(proceeds),
+          cost: round22(cost),
+          gain: round22(gain),
+          term,
+          acquired: l.acquired,
+          washSaleDisallowed: disallowed ? round22(disallowed) : void 0,
+          formula: `${round22(proceeds)} \u2212 ${round22(cost)}${disallowed ? ` + wash-sale ${round22(disallowed)}` : ""}`,
+          lines: {
+            a: `${round22(qty2 * 1e6) / 1e6} ${sym3}`,
+            b: l.acquired,
+            c: day3(t.date),
+            d: round22(proceeds),
+            e: round22(cost),
+            f: disallowed ? "W" : "",
+            g: disallowed ? round22(disallowed) : 0,
+            h: round22(gain)
+          },
+          notes
+        } : void 0;
+        if (event) events.push(event);
+        booked.push({ lot: l, qty: qty2, event });
       }
+      for (const b of booked) if (b.lot.id !== -1) (b.lot.sales ??= []).push({ tx: t, date: day3(t.date), qty: b.qty, used: 0, event: b.event });
     };
     for (const t of history) {
       const env2 = envelopeOf2(t.account, input.envelopes, t.symbol, t.isin);

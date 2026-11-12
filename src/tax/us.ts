@@ -15,7 +15,9 @@
 //   before or after the sale — in any account, an IRA included (then
 //   permanently) — and added to the replacement shares' basis, whose holding
 //   period absorbs the sold shares'. Crypto-assets only when the researched
-//   washSale.appliesToCrypto says so.
+//   washSale.appliesToCrypto says so. Replacement shares already sold before
+//   the loss sale still count (the text speaks of shares acquired), with a
+//   warning: no authority settles that case.
 // - Netting: short against short, long against long, then across; a net loss
 //   deducts up to capitalLoss.ordinaryLimit (capitalLoss.separateLimit married
 //   filing separately) from ordinary income and the rest carries forward
@@ -79,6 +81,8 @@ interface UsLot {
   purchase: boolean;
   /** A lot carried from another account: the purchase whose shares it holds (§1223(1): same basis, same holding period). */
   origin?: UsLot;
+  /** The sales of this lot's shares, each with the units already counted as a wash-sale replacement. */
+  sales?: Array<{ tx: Transaction; date: string; qty: number; used: number; event?: TaxEvent }>;
   sheltered: boolean;
   crypto: boolean;
 }
@@ -137,6 +141,8 @@ export function isLongTerm(acquired: string, sold: string, years: number): boole
   const anniversary = `${ay}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   return sold.slice(0, 10) > anniversary;
 }
+
+const WASH_AMBIGUITY_SOURCES = "https://www.law.cornell.edu/cfr/text/26/1.1091-1, https://www.irs.gov/publications/p550";
 
 export class UsRegime extends TaxRegime<UsKey> {
   readonly id = "us" as const;
@@ -360,6 +366,9 @@ export class UsRegime extends TaxRegime<UsKey> {
           },
           qty: left,
         });
+      // Each lot's part of this sale, recorded once the sale is booked: a later loss sale may find these shares were
+      // replacement shares (sold before it).
+      const booked: Array<{ lot: UsLot; qty: number; event?: TaxEvent }> = [];
       for (const { lot: l, qty } of consumed) {
         const proceeds = perUnit * qty;
         const cost = l.basis * qty;
@@ -383,7 +392,7 @@ export class UsRegime extends TaxRegime<UsKey> {
               h.replaced = h.quantity;
               return h;
             }
-            const w: UsLot = { ...h, id: lots.length, quantity: q, remaining: Math.min(q, h.remaining), replaced: q };
+            const w: UsLot = { ...h, id: lots.length, quantity: q, remaining: Math.min(q, h.remaining), replaced: q, sales: [] };
             h.quantity -= q;
             h.remaining -= w.remaining;
             lots.push(w);
@@ -395,13 +404,20 @@ export class UsRegime extends TaxRegime<UsKey> {
           for (const r of lots) {
             if (need <= 1e-12) break;
             if (!r.purchase || r.asset !== asset || r.bought < from || r.bought > to || r.id === l.id) continue;
-            // Only replacement shares that still exist can take the loss into their basis: those already sold (or used
-            // by an earlier wash sale) are not counted, and the loss they cannot take stays allowed.
+            // Replacement shares still held — in the purchase's account or moved to another of the user's — and not used
+            // by an earlier wash sale take the loss into their basis.
             const here = r.replaced >= r.quantity - 1e-12 ? 0 : active.has(r) ? r.remaining : r.quantity;
             const carried = (carriedOf.get(r) ?? []).filter((c) => active.has(c) && c.replaced < c.quantity - 1e-12 && c.remaining > 1e-12);
             const avail = r.sheltered ? r.quantity - r.replaced : here + carried.reduce((a, c) => a + c.remaining, 0);
-            if (avail <= 1e-12) continue;
-            const q = Math.min(need, avail);
+            // Shares of this purchase sold BEFORE this loss sale (here or after a move): §1091(a) and Reg. 1.1091-1 speak
+            // of shares "acquired" within the window, and no authority settles whether shares already sold count. The
+            // text is applied — they count — and the event says so (see the warning below).
+            const soldBefore = r.sheltered
+              ? []
+              : [r, ...(carriedOf.get(r) ?? [])].flatMap((h) => (h.sales ?? []).filter((x) => x.tx !== t && x.qty - x.used > 1e-12));
+            const availSold = soldBefore.reduce((a, x) => a + x.qty - x.used, 0);
+            if (avail + availSold <= 1e-12) continue;
+            const q = Math.min(need, avail + availSold);
             const loss = lossPerShare * q;
             disallowed += loss;
             need -= q;
@@ -414,7 +430,35 @@ export class UsRegime extends TaxRegime<UsKey> {
             // time before their own purchase date — wherever they now are: still in the purchase's account, or moved
             // to another of the user's accounts (the lots carried from it).
             const holders: Array<[UsLot, number]> = [];
-            let left = q;
+            // Shares still held take the loss first (it stays deferred); shares already sold take the rest.
+            let left = Math.min(q, avail);
+            let leftSold = q - left;
+            for (const x of soldBefore) {
+              if (leftSold <= 1e-12) break;
+              const n = Math.min(leftSold, x.qty - x.used);
+              x.used += n;
+              leftSold -= n;
+              const adj = lossPerShare * n;
+              const ambiguity = `wash sale against ${round2(n)} share(s) bought ${r.bought} in ${r.account} and sold on ${x.date}, before this loss sale: §1091 and Reg. 1.1091-1 speak only of shares "acquired" within the window and no authority settles whether shares already sold count — ultrastock applies the text (the ${round2(adj)} $ loss is disallowed here and added to those shares' basis, lowering the gain of their ${x.date} sale by as much); confirm with a tax professional (${WASH_AMBIGUITY_SOURCES})`;
+              notes.push(ambiguity);
+              warnings.push(`${sym} ${day(t.date)}: ${ambiguity}`);
+              const ev = x.event;
+              if (ev && ev.cost !== undefined && ev.gain !== undefined) {
+                ev.cost = round2(ev.cost + adj);
+                ev.gain = round2(ev.gain - adj);
+                ev.formula = `${ev.formula ?? ""} + wash-sale basis ${round2(adj)} (loss of ${day(t.date)})`;
+                if (ev.lines) {
+                  ev.lines.e = ev.cost;
+                  ev.lines.h = ev.gain;
+                }
+                ev.notes.push(
+                  `${round2(n)} of these shares were replacement shares for the loss sale of ${day(t.date)}: ${round2(adj)} $ added to their basis (holding period not moved back — confirm with a tax professional)`,
+                );
+              } else
+                warnings.push(
+                  `${sym}: the replacement shares sold on ${x.date} were reported in another year — their basis rises by ${round2(adj)} $ there (an amended return): confirm with a tax professional`,
+                );
+            }
             for (const [h, has] of [[r, here] as const, ...carried.map((c) => [c, c.remaining] as const)]) {
               if (left <= 1e-12) break;
               const n = Math.min(left, has);
@@ -436,31 +480,35 @@ export class UsRegime extends TaxRegime<UsKey> {
         }
         const term = this.longTerm(l.acquired, day(t.date)) ? "long" : "short";
         if (l.id === -1) notes.push("no recorded lot: basis 0 — import the purchase");
-        if (inYear(t))
-          events.push({
-            ...base,
-            kind: l.crypto ? "crypto-disposal" : "securities-disposal",
-            quantity: round2(qty * 1e6) / 1e6,
-            proceeds: round2(proceeds),
-            cost: round2(cost),
-            gain: round2(gain),
-            term,
-            acquired: l.acquired,
-            washSaleDisallowed: disallowed ? round2(disallowed) : undefined,
-            formula: `${round2(proceeds)} − ${round2(cost)}${disallowed ? ` + wash-sale ${round2(disallowed)}` : ""}`,
-            lines: {
-              a: `${round2(qty * 1e6) / 1e6} ${sym}`,
-              b: l.acquired,
-              c: day(t.date),
-              d: round2(proceeds),
-              e: round2(cost),
-              f: disallowed ? "W" : "",
-              g: disallowed ? round2(disallowed) : 0,
-              h: round2(gain),
-            },
-            notes,
-          });
+        const event: TaxEvent | undefined = inYear(t)
+          ? {
+              ...base,
+              kind: l.crypto ? "crypto-disposal" : "securities-disposal",
+              quantity: round2(qty * 1e6) / 1e6,
+              proceeds: round2(proceeds),
+              cost: round2(cost),
+              gain: round2(gain),
+              term,
+              acquired: l.acquired,
+              washSaleDisallowed: disallowed ? round2(disallowed) : undefined,
+              formula: `${round2(proceeds)} − ${round2(cost)}${disallowed ? ` + wash-sale ${round2(disallowed)}` : ""}`,
+              lines: {
+                a: `${round2(qty * 1e6) / 1e6} ${sym}`,
+                b: l.acquired,
+                c: day(t.date),
+                d: round2(proceeds),
+                e: round2(cost),
+                f: disallowed ? "W" : "",
+                g: disallowed ? round2(disallowed) : 0,
+                h: round2(gain),
+              },
+              notes,
+            }
+          : undefined;
+        if (event) events.push(event);
+        booked.push({ lot: l, qty, event });
       }
+      for (const b of booked) if (b.lot.id !== -1) (b.lot.sales ??= []).push({ tx: t, date: day(t.date), qty: b.qty, used: 0, event: b.event });
     };
     for (const t of history) {
       const env = envelopeOf(t.account, input.envelopes, t.symbol, t.isin);

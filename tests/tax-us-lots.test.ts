@@ -197,14 +197,17 @@ describe("US: a trade quoted in a crypto-asset", () => {
 });
 
 describe("US: wash sale against a replacement lot partly sold before the loss sale", () => {
-  it("a disallowed loss is deferred into shares still held, never dropped", () => {
+  it("the acquisition counts (the text of §1091), the loss is never dropped, and the ambiguity is named", () => {
     //   2024-01-02 buy 10 @ 100 in c                       cost 1 000
-    //   2025-02-20 buy 100 @ 90 in a                       cost 9 000
+    //   2025-02-20 buy 100 @ 90 in a                       cost 9 000 — 100 shares ACQUIRED within the window
     //   2025-02-25 sell 96 @ 91 in a                       proceeds 8 736 (gain 96)
     //   2025-03-01 sell 10 @ 80 in c                       proceeds 800 (loss 200)
     //   2025-11-01 sell the last 4 @ 95 in a               proceeds 380
-    // Only the 4 shares still held can carry the loss: 80 $ disallowed (4 × 20, into their basis), 120 $ allowed.
-    // The year's net result is the money made: 8 736 + 800 + 380 − 10 000 = −84.
+    // §1091(a) and Reg. 1.1091-1 speak only of shares "acquired" within the 61-day window; no authority settles
+    // whether replacement shares sold before the loss sale count. The text is applied: 10 shares were acquired, so the
+    // whole 200 $ loss is disallowed. The 4 shares still held take 80 $ into their basis; the 6 already sold take
+    // 120 $, which lowers the gain of their 2025-02-25 sale (96 − 120 = −24). Each such event carries a warning.
+    // The year's net result is still the money made: 8 736 + 800 + 380 − 10 000 = −84.
     const txs = [
       tx({ date: "2024-01-02", type: "buy", account: "c", symbol: "X", quantity: 10, price: 100 }),
       tx({ date: "2025-02-20", type: "buy", account: "a", symbol: "X", quantity: 100, price: 90 }),
@@ -214,10 +217,17 @@ describe("US: wash sale against a replacement lot partly sold before the loss sa
     ];
     const ev = disposals(txs);
     expect(ev.map((e) => [e.date, e.cost, e.gain, e.washSaleDisallowed])).toEqual([
-      ["2025-02-25", 8640, 96, undefined],
-      ["2025-03-01", 1000, -120, 80],
+      ["2025-02-25", 8760, -24, undefined],
+      ["2025-03-01", 1000, 0, 200],
       ["2025-11-01", 440, -60, undefined],
     ]);
     expect(total(ev)).toBe(-84);
+    const loss = ev[1]!.notes.join(" ");
+    expect(loss).toMatch(/sold on 2025-02-25, before this loss sale.*"acquired".*no authority settles.*confirm with a tax professional/);
+    expect(loss).toContain("https://www.law.cornell.edu/cfr/text/26/1.1091-1");
+    expect(loss).toContain("https://www.irs.gov/publications/p550");
+    expect(ev[0]!.notes.join(" ")).toContain("replacement shares for the loss sale of 2025-03-01: 120 $ added to their basis");
+    const s = new UsRegime(2025).annualSummary(input(txs));
+    expect(s.warnings.join(" ")).toMatch(/no authority settles/);
   });
 });
