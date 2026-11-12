@@ -1,6 +1,6 @@
 // ETFs that really work: what a fund is (TradingView's fund columns), how it
 // replicates, whether it fits a PEA, where it is domiciled and what that means
-// for withholding and PRIIPs, what it holds (iShares, Amundi, SEC N-PORT), how
+// for withholding and retail access (the researched rules), what it holds (iShares, Amundi, SEC N-PORT), how
 // its NAV tracks the other funds on the same index, and the multiples of its
 // top holdings (crible). `analyze` writes it all to ETF.md; `etf compare`,
 // `etf overlap` and `etf find` reuse the same pieces.
@@ -19,7 +19,7 @@ import { simpleReturns } from "../analytics/performance.js";
 import { correlation } from "../analytics/stats.js";
 import { type Dataset, formatDatasets, type Point, type Registered, registerDatasets } from "../core/datasets.js";
 import { EvidenceStore, formatEvidence, formatNumber } from "../core/evidence.js";
-import { ruleStatus } from "../core/jurisdiction.js";
+import { ruleFact, ruleWhy } from "../core/jurisdiction.js";
 import { clockNow } from "../core/net.js";
 import { loadProfile } from "../core/profile.js";
 import { mapLimit, writeArtifact } from "../engine.js";
@@ -751,22 +751,26 @@ export async function etfRun(raw: string, dir: string, opts: { now?: Date; instr
   // 2. Domicile, withholding and PRIIPs.
   const profile = loadProfile();
   const j = profile?.jurisdiction;
-  const priipsRestricted = !!j && ruleStatus(j, "us-domiciled-etf") === "restricted";
+  // The researched rule for the profile's country: anything but "allowed" (unresearched included) keeps US funds out.
+  const usEtf = j ? ruleFact(j, "us-domiciled-etf") : undefined;
+  const priipsRestricted = !!usEtf && usEtf.status !== "allowed";
   const domicileUS = p.domicile.code === "US";
   const domLines = [`- Domicile: ${p.domicile.code ?? "unknown"}${cite(`${S}.etf.domicile`)} — ${withholdingNote(p.domicile.code)}`];
   if (domicileUS && priipsRestricted) {
     const id = store.addDerived(
       `${S}.etf.priips`,
       `${S} PRIIPs status for a retail investor resident in ${j}`,
-      `blocked: a US-domiciled ETF has no PRIIPs KID — not sold to retail investors in ${j}; use a UCITS fund on the same index`,
+      `blocked: retail access to US-domiciled ETFs is ${usEtf!.status} for a ${j} resident — ${ruleWhy(usEtf!, j!)}; use a UCITS fund on the same index`,
       undefined,
       [store.byKey(`${S}.etf.domicile`)?.id].filter((x): x is string => !!x),
-      `domicile US × jurisdiction rule us-domiciled-etf (${j}: restricted)`,
+      `domicile US × researched jurisdiction rule us-domiciled-etf (${j}: ${usEtf!.status})`,
     );
     domLines.push(`- PRIIPs [${id}]: the risk gate blocks this ETF for a ${j} resident (code PRIIPS) — see the UCITS twins below.`);
   } else if (domicileUS && !profile)
-    domLines.push("- PRIIPs: no profile — in the EU a US-domiciled ETF has no KID and is not sold to retail investors; UCITS twins are listed below.");
-  else if (domicileUS) domLines.push(`- PRIIPs: the ${j} rules allow US-domiciled ETFs.`);
+    domLines.push(
+      "- Retail access: no profile — whether a US-domiciled ETF may be sold to you is your country's researched rule (`ultrastock profile init`, then `ultrastock facts research jurisdiction --key us-domiciled-etf --out <run>`); UCITS twins are listed below.",
+    );
+  else if (domicileUS) domLines.push(`- Retail access: the researched ${j} rule allows US-domiciled ETFs — ${ruleWhy(usEtf!, j!)}.`);
 
   // 3. Holdings: none from a swap's substitute basket.
   let comp: FundComposition | undefined;

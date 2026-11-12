@@ -11,7 +11,10 @@
 //                               assurance-vie holds the insurer's list only
 //   4. the candidates           TradingView funds on the bucket's indexes,
 //                               filtered (UCITS, not leveraged, not hedged, AUM,
-//                               age, distribution, PRIIPs, PEA), then scored
+//                               age, distribution, the researched jurisdiction
+//                               rules — US-domiciled funds unless "allowed",
+//                               non-US funds for a US person unless the PFIC
+//                               rule is "allowed" — PEA), then scored
 //   5. between the picks        correlation of daily returns, holdings overlap
 //
 // PEA eligibility beyond Amundi (investigated live on 2026-10-26): no other big
@@ -27,7 +30,7 @@ import { FixtureMiss } from "../core/net.js";
 import { join } from "node:path";
 import { type Dataset, type Point, registerDatasets } from "../core/datasets.js";
 import { type EvidenceItem, EvidenceStore, formatNumber } from "../core/evidence.js";
-import { ruleStatus } from "../core/jurisdiction.js";
+import { jurisdictionKeys, ruleFact, ruleWhy } from "../core/jurisdiction.js";
 import { loadProfile } from "../core/profile.js";
 import { sanitizeExternalText, UNTRUSTED_CLOSE, UNTRUSTED_OPEN } from "../core/untrusted.js";
 import { mapLimit, writeArtifact } from "../engine.js";
@@ -326,8 +329,10 @@ export interface EtfScreenContext {
   distribution?: "acc" | "dist";
   /** Currency-hedged share classes allowed. */
   hedged: boolean;
-  /** US-domiciled funds left out (PRIIPs: no KID for an EU retail investor). */
+  /** US-domiciled funds left out: the researched rule us-domiciled-etf is not "allowed" for the investor's country. */
   priips: boolean;
+  /** Non-US funds left out: the researched PFIC rule (US persons) is not "allowed". */
+  pfic?: boolean;
   /** UCITS only. */
   ucits: boolean;
   /** Inside a PEA: the issuer's flag or a name hint required. */
@@ -353,7 +358,8 @@ export const ETF_DROP_REASONS = {
   ucits: "not UCITS",
   leveraged: "leveraged or inverse",
   hedged: "currency-hedged share class",
-  priips: "US-domiciled (no PRIIPs KID)",
+  priips: "US-domiciled (retail access not researched as allowed)",
+  pfic: "not US-domiciled (PFIC rule not researched as allowed)",
   currency: "fund base currency is not the wanted one",
   distribution: "distribution policy",
   aum: `AUM under ${ETF_MIN_AUM / 1e6} M`,
@@ -404,17 +410,19 @@ export function etfScreenCandidates(
               ? "hedged"
               : ctx.priips && c.domicile.code === "US"
                 ? "priips"
-                : bucket.baseCurrency && tvStr(m, "etf_fund_currency") !== ctx.currency
-                  ? "currency"
-                  : ctx.distribution && tvStr(m, "dividend_treatment") !== (ctx.distribution === "acc" ? "Capitalizes" : "Distributes")
-                    ? "distribution"
-                    : aum === undefined || aum < ETF_MIN_AUM
-                      ? "aum"
-                      : years !== undefined && years < ETF_MIN_YEARS
-                        ? "age"
-                        : ctx.pea && c.pea.eligible !== true && c.pea.hint !== true
-                          ? "pea"
-                          : undefined;
+                : ctx.pfic && c.domicile.code !== "US"
+                  ? "pfic"
+                  : bucket.baseCurrency && tvStr(m, "etf_fund_currency") !== ctx.currency
+                    ? "currency"
+                    : ctx.distribution && tvStr(m, "dividend_treatment") !== (ctx.distribution === "acc" ? "Capitalizes" : "Distributes")
+                      ? "distribution"
+                      : aum === undefined || aum < ETF_MIN_AUM
+                        ? "aum"
+                        : years !== undefined && years < ETF_MIN_YEARS
+                          ? "age"
+                          : ctx.pea && c.pea.eligible !== true && c.pea.hint !== true
+                            ? "pea"
+                            : undefined;
       if (why) dropped[why] = (dropped[why] ?? 0) + 1;
       else kept.push(c);
       // Funds that pass everything but the age rule, named so a reader can weigh them.
@@ -604,16 +612,19 @@ export async function etfPropose(dir: string, o: EtfProposeOptions): Promise<Etf
     );
   const riskSource = o.risk !== undefined ? "--risk" : "profile";
   const jurisdiction = profile?.jurisdiction ?? "FR";
-  const priips = ruleStatus(jurisdiction, "us-domiciled-etf") === "restricted";
+  // The researched rules of the investor's country (core/jurisdiction.ts): anything but "allowed" leaves the funds out.
+  const usEtf = ruleFact(jurisdiction, "us-domiciled-etf");
+  const priips = usEtf.status !== "allowed";
+  const pficRule = jurisdictionKeys(jurisdiction).some((k) => k.key === "pfic") ? ruleFact(jurisdiction, "pfic") : undefined;
+  const pfic = !!pficRule && pficRule.status !== "allowed";
   const currency = (o.currency ?? profile?.baseCurrency ?? "EUR").toUpperCase();
   const goalSplit = ETF_GOAL_SPLITS[o.goal];
   const distribution = o.distribution ?? goalSplit.distribution;
   const notes: string[] = [];
   const impossible: string[] = [];
-  if (!profile)
-    notes.push(
-      "no profile: an EU (French) retail investor is assumed — UCITS funds only, US-domiciled funds left out (PRIIPs); `ultrastock profile init` to set yours",
-    );
+  if (!profile) notes.push("no profile: jurisdiction FR assumed — `ultrastock profile init` to set yours");
+  if (priips) notes.push(`US-domiciled funds left out: retail access is ${usEtf.status} for ${jurisdiction} — ${ruleWhy(usEtf, jurisdiction)}`);
+  if (pfic && pficRule) notes.push(`non-US funds left out: the PFIC rule is ${pficRule.status} for ${jurisdiction} — ${ruleWhy(pficRule, jurisdiction)}`);
   if (o.envelope === "pea" && jurisdiction !== "FR") notes.push(`a PEA is a French envelope; the profile's jurisdiction is ${jurisdiction}`);
   if (o.envelope === "av")
     notes.push(
@@ -714,6 +725,7 @@ export async function etfPropose(dir: string, o: EtfProposeOptions): Promise<Etf
     distribution,
     hedged: !!o.hedged,
     priips,
+    pfic,
     ucits: priips,
     pea: isPea(w),
     now: o.now,
@@ -1007,7 +1019,18 @@ export async function etfPropose(dir: string, o: EtfProposeOptions): Promise<Etf
   };
   writeArtifact(
     join(dir, "PROPOSAL.md"),
-    etfProposalMarkdown(result, store, { currency, distribution, priips, jurisdiction, amount: o.amount, hedged: !!o.hedged, work: lines, pairKeys }),
+    etfProposalMarkdown(result, store, {
+      currency,
+      distribution,
+      priips,
+      usEtfStatus: usEtf.status,
+      pfic,
+      jurisdiction,
+      amount: o.amount,
+      hedged: !!o.hedged,
+      work: lines,
+      pairKeys,
+    }),
   );
   return result;
 }
@@ -1021,6 +1044,8 @@ function etfProposalMarkdown(
     currency: string;
     distribution?: "acc" | "dist";
     priips: boolean;
+    usEtfStatus: string;
+    pfic: boolean;
     jurisdiction: string;
     amount?: number;
     hedged: boolean;
@@ -1042,7 +1067,7 @@ function etfProposalMarkdown(
     "",
     `- Risk score ${show(by("ETF.propose.riskScore"))} (${r.riskSource === "profile" ? "from the profile's suitability questionnaire" : "as given with --risk"}) → equity share ${show(by("ETF.propose.equityShare"))}.`,
     ...(c.amount !== undefined ? [`- Amount ${show(by("ETF.propose.amount"))}.`] : []),
-    `- Listings in ${c.currency}${c.distribution ? `, ${c.distribution === "acc" ? "accumulating" : "distributing"} share classes` : ""}${c.hedged ? ", hedged share classes allowed" : ", no currency-hedged share class"}; ${c.priips ? `UCITS only, US-domiciled funds left out (PRIIPs, jurisdiction ${c.jurisdiction})` : `jurisdiction ${c.jurisdiction}: US-domiciled funds allowed`}.`,
+    `- Listings in ${c.currency}${c.distribution ? `, ${c.distribution === "acc" ? "accumulating" : "distributing"} share classes` : ""}${c.hedged ? ", hedged share classes allowed" : ", no currency-hedged share class"}; ${c.priips ? `UCITS only, US-domiciled funds left out (the researched ${c.jurisdiction} rule on retail access to them reads ${c.usEtfStatus}: \`ultrastock jurisdiction show\`)` : `the researched ${c.jurisdiction} rule allows US-domiciled funds`}${c.pfic ? `; non-US funds left out (the researched ${c.jurisdiction} PFIC rule is not "allowed")` : ""}.`,
     "",
     "## Allocation",
     "",
@@ -1123,7 +1148,7 @@ function etfProposalMarkdown(
     "- Equity share = min(100, 10 + 15 × (risk − 1)) %: 10 / 25 / 40 / 55 / 70 / 85 / 100 % for risk 1 to 7; defensive −15 points, growth +10.",
     "- Each sleeve split by the goal: core — world 75 / emerging 15 / small caps 10, bonds euro government; growth — world 60 / Nasdaq-100 25 / emerging 15, bonds euro government; income — high dividend 70 / world 30, bonds euro government 60 / euro corporate 40, distributing; defensive — world 100, euro government 65 / money market 35.",
     `- A line under ${ETF_MIN_LINE_PCT} % of the plan, or beyond --max-funds, is folded into its sleeve's first line.`,
-    `- A fund qualifies with: the bucket's index (plain, no factor or sector slice), ${c.priips ? "UCITS, not US-domiciled, " : ""}not leveraged or inverse, ${c.hedged ? "" : "not currency-hedged, "}AUM ≥ ${ETF_MIN_AUM / 1e6} M in its reporting currency, launched ≥ ${ETF_MIN_YEARS} year ago when the launch date is known (age otherwise only weighs in the score)${r.envelope === "pea" ? ', and for the PEA the issuer\'s flag (Amundi FUND_PEA) or "PEA" in its name — a name is a hint, the KID settles it' : ""}.`,
+    `- A fund qualifies with: the bucket's index (plain, no factor or sector slice), ${c.priips ? "UCITS, not US-domiciled, " : ""}${c.pfic ? "US-domiciled, " : ""}not leveraged or inverse, ${c.hedged ? "" : "not currency-hedged, "}AUM ≥ ${ETF_MIN_AUM / 1e6} M in its reporting currency, launched ≥ ${ETF_MIN_YEARS} year ago when the launch date is known (age otherwise only weighs in the score)${r.envelope === "pea" ? ', and for the PEA the issuer\'s flag (Amundi FUND_PEA) or "PEA" in its name — a name is a hint, the KID settles it' : ""}.`,
     "- Score (out of 100): 40 × cost (1 − TER/0.50 %) + 30 × size (log10(AUM/100 M)/2) + 20 × tracking (0.5 + the 1-year NAV total-return gap to the same-index, same-currency peers, in points; 0.5 without peers) + 10 × age (years/10); each part within 0–1.",
     "- Past tracking and costs say nothing certain about the future; the convention ignores the investor's other holdings, taxes and horizon beyond the risk score.",
     "",

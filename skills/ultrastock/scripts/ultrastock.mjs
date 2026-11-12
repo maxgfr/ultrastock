@@ -27273,22 +27273,25 @@ async function etfRun(raw, dir2, opts = {}) {
   const tv = p.listing.tv;
   const profile = loadProfile();
   const j = profile?.jurisdiction;
-  const priipsRestricted = !!j && ruleStatus(j, "us-domiciled-etf") === "restricted";
+  const usEtf = j ? ruleFact(j, "us-domiciled-etf") : void 0;
+  const priipsRestricted = !!usEtf && usEtf.status !== "allowed";
   const domicileUS = p.domicile.code === "US";
   const domLines = [`- Domicile: ${p.domicile.code ?? "unknown"}${cite2(`${S}.etf.domicile`)} \u2014 ${withholdingNote(p.domicile.code)}`];
   if (domicileUS && priipsRestricted) {
     const id = store.addDerived(
       `${S}.etf.priips`,
       `${S} PRIIPs status for a retail investor resident in ${j}`,
-      `blocked: a US-domiciled ETF has no PRIIPs KID \u2014 not sold to retail investors in ${j}; use a UCITS fund on the same index`,
+      `blocked: retail access to US-domiciled ETFs is ${usEtf.status} for a ${j} resident \u2014 ${ruleWhy(usEtf, j)}; use a UCITS fund on the same index`,
       void 0,
       [store.byKey(`${S}.etf.domicile`)?.id].filter((x) => !!x),
-      `domicile US \xD7 jurisdiction rule us-domiciled-etf (${j}: restricted)`
+      `domicile US \xD7 researched jurisdiction rule us-domiciled-etf (${j}: ${usEtf.status})`
     );
     domLines.push(`- PRIIPs [${id}]: the risk gate blocks this ETF for a ${j} resident (code PRIIPS) \u2014 see the UCITS twins below.`);
   } else if (domicileUS && !profile)
-    domLines.push("- PRIIPs: no profile \u2014 in the EU a US-domiciled ETF has no KID and is not sold to retail investors; UCITS twins are listed below.");
-  else if (domicileUS) domLines.push(`- PRIIPs: the ${j} rules allow US-domiciled ETFs.`);
+    domLines.push(
+      "- Retail access: no profile \u2014 whether a US-domiciled ETF may be sold to you is your country's researched rule (`ultrastock profile init`, then `ultrastock facts research jurisdiction --key us-domiciled-etf --out <run>`); UCITS twins are listed below."
+    );
+  else if (domicileUS) domLines.push(`- Retail access: the researched ${j} rule allows US-domiciled ETFs \u2014 ${ruleWhy(usEtf, j)}.`);
   let comp;
   if (p.replication.synthetic)
     notes.push(
@@ -58345,7 +58348,8 @@ var ETF_DROP_REASONS = {
   ucits: "not UCITS",
   leveraged: "leveraged or inverse",
   hedged: "currency-hedged share class",
-  priips: "US-domiciled (no PRIIPs KID)",
+  priips: "US-domiciled (retail access not researched as allowed)",
+  pfic: "not US-domiciled (PFIC rule not researched as allowed)",
   currency: "fund base currency is not the wanted one",
   distribution: "distribution policy",
   aum: `AUM under ${ETF_MIN_AUM / 1e6} M`,
@@ -58379,7 +58383,7 @@ function etfScreenCandidates(rows, bucket2, ctx) {
         amundi: af
       };
       const aum = tvNum(m, "aum");
-      const why2 = !accept2.test(index) ? "index" : ctx.ucits && tvStr(m, "ucits_compliant_flag") !== "1" ? "ucits" : tvStr(m, "leveraged_flag") !== "Non-leveraged" ? "leveraged" : !ctx.hedged && tvStr(m, "currency_hedged_flag") === "1" ? "hedged" : ctx.priips && c.domicile.code === "US" ? "priips" : bucket2.baseCurrency && tvStr(m, "etf_fund_currency") !== ctx.currency ? "currency" : ctx.distribution && tvStr(m, "dividend_treatment") !== (ctx.distribution === "acc" ? "Capitalizes" : "Distributes") ? "distribution" : aum === void 0 || aum < ETF_MIN_AUM ? "aum" : years !== void 0 && years < ETF_MIN_YEARS ? "age" : ctx.pea && c.pea.eligible !== true && c.pea.hint !== true ? "pea" : void 0;
+      const why2 = !accept2.test(index) ? "index" : ctx.ucits && tvStr(m, "ucits_compliant_flag") !== "1" ? "ucits" : tvStr(m, "leveraged_flag") !== "Non-leveraged" ? "leveraged" : !ctx.hedged && tvStr(m, "currency_hedged_flag") === "1" ? "hedged" : ctx.priips && c.domicile.code === "US" ? "priips" : ctx.pfic && c.domicile.code !== "US" ? "pfic" : bucket2.baseCurrency && tvStr(m, "etf_fund_currency") !== ctx.currency ? "currency" : ctx.distribution && tvStr(m, "dividend_treatment") !== (ctx.distribution === "acc" ? "Capitalizes" : "Distributes") ? "distribution" : aum === void 0 || aum < ETF_MIN_AUM ? "aum" : years !== void 0 && years < ETF_MIN_YEARS ? "age" : ctx.pea && c.pea.eligible !== true && c.pea.hint !== true ? "pea" : void 0;
       if (why2) dropped[why2] = (dropped[why2] ?? 0) + 1;
       else kept.push(c);
       if (why2 === "age" && (!ctx.pea || c.pea.eligible === true || c.pea.hint === true)) younger.push(m.ticker);
@@ -58483,16 +58487,18 @@ async function etfPropose(dir2, o) {
     );
   const riskSource = o.risk !== void 0 ? "--risk" : "profile";
   const jurisdiction = profile?.jurisdiction ?? "FR";
-  const priips = ruleStatus(jurisdiction, "us-domiciled-etf") === "restricted";
+  const usEtf = ruleFact(jurisdiction, "us-domiciled-etf");
+  const priips = usEtf.status !== "allowed";
+  const pficRule = jurisdictionKeys(jurisdiction).some((k) => k.key === "pfic") ? ruleFact(jurisdiction, "pfic") : void 0;
+  const pfic = !!pficRule && pficRule.status !== "allowed";
   const currency = (o.currency ?? profile?.baseCurrency ?? "EUR").toUpperCase();
   const goalSplit = ETF_GOAL_SPLITS[o.goal];
   const distribution = o.distribution ?? goalSplit.distribution;
   const notes = [];
   const impossible = [];
-  if (!profile)
-    notes.push(
-      "no profile: an EU (French) retail investor is assumed \u2014 UCITS funds only, US-domiciled funds left out (PRIIPs); `ultrastock profile init` to set yours"
-    );
+  if (!profile) notes.push("no profile: jurisdiction FR assumed \u2014 `ultrastock profile init` to set yours");
+  if (priips) notes.push(`US-domiciled funds left out: retail access is ${usEtf.status} for ${jurisdiction} \u2014 ${ruleWhy(usEtf, jurisdiction)}`);
+  if (pfic && pficRule) notes.push(`non-US funds left out: the PFIC rule is ${pficRule.status} for ${jurisdiction} \u2014 ${ruleWhy(pficRule, jurisdiction)}`);
   if (o.envelope === "pea" && jurisdiction !== "FR") notes.push(`a PEA is a French envelope; the profile's jurisdiction is ${jurisdiction}`);
   if (o.envelope === "av")
     notes.push(
@@ -58575,6 +58581,7 @@ async function etfPropose(dir2, o) {
     distribution,
     hedged: !!o.hedged,
     priips,
+    pfic,
     ucits: priips,
     pea: isPea(w),
     now: o.now,
@@ -58851,7 +58858,18 @@ async function etfPropose(dir2, o) {
   };
   writeArtifact(
     join58(dir2, "PROPOSAL.md"),
-    etfProposalMarkdown(result, store, { currency, distribution, priips, jurisdiction, amount: o.amount, hedged: !!o.hedged, work: lines, pairKeys })
+    etfProposalMarkdown(result, store, {
+      currency,
+      distribution,
+      priips,
+      usEtfStatus: usEtf.status,
+      pfic,
+      jurisdiction,
+      amount: o.amount,
+      hedged: !!o.hedged,
+      work: lines,
+      pairKeys
+    })
   );
   return result;
 }
@@ -58870,7 +58888,7 @@ function etfProposalMarkdown(r3, store, c) {
     "",
     `- Risk score ${show(by("ETF.propose.riskScore"))} (${r3.riskSource === "profile" ? "from the profile's suitability questionnaire" : "as given with --risk"}) \u2192 equity share ${show(by("ETF.propose.equityShare"))}.`,
     ...c.amount !== void 0 ? [`- Amount ${show(by("ETF.propose.amount"))}.`] : [],
-    `- Listings in ${c.currency}${c.distribution ? `, ${c.distribution === "acc" ? "accumulating" : "distributing"} share classes` : ""}${c.hedged ? ", hedged share classes allowed" : ", no currency-hedged share class"}; ${c.priips ? `UCITS only, US-domiciled funds left out (PRIIPs, jurisdiction ${c.jurisdiction})` : `jurisdiction ${c.jurisdiction}: US-domiciled funds allowed`}.`,
+    `- Listings in ${c.currency}${c.distribution ? `, ${c.distribution === "acc" ? "accumulating" : "distributing"} share classes` : ""}${c.hedged ? ", hedged share classes allowed" : ", no currency-hedged share class"}; ${c.priips ? `UCITS only, US-domiciled funds left out (the researched ${c.jurisdiction} rule on retail access to them reads ${c.usEtfStatus}: \`ultrastock jurisdiction show\`)` : `the researched ${c.jurisdiction} rule allows US-domiciled funds`}${c.pfic ? `; non-US funds left out (the researched ${c.jurisdiction} PFIC rule is not "allowed")` : ""}.`,
     "",
     "## Allocation",
     "",
@@ -58945,7 +58963,7 @@ function etfProposalMarkdown(r3, store, c) {
     "- Equity share = min(100, 10 + 15 \xD7 (risk \u2212 1)) %: 10 / 25 / 40 / 55 / 70 / 85 / 100 % for risk 1 to 7; defensive \u221215 points, growth +10.",
     "- Each sleeve split by the goal: core \u2014 world 75 / emerging 15 / small caps 10, bonds euro government; growth \u2014 world 60 / Nasdaq-100 25 / emerging 15, bonds euro government; income \u2014 high dividend 70 / world 30, bonds euro government 60 / euro corporate 40, distributing; defensive \u2014 world 100, euro government 65 / money market 35.",
     `- A line under ${ETF_MIN_LINE_PCT} % of the plan, or beyond --max-funds, is folded into its sleeve's first line.`,
-    `- A fund qualifies with: the bucket's index (plain, no factor or sector slice), ${c.priips ? "UCITS, not US-domiciled, " : ""}not leveraged or inverse, ${c.hedged ? "" : "not currency-hedged, "}AUM \u2265 ${ETF_MIN_AUM / 1e6} M in its reporting currency, launched \u2265 ${ETF_MIN_YEARS} year ago when the launch date is known (age otherwise only weighs in the score)${r3.envelope === "pea" ? `, and for the PEA the issuer's flag (Amundi FUND_PEA) or "PEA" in its name \u2014 a name is a hint, the KID settles it` : ""}.`,
+    `- A fund qualifies with: the bucket's index (plain, no factor or sector slice), ${c.priips ? "UCITS, not US-domiciled, " : ""}${c.pfic ? "US-domiciled, " : ""}not leveraged or inverse, ${c.hedged ? "" : "not currency-hedged, "}AUM \u2265 ${ETF_MIN_AUM / 1e6} M in its reporting currency, launched \u2265 ${ETF_MIN_YEARS} year ago when the launch date is known (age otherwise only weighs in the score)${r3.envelope === "pea" ? `, and for the PEA the issuer's flag (Amundi FUND_PEA) or "PEA" in its name \u2014 a name is a hint, the KID settles it` : ""}.`,
     "- Score (out of 100): 40 \xD7 cost (1 \u2212 TER/0.50 %) + 30 \xD7 size (log10(AUM/100 M)/2) + 20 \xD7 tracking (0.5 + the 1-year NAV total-return gap to the same-index, same-currency peers, in points; 0.5 without peers) + 10 \xD7 age (years/10); each part within 0\u20131.",
     "- Past tracking and costs say nothing certain about the future; the convention ignores the investor's other holdings, taxes and horizon beyond the risk score.",
     ""

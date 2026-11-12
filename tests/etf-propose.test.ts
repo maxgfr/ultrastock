@@ -161,6 +161,13 @@ describe("the fund screen", () => {
     // A listing on a venue the router cannot map is never proposed.
     expect(etfScreenCandidates([fund("NYSE:URTH", { isin: "US4642863926" })], ETF_BUCKETS.world!, ctx({ ucits: false, priips: false })).kept).toHaveLength(0);
   });
+  it("leaves out non-US funds when the researched PFIC rule is not allowed", () => {
+    const us = fund("XETR:URTH", { isin: "US4642863926", country_code_fund: "US", ucits_compliant_flag: "0" });
+    const eu = fund("XETR:EUNL", { isin: "IE00B4L5Y983" });
+    const r = etfScreenCandidates([us, eu], ETF_BUCKETS.world!, ctx({ ucits: false, priips: false, pfic: true }));
+    expect(r.kept.map((c) => c.m.ticker)).toEqual(["XETR:URTH"]);
+    expect(r.dropped).toEqual({ pfic: 1 });
+  });
   it("drops the wrong index, leveraged, hedged, small, young funds and the wrong distribution, counting each", () => {
     const rows = [
       fund("XETR:OK1"),
