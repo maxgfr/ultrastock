@@ -1,3 +1,4 @@
+import { FIXTURE_SAFE_DATE, installTestVenueFacts } from "./helpers/venue-facts.js";
 import { testGrid } from "./helpers/venue-rules.js";
 // A fill the ledger keeps out as a duplicate is never dropped in silence: a paper fill is then not made at all (the
 // ticket stays as it was), a venue fill — real, already done — leaves an audit line saying it is missing.
@@ -31,6 +32,7 @@ import { withFixture } from "./helpers/fixtures.js";
 beforeEach(() => {
   rmSync(homeDir(), { recursive: true, force: true });
   saveProfile(defaultProfile("FR", "EUR"));
+  installTestVenueFacts({ date: FIXTURE_SAFE_DATE });
   refuseAsDuplicate = false;
 });
 

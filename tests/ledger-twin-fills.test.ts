@@ -1,3 +1,4 @@
+import { FIXTURE_SAFE_DATE, installTestVenueFacts } from "./helpers/venue-facts.js";
 import { testGrid } from "./helpers/venue-rules.js";
 // Two tickets carrying the same order, whose fills are booked in the same second, must each reach the ledger.
 import { rmSync } from "node:fs";
@@ -67,6 +68,7 @@ async function sent(createdAt: Date, a: BrokerAdapter) {
 beforeEach(() => {
   rmSync(homeDir(), { recursive: true, force: true });
   saveProfile(defaultProfile("FR", "EUR"));
+  installTestVenueFacts({ date: FIXTURE_SAFE_DATE });
   requestLimits({ maxOrder: 250, maxDaily: 500, venues: ["kraken"], attestedNoWithdraw: [] }, true, new Date(Date.now() - LOOSEN_DELAY_MS - 1000));
   captured = [];
 });

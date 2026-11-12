@@ -16,6 +16,7 @@ import { envelopeOf, type Holding, type MarkedBook, referenceRates } from "./boo
 import type { Findings } from "./findings.js";
 import { incomeFigures, ledgerDividends, trailingPerShare } from "./income.js";
 import { bestEnvelope, LOCATION_RULES, PEA_CEILING, peaDeposits } from "./location.js";
+import { feeLookup } from "../../trading/fees.js";
 import { orderFor, sellTaxNote } from "./rebalance.js";
 
 const DAY = 86_400_000;
@@ -139,6 +140,7 @@ export async function rebalanceAnalysis(m: MarkedBook, f: Findings, o: Rebalance
       market: h.instrument?.market ?? "europe",
       held: main?.quantity ?? 0,
       averageCost: main?.averageCost,
+      fee: feeLookup({ account: main?.account ?? "?", currency: h.currency }, h.instrument?.market ?? "europe", "taker"),
     });
     if (!order) {
       f.note(`${t.asset}: ${money(t.amount)} ${m.base} is less than one share — no order`);
@@ -165,15 +167,17 @@ export async function rebalanceAnalysis(m: MarkedBook, f: Findings, o: Rebalance
       [`${P}.${h.symbol}.units`, ...from],
       "units × price × rate",
     );
-    f.derive(
-      sec,
-      `${P}.${h.symbol}.fee`,
-      `${h.symbol} estimated fee (${m.base})`,
-      money(order.feeBase),
-      m.base,
-      [`${P}.${h.symbol}.units`, ...from],
-      `paper fee model for the ${h.instrument?.market ?? "?"} market (src/trading/paper.ts feeFor) × rate`,
-    );
+    if (order.feeBase !== undefined)
+      f.derive(
+        sec,
+        `${P}.${h.symbol}.fee`,
+        `${h.symbol} estimated fee (${m.base})`,
+        money(order.feeBase),
+        m.base,
+        [`${P}.${h.symbol}.units`, ...from],
+        `${order.feeBasis} × rate`,
+      );
+    else f.note(`${h.symbol}: the fee is unknown and not counted — ${order.feeBasis}`);
     const env = main?.envelope ?? "unknown";
     let tax: string | undefined;
     if (order.side === "sell") {
@@ -186,7 +190,7 @@ export async function rebalanceAnalysis(m: MarkedBook, f: Findings, o: Rebalance
           money(order.realisedPmp),
           h.currency,
           [`${P}.${h.symbol}.units`, h.keys.price!, `PORTFOLIO.${m.bookName}.${h.symbol}.averageCost`],
-          "units × price − fee − units × PMP",
+          order.fee !== undefined ? "units × price − fee − units × PMP" : "units × price − units × PMP (the fee is unknown: not deducted)",
         );
       f.derive(
         sec,

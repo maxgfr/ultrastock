@@ -1,3 +1,4 @@
+import { FIXTURE_SAFE_DATE, installTestVenueFacts } from "./helpers/venue-facts.js";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -194,17 +195,43 @@ describe("rebalancing pieces", () => {
     expect(() => parseTargets("not-a-file")).toThrow(/JSON object/);
   });
   it("turns an amount into whole shares, caps sells, charges fees and computes the PMP gain", () => {
-    const buy = orderFor({ symbol: "MC.PA", amountBase: 1000, price: 600, rate: 1, currency: "EUR", market: "euronext", held: 0 })!;
+    // TEST fee models, not any broker's schedule.
+    const pctMin = { model: { pct: 0.001, min: 2 }, basis: "TEST", source: "researched" as const };
+    const perShare = { model: { pct: 0, perUnit: 0.005, min: 1 }, basis: "TEST", source: "researched" as const };
+    const buy = orderFor({ symbol: "MC.PA", amountBase: 1000, price: 600, rate: 1, currency: "EUR", market: "euronext", held: 0, fee: pctMin })!;
     expect(buy.units).toBe(1);
     expect(buy.fee).toBe(2);
     expect(buy.reasons[0]).toMatch(/rounded down/);
-    const sell = orderFor({ symbol: "NVDA", amountBase: -5000, price: 200, rate: 0.9, currency: "USD", market: "us", held: 10, averageCost: 150 })!;
+    const sell = orderFor({
+      symbol: "NVDA",
+      amountBase: -5000,
+      price: 200,
+      rate: 0.9,
+      currency: "USD",
+      market: "us",
+      held: 10,
+      averageCost: 150,
+      fee: perShare,
+    })!;
     expect(sell.units).toBe(10);
     expect(sell.reasons[0]).toMatch(/capped/);
     expect(sell.realisedPmp).toBeCloseTo(10 * 200 - 1 - 1500, 10);
-    const btc = orderFor({ symbol: "BTCUSDT", amountBase: 100, price: 80_000, rate: 0.9, currency: "USDT", market: "crypto", held: 0 })!;
+    const btc = orderFor({
+      symbol: "BTCUSDT",
+      amountBase: 100,
+      price: 80_000,
+      rate: 0.9,
+      currency: "USDT",
+      market: "crypto",
+      held: 0,
+      fee: { missing: "no fee known" },
+    })!;
     expect(btc.units).toBeCloseTo(0.001388, 6);
-    expect(orderFor({ symbol: "MC.PA", amountBase: 100, price: 600, rate: 1, currency: "EUR", market: "euronext", held: 0 })).toBeUndefined();
+    // No fee known: none counted, and the order says so.
+    expect(btc.fee).toBeUndefined();
+    expect(btc.feeBasis).toBe("no fee known");
+    expect(btc.reasons).toContain("fee unknown: not counted");
+    expect(orderFor({ symbol: "MC.PA", amountBase: 100, price: 600, rate: 1, currency: "EUR", market: "euronext", held: 0, fee: pctMin })).toBeUndefined();
     expect(sellTaxNote("PEA")).toMatch(/nothing taxable/);
     expect(sellTaxNote("CTO")).toMatch(/taxable gain/);
   });
@@ -449,6 +476,7 @@ describe("portfolio analytics on a recorded two-position paper book", () => {
   it("risk, stress, location, income and rebalance register every figure", async () => {
     freshHome();
     saveProfile(defaultProfile("FR", "EUR"));
+    installTestVenueFacts({ date: FIXTURE_SAFE_DATE });
     await appendTransactions(
       [
         { date: "2026-09-01", type: "deposit", account: "pea", amount: 10_000, currency: "EUR", origin: "manual" },

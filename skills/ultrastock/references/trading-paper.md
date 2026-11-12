@@ -64,8 +64,15 @@ to change.
 ## Paper trading
 
 - `paper submit <ticket>` fills a checked ticket on real prices. Crypto walks
-  Binance's order book; other assets fill at the last price plus slippage.
-  Fees follow the venue.
+  Binance's order book; other assets fill at the last price plus an
+  assumed slippage (5 bp in Europe, 3 bp in the US — a convention, said on
+  every fill). There is no built-in fee: a fill pays the user's own average
+  fee on that account (three or more fills with a fee in the real ledger),
+  else the venue's schedule as researched (`facts research venues`: the
+  venue the account names, `account.<id>.*` for another broker, Binance's
+  for a crypto fill), taker when it crosses the book, maker when `paper
+  sweep` reaches a resting limit. With neither, **paper refuses to fill**:
+  research the fees or import the account's statements.
 - `paper sweep` works limit orders against the bars traded since.
 - `paper book` lists the paper positions.
 - `paper readiness` says whether the paper record supports real money:

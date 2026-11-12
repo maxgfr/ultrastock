@@ -1,14 +1,21 @@
+import { FIXTURE_SAFE_DATE, installTestVenueFacts } from "./helpers/venue-facts.js";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { backtestCommand, strategyCommand } from "../src/commands/backtest.js";
 import { EvidenceStore } from "../src/core/evidence.js";
 import { setNetMode } from "../src/core/net.js";
+import { defaultProfile, saveProfile } from "../src/core/profile.js";
 import type { CommandArgs } from "../src/engine.js";
 import { withFixture } from "./helpers/fixtures.js";
 
 afterEach(() => vi.restoreAllMocks());
+// Crypto backtests read Binance's fees from the venues facts: TEST ones, readable inside the replays' clock.
+beforeEach(() => {
+  saveProfile(defaultProfile("FR", "EUR"));
+  installTestVenueFacts({ date: FIXTURE_SAFE_DATE });
+});
 
 const cmd = (command: string, positional: string[], values: Record<string, string> = {}, bools: string[] = []): CommandArgs => ({
   command,
@@ -170,7 +177,7 @@ describe("perpetuals and allocations on recorded data", () => {
   it("backtests a 60/40 allocation, monthly rebalanced, against costs", async () => {
     const dir = join(mkdtempSync(join(tmpdir(), "us-alloc-")), "run");
     await withFixture("backtest-alloc-60-40-1y", async () => {
-      const r = JSON.parse(await run(backtestCommand, cmd("backtest", ["run", "60-40", "SPY,TLT"], { years: "1", out: dir }), true));
+      const r = JSON.parse(await run(backtestCommand, cmd("backtest", ["run", "60-40", "SPY,TLT"], { years: "1", out: dir, fee: "0.1" }), true));
       expect(r.symbols).toEqual(["SPY", "TLT"]);
       const store = EvidenceStore.load(dir)!;
       expect(store.byKey("SPY+TLT.bt.60-40.rebalances")!.value).toBeGreaterThanOrEqual(11);

@@ -1,11 +1,13 @@
 // Rebalancing to target weights, the pure part: parse the targets, turn the
 // band rule's money amounts (src/analytics/portfolio.ts `rebalance`) into
 // orders a broker would take — whole shares (fractional units for crypto),
-// sells capped at what is held, fees from the paper fee model — and say what
+// sells capped at what is held, fees from what is known of the account (the
+// user's own fees, else the researched schedule: trading/fees.ts; unknown is
+// said, never guessed) — and say what
 // each sell costs in tax terms. Never places an order.
 import { existsSync, readFileSync } from "node:fs";
 import { UsageError } from "../../engine.js";
-import { feeFor } from "../../trading/paper.js";
+import { type FeeLookup, feeFor } from "../../trading/fees.js";
 
 /** Targets from a JSON file path or inline JSON: {"CW8.PA": 60, "MC.PA": 10, "CASH": 5} — weights in %. */
 export function parseTargets(raw: string): Record<string, number> {
@@ -38,9 +40,12 @@ export interface OrderLine {
   currency: string;
   /** Notional and fee in the trade currency, and the notional in base. */
   notional: number;
-  fee: number;
+  /** Undefined when no fee is known for the account: `feeBasis` says why. */
+  fee?: number;
   notionalBase: number;
-  feeBase: number;
+  feeBase?: number;
+  /** Where the fee came from, or why it is unknown. */
+  feeBasis: string;
   /** For a sell: the gain realised by the average-cost rule, trade currency. */
   realisedPmp?: number;
   reasons: string[];
@@ -60,6 +65,8 @@ export function orderFor(a: {
   market: string;
   held: number;
   averageCost?: number;
+  /** The account's fee (trading/fees.ts feeLookup), or why it is unknown. */
+  fee: FeeLookup;
 }): OrderLine | undefined {
   const crypto = a.market === "crypto";
   const raw = Math.abs(a.amountBase) / (a.price * a.rate);
@@ -73,7 +80,9 @@ export function orderFor(a: {
   if (!(units > 0)) return undefined;
   if (!crypto && raw - units > 1e-9) reasons.push(`${raw.toFixed(3)} units rounded down to whole shares`);
   const notional = units * a.price;
-  const fee = feeFor(a.market, units, a.price);
+  const known = !("missing" in a.fee);
+  const fee = "missing" in a.fee ? undefined : feeFor(a.fee.model, units, a.price);
+  if (!known) reasons.push("fee unknown: not counted");
   return {
     symbol: a.symbol,
     side,
@@ -81,10 +90,10 @@ export function orderFor(a: {
     price: a.price,
     currency: a.currency,
     notional,
-    fee,
+    ...(fee !== undefined ? { fee, feeBase: fee * a.rate } : {}),
+    feeBasis: "missing" in a.fee ? a.fee.missing : a.fee.basis,
     notionalBase: notional * a.rate,
-    feeBase: fee * a.rate,
-    ...(side === "sell" && a.averageCost !== undefined ? { realisedPmp: units * a.price - fee - units * a.averageCost } : {}),
+    ...(side === "sell" && a.averageCost !== undefined ? { realisedPmp: units * a.price - (fee ?? 0) - units * a.averageCost } : {}),
     reasons,
   };
 }

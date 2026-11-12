@@ -10,8 +10,9 @@ import { drawdowns, performanceSummary } from "../analytics/performance.js";
 import { defaultBenchmark } from "../analyze/technicals.js";
 import { type Dataset, formatDatasets, type Point, registerDatasets } from "../core/datasets.js";
 import { EvidenceStore } from "../core/evidence.js";
-import { mapLimit, writeArtifact } from "../engine.js";
+import { mapLimit, UsageError, writeArtifact } from "../engine.js";
 import type { Bar, Instrument, Interval, PriceSeries } from "../providers/types.js";
+import { venueFact } from "../trading/venue-facts.js";
 import { type Allocation, alignBars, allocationBacktest } from "./allocation.js";
 import { fundingHistory, loadBars } from "./data.js";
 import { buyAndHold, deflatedSharpeOf, periodSharpe, periodsPerYear, residualAlpha, type Summary, summarize, type TradeStats, tradeStats } from "./metrics.js";
@@ -70,15 +71,43 @@ export interface Market {
 }
 
 /**
- * Default costs, percent per side. Crypto spot: Binance's 0.1 % maker and
- * taker; perpetuals: 0.02 % maker, 0.05 % taker (USDT-M, regular tier);
- * listed securities: 0.1 % either way (a typical online broker); slippage
- * 0.05 % on every market order.
+ * Slippage per side on a market order when `--slippage` is not given: a
+ * convention (the price impact of a small order on a liquid market), not any
+ * venue's figure — every backtest that uses it says it is an assumption.
  */
-export function defaultCosts(crypto: boolean, perp: boolean): Costs {
-  if (crypto && perp) return { makerPct: 0.02, takerPct: 0.05, slippagePct: 0.05 };
-  if (crypto) return { makerPct: 0.1, takerPct: 0.1, slippagePct: 0.05 };
-  return { makerPct: 0.1, takerPct: 0.1, slippagePct: 0.05 };
+export const ASSUMED_SLIPPAGE_PCT = 0.05;
+
+/**
+ * A backtest's costs, percent per side, and the notes saying where each came
+ * from. Fees are never built in: `--fee` / `--maker` / `--taker` as given, else
+ * — crypto, whose bars are Binance's — Binance's schedule as the agent
+ * researched it (venues facts `binance.spot.fees`, `binance.usdm.fees` for a
+ * perpetual). A listed security has no venue to read a schedule for: it needs
+ * the flags. Without either, a usage error says what to give or research.
+ */
+export function backtestCosts(crypto: boolean, perp: boolean, given: Partial<Costs> = {}, now?: Date): { costs: Costs; notes: string[] } {
+  const flags = "--fee <percent per side> (or --maker and --taker)";
+  let maker = given.makerPct;
+  let taker = given.takerPct;
+  let feeNote: string;
+  if (maker !== undefined && taker !== undefined) feeNote = `fees as given: maker ${maker} %, taker ${taker} % per side`;
+  else {
+    if (!crypto) throw new UsageError(`a backtest of a listed security needs its trading costs: ${flags} — ultrastock holds no broker's fee schedule`);
+    const key = perp ? "binance.usdm.fees" : "binance.spot.fees";
+    const f = venueFact<{ maker: number; taker: number }>(key, { now });
+    if ("missing" in f) throw new UsageError(`the backtest's fees are unknown: ${f.missing} — or give them: ${flags}`);
+    const pct = (x: number) => Number((x * 100).toFixed(10));
+    const partly = maker !== undefined || taker !== undefined;
+    maker ??= pct(f.value.maker);
+    taker ??= pct(f.value.taker);
+    feeNote = `fees: maker ${maker} %, taker ${taker} % per side — ${partly ? "partly as given, the rest from " : ""}${f.basis}`;
+  }
+  const slippagePct = given.slippagePct ?? ASSUMED_SLIPPAGE_PCT;
+  const slipNote =
+    given.slippagePct !== undefined
+      ? `slippage ${slippagePct} % per side as given`
+      : `slippage ${slippagePct} % per side on market orders is an ASSUMPTION (a convention, not measured): --slippage sets it`;
+  return { costs: { makerPct: maker, takerPct: taker, slippagePct }, notes: [feeNote, slipNote] };
 }
 
 export async function loadMarket(symbol: string, opts: MarketOptions, def?: StrategyDef): Promise<Market> {
@@ -95,7 +124,8 @@ export async function loadMarket(symbol: string, opts: MarketOptions, def?: Stra
     leverage = 1;
   }
   const perp = crypto && (leverage > 1 || !!opts.perp || !!def?.short);
-  const costs = { ...defaultCosts(crypto, perp), ...(opts.costs ?? {}) };
+  const { costs, notes: costNotes } = backtestCosts(crypto, perp, opts.costs);
+  notes.push(...costNotes);
   let funding: Market["funding"];
   if (perp) {
     try {
@@ -727,7 +757,8 @@ export async function portfolioRun(
   if (dates.length < 60) throw new Error(`only ${dates.length} dates common to every symbol — an allocation backtest needs at least 60`);
   const crypto = ok.every((s) => s.instrument.market === "crypto");
   const ppy = crypto ? 365 : 252;
-  const costs = { ...defaultCosts(crypto, false), ...(opts.costs ?? {}) };
+  const { costs, notes: costNotes } = backtestCosts(crypto, false, opts.costs);
+  notes.push(...costNotes);
   const common = { rebalance: opts.rebalance, capital: opts.capital, lookbackMonths: opts.lookbackMonths, cashRatePct: opts.cashRatePct };
   const result = allocationBacktest(kind, bars, dates, { ...common, costs });
   const stressed = allocationBacktest(kind, bars, dates, { ...common, costs: stressCosts(costs, 2) });

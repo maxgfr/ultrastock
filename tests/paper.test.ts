@@ -1,8 +1,10 @@
+import { FIXTURE_SAFE_DATE, installTestVenueFacts } from "./helpers/venue-facts.js";
 import { describe, expect, it } from "vitest";
 import { clockNow } from "../src/core/net.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
 import { appendTransactions, buildBook, readLedger } from "../src/portfolio/ledger.js";
-import { feeFor, paperSubmit, readiness, walkBook } from "../src/trading/paper.js";
+import { feeFor } from "../src/trading/fees.js";
+import { paperSubmit, readiness, walkBook } from "../src/trading/paper.js";
 import { readEquity } from "../src/trading/breaker.js";
 import { gateContextFor } from "../src/trading/context.js";
 import { planTrade } from "../src/trading/plan.js";
@@ -22,9 +24,10 @@ describe("paper engine pieces", () => {
       ),
     ).toEqual({ price: 100.5, levels: 2 });
     expect(walkBook([[100, 1]], 2)).toBeUndefined();
-    expect(feeFor("euronext", 2, 383)).toBe(2);
-    expect(feeFor("us", 1000, 10)).toBeCloseTo(5, 10);
-    expect(feeFor("crypto", 1, 80_000)).toBeCloseTo(80, 10);
+    // TEST fee models, not any broker's schedule: a minimum, a per-share charge, a percentage.
+    expect(feeFor({ pct: 0.001, min: 2 }, 2, 383)).toBe(2);
+    expect(feeFor({ pct: 0, perUnit: 0.005, min: 1 }, 1000, 10)).toBeCloseTo(5, 10);
+    expect(feeFor({ pct: 0.001, min: 0 }, 1, 80_000)).toBeCloseTo(80, 10);
   });
   it("judges readiness on trades, time, expectancy, profit factor and drawdown", () => {
     const trades = Array.from({ length: 20 }, (_, i) => ({ date: `2026-0${1 + Math.floor(i / 10)}-1${i % 10}`, pnl: i % 3 === 0 ? -50 : 80 }));
@@ -124,6 +127,7 @@ describe("the sector cap", () => {
 describe("paper flow on a recorded fixture", () => {
   it("plans within the limits, checks, fills, and books the trade", async () => {
     saveProfile(defaultProfile("FR", "EUR"));
+    installTestVenueFacts({ date: FIXTURE_SAFE_DATE });
     await appendTransactions([{ date: "2026-10-01", type: "deposit", account: "cto", amount: 20_000, currency: "EUR", origin: "manual" }], "paper");
     await withFixture("trading-paper-mcpa", async () => {
       const now = clockNow();

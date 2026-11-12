@@ -52,7 +52,13 @@ const { appendTransactions } = await import("../src/portfolio/ledger.js");
 describe("a backtest on Kraken's BTC-USD book", () => {
   it("labels its money figures in USD on BTC-USD, not in USDT on BTCUSDT", async () => {
     const to = new Date("2026-11-09T09:00:00Z");
-    const m = await loadMarket("BTC-USD", { from: new Date(to.getTime() - 400 * 86_400_000), to, interval: "1d", capital: 10_000 });
+    const m = await loadMarket("BTC-USD", {
+      from: new Date(to.getTime() - 400 * 86_400_000),
+      to,
+      interval: "1d",
+      capital: 10_000,
+      costs: { makerPct: 0.1, takerPct: 0.1 },
+    });
     // The bars are Kraken's dollar book …
     expect(m.series.provenance.source).toBe("kraken");
     expect([m.series.instrument.symbol, m.series.instrument.currency]).toEqual(["BTC-USD", "USD"]);

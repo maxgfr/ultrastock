@@ -4,45 +4,34 @@
 //
 // Fills are honest rather than flattering:
 //   crypto        walk Binance's order book level by level (the price you would really get)
-//   other assets  the last price plus slippage (5 bp in Europe, 3 bp in the US), and the
-//                 last official close when the market is closed (said so)
+//   other assets  the last price plus an ASSUMED slippage (5 bp in Europe, 3 bp in the US —
+//                 a convention, said as such on every fill), and the last official close
+//                 when the market is closed (said so)
 //   limit orders  fill only when the market trades through the limit; otherwise they
 //                 stay working, and `paper sweep` fills them later from the bars that
 //                 traded since — at the bar's open if it gapped through the limit
-//   fees          a fee model per market (a parameter, defaults below)
+//   fees          the user's own fees on that account (real ledger), else the venue's schedule
+//                 as the agent researched it (trading/fees.ts) — none built in. Without
+//                 either there is no paper fill: a fill without its fee would flatter the
+//                 record the live gate measures. Crossing the book pays the taker rate; a
+//                 resting limit reached later (`paper sweep`) the maker rate.
 import { join } from "node:path";
 import { withFileLock } from "../core/lock.js";
 import { fetchJson, netMode } from "../core/net.js";
 import { homeDir } from "../core/paths.js";
 import { appendTransactions, buildBook, readLedger, type Transaction } from "../portfolio/ledger.js";
 import { getHistory, getQuote, resolveSymbol } from "../providers/router.js";
+import { type FeeLookup, feeFor, feeLookup, slippageBp } from "./fees.js";
 import { executionRefusal, type Fill, listTickets, loadTicket, type Ticket, transition } from "./tickets.js";
 import { simulatePredictionFill } from "./prediction.js";
 import type { Order } from "./riskgate.js";
 
-export interface FeeModel {
-  /** Share of the notional. */
-  pct: number;
-  /** Per unit (US brokers charge per share). */
-  perUnit?: number;
-  /** Minimum per order, in the order currency. */
-  min: number;
+/** The fee a paper fill pays, or the refusal: no fill is made without a known fee. */
+function paperFee(order: Order, market: string, side: "maker" | "taker", now: Date): Exclude<FeeLookup, { missing: string }> {
+  const f = feeLookup(order, market, side, { now });
+  if ("missing" in f) throw new Error(`no paper fill: ${f.missing}`);
+  return f;
 }
-
-/** Default paper fees by market (a parameter: real brokers differ — set yours). */
-export const FEE_MODELS: Record<string, FeeModel> = {
-  euronext: { pct: 0.001, min: 2 },
-  europe: { pct: 0.001, min: 3 },
-  us: { pct: 0, perUnit: 0.005, min: 1 },
-  crypto: { pct: 0.001, min: 0 },
-};
-
-export function feeFor(market: string, quantity: number, price: number): number {
-  const m = FEE_MODELS[market] ?? FEE_MODELS.europe!;
-  return Math.max(m.min, m.pct * quantity * price + (m.perUnit ?? 0) * quantity);
-}
-
-const SLIPPAGE_BP: Record<string, number> = { euronext: 5, europe: 5, us: 3, crypto: 5 };
 
 /** Volume-weighted price of walking `levels` (price, quantity) for `quantity`; undefined when the book is too thin. */
 export function walkBook(levels: ReadonlyArray<readonly [number, number]>, quantity: number): { price: number; levels: number } | undefined {
@@ -66,6 +55,7 @@ export async function simulateFill(order: Order, now: Date): Promise<PaperOutcom
   if (order.assetKind === "prediction") return simulatePredictionFill(order, now);
   const resolved = await resolveSymbol(order.symbol);
   const market = resolved.instrument.market;
+  const fee = paperFee(order, market, "taker", now);
   if (market === "crypto") {
     const res = await fetchJson<{ bids: [string, string][]; asks: [string, string][] }>(
       `https://api.binance.com/api/v3/depth?symbol=${resolved.instrument.venueId}&limit=100`,
@@ -84,15 +74,15 @@ export async function simulateFill(order: Order, now: Date): Promise<PaperOutcom
           at: now.toISOString(),
           quantity: order.quantity,
           price: w.price,
-          fee: feeFor("crypto", order.quantity, w.price),
+          fee: feeFor(fee.model, order.quantity, w.price),
           venue: "paper",
-          method: `Binance order-book walk (${w.levels} level(s))`,
+          method: `Binance order-book walk (${w.levels} level(s)); fee: ${fee.basis}`,
         },
       };
     }
   }
   const q = await getQuote(resolved, now);
-  const slip = (SLIPPAGE_BP[market] ?? 5) / 10_000;
+  const slip = slippageBp(market) / 10_000;
   const px = order.side === "buy" ? q.price * (1 + slip) : q.price * (1 - slip);
   if (order.orderType === "limit" && (order.side === "buy" ? order.price < q.price : order.price > q.price))
     return { kind: "working", reason: `the limit ${order.price} has not been reached (last ${q.price})` };
@@ -104,9 +94,9 @@ export async function simulateFill(order: Order, now: Date): Promise<PaperOutcom
       at: now.toISOString(),
       quantity: order.quantity,
       price,
-      fee: feeFor(market, order.quantity, price),
+      fee: feeFor(fee.model, order.quantity, price),
       venue: "paper",
-      method: `last price ${q.price} ± ${SLIPPAGE_BP[market] ?? 5} bp`,
+      method: `last price ${q.price} ± ${slippageBp(market)} bp slippage (an assumption, not measured); fee: ${fee.basis}`,
     },
     note: eod ? `filled at the last official close ${q.at}: end-of-day data, the real fill would be at the next session's price` : undefined,
   };
@@ -219,13 +209,19 @@ export async function paperSweep(now = new Date()): Promise<Array<{ id: string; 
     const gapped = t.order.side === "buy" ? bar.open <= t.order.price : bar.open >= t.order.price;
     const price = gapped ? bar.open : t.order.price;
     const market = resolved.instrument.market;
+    // A resting limit reached by the market pays the maker rate; one the open gapped through, the taker rate.
+    const fee = feeLookup(t.order, market, gapped ? "taker" : "maker", { now });
+    if ("missing" in fee) {
+      out.push({ id: t.id, result: `not filled: ${fee.missing}` });
+      continue;
+    }
     const fill: Fill = asBooked({
       at: bar.date.length > 10 ? bar.date : `${bar.date}T00:00:00.000Z`,
       quantity: t.order.quantity,
       price,
-      fee: feeFor(market, t.order.quantity, price),
+      fee: feeFor(fee.model, t.order.quantity, price),
       venue: "paper",
-      method: gapped ? `opened through the limit on ${bar.date}: filled at the open` : `traded through the limit on ${bar.date}`,
+      method: `${gapped ? `opened through the limit on ${bar.date}: filled at the open` : `traded through the limit on ${bar.date}`}; fee: ${fee.basis}`,
     });
     // The bars were read without the lock: the ticket may have been filled, swept or cancelled since.
     const booked = await paperLock(() =>

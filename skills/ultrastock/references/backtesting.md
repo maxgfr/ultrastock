@@ -27,8 +27,15 @@ These rules fix the biases of the original engine:
   strategies.
 
 Defaults are 5 years (`--years`, or `--from`/`--to`) and 10 000 of capital.
-Fees are 0.1 % per side for spot and listed securities and 0.02/0.05 % for
-perpetuals, with 0.05 % slippage.
+ultrastock holds no fee schedule. Fees are `--fee <percent per side>` (or
+`--maker` and `--taker`) as given; for crypto, whose bars are Binance's, they
+may instead come from Binance's schedule as researched (`facts research
+venues`: `binance.spot.fees`, `binance.usdm.fees` for a perpetual). A listed
+security has no venue to read a schedule for: give the flags. Without fees
+the backtest refuses to run; its notes say which fees were used and where
+they came from. Slippage on market orders is 0.05 % per side by default — an
+assumption, not a measurement, and the notes call it one; `--slippage` sets
+it.
 
 Every metric is an `[E#]`:
 - **returns and risk:** CAGR, Sharpe, Sortino, max drawdown, Calmar, Ulcer,

@@ -1,3 +1,4 @@
+import { FIXTURE_SAFE_DATE, installTestVenueFacts } from "./helpers/venue-facts.js";
 // `paper submit <ticket> --fixture <dir>` (the paper command takes --fixture/--record; the package ships
 // assets/fixtures/*) fills at the recording's price and books the trade at the recording's date. The paper ledger is
 // what `readiness` — a precondition of every live order (live.ts:177-186) — measures "30 days of paper trading" on.
@@ -18,6 +19,7 @@ beforeEach(() => rmSync(homeDir(), { recursive: true, force: true }));
 describe("the paper record the live gate reads", () => {
   it("does not start before the day its first paper order was placed", async () => {
     saveProfile(defaultProfile("FR", "EUR"));
+    installTestVenueFacts({ date: FIXTURE_SAFE_DATE });
     await appendTransactions([{ date: "2026-10-01", type: "deposit", account: "cto", amount: 20_000, currency: "EUR", origin: "manual" }], "paper");
 
     // Today, for the first time: `plan MC.PA --account cto --ticket --fixture assets/fixtures/trading-paper-mcpa`, then

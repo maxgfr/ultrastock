@@ -19769,6 +19769,7 @@ var VENUES = defineDomain({
   setCommand: "ultrastock facts set venues --file <file.json>",
   about: (c, date) => `TEMPLATE to fill by research. ultrastock contains no venue fee: every value must come from the venue's own fee page, as it applies to a resident of ${c}, read on ${date}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"; remove a key you did not research rather than guessing it. For one of the user's own accounts at another broker, add "account.<id>.fees" ({maker, taker}), "account.<id>.perUnit" and "account.<id>.minimum" (the account id letters and digits only). Tick sizes, lot steps and Kalshi's per-series fee multiplier are read live from the venues: do not store them. Then store the file with \`ultrastock facts set venues --file <this file>\`.`
 });
+var accountKey = (account) => `account.${account.replace(/[^A-Za-z0-9]/g, "")}`;
 function venueCountry() {
   return loadProfile()?.jurisdiction;
 }
@@ -43748,10 +43749,27 @@ function stressCosts(c, factor = 2) {
 
 // src/backtest/run.ts
 var MAX_PORTFOLIO_SYMBOLS = 12;
-function defaultCosts(crypto, perp) {
-  if (crypto && perp) return { makerPct: 0.02, takerPct: 0.05, slippagePct: 0.05 };
-  if (crypto) return { makerPct: 0.1, takerPct: 0.1, slippagePct: 0.05 };
-  return { makerPct: 0.1, takerPct: 0.1, slippagePct: 0.05 };
+var ASSUMED_SLIPPAGE_PCT = 0.05;
+function backtestCosts(crypto, perp, given = {}, now) {
+  const flags = "--fee <percent per side> (or --maker and --taker)";
+  let maker = given.makerPct;
+  let taker = given.takerPct;
+  let feeNote;
+  if (maker !== void 0 && taker !== void 0) feeNote = `fees as given: maker ${maker} %, taker ${taker} % per side`;
+  else {
+    if (!crypto) throw new UsageError(`a backtest of a listed security needs its trading costs: ${flags} \u2014 ultrastock holds no broker's fee schedule`);
+    const key = perp ? "binance.usdm.fees" : "binance.spot.fees";
+    const f3 = venueFact(key, { now });
+    if ("missing" in f3) throw new UsageError(`the backtest's fees are unknown: ${f3.missing} \u2014 or give them: ${flags}`);
+    const pct14 = (x) => Number((x * 100).toFixed(10));
+    const partly = maker !== void 0 || taker !== void 0;
+    maker ??= pct14(f3.value.maker);
+    taker ??= pct14(f3.value.taker);
+    feeNote = `fees: maker ${maker} %, taker ${taker} % per side \u2014 ${partly ? "partly as given, the rest from " : ""}${f3.basis}`;
+  }
+  const slippagePct = given.slippagePct ?? ASSUMED_SLIPPAGE_PCT;
+  const slipNote = given.slippagePct !== void 0 ? `slippage ${slippagePct} % per side as given` : `slippage ${slippagePct} % per side on market orders is an ASSUMPTION (a convention, not measured): --slippage sets it`;
+  return { costs: { makerPct: maker, takerPct: taker, slippagePct }, notes: [feeNote, slipNote] };
 }
 async function loadMarket(symbol, opts, def2) {
   const { resolved, series } = await loadBars(symbol, { from: opts.from, to: opts.to, interval: opts.interval });
@@ -43765,7 +43783,8 @@ async function loadMarket(symbol, opts, def2) {
     leverage = 1;
   }
   const perp = crypto && (leverage > 1 || !!opts.perp || !!def2?.short);
-  const costs = { ...defaultCosts(crypto, perp), ...opts.costs ?? {} };
+  const { costs, notes: costNotes } = backtestCosts(crypto, perp, opts.costs);
+  notes.push(...costNotes);
   let funding;
   if (perp) {
     try {
@@ -44259,7 +44278,8 @@ async function portfolioRun(kind, symbols, opts) {
   if (dates.length < 60) throw new Error(`only ${dates.length} dates common to every symbol \u2014 an allocation backtest needs at least 60`);
   const crypto = ok.every((s2) => s2.instrument.market === "crypto");
   const ppy = crypto ? 365 : 252;
-  const costs = { ...defaultCosts(crypto, false), ...opts.costs ?? {} };
+  const { costs, notes: costNotes } = backtestCosts(crypto, false, opts.costs);
+  notes.push(...costNotes);
   const common = { rebalance: opts.rebalance, capital: opts.capital, lookbackMonths: opts.lookbackMonths, cashRatePct: opts.cashRatePct };
   const result = allocationBacktest(kind, bars, dates, { ...common, costs });
   const stressed = allocationBacktest(kind, bars, dates, { ...common, costs: stressCosts(costs, 2) });
@@ -47460,17 +47480,81 @@ function verifyLocked(f3, binding, code, now) {
 
 // src/trading/paper.ts
 import { join as join48 } from "path";
-var FEE_MODELS = {
-  euronext: { pct: 1e-3, min: 2 },
-  europe: { pct: 1e-3, min: 3 },
-  us: { pct: 0, perUnit: 5e-3, min: 1 },
-  crypto: { pct: 1e-3, min: 0 }
-};
-function feeFor(market, quantity, price) {
-  const m = FEE_MODELS[market] ?? FEE_MODELS.europe;
+
+// src/trading/fees.ts
+function feeFor(m, quantity, price) {
   return Math.max(m.min, m.pct * quantity * price + (m.perUnit ?? 0) * quantity);
 }
-var SLIPPAGE_BP = { euronext: 5, europe: 5, us: 3, crypto: 5 };
+var MIN_OWN_FILLS = 3;
+var OWN_FILLS_WINDOW = 50;
+var ASSUMED_SLIPPAGE_BP = { euronext: 5, europe: 5, us: 3, crypto: 5 };
+var slippageBp = (market) => ASSUMED_SLIPPAGE_BP[market] ?? 5;
+function ownFeeRate(account, currency, txs) {
+  const fills = txs.filter(
+    (t) => (t.type === "buy" || t.type === "sell") && t.account === account && t.currency === currency && t.fee !== void 0 && t.fee >= 0 && (t.quantity ?? 0) > 0 && (t.price ?? 0) > 0
+  ).sort((a, b) => a.date.localeCompare(b.date)).slice(-OWN_FILLS_WINDOW);
+  if (fills.length < MIN_OWN_FILLS) return void 0;
+  const fees = fills.reduce((s, t) => s + t.fee, 0);
+  const notional = fills.reduce((s, t) => s + t.quantity * t.price, 0);
+  const pct14 = fees / notional;
+  return {
+    model: { pct: pct14, min: 0 },
+    source: "ledger",
+    basis: `your own fees on ${account}: ${(pct14 * 100).toFixed(4)} % of the notional over your last ${fills.length} ${currency} fill(s) there (minimums and per-unit charges averaged in)`
+  };
+}
+var CRYPTO_VENUES = { binance: "binance.spot", kraken: "kraken.spot", coinbase: "coinbase.spot" };
+function scheduleKeys(account, market) {
+  const a = account.toLowerCase();
+  const out = [];
+  if (CRYPTO_VENUES[a]) out.push({ prefix: CRYPTO_VENUES[a], full: false });
+  else if (a === "ibkr") out.push({ prefix: "ibkr", full: true });
+  else out.push({ prefix: accountKey(account), full: true });
+  if (market === "crypto" && !CRYPTO_VENUES[a]) out.push({ prefix: "binance.spot", full: false });
+  return out;
+}
+function researchedFee(account, market, side2, opts = {}) {
+  const tried = [];
+  for (const { prefix, full } of scheduleKeys(account, market)) {
+    const fees = venueFact(`${prefix}.fees`, opts);
+    const keys = full ? [`${prefix}.fees`, `${prefix}.perUnit`, `${prefix}.minimum`] : [`${prefix}.fees`];
+    tried.push(...keys);
+    if ("missing" in fees) continue;
+    let perUnit;
+    let minimum;
+    if (full) {
+      const u = venueFact(`${prefix}.perUnit`, opts);
+      const m = venueFact(`${prefix}.minimum`, opts);
+      if ("missing" in u || "missing" in m) continue;
+      perUnit = u;
+      minimum = m;
+    }
+    const pct14 = fees.value[side2];
+    return {
+      model: { pct: pct14, ...perUnit ? { perUnit: perUnit.value } : {}, min: minimum?.value ?? 0 },
+      source: "researched",
+      basis: `${prefix} ${side2} ${(pct14 * 100).toFixed(4)} %${perUnit ? ` + ${perUnit.value} per unit, minimum ${minimum.value}` : ""} \u2014 ${fees.basis}`
+    };
+  }
+  return { missing: missingVenueFact(venueCountry(), [...new Set(tried)]) };
+}
+function feeLookup(o, market, side2, opts = {}) {
+  const own = ownFeeRate(o.account, o.currency, opts.ledger ?? readLedger("real"));
+  if (own) return own;
+  const r3 = researchedFee(o.account, market, side2, opts);
+  if ("missing" in r3)
+    return {
+      missing: `${r3.missing}; or import the ${o.account} account's statements (\`ultrastock portfolio import <file> --format <f> --account ${o.account}\`) so your own fees there can be read (${MIN_OWN_FILLS} fills with a fee at least)`
+    };
+  return r3;
+}
+
+// src/trading/paper.ts
+function paperFee(order, market, side2, now) {
+  const f3 = feeLookup(order, market, side2, { now });
+  if ("missing" in f3) throw new Error(`no paper fill: ${f3.missing}`);
+  return f3;
+}
 function walkBook(levels, quantity) {
   let left = quantity;
   let cost = 0;
@@ -47488,6 +47572,7 @@ async function simulateFill(order, now) {
   if (order.assetKind === "prediction") return simulatePredictionFill(order, now);
   const resolved = await resolveSymbol(order.symbol);
   const market = resolved.instrument.market;
+  const fee = paperFee(order, market, "taker", now);
   if (market === "crypto") {
     const res = await fetchJson(
       `https://api.binance.com/api/v3/depth?symbol=${resolved.instrument.venueId}&limit=100`
@@ -47506,15 +47591,15 @@ async function simulateFill(order, now) {
           at: now.toISOString(),
           quantity: order.quantity,
           price: w.price,
-          fee: feeFor("crypto", order.quantity, w.price),
+          fee: feeFor(fee.model, order.quantity, w.price),
           venue: "paper",
-          method: `Binance order-book walk (${w.levels} level(s))`
+          method: `Binance order-book walk (${w.levels} level(s)); fee: ${fee.basis}`
         }
       };
     }
   }
   const q = await getQuote(resolved, now);
-  const slip = (SLIPPAGE_BP[market] ?? 5) / 1e4;
+  const slip = slippageBp(market) / 1e4;
   const px = order.side === "buy" ? q.price * (1 + slip) : q.price * (1 - slip);
   if (order.orderType === "limit" && (order.side === "buy" ? order.price < q.price : order.price > q.price))
     return { kind: "working", reason: `the limit ${order.price} has not been reached (last ${q.price})` };
@@ -47526,9 +47611,9 @@ async function simulateFill(order, now) {
       at: now.toISOString(),
       quantity: order.quantity,
       price,
-      fee: feeFor(market, order.quantity, price),
+      fee: feeFor(fee.model, order.quantity, price),
       venue: "paper",
-      method: `last price ${q.price} \xB1 ${SLIPPAGE_BP[market] ?? 5} bp`
+      method: `last price ${q.price} \xB1 ${slippageBp(market)} bp slippage (an assumption, not measured); fee: ${fee.basis}`
     },
     note: eod ? `filled at the last official close ${q.at}: end-of-day data, the real fill would be at the next session's price` : void 0
   };
@@ -47613,13 +47698,18 @@ async function paperSweep(now = /* @__PURE__ */ new Date()) {
     const gapped = t.order.side === "buy" ? bar.open <= t.order.price : bar.open >= t.order.price;
     const price = gapped ? bar.open : t.order.price;
     const market = resolved.instrument.market;
+    const fee = feeLookup(t.order, market, gapped ? "taker" : "maker", { now });
+    if ("missing" in fee) {
+      out.push({ id: t.id, result: `not filled: ${fee.missing}` });
+      continue;
+    }
     const fill3 = asBooked({
       at: bar.date.length > 10 ? bar.date : `${bar.date}T00:00:00.000Z`,
       quantity: t.order.quantity,
       price,
-      fee: feeFor(market, t.order.quantity, price),
+      fee: feeFor(fee.model, t.order.quantity, price),
       venue: "paper",
-      method: gapped ? `opened through the limit on ${bar.date}: filled at the open` : `traded through the limit on ${bar.date}`
+      method: `${gapped ? `opened through the limit on ${bar.date}: filled at the open` : `traded through the limit on ${bar.date}`}; fee: ${fee.basis}`
     });
     const booked = await paperLock(
       () => transition(
@@ -47688,7 +47778,7 @@ function readiness(trades2, equity, firstTrade, now = /* @__PURE__ */ new Date()
 
 // src/trading/live.ts
 var VENUES2 = ["binance", "kraken", "coinbase", "ibkr", "kalshi"];
-var CRYPTO_VENUES = ["binance", "kraken", "coinbase"];
+var CRYPTO_VENUES2 = ["binance", "kraken", "coinbase"];
 var PRICE_BAND_PCT = 1;
 function venueSymbol(venue, symbol, currency, conid) {
   if (conid) {
@@ -47780,7 +47870,7 @@ async function preconditions(p) {
   const { limits, tier } = effectiveLimits(fills, now);
   if (!limits.venues.includes(p.venue)) no("VENUE_OFF", `${p.venue} is not switched on for live orders (\`broker limits set --venues \u2026\`)`);
   if (o.venue !== p.venue) no("VENUE_MISMATCH", `the ticket was planned for ${o.venue}, not ${p.venue}`);
-  if (profile && p.env === "live" && CRYPTO_VENUES.includes(p.venue)) {
+  if (profile && p.env === "live" && CRYPTO_VENUES2.includes(p.venue)) {
     const g = await cryptoVenueGate(p.venue, profile.jurisdiction, { micaAuthorised: p.micaAuthorised });
     if (!g.ok) no("BLOCKED_JURISDICTION", g.reason);
   }
@@ -48215,7 +48305,7 @@ async function brokerCommand(args, asJson) {
       "",
       "Create the key with:",
       venue2 === "ibkr" ? "  no key: start IBKR's Client Portal Gateway, log in in your browser (paper account for --env test), and set ULTRASTOCK_IBKR_CA_FILE to the gateway's certificate PEM (and ULTRASTOCK_IBKR_CERT_SHA256 to pin its fingerprint)." : venue2 === "kalshi" ? `  a Kalshi API key (key id + RSA private key PEM)${env3 === "test" ? " from the demo exchange, demo.kalshi.co" : ""}; live orders also need your country to be "allowed" for Kalshi \u2014 France is not today.` : `  trading permission ONLY \u2014 no withdrawal, no transfer, no margin/futures; restrict it to your IP address if ${venue2} allows it.${env3 === "test" && venue2 === "binance" ? " Testnet keys come from https://testnet.binance.vision." : ""}`,
-      CRYPTO_VENUES.includes(venue2) ? "  Then check the platform is authorised for your country: `ultrastock jurisdiction verify --venues " + venue2 + "`." : ""
+      CRYPTO_VENUES2.includes(venue2) ? "  Then check the platform is authorised for your country: `ultrastock jurisdiction verify --venues " + venue2 + "`." : ""
     ].filter(Boolean);
     return printResult(asJson, { venue: venue2, env: env3, commands: setupCommands(venue2, env3) }, lines.join("\n"));
   }
@@ -48347,7 +48437,7 @@ async function brokerCommand(args, asJson) {
     for (const v of venues) {
       const c = readCredentials(v, env3);
       const row = { venue: v, env: env3, key: c ? c.source : "none", on: lim.limits.venues.includes(v) };
-      if (CRYPTO_VENUES.includes(v) && profile)
+      if (CRYPTO_VENUES2.includes(v) && profile)
         row.authorisation = await cryptoVenueGate(v, profile.jurisdiction).then((g) => `${g.ok ? "live orders allowed" : "NO live orders"}: ${g.reason}`).catch((e) => `NO live orders: the check failed (${e.message})`);
       if (c)
         try {
@@ -49212,7 +49302,9 @@ function orderFor(a) {
   if (!(units > 0)) return void 0;
   if (!crypto && raw - units > 1e-9) reasons.push(`${raw.toFixed(3)} units rounded down to whole shares`);
   const notional = units * a.price;
-  const fee = feeFor(a.market, units, a.price);
+  const known = !("missing" in a.fee);
+  const fee = "missing" in a.fee ? void 0 : feeFor(a.fee.model, units, a.price);
+  if (!known) reasons.push("fee unknown: not counted");
   return {
     symbol: a.symbol,
     side: side2,
@@ -49220,10 +49312,10 @@ function orderFor(a) {
     price: a.price,
     currency: a.currency,
     notional,
-    fee,
+    ...fee !== void 0 ? { fee, feeBase: fee * a.rate } : {},
+    feeBasis: "missing" in a.fee ? a.fee.missing : a.fee.basis,
     notionalBase: notional * a.rate,
-    feeBase: fee * a.rate,
-    ...side2 === "sell" && a.averageCost !== void 0 ? { realisedPmp: units * a.price - fee - units * a.averageCost } : {},
+    ...side2 === "sell" && a.averageCost !== void 0 ? { realisedPmp: units * a.price - (fee ?? 0) - units * a.averageCost } : {},
     reasons
   };
 }
@@ -49342,7 +49434,8 @@ async function rebalanceAnalysis(m, f3, o) {
       currency: h.currency,
       market: h.instrument?.market ?? "europe",
       held: main2?.quantity ?? 0,
-      averageCost: main2?.averageCost
+      averageCost: main2?.averageCost,
+      fee: feeLookup({ account: main2?.account ?? "?", currency: h.currency }, h.instrument?.market ?? "europe", "taker")
     });
     if (!order) {
       f3.note(`${t.asset}: ${money3(t.amount)} ${m.base} is less than one share \u2014 no order`);
@@ -49369,15 +49462,17 @@ async function rebalanceAnalysis(m, f3, o) {
       [`${P}.${h.symbol}.units`, ...from],
       "units \xD7 price \xD7 rate"
     );
-    f3.derive(
-      sec,
-      `${P}.${h.symbol}.fee`,
-      `${h.symbol} estimated fee (${m.base})`,
-      money3(order.feeBase),
-      m.base,
-      [`${P}.${h.symbol}.units`, ...from],
-      `paper fee model for the ${h.instrument?.market ?? "?"} market (src/trading/paper.ts feeFor) \xD7 rate`
-    );
+    if (order.feeBase !== void 0)
+      f3.derive(
+        sec,
+        `${P}.${h.symbol}.fee`,
+        `${h.symbol} estimated fee (${m.base})`,
+        money3(order.feeBase),
+        m.base,
+        [`${P}.${h.symbol}.units`, ...from],
+        `${order.feeBasis} \xD7 rate`
+      );
+    else f3.note(`${h.symbol}: the fee is unknown and not counted \u2014 ${order.feeBasis}`);
     const env2 = main2?.envelope ?? "unknown";
     let tax;
     if (order.side === "sell") {
@@ -49390,7 +49485,7 @@ async function rebalanceAnalysis(m, f3, o) {
           money3(order.realisedPmp),
           h.currency,
           [`${P}.${h.symbol}.units`, h.keys.price, `PORTFOLIO.${m.bookName}.${h.symbol}.averageCost`],
-          "units \xD7 price \u2212 fee \u2212 units \xD7 PMP"
+          order.fee !== void 0 ? "units \xD7 price \u2212 fee \u2212 units \xD7 PMP" : "units \xD7 price \u2212 units \xD7 PMP (the fee is unknown: not deducted)"
         );
       f3.derive(
         sec,

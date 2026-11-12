@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { loadStrategy } from "../src/backtest/catalog.js";
 import { deflatedSharpeOf, periodSharpe } from "../src/backtest/metrics.js";
-import { defaultCosts, type Market, sweepReport } from "../src/backtest/run.js";
+import { type Market, sweepReport } from "../src/backtest/run.js";
 import { parseGrid } from "../src/backtest/validation.js";
 import type { Instrument } from "../src/providers/types.js";
 import { prng, randomWalk } from "./helpers/series.js";
@@ -33,7 +33,7 @@ describe("deflated Sharpe with trials declared beforehand", () => {
       crypto: false,
       ppy: 252,
       capital: 10_000,
-      costs: defaultCosts(false, false),
+      costs: { makerPct: 0.1, takerPct: 0.1, slippagePct: 0.05 },
       leverage: 1,
       perp: false,
       notes: [],
