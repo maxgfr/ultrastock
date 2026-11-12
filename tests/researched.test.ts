@@ -7,9 +7,12 @@ import {
   type FactSpec,
   factsChecklist,
   factsPath,
+  factQuery,
   factsTemplate,
+  loadLatestFacts,
   loadFacts,
   saveFacts,
+  specsFor,
   storedPeriods,
   validateFacts,
 } from "../src/core/researched.js";
@@ -145,5 +148,63 @@ describe("researched facts", () => {
       ["fee.rate", "missing"],
       ["closures", "missing"],
     ]);
+  });
+});
+
+// A `date` domain with an enumerated text key and per-venue keys, as the jurisdiction domain uses them.
+const DATED = defineDomain<FactSpec>({
+  name: "dated",
+  period: "date",
+  keysFor: () => [
+    {
+      key: "access",
+      label: "access",
+      type: "text",
+      unit: "status",
+      values: ["allowed", "blocked"],
+      query: "{country} access",
+      prefer: "the regulator",
+      maxAgeDays: 90,
+    },
+    { key: "other", label: "other", type: "text", unit: "text", query: "{country} other", prefer: "the regulator" },
+  ],
+  strict: () => true,
+  extraKey: (k) => (/^venue\.[a-z]+$/.test(k) ? { key: k, label: k, type: "boolean", unit: "", query: `${k} {country}`, prefer: "the register" } : undefined),
+  templateCommand: (c) => `dated template ${c}`,
+  setCommand: "dated set",
+  about: (c, p) => `research ${c} ${p}`,
+});
+const dated = (date: string, facts: Record<string, unknown>) => ({ country: "XX", date, researchedAt: date, facts });
+const ago = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+
+describe("researched facts — enumerated values, extra keys, the newest fact per key", () => {
+  it("accepts only an enumerated value, and a key the domain's extraKey accepts with its own type", () => {
+    expect(() => validateFacts(DATED, dated(ago(1), { access: fact("maybe", { verifiedAt: ago(1) }) }))).toThrow(/one of "allowed", "blocked"/);
+    expect(() => validateFacts(DATED, dated(ago(1), { "venue.x": fact("yes", { verifiedAt: ago(1) }) }))).toThrow(/true or false/);
+    expect(validateFacts(DATED, dated(ago(1), { "venue.x": fact(true, { verifiedAt: ago(1) }) })).current["venue.x"]?.value).toBe(true);
+    expect(() => validateFacts(DATED, dated(ago(1), { unknown: fact("x", { verifiedAt: ago(1) }) }))).toThrow(/not a XX dated key/);
+  });
+  it("prints a template for the keys asked only, with their values, and refuses a key it does not hold", () => {
+    const t = factsTemplate(DATED, "XX", "2026-01-01", { keys: ["access", "venue.y"] }) as { facts: Record<string, Record<string, unknown>> };
+    expect(Object.keys(t.facts)).toEqual(["access", "venue.y"]);
+    expect(t.facts.access!.values).toEqual(["allowed", "blocked"]);
+    expect(specsFor(DATED, "XX", ["access"]).map((s) => s.key)).toEqual(["access"]);
+    expect(() => specsFor(DATED, "XX", ["nope"])).toThrow(/not a XX dated key: nope — the keys are access, other/);
+    expect(factQuery(KEYS[0]!, "FR", 2025)).toBe("FR venue taker fee 2025");
+  });
+  it("reads each key's newest fact across the stored dates, each with its own age check", () => {
+    expect(loadLatestFacts(DATED, "XX")).toMatchObject({ facts: {}, missing: ["access", "other"], paths: [] });
+    saveFacts(DATED, dated(ago(100), { access: fact("allowed", { verifiedAt: ago(100) }), other: fact("old", { verifiedAt: ago(100) }) }));
+    let l = loadLatestFacts(DATED, "XX");
+    expect(l.stale).toEqual([{ key: "access", reason: expect.stringMatching(/older than 90 days/) }]);
+    expect(l.current.other?.value).toBe("old");
+    saveFacts(DATED, dated(ago(2), { access: fact("blocked", { verifiedAt: ago(2), evidence: ["E1 https://x.invalid"] }) }));
+    l = loadLatestFacts(DATED, "XX");
+    expect(l.current.access).toMatchObject({ value: "blocked", period: ago(2) });
+    expect(l.current.other).toMatchObject({ value: "old", period: ago(100) });
+    expect(l.stale).toEqual([]);
+    expect(l.paths).toHaveLength(2);
+    // The template's helper fields (evidence) are accepted and not stored.
+    expect(JSON.parse(readFileSync(l.current.access!.path, "utf8")).facts.access.evidence).toBeUndefined();
   });
 });

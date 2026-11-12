@@ -45608,7 +45608,7 @@ var isPlainObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 var FREE_KEY = /^[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)*$/;
 var DAY_MS3 = 864e5;
 var today = () => clockNow().toISOString().slice(0, 10);
-var TEMPLATE_FACT_FIELDS = /* @__PURE__ */ new Set(["type", "unit", "fields", "query", "prefer", "maxAgeDays", "usedBy"]);
+var TEMPLATE_FACT_FIELDS = /* @__PURE__ */ new Set(["type", "unit", "fields", "values", "query", "prefer", "maxAgeDays", "usedBy", "evidence"]);
 var FACT_FIELDS = /* @__PURE__ */ new Set(["value", "label", "sources", "verifiedAt", "confidence", "expiresAt", "note"]);
 var TEMPLATE_TOP_FIELDS = /* @__PURE__ */ new Set(["_about", "formLines"]);
 function typeProblem(spec, v) {
@@ -45622,7 +45622,8 @@ function typeProblem(spec, v) {
     case "date":
       return isIsoDate(v) ? void 0 : "a date is written YYYY-MM-DD";
     case "text":
-      return typeof v === "string" && v.trim() ? void 0 : "a text value is a non-empty string";
+      if (!(typeof v === "string" && v.trim())) return "a text value is a non-empty string";
+      return !spec.values || spec.values.includes(v) ? void 0 : `one of ${spec.values.map((x) => `"${x}"`).join(", ")}`;
     case "boolean":
       return typeof v === "boolean" ? void 0 : "the value is true or false";
     case "rates":
@@ -45674,7 +45675,7 @@ function validateFacts(d, raw, expect = {}) {
   if (!isPlainObject(raw.facts) || !Object.keys(raw.facts).length) problems.push('"facts" is an object of researched facts, by key');
   else
     for (const [key, f3] of Object.entries(raw.facts)) {
-      const spec = specs.get(key);
+      const spec = specs.get(key) ?? (country2 ? d.extraKey?.(key, country2) : void 0);
       const at = `facts["${key}"]`;
       if (!spec && strict) {
         problems.push(`${at}: not a ${country2} ${d.name} key (\`${d.templateCommand(country2, periodOk ? period2 : "\u2026")}\` lists them)`);
@@ -45780,8 +45781,23 @@ function factValue(d, f3, key) {
 }
 var fill2 = (s, country2, period2) => s.replaceAll("{period}", String(period2)).replaceAll("{country}", country2);
 var queryOf = (s, country2, period2) => fill2(s.query || `{country} {period} ${s.label}`, country2, period2);
-function factsTemplate(d, country2, period2) {
+function specsFor(d, country2, keys) {
   const c = countryCode(country2);
+  const all = d.keysFor(c);
+  if (!keys?.length) return [...all];
+  const bad = [];
+  const out = [];
+  for (const k of keys) {
+    const s = all.find((x) => x.key === k) ?? d.extraKey?.(k, c);
+    if (s) out.push(s);
+    else bad.push(k);
+  }
+  if (bad.length) throw new UsageError(`not a ${c} ${d.name} key: ${bad.join(", ")} \u2014 the keys are ${all.map((s) => s.key).join(", ")}`);
+  return out;
+}
+function factsTemplate(d, country2, period2, opts = {}) {
+  const c = countryCode(country2);
+  const specs = specsFor(d, c, opts.keys);
   return {
     _about: d.about(c, period2),
     country: c,
@@ -45789,7 +45805,7 @@ function factsTemplate(d, country2, period2) {
     ...Object.fromEntries(Object.entries(d.meta ?? {}).map(([k, m]) => [k, m.template(c)])),
     researchedAt: null,
     facts: Object.fromEntries(
-      d.keysFor(c).map((s) => {
+      specs.map((s) => {
         const { key: _key, query: _query, note, ...rest } = s;
         return [
           s.key,
@@ -45797,6 +45813,7 @@ function factsTemplate(d, country2, period2) {
             value: null,
             ...rest,
             ...rest.fields ? { fields: [...rest.fields] } : {},
+            ...rest.values ? { values: [...rest.values] } : {},
             query: queryOf(s, c, period2),
             prefer: rest.prefer || "the official source of the country",
             sources: [],
@@ -45816,7 +45833,7 @@ function factsChecklist(d, country2, period2) {
   const v = existsSync31(path2) ? loadFacts(d, c, period2) : void 0;
   const keys = [...d.keysFor(c)];
   for (const [k, f3] of Object.entries(v?.file.facts ?? {}))
-    if (!keys.some((s) => s.key === k)) keys.push({ key: k, label: f3.label, type: "any", unit: "", query: "", prefer: "" });
+    if (!keys.some((s) => s.key === k)) keys.push(d.extraKey?.(k, c) ?? { key: k, label: f3.label, type: "any", unit: "", query: "", prefer: "" });
   const stale = new Map((v?.stale ?? []).map((s) => [s.key, s.reason]));
   const items = keys.map((s) => {
     const f3 = v?.file.facts[s.key];

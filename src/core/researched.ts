@@ -16,7 +16,8 @@
 //   agent to fill.
 //
 // API: defineDomain, factsPath, validateFacts, loadFacts, saveFacts,
-// factsTemplate, factsChecklist, storedPeriods, factValue.
+// factsTemplate, factsChecklist, storedPeriods, factValue, specsFor,
+// factQuery, loadLatestFacts (a `date` domain's newest fact per key).
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ensureDir, UsageError, writeFileAtomic } from "../engine.js";
@@ -34,6 +35,8 @@ export interface FactSpec {
   unit: string;
   /** For `rates` / `amounts`: the fields the object holds, all of them and only them. */
   fields?: readonly string[];
+  /** For `text`: the only values accepted (a status such as allowed | restricted | blocked | unknown). */
+  values?: readonly string[];
   /** A web search to start from; `{period}` and `{country}` are filled in. */
   query: string;
   /** The kind of official source to prefer. */
@@ -74,6 +77,11 @@ export interface DomainDef<S extends FactSpec = FactSpec> {
   keysFor(country: string): readonly S[];
   /** Whether a key outside `keysFor` is refused (an engine reads a fixed list), or kept (free research). */
   strict(country: string): boolean;
+  /**
+   * A key outside `keysFor` the domain accepts with its own spec (a per-venue key such as `cryptoVenue.kraken`), even
+   * when it is strict; undefined when the key is not one of them.
+   */
+  extraKey?(key: string, country: string): S | undefined;
   /** Extra top-level fields the file must hold, each with its check (a problem, or undefined) and its template value. */
   meta?: Record<string, { check(value: unknown, country: string): string | undefined; template(country: string): unknown }>;
   /** The command that prints the template, and the one that stores a file (named in errors). */
@@ -117,12 +125,12 @@ const DAY_MS = 86_400_000;
 const today = () => clockNow().toISOString().slice(0, 10);
 
 /** Fields a template carries for the agent: accepted in a file and dropped when it is stored. */
-const TEMPLATE_FACT_FIELDS = new Set(["type", "unit", "fields", "query", "prefer", "maxAgeDays", "usedBy"]);
+const TEMPLATE_FACT_FIELDS = new Set(["type", "unit", "fields", "values", "query", "prefer", "maxAgeDays", "usedBy", "evidence"]);
 const FACT_FIELDS = new Set(["value", "label", "sources", "verifiedAt", "confidence", "expiresAt", "note"]);
 const TEMPLATE_TOP_FIELDS = new Set(["_about", "formLines"]);
 
 /** Whether `v` is a value of `spec`'s type: a problem in words, or undefined. */
-export function typeProblem(spec: Pick<FactSpec, "type" | "fields">, v: unknown): string | undefined {
+export function typeProblem(spec: Pick<FactSpec, "type" | "fields" | "values">, v: unknown): string | undefined {
   const num = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
   switch (spec.type) {
     case "rate":
@@ -133,7 +141,8 @@ export function typeProblem(spec: Pick<FactSpec, "type" | "fields">, v: unknown)
     case "date":
       return isIsoDate(v) ? undefined : "a date is written YYYY-MM-DD";
     case "text":
-      return typeof v === "string" && v.trim() ? undefined : "a text value is a non-empty string";
+      if (!(typeof v === "string" && v.trim())) return "a text value is a non-empty string";
+      return !spec.values || spec.values.includes(v) ? undefined : `one of ${spec.values.map((x) => `"${x}"`).join(", ")}`;
     case "boolean":
       return typeof v === "boolean" ? undefined : "the value is true or false";
     case "rates":
@@ -202,7 +211,7 @@ export function validateFacts(d: Domain, raw: unknown, expect: { country?: strin
   if (!isPlainObject(raw.facts) || !Object.keys(raw.facts).length) problems.push('"facts" is an object of researched facts, by key');
   else
     for (const [key, f] of Object.entries(raw.facts)) {
-      const spec = specs.get(key);
+      const spec = specs.get(key) ?? (country ? d.extraKey?.(key, country) : undefined);
       const at = `facts["${key}"]`;
       if (!spec && strict) {
         problems.push(`${at}: not a ${country} ${d.name} key (\`${d.templateCommand(country, periodOk ? (period as number | string) : "…")}\` lists them)`);
@@ -330,10 +339,32 @@ export function factValue<T>(d: Domain, f: FactFile, key: string): T {
 
 const fill = (s: string, country: string, period: number | string) => s.replaceAll("{period}", String(period)).replaceAll("{country}", country);
 const queryOf = (s: FactSpec, country: string, period: number | string) => fill(s.query || `{country} {period} ${s.label}`, country, period);
+/** A key's search query for a country and a period, `{country}` and `{period}` filled in. */
+export const factQuery = queryOf;
 
-/** The JSON skeleton to research and fill: every registered key with `value: null`, what it is, a search query, the source to prefer. */
-export function factsTemplate(d: Domain, country: string, period: number | string): Record<string, unknown> {
+/** The specs of `keys` for a country — registered, or accepted by the domain's `extraKey` — and a usage error naming the others. */
+export function specsFor(d: Domain, country: string, keys?: readonly string[]): FactSpec[] {
   const c = countryCode(country);
+  const all = d.keysFor(c);
+  if (!keys?.length) return [...all];
+  const bad: string[] = [];
+  const out: FactSpec[] = [];
+  for (const k of keys) {
+    const s = all.find((x) => x.key === k) ?? d.extraKey?.(k, c);
+    if (s) out.push(s);
+    else bad.push(k);
+  }
+  if (bad.length) throw new UsageError(`not a ${c} ${d.name} key: ${bad.join(", ")} — the keys are ${all.map((s) => s.key).join(", ")}`);
+  return out;
+}
+
+/**
+ * The JSON skeleton to research and fill: every registered key (or the `keys` asked) with `value: null`, what it is,
+ * a search query, the source to prefer.
+ */
+export function factsTemplate(d: Domain, country: string, period: number | string, opts: { keys?: readonly string[] } = {}): Record<string, unknown> {
+  const c = countryCode(country);
+  const specs = specsFor(d, c, opts.keys);
   return {
     _about: d.about(c, period),
     country: c,
@@ -341,7 +372,7 @@ export function factsTemplate(d: Domain, country: string, period: number | strin
     ...Object.fromEntries(Object.entries(d.meta ?? {}).map(([k, m]) => [k, m.template(c)])),
     researchedAt: null,
     facts: Object.fromEntries(
-      d.keysFor(c).map((s) => {
+      specs.map((s) => {
         const { key: _key, query: _query, note, ...rest } = s;
         return [
           s.key,
@@ -349,6 +380,7 @@ export function factsTemplate(d: Domain, country: string, period: number | strin
             value: null,
             ...rest,
             ...(rest.fields ? { fields: [...rest.fields] } : {}),
+            ...(rest.values ? { values: [...rest.values] } : {}),
             query: queryOf(s, c, period),
             prefer: rest.prefer || "the official source of the country",
             sources: [],
@@ -385,7 +417,7 @@ export function factsChecklist(d: Domain, country: string, period: number | stri
   const v = existsSync(path) ? loadFacts(d, c, period) : undefined;
   const keys: FactSpec[] = [...d.keysFor(c)];
   for (const [k, f] of Object.entries(v?.file.facts ?? {}))
-    if (!keys.some((s) => s.key === k)) keys.push({ key: k, label: f.label, type: "any", unit: "", query: "", prefer: "" });
+    if (!keys.some((s) => s.key === k)) keys.push(d.extraKey?.(k, c) ?? { key: k, label: f.label, type: "any", unit: "", query: "", prefer: "" });
   const stale = new Map((v?.stale ?? []).map((s) => [s.key, s.reason]));
   const items = keys.map((s): ChecklistItem => {
     const f = v?.file.facts[s.key];
@@ -401,4 +433,51 @@ export function factsChecklist(d: Domain, country: string, period: number | stri
     };
   });
   return { path, stored: !!v, items };
+}
+
+export interface LatestFacts {
+  country: string;
+  /** Every key's newest stored fact, across the stored files (stale ones included: their sources say where to re-check). */
+  facts: Record<string, Fact & { period: number | string; path: string }>;
+  /** The facts that read as current. */
+  current: Record<string, Fact & { period: number | string; path: string }>;
+  /** Registered keys with no current fact. */
+  missing: string[];
+  stale: Array<{ key: string; reason: string }>;
+  /** The files read, oldest first. */
+  paths: string[];
+}
+
+/**
+ * A country's newest fact for each key across every stored file of a `date` domain: research a single key on a new day
+ * and the other keys keep their earlier file's fact (each with its own age check). Every file is validated: an invalid
+ * one is a usage error naming it.
+ */
+export function loadLatestFacts(d: Domain, country: string): LatestFacts {
+  const c = countryCode(country);
+  const facts: LatestFacts["facts"] = {};
+  const staleReason = new Map<string, string>();
+  const paths: string[] = [];
+  for (const period of storedPeriods(d, c)) {
+    const v = loadFacts(d, c, period);
+    paths.push(v.path);
+    const stale = new Map(v.stale.map((x) => [x.key, x.reason]));
+    for (const [k, f] of Object.entries(v.file.facts)) {
+      facts[k] = { ...f, period, path: v.path };
+      if (stale.has(k)) staleReason.set(k, stale.get(k)!);
+      else staleReason.delete(k);
+    }
+  }
+  const current = Object.fromEntries(Object.entries(facts).filter(([k]) => !staleReason.has(k)));
+  return {
+    country: c,
+    facts,
+    current,
+    missing: d
+      .keysFor(c)
+      .filter((x) => !(x.key in current))
+      .map((x) => x.key),
+    stale: [...staleReason].map(([key, reason]) => ({ key, reason })),
+    paths,
+  };
 }
