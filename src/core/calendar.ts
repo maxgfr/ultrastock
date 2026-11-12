@@ -15,7 +15,9 @@
 // - One-off closures (a national day of mourning, an outage): the researched
 //   list of the year; without it, only the past closures recorded below up to
 //   the date they were checked. A session count reaching past that date says
-//   the closures are unknown (`sessionCountCaveat`) — it never assumes none.
+//   the closures are unknown (`sessionCountCaveat`) — it never assumes none. A
+//   closure stored under another year (announced in December for January)
+//   still closes its own day, and its name says which year's file it belongs in.
 //
 // Only the venues below have a calendar. Any other listing (Xetra, London,
 // Tokyo, São Paulo…) gets none: its sessions are counted as weekdays and the
@@ -186,6 +188,17 @@ export function hoursNote(market: CalendarMarket, h: SessionHours, year = clockN
   return `${MARKETS[market].name} hours ${h.open}–${h.close} are ultrastock's built-in ones (as published on ${h.sources.join(", ")} on ${h.asOf}), not a current research — \`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``;
 }
 
+/**
+ * A closure stored in another year's file (one announced in late December for early January, written into the year at
+ * hand): it still closes its own day (`yearOf` reads the neighbouring years' files), and its name says where it belongs.
+ */
+const misfiled = (market: ExchangeMarket, year: number, date: string): string => {
+  const own = Number(date.slice(0, 4));
+  return own === year
+    ? ""
+    : `; dated ${own}, stored with the ${year} facts — it belongs in ${MARKET_COUNTRY[market]}-${own}.json: \`${researchCommand("calendar", MARKET_COUNTRY[market], { year: own })}\``;
+};
+
 /** A year's one-off closures: the researched list when there is one (known), else the past ones recorded here (known only up to CLOSURES_CHECKED_THROUGH). */
 export function specialClosures(market: CalendarMarket, year: number): { closures: Holiday[]; researched: boolean } {
   if (market === "CRYPTO") return { closures: [], researched: true };
@@ -193,7 +206,11 @@ export function specialClosures(market: CalendarMarket, year: number): { closure
   if (f) {
     const names = f.note ? ` — ${f.note}` : "";
     return {
-      closures: (f.value as string[]).map((date) => ({ date, name: `one-off closure (researched${names})`, kind: "closed" as const })),
+      closures: (f.value as string[]).map((date) => ({
+        date,
+        name: `one-off closure (researched${names}${misfiled(market, year, date)})`,
+        kind: "closed" as const,
+      })),
       researched: true,
     };
   }
@@ -378,13 +395,18 @@ export function calendarFor(i: Pick<Instrument, "market" | "mic">): CalendarMark
 const YEARS = new Map<string, { closed: ReadonlySet<string>; early: ReadonlyMap<string, Holiday> }>();
 
 function yearOf(market: CalendarMarket, year: number): { closed: ReadonlySet<string>; early: ReadonlyMap<string, Holiday> } {
-  const path = market === "CRYPTO" ? "" : factsPath(CALENDAR, MARKET_COUNTRY[market], year);
-  const key = `${market}:${year}:${path && existsSync(path) ? `${path}@${statSync(path).mtimeMs}` : "none"}`;
+  // The neighbouring years' files too: a closure stored under the wrong year still closes its own day.
+  const stamp = (y: number) => {
+    const path = market === "CRYPTO" ? "" : factsPath(CALENDAR, MARKET_COUNTRY[market], y);
+    return path && existsSync(path) ? `${path}@${statSync(path).mtimeMs}` : "none";
+  };
+  const key = `${market}:${year}:${[year - 1, year, year + 1].map(stamp).join("|")}`;
   let y = YEARS.get(key);
   if (!y) {
     const list = holidays(market, year);
+    const strays = [year - 1, year + 1].flatMap((n) => specialClosures(market, n).closures.filter((c) => c.date.startsWith(`${year}-`)));
     y = {
-      closed: new Set(list.filter((h) => h.kind === "closed").map((h) => h.date)),
+      closed: new Set([...list.filter((h) => h.kind === "closed"), ...strays].map((h) => h.date)),
       early: new Map(list.filter((h) => h.kind === "early-close").map((h) => [h.date, h])),
     };
     YEARS.set(key, y);

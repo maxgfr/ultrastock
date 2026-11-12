@@ -20323,13 +20323,21 @@ function hoursNote(market, h, year = clockNow().getUTCFullYear()) {
   if (market === "CRYPTO" || h.origin === "researched") return void 0;
   return `${MARKETS[market].name} hours ${h.open}\u2013${h.close} are ultrastock's built-in ones (as published on ${h.sources.join(", ")} on ${h.asOf}), not a current research \u2014 \`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``;
 }
+var misfiled = (market, year, date) => {
+  const own = Number(date.slice(0, 4));
+  return own === year ? "" : `; dated ${own}, stored with the ${year} facts \u2014 it belongs in ${MARKET_COUNTRY[market]}-${own}.json: \`${researchCommand("calendar", MARKET_COUNTRY[market], { year: own })}\``;
+};
 function specialClosures(market, year) {
   if (market === "CRYPTO") return { closures: [], researched: true };
   const f3 = calendarFacts(market, year)[`${market}.specialClosures`];
   if (f3) {
     const names2 = f3.note ? ` \u2014 ${f3.note}` : "";
     return {
-      closures: f3.value.map((date) => ({ date, name: `one-off closure (researched${names2})`, kind: "closed" })),
+      closures: f3.value.map((date) => ({
+        date,
+        name: `one-off closure (researched${names2}${misfiled(market, year, date)})`,
+        kind: "closed"
+      })),
       researched: true
     };
   }
@@ -20482,13 +20490,17 @@ function calendarFor(i) {
 }
 var YEARS = /* @__PURE__ */ new Map();
 function yearOf(market, year) {
-  const path2 = market === "CRYPTO" ? "" : factsPath(CALENDAR, MARKET_COUNTRY[market], year);
-  const key = `${market}:${year}:${path2 && existsSync16(path2) ? `${path2}@${statSync11(path2).mtimeMs}` : "none"}`;
+  const stamp2 = (y2) => {
+    const path2 = market === "CRYPTO" ? "" : factsPath(CALENDAR, MARKET_COUNTRY[market], y2);
+    return path2 && existsSync16(path2) ? `${path2}@${statSync11(path2).mtimeMs}` : "none";
+  };
+  const key = `${market}:${year}:${[year - 1, year, year + 1].map(stamp2).join("|")}`;
   let y = YEARS.get(key);
   if (!y) {
     const list = holidays(market, year);
+    const strays = [year - 1, year + 1].flatMap((n2) => specialClosures(market, n2).closures.filter((c) => c.date.startsWith(`${year}-`)));
     y = {
-      closed: new Set(list.filter((h) => h.kind === "closed").map((h) => h.date)),
+      closed: new Set([...list.filter((h) => h.kind === "closed"), ...strays].map((h) => h.date)),
       early: new Map(list.filter((h) => h.kind === "early-close").map((h) => [h.date, h]))
     };
     YEARS.set(key, y);
