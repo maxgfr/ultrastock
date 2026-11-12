@@ -58,6 +58,19 @@ describe("portfolio import", () => {
     expect(readLedger("paper").length).toBe(out.added.length);
     expect(existsSync(ledgerPath("real"))).toBe(false);
   });
+  it("a generic file with fee rows of both signs: refused without --fee-sign, read with it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ultrastock-import-src-"));
+    const file = join(dir, "fees.csv");
+    writeFileSync(file, "Date,Type,Amount,Ccy\n2026-02-01,Fee,-2.50,EUR\n2026-02-03,Fee,1.20,EUR\n");
+    const map = '{"date":"Date","type":"Type","amount":"Amount","currency":"Ccy"}';
+    await expect(run(file, { format: "generic", account: "cto", map }, ["dry-run"])).rejects.toThrow(/both signs.*--fee-sign/);
+    const out = JSON.parse(await run(file, { format: "generic", account: "cto", map, "fee-sign": "charge-negative" }, ["dry-run"], true));
+    expect(out.wouldAdd.map((t: Transaction) => t.amount)).toEqual([-2.5, 1.2]);
+    await expect(run(file, { format: "generic", account: "cto", map, "fee-sign": "minus" }, ["dry-run"])).rejects.toThrow(/fee-sign/);
+    await expect(run(fixture("coinbase.csv"), { format: "coinbase", account: "cb", "fee-sign": "charge-negative" })).rejects.toThrow(
+      /--fee-sign applies to --format generic/,
+    );
+  });
   it("refuses an import the book could not replay, and writes nothing", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ultrastock-import-src-"));
     const file = join(dir, "sell.csv");

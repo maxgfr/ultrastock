@@ -7,11 +7,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { argOneOf, argValue, type CommandArgs, jsonLine, UsageError } from "../engine.js";
-import { IMPORT_FORMATS, type ImportFormat, parseStatement, resolveMapOption } from "../portfolio/import/index.js";
+import { FEE_SIGNS, IMPORT_FORMATS, type ImportFormat, parseStatement, resolveMapOption } from "../portfolio/import/index.js";
 import { appendTransactions, buildBook, legacyIdsOf, legacyReadingsOf, readLedger, type Transaction, transactionId } from "../portfolio/ledger.js";
 
 const USAGE =
-  "usage: ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name>] [--dry-run]";
+  "usage: ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name>] [--fee-sign charge-positive|charge-negative] [--dry-run]";
 /** Lines of transactions / skipped rows printed before "… and N more". */
 const LIST_CAP = 60;
 
@@ -47,6 +47,8 @@ export async function importCommand(args: CommandArgs, asJson: boolean): Promise
   const book = argValue(args, "book") ?? "real";
   if (book !== "real" && book !== "paper") throw new UsageError("--book is real or paper");
   const dryRun = args.bools.has("dry-run");
+  const feeSign = argOneOf(args, "fee-sign", FEE_SIGNS);
+  if (feeSign && format !== "generic") throw new UsageError("--fee-sign applies to --format generic (the other formats know their own signs)");
   let mapRaw = argValue(args, "map");
   if (mapRaw !== undefined && !mapRaw.trim().startsWith("{") && /\.json$/i.test(mapRaw) && existsSync(resolve(mapRaw)))
     mapRaw = readFileSync(resolve(mapRaw), "utf8");
@@ -62,7 +64,7 @@ export async function importCommand(args: CommandArgs, asJson: boolean): Promise
   if (!existsSync(path)) throw new Error(`no such file: ${path}`);
 
   const { text, warning } = readStatement(path);
-  const res = parseStatement(format, text, { account, quote: mapOpt.quote, map: mapOpt.map, presetName: mapOpt.presetName });
+  const res = parseStatement(format, text, { account, quote: mapOpt.quote, map: mapOpt.map, presetName: mapOpt.presetName, feeSign });
   const warnings = [...(warning ? [warning] : []), ...res.warnings];
 
   // What is new: not in the book, and the first of identical rows in the file.

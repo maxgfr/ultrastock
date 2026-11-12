@@ -4,7 +4,7 @@
 // the ledger (which dedupes by content id) and checks the book still replays.
 import { parseBinance } from "./binance.js";
 import { parseCoinbase } from "./coinbase.js";
-import { type ColumnMap, checkColumnMap, GENERIC_PRESETS, parseGeneric } from "./generic.js";
+import { type ColumnMap, checkColumnMap, type FeeSign, GENERIC_PRESETS, parseGeneric } from "./generic.js";
 import { parseIbkr } from "./ibkr.js";
 import { parseKraken } from "./kraken.js";
 import { type ImportOptions, type ImportResult, keepDistinctFills } from "./shared.js";
@@ -17,6 +17,8 @@ export interface StatementOptions extends ImportOptions {
   map?: ColumnMap;
   /** generic only: the named map `map` came from, when it did. */
   presetName?: string;
+  /** generic only: which sign a fee or tax row charges with (required when the file holds both). */
+  feeSign?: FeeSign;
 }
 
 /** Parse a statement of `format`. Throws only for whole-file problems (a generic map that does not fit the header). */
@@ -70,7 +72,7 @@ export function resolveMapOption(format: ImportFormat, raw: string | undefined):
 }
 
 export { amountWithUnit } from "./binance.js";
-export { type ColumnMap, GENERIC_PRESETS, typeFromWord } from "./generic.js";
+export { type ColumnMap, FEE_SIGNS, type FeeSign, GENERIC_PRESETS, typeFromWord } from "./generic.js";
 export { ibkrSymbol, xmlElementAttrs } from "./ibkr.js";
 export { krakenAsset, krakenPair } from "./kraken.js";
 export type { ImportOptions, ImportResult, ImportTx } from "./shared.js";

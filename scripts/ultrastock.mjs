@@ -49828,6 +49828,7 @@ function parseCoinbase(text2, opts) {
 
 // src/portfolio/import/generic.ts
 var ORIGIN3 = "import:generic";
+var FEE_SIGNS = ["charge-positive", "charge-negative"];
 var COLUMN_KEYS = ["date", "type", "symbol", "isin", "quantity", "price", "amount", "fee", "currency", "note"];
 var OPTION_KEYS = ["defaultType", "defaultCurrency", "dateOrder", "decimal", "delimiter", "types"];
 var TX_TYPES = ["deposit", "withdrawal", "buy", "sell", "dividend", "interest", "fee", "tax", "split", "transfer-in", "transfer-out"];
@@ -49949,9 +49950,23 @@ function parseGeneric(text2, opts) {
     const w = col.type === void 0 ? void 0 : (r3.cells[col.type] ?? "").trim() || void 0;
     return w !== void 0 ? typeFromWord(w, map.types) : map.defaultType;
   };
-  const signedTypes = new Set(
-    col.amount === void 0 ? [] : rows.slice(h + 1).filter((r3) => (statementNumber(r3.cells[col.amount]?.trim(), decimal) ?? 0) < 0).map(typeOfRow).filter((t) => t === "fee" || t === "tax")
-  );
+  const signs = /* @__PURE__ */ new Map();
+  if (col.amount !== void 0)
+    for (const r3 of rows.slice(h + 1)) {
+      const t = typeOfRow(r3);
+      const v = statementNumber(r3.cells[col.amount]?.trim(), decimal);
+      if ((t === "fee" || t === "tax") && v) signs.set(t, (signs.get(t) ?? /* @__PURE__ */ new Set()).add(Math.sign(v)));
+    }
+  const mixed = [...signs].filter(([, s]) => s.size > 1).map(([t]) => t);
+  if (mixed.length && !opts.feeSign)
+    throw new UsageError(
+      `the file writes ${mixed.map((t) => `${t} rows`).join(" and ")} with both signs: whether a negative amount is a charge and a positive one a refund, or the reverse, is the file's convention, not something to guess \u2014 pass --fee-sign charge-negative (a negative amount is paid, a positive one refunded) or --fee-sign charge-positive (a positive amount is paid, a negative one refunded)`
+    );
+  const charge = (amount) => {
+    if (opts.feeSign === "charge-negative") return amount;
+    if (opts.feeSign === "charge-positive") return -amount;
+    return -Math.abs(amount);
+  };
   for (const r3 of rows.slice(h + 1)) {
     const cell3 = (k) => {
       const i = col[k];
@@ -49989,10 +50004,7 @@ function parseGeneric(text2, opts) {
     const cashType = type === "deposit" || type === "withdrawal" || type === "dividend" || type === "interest" || type === "fee" || type === "tax";
     if (cashType && amount === void 0 && quantity !== void 0 && price !== void 0) amount = round3(quantity * price);
     if (cashType && amount !== void 0)
-      amount = type === "deposit" || type === "dividend" || type === "interest" ? Math.abs(amount) : (
-        // Where this file signs its fees (or taxes), a positive one is a refund: it stays in.
-        signedTypes.has(type) ? amount : -Math.abs(amount)
-      );
+      amount = type === "deposit" || type === "dividend" || type === "interest" ? Math.abs(amount) : type === "fee" || type === "tax" ? charge(amount) : -Math.abs(amount);
     accept(
       res,
       r3.line,
@@ -50668,7 +50680,7 @@ function resolveMapOption(format, raw) {
 }
 
 // src/commands/import.ts
-var USAGE2 = "usage: ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name>] [--dry-run]";
+var USAGE2 = "usage: ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name>] [--fee-sign charge-positive|charge-negative] [--dry-run]";
 var LIST_CAP = 60;
 function readStatement(path2) {
   const buf = readFileSync42(path2);
@@ -50699,6 +50711,8 @@ async function importCommand(args, asJson) {
   const book2 = argValue(args, "book") ?? "real";
   if (book2 !== "real" && book2 !== "paper") throw new UsageError("--book is real or paper");
   const dryRun = args.bools.has("dry-run");
+  const feeSign = argOneOf(args, "fee-sign", FEE_SIGNS);
+  if (feeSign && format !== "generic") throw new UsageError("--fee-sign applies to --format generic (the other formats know their own signs)");
   let mapRaw = argValue(args, "map");
   if (mapRaw !== void 0 && !mapRaw.trim().startsWith("{") && /\.json$/i.test(mapRaw) && existsSync37(resolve13(mapRaw)))
     mapRaw = readFileSync42(resolve13(mapRaw), "utf8");
@@ -50713,7 +50727,7 @@ async function importCommand(args, asJson) {
   const path2 = resolve13(file);
   if (!existsSync37(path2)) throw new Error(`no such file: ${path2}`);
   const { text: text2, warning } = readStatement(path2);
-  const res = parseStatement(format, text2, { account, quote: mapOpt.quote, map: mapOpt.map, presetName: mapOpt.presetName });
+  const res = parseStatement(format, text2, { account, quote: mapOpt.quote, map: mapOpt.map, presetName: mapOpt.presetName, feeSign });
   const warnings = [...warning ? [warning] : [], ...res.warnings];
   const existing = readLedger(book2);
   const stored = new Set(existing.map((t) => t.id));
@@ -59910,7 +59924,7 @@ USAGE
   ultrastock portfolio risk|stress|optimize|location|lookthrough|income [--book real|paper] [--benchmark <sym>] [--universe a,b,c] [--max-weight <%>] [--out <dir>] [--json]
   ultrastock portfolio rebalance --targets <file.json|{"CW8.PA":60,"CASH":5}> [--band <pts>] [--rel-band <%>] [--contribution <amount>] [--book] [--out <dir>] [--json]
   ultrastock portfolio goals --target <amount> --years <n> [--monthly <amount>] [--book] [--out <dir>] [--json]
-  ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name|file.json>] [--dry-run] [--json]
+  ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name|file.json>] [--fee-sign charge-positive|charge-negative] [--dry-run] [--json]
   ultrastock portfolio deposit|withdraw <account> <amount> [--currency EUR] [--date <date>] [--book real|paper]
   ultrastock portfolio add buy|sell|dividend|fee|interest|tax|split --account <id> [--symbol] [--quantity] [--price] [--amount] [--fee] [--currency] [--date] [--book]
   ultrastock portfolio db init|status|export [--book]|off [--json]
@@ -60529,7 +60543,8 @@ var VALUE_FLAGS = [
   "max-funds",
   "top",
   "min-cap-eur",
-  "file"
+  "file",
+  "fee-sign"
 ];
 var BOOL_FLAGS = [
   "json",
@@ -60727,6 +60742,7 @@ var SPEC = {
       "date",
       "format",
       "map",
+      "fee-sign",
       "dry-run",
       "benchmark",
       "universe",

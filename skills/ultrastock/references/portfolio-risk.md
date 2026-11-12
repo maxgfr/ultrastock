@@ -24,7 +24,11 @@ news beside them. See [local-store](local-store.md).
   - **Coinbase**: the transaction history.
   - **Any other CSV**: a column map (`--map '{"date":"Date",…}'`). The named
     maps `boursorama`, `fortuneo` and `trade-republic` are unverified layouts,
-    checked against the file's headers.
+    checked against the file's headers. When its fee or tax rows carry both
+    signs, the import is refused until `--fee-sign charge-negative` (a
+    negative amount is paid, a positive one refunded) or
+    `--fee-sign charge-positive` (the reverse) says which: ask the user or
+    read the broker's statement, never guess.
   - Re-importing the same file adds nothing, because transaction ids are
     content hashes.
   - A sell beyond holdings refuses the whole file.

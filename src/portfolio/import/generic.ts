@@ -20,8 +20,12 @@
 // impôt/taxe/prélèvements/retenue/withholding/CSG → tax; frais/fee/commission/
 // courtage/droits de garde → fee; split/division → split. Amount signs are
 // normalised by type (deposits, dividends and interest +, withdrawals, fees and
-// taxes −, except that a positive fee or tax is a refund in a file that writes
-// other fees, or taxes, negative); a buy or sell without a price takes it from a net amount:
+// taxes −). Which sign of a fee or tax row is a charge is the FILE's convention:
+// when every fee (or every tax) row has the same sign they are charges; when
+// one type holds both signs the file must say which is the charge —
+// `--fee-sign charge-negative` (a negative amount is paid, a positive one is a
+// refund) or `--fee-sign charge-positive` (the reverse) — and without it the
+// import is refused rather than guessed. A buy or sell without a price takes it from a net amount:
 // buy price = (|amount| − fee) / quantity, sell price = (|amount| + fee) / quantity.
 // A row without a symbol uses its ISIN (the router resolves EU ISINs).
 //
@@ -30,7 +34,7 @@
 // names below are the usual ones, not verified against a reference — a column
 // a named map expects but the file lacks is reported, and an explicit JSON map
 // overrides it.
-import { deaccent } from "../../engine.js";
+import { deaccent, UsageError } from "../../engine.js";
 import type { TxType } from "../ledger.js";
 import {
   accept,
@@ -47,6 +51,10 @@ import {
 } from "./shared.js";
 
 const ORIGIN = "import:generic";
+
+/** Which sign a fee or tax row writes a charge with; the other sign is a refund. */
+export const FEE_SIGNS = ["charge-positive", "charge-negative"] as const;
+export type FeeSign = (typeof FEE_SIGNS)[number];
 
 export interface ColumnMap {
   date: string;
@@ -161,7 +169,7 @@ export function typeFromWord(raw: string, extra: Record<string, TxType> = {}): T
 }
 
 /** Parse a CSV through a column map. `presetName` relaxes missing optional columns to warnings. */
-export function parseGeneric(text: string, opts: ImportOptions & { map: ColumnMap; presetName?: string }): ImportResult {
+export function parseGeneric(text: string, opts: ImportOptions & { map: ColumnMap; presetName?: string; feeSign?: FeeSign }): ImportResult {
   const res = emptyResult();
   const map = opts.map;
   const src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
@@ -195,22 +203,31 @@ export function parseGeneric(text: string, opts: ImportOptions & { map: ColumnMa
   if (col.currency === undefined && !map.defaultCurrency) res.warnings.push("no currency column: every row is booked in EUR (set defaultCurrency in the map)");
   let pricedFromAmount = 0;
   let isinAsSymbol = 0;
-  // The fee and tax rows of a file that writes some of them negative carry their sign: a positive one there is a
-  // refund. Where every fee (or every tax) is written positive, the type says the money went out. Decided per type: a
-  // French export signs its buys and its withholding but writes custody fees as positive charges.
+  // Which sign a fee or tax row charges with is the file's convention, decided per type (a French export signs its
+  // withholding but writes custody fees as positive charges). One sign throughout a type: those rows are charges.
+  // Both signs within a type: a refund is the other sign — of which convention, the file alone knows, so it is asked.
   const typeOfRow = (r: (typeof rows)[number]) => {
     const w = col.type === undefined ? undefined : (r.cells[col.type] ?? "").trim() || undefined;
     return w !== undefined ? typeFromWord(w, map.types) : map.defaultType;
   };
-  const signedTypes = new Set<TxType | undefined>(
-    col.amount === undefined
-      ? []
-      : rows
-          .slice(h + 1)
-          .filter((r) => (statementNumber(r.cells[col.amount!]?.trim(), decimal) ?? 0) < 0)
-          .map(typeOfRow)
-          .filter((t) => t === "fee" || t === "tax"),
-  );
+  const signs = new Map<TxType, Set<number>>();
+  if (col.amount !== undefined)
+    for (const r of rows.slice(h + 1)) {
+      const t = typeOfRow(r);
+      const v = statementNumber(r.cells[col.amount]?.trim(), decimal);
+      if ((t === "fee" || t === "tax") && v) signs.set(t, (signs.get(t) ?? new Set()).add(Math.sign(v)));
+    }
+  const mixed = [...signs].filter(([, s]) => s.size > 1).map(([t]) => t);
+  if (mixed.length && !opts.feeSign)
+    throw new UsageError(
+      `the file writes ${mixed.map((t) => `${t} rows`).join(" and ")} with both signs: whether a negative amount is a charge and a positive one a refund, or the reverse, is the file's convention, not something to guess — pass --fee-sign charge-negative (a negative amount is paid, a positive one refunded) or --fee-sign charge-positive (a positive amount is paid, a negative one refunded)`,
+    );
+  /** A fee or tax amount as the cash it moved: negative when paid, positive when refunded. */
+  const charge = (amount: number): number => {
+    if (opts.feeSign === "charge-negative") return amount;
+    if (opts.feeSign === "charge-positive") return -amount;
+    return -Math.abs(amount);
+  };
   for (const r of rows.slice(h + 1)) {
     const cell = (k: (typeof COLUMN_KEYS)[number]) => {
       const i = col[k];
@@ -252,9 +269,8 @@ export function parseGeneric(text: string, opts: ImportOptions & { map: ColumnMa
       amount =
         type === "deposit" || type === "dividend" || type === "interest"
           ? Math.abs(amount)
-          : // Where this file signs its fees (or taxes), a positive one is a refund: it stays in.
-            signedTypes.has(type)
-            ? amount
+          : type === "fee" || type === "tax"
+            ? charge(amount)
             : -Math.abs(amount);
     accept(
       res,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { UsageError } from "../src/engine.js";
 import { type ColumnMap, GENERIC_PRESETS, parseStatement, resolveMapOption, typeFromWord } from "../src/portfolio/import/index.js";
 import { checkColumnMap } from "../src/portfolio/import/generic.js";
 import { splitPair, statementDate, statementNumber } from "../src/portfolio/import/shared.js";
@@ -144,10 +145,19 @@ describe("generic CSV with a column map", () => {
 
 describe("importer edge cases", () => {
   const signMap: ColumnMap = { date: "Date", type: "Type", amount: "Amount", defaultCurrency: "EUR" };
-  it("keeps a fee or tax refund positive in a file whose amounts carry their sign", () => {
+  it("a fee or tax type written with both signs: refused until --fee-sign says which sign is the charge", () => {
     const csv = ["Date;Type;Amount", "05/01/2026;Fee;-2,50", "06/01/2026;Fee;1,20", "07/01/2026;Tax;3,00", "08/01/2026;Tax;-4,00"].join("\n");
-    const r = parseStatement("generic", csv, { account: "cto", map: signMap });
-    expect(r.transactions.map((t) => t.amount)).toEqual([-2.5, 1.2, 3, -4]);
+    // Not a tax rule: the file's own convention, which it does not state. Guessing it turns a refund into a charge.
+    expect(() => parseStatement("generic", csv, { account: "cto", map: signMap })).toThrow(UsageError);
+    expect(() => parseStatement("generic", csv, { account: "cto", map: signMap })).toThrow(
+      /fee rows and tax rows with both signs.*--fee-sign charge-negative.*--fee-sign charge-positive/,
+    );
+    // A negative amount is paid, a positive one refunded.
+    const neg = parseStatement("generic", csv, { account: "cto", map: signMap, feeSign: "charge-negative" });
+    expect(neg.transactions.map((t) => t.amount)).toEqual([-2.5, 1.2, 3, -4]);
+    // A positive amount is paid, a negative one refunded.
+    const pos = parseStatement("generic", csv, { account: "cto", map: signMap, feeSign: "charge-positive" });
+    expect(pos.transactions.map((t) => t.amount)).toEqual([2.5, -1.2, -3, 4]);
     // A file that writes every fee as a positive charge: still taken out.
     const unsigned = ["Date;Type;Amount", "05/01/2026;Fee;2,50", "07/01/2026;Tax;3,00", "08/01/2026;Deposit;100,00"].join("\n");
     const u = parseStatement("generic", unsigned, { account: "cto", map: signMap });

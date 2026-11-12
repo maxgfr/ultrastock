@@ -125,7 +125,7 @@ USAGE
   ultrastock portfolio risk|stress|optimize|location|lookthrough|income [--book real|paper] [--benchmark <sym>] [--universe a,b,c] [--max-weight <%>] [--out <dir>] [--json]
   ultrastock portfolio rebalance --targets <file.json|{"CW8.PA":60,"CASH":5}> [--band <pts>] [--rel-band <%>] [--contribution <amount>] [--book] [--out <dir>] [--json]
   ultrastock portfolio goals --target <amount> --years <n> [--monthly <amount>] [--book] [--out <dir>] [--json]
-  ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name|file.json>] [--dry-run] [--json]
+  ultrastock portfolio import <file> --format ibkr-flex|binance|kraken|coinbase|generic --account <id> [--book real|paper] [--map <json|name|file.json>] [--fee-sign charge-positive|charge-negative] [--dry-run] [--json]
   ultrastock portfolio deposit|withdraw <account> <amount> [--currency EUR] [--date <date>] [--book real|paper]
   ultrastock portfolio add buy|sell|dividend|fee|interest|tax|split --account <id> [--symbol] [--quantity] [--price] [--amount] [--fee] [--currency] [--date] [--book]
   ultrastock portfolio db init|status|export [--book]|off [--json]
@@ -746,6 +746,7 @@ export const VALUE_FLAGS = [
   "top",
   "min-cap-eur",
   "file",
+  "fee-sign",
 ];
 export const BOOL_FLAGS = [
   "json",
@@ -944,6 +945,7 @@ const SPEC: CliSpec = {
       "date",
       "format",
       "map",
+      "fee-sign",
       "dry-run",
       "benchmark",
       "universe",
