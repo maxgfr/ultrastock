@@ -15,6 +15,7 @@ import {
   etfScoreCandidates,
   etfScreenCandidates,
   etfYahooSymbol,
+  noProfileNote,
 } from "../src/analyze/etf-propose.js";
 import { parseTargets } from "../src/analyze/portfolio/rebalance.js";
 import type { TvMatch } from "../src/analyze/screen/tradingview.js";
@@ -305,5 +306,16 @@ describe("etf fixtures — browsing and proposing", () => {
     saveProfile(defaultProfile("FR", "EUR"));
     const dir = mkdtempSync(join(tmpdir(), "us-etf-propose-"));
     await expect(etfPropose(dir, { goal: "core", envelope: "cto", maxFunds: 4, now: NOW })).rejects.toThrow(/profile suitability|--risk/);
+  });
+});
+
+describe("etf propose without a profile", () => {
+  it("says the envelope is French and France's rules are read, not that the user is French", () => {
+    const pea = noProfileNote("pea", true);
+    expect(pea).toMatch(/--envelope pea is the French PEA .* France's researched rules are read \(jurisdiction FR\) and euro listings proposed/);
+    expect(pea).toMatch(/not a French resident\? `ultrastock profile init --jurisdiction <CC>`/);
+    expect(pea).not.toMatch(/assumed/);
+    expect(noProfileNote("cto", false)).toMatch(/French compte-titres \(CTO\)/);
+    expect(noProfileNote("av", false)).not.toMatch(/euro listings/);
   });
 });

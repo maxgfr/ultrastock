@@ -300,6 +300,15 @@ export function etfAllocation(o: { goal: EtfGoal; risk: number; maxFunds: number
 }
 
 /**
+ * What a proposal without a profile says: the envelope asked is French (pea, cto and av are the French PEA,
+ * compte-titres and assurance-vie), so the French rules are read and, unless --currency is given, euro listings.
+ */
+export function noProfileNote(envelope: EtfEnvelope, euroByDefault: boolean): string {
+  const name = { pea: "PEA", cto: "compte-titres (CTO)", av: "assurance-vie" }[envelope];
+  return `no profile: --envelope ${envelope} is the French ${name} — etf propose knows only the French envelopes (pea, cto, av) — so France's researched rules are read (jurisdiction FR)${euroByDefault ? " and euro listings proposed" : ""}; not a French resident? \`ultrastock profile init --jurisdiction <CC>\` sets your country, and the envelopes of another country are not proposed here`;
+}
+
+/**
  * Where a line goes for an envelope, before its funds are screened: inside. Whether a PEA can hold a fund is the
  * issuer's flag (or a name hint), read fund by fund in the screen — a line no eligible fund fills is placed outside
  * then, with the reason. ultrastock asserts no eligibility rule of its own.
@@ -604,7 +613,9 @@ export async function etfPropose(dir: string, o: EtfProposeOptions): Promise<Etf
       "etf propose needs a risk score (1–7): run `ultrastock profile suitability` (the questionnaire sets it in the profile) or pass --risk <1-7>",
     );
   const riskSource = o.risk !== undefined ? "--risk" : "profile";
-  const jurisdiction = profile?.jurisdiction ?? "FR"; // no profile: --envelope pea|cto|av are French envelopes, so the asker is French-resident
+  // No profile: the only envelopes etf propose knows (pea, cto, av) are French ones, so France's researched rules are
+  // the ones read — not a guess at where the user lives, and said in the notes (noProfileNote).
+  const jurisdiction = profile?.jurisdiction ?? "FR";
   // The researched rules of the investor's country (core/jurisdiction.ts): anything but "allowed" leaves the funds out.
   const usEtf = ruleFact(jurisdiction, "us-domiciled-etf");
   const priips = usEtf.status !== "allowed";
@@ -615,7 +626,7 @@ export async function etfPropose(dir: string, o: EtfProposeOptions): Promise<Etf
   const distribution = o.distribution ?? goalSplit.distribution;
   const notes: string[] = [];
   const impossible: string[] = [];
-  if (!profile) notes.push("no profile: jurisdiction FR assumed — `ultrastock profile init` to set yours");
+  if (!profile) notes.push(noProfileNote(o.envelope, o.currency === undefined));
   if (priips) notes.push(`US-domiciled funds left out: retail access is ${usEtf.status} for ${jurisdiction} — ${ruleWhy(usEtf, jurisdiction)}`);
   if (pfic && pficRule) notes.push(`non-US funds left out: the PFIC rule is ${pficRule.status} for ${jurisdiction} — ${ruleWhy(pficRule, jurisdiction)}`);
   if (o.envelope === "pea" && jurisdiction !== "FR") notes.push(`a PEA is a French envelope; the profile's jurisdiction is ${jurisdiction}`);

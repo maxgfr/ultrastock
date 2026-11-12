@@ -59544,6 +59544,10 @@ function etfAllocation(o) {
     lines: lines.map((x, i) => ({ bucket: ETF_BUCKETS[x.id], weightPct: weights[i], merged: x.merged }))
   };
 }
+function noProfileNote(envelope, euroByDefault) {
+  const name = { pea: "PEA", cto: "compte-titres (CTO)", av: "assurance-vie" }[envelope];
+  return `no profile: --envelope ${envelope} is the French ${name} \u2014 etf propose knows only the French envelopes (pea, cto, av) \u2014 so France's researched rules are read (jurisdiction FR)${euroByDefault ? " and euro listings proposed" : ""}; not a French resident? \`ultrastock profile init --jurisdiction <CC>\` sets your country, and the envelopes of another country are not proposed here`;
+}
 function etfPlacement(_bucket, _envelope) {
   return { inside: true };
 }
@@ -59703,7 +59707,7 @@ async function etfPropose(dir2, o) {
   const distribution = o.distribution ?? goalSplit.distribution;
   const notes = [];
   const impossible = [];
-  if (!profile) notes.push("no profile: jurisdiction FR assumed \u2014 `ultrastock profile init` to set yours");
+  if (!profile) notes.push(noProfileNote(o.envelope, o.currency === void 0));
   if (priips) notes.push(`US-domiciled funds left out: retail access is ${usEtf.status} for ${jurisdiction} \u2014 ${ruleWhy(usEtf, jurisdiction)}`);
   if (pfic && pficRule) notes.push(`non-US funds left out: the PFIC rule is ${pficRule.status} for ${jurisdiction} \u2014 ${ruleWhy(pficRule, jurisdiction)}`);
   if (o.envelope === "pea" && jurisdiction !== "FR") notes.push(`a PEA is a French envelope; the profile's jurisdiction is ${jurisdiction}`);
