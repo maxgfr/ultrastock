@@ -5,7 +5,7 @@ import { rmSync } from "node:fs";
 import { beforeEach, describe, expect, it } from "vitest";
 import { homeDir } from "../src/core/paths.js";
 import { defaultProfile, saveProfile } from "../src/core/profile.js";
-import { feeFor, researchedFee } from "../src/trading/fees.js";
+import { feeFor, feeLookup, researchedFee } from "../src/trading/fees.js";
 import { venueFact } from "../src/trading/venue-facts.js";
 import { installTestVenueFacts } from "./helpers/venue-facts.js";
 
@@ -64,10 +64,39 @@ describe("a schedule is applied to the product it was researched for", () => {
 
   it("applies IBKR's stock schedule to a stock, and a crypto platform's spot schedule to crypto only", () => {
     installTestVenueFacts({
-      values: { "ibkr.fees": { maker: 0, taker: 0 }, "ibkr.perUnit": 0.005, "ibkr.minimum": 1, "kraken.spot.fees": { maker: 0.0025, taker: 0.004 } },
+      values: {
+        "ibkr.fees": { maker: 0, taker: 0 },
+        "ibkr.perUnit": 0.005,
+        "ibkr.minimum": 1,
+        "ibkr.currency": "USD",
+        "kraken.spot.fees": { maker: 0.0025, taker: 0.004 },
+      },
     });
-    expect(researchedFee("ibkr", "us", "taker")).toMatchObject({ basis: expect.stringMatching(/^ibkr taker/) });
+    expect(researchedFee("ibkr", "us", "taker", { currency: "USD" })).toMatchObject({ basis: expect.stringMatching(/^ibkr taker/) });
     expect(researchedFee("kraken", "crypto", "taker")).toMatchObject({ basis: expect.stringMatching(/^kraken\.spot taker/) });
     expect(researchedFee("kraken", "euronext", "taker")).toHaveProperty("missing");
+  });
+});
+
+describe("a per-unit commission or a minimum is an amount in one currency", () => {
+  const IBKR = { "ibkr.fees": { maker: 0, taker: 0 }, "ibkr.perUnit": 0.005, "ibkr.minimum": 1 };
+
+  it("is applied to orders in its stated currency only", () => {
+    installTestVenueFacts({ values: { ...IBKR, "ibkr.currency": "USD" } });
+    expect(feeLookup({ account: "ibkr", currency: "USD" }, "us", "taker", { ledger: [] })).toMatchObject({ model: { perUnit: 0.005, min: 1 } });
+    // 1 USD is not 1 EUR: a Euronext order on the same schedule has no known fee.
+    const eur = feeLookup({ account: "ibkr", currency: "EUR" }, "euronext", "taker", { ledger: [] });
+    expect("missing" in eur && eur.missing).toMatch(/in USD, the order is in EUR/);
+  });
+
+  it("is not applied at all when no currency is stated for it", () => {
+    installTestVenueFacts({ values: IBKR });
+    const r = feeLookup({ account: "ibkr", currency: "USD" }, "us", "taker", { ledger: [] });
+    expect("missing" in r && r.missing).toMatch(/ibkr\.currency/);
+  });
+
+  it("needs no currency when the schedule is a percentage only", () => {
+    installTestVenueFacts({ values: { "account.pea.fees": { maker: 0.001, taker: 0.001 }, "account.pea.perUnit": 0, "account.pea.minimum": 0 } });
+    expect(feeLookup({ account: "pea", currency: "EUR" }, "euronext", "taker", { ledger: [] })).toMatchObject({ model: { pct: 0.001, min: 0 } });
   });
 });

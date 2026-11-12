@@ -19964,6 +19964,16 @@ var feeSpec = (venue, what, query2, prefer) => ({
   maxAgeDays: FEE_MAX_AGE_DAYS,
   note: "the lowest-volume tier, without a token discount; a percentage of the notional is the whole schedule ultrastock applies to this venue"
 });
+var currencySpec = (prefix, what, query2, prefer) => ({
+  key: `${prefix}.currency`,
+  label: `${what}: the currency of the per-unit commission and the minimum`,
+  type: "text",
+  unit: "ISO 4217 code (USD, EUR\u2026)",
+  query: query2,
+  prefer,
+  maxAgeDays: FEE_MAX_AGE_DAYS,
+  note: "the schedule's per-unit commission and minimum apply to orders in this currency only; an order in another currency has no known fee here (a minimum of 1 USD is not 1 EUR)"
+});
 var VENUE_SPEC = [
   feeSpec("binance.spot", "Binance spot", "Binance spot trading fee rate regular user {country}", "binance.com/en/fee/schedule"),
   feeSpec("binance.usdm", "Binance USD\u24C8-M perpetual futures", "Binance USD\u24C8-M futures trading fee regular user", "binance.com/en/fee/futureFee"),
@@ -19979,7 +19989,7 @@ var VENUE_SPEC = [
     key: "ibkr.perUnit",
     label: "Interactive Brokers stocks and ETFs: commission per share",
     type: "amount",
-    unit: "instrument currency per share (0 where the schedule is a percentage)",
+    unit: "ibkr.currency per share (0 where the schedule is a percentage)",
     query: "Interactive Brokers fixed commission per share {country}",
     prefer: "interactivebrokers.com commissions-stocks page",
     maxAgeDays: FEE_MAX_AGE_DAYS
@@ -19988,11 +19998,17 @@ var VENUE_SPEC = [
     key: "ibkr.minimum",
     label: "Interactive Brokers stocks and ETFs: minimum commission per order",
     type: "amount",
-    unit: "instrument currency per order",
+    unit: "ibkr.currency per order",
     query: "Interactive Brokers fixed commission minimum per order {country}",
     prefer: "interactivebrokers.com commissions-stocks page",
     maxAgeDays: FEE_MAX_AGE_DAYS
   },
+  currencySpec(
+    "ibkr",
+    "Interactive Brokers stocks and ETFs",
+    "Interactive Brokers fixed commission currency per share minimum {country}",
+    "interactivebrokers.com commissions-stocks page"
+  ),
   {
     key: "kalshi.feeFormula",
     label: "Kalshi trading fee formula",
@@ -20015,18 +20031,20 @@ var VENUE_SPEC = [
     note: "the per-series fee_multiplier is read live from Kalshi's series API: do not fold it in here"
   }
 ];
-var ACCOUNT_FEE_KEY = /^account\.([A-Za-z0-9]+)\.(fees|perUnit|minimum)$/;
+var ACCOUNT_FEE_KEY = /^account\.([A-Za-z0-9]+)\.(fees|perUnit|minimum|currency)$/;
 function accountFeeSpec(key) {
   const m = ACCOUNT_FEE_KEY.exec(key);
   if (!m) return void 0;
   const [, id, what] = m;
+  if (what === "currency")
+    return currencySpec(`account.${id}`, `The broker behind the account ${id}`, "broker commission schedule {country}", "the broker's own fee page");
   if (what === "fees")
     return feeSpec(`account.${id}`, `The broker behind the account ${id}`, "broker commission schedule {country}", "the broker's own fee page");
   return {
     key,
     label: `The broker behind the account ${id}: ${what === "perUnit" ? "commission per unit" : "minimum commission per order"}`,
     type: "amount",
-    unit: what === "perUnit" ? "instrument currency per unit (0 where the schedule is a percentage)" : "instrument currency per order",
+    unit: what === "perUnit" ? `account.${id}.currency per unit (0 where the schedule is a percentage)` : `account.${id}.currency per order`,
     query: "broker commission schedule {country}",
     prefer: "the broker's own fee page",
     maxAgeDays: FEE_MAX_AGE_DAYS
@@ -20040,7 +20058,7 @@ var VENUES = defineDomain({
   extraKey: (key) => accountFeeSpec(key),
   templateCommand: (c) => factsTemplateCommand("venues", countryCode(c)),
   setCommand: factsSetCommand("venues"),
-  about: (c, date) => `TEMPLATE to fill by research. ultrastock contains no venue fee: every value must come from the venue's own fee page, as it applies to a resident of ${c}, read on ${date}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"; remove a key you did not research rather than guessing it. For one of the user's own accounts at another broker, add "account.<id>.fees" ({maker, taker}), "account.<id>.perUnit" and "account.<id>.minimum" (the account id letters and digits only). Tick sizes, lot steps and Kalshi's per-series fee multiplier are read live from the venues: do not store them. Then store the file with \`${factsSetCommand("venues").replace("<file.json>", "<this file>")}\`.`
+  about: (c, date) => `TEMPLATE to fill by research. ultrastock contains no venue fee: every value must come from the venue's own fee page, as it applies to a resident of ${c}, read on ${date}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"; remove a key you did not research rather than guessing it. For one of the user's own accounts at another broker, add "account.<id>.fees" ({maker, taker}), "account.<id>.perUnit", "account.<id>.minimum" and "account.<id>.currency" (the currency of those two amounts; the account id letters and digits only). Tick sizes, lot steps and Kalshi's per-series fee multiplier are read live from the venues: do not store them. Then store the file with \`${factsSetCommand("venues").replace("<file.json>", "<this file>")}\`.`
 });
 var accountKey = (account) => `account.${account.replace(/[^A-Za-z0-9]/g, "")}`;
 function venueCountry() {
@@ -48096,6 +48114,7 @@ var amount = (x) => typeof x === "number" && Number.isFinite(x) && x >= 0;
 function researchedFee(account, market, side2, opts = {}) {
   const tried = [];
   const malformed = [];
+  const mismatched = [];
   const schedules = scheduleKeys(account, market);
   for (const { prefix, full } of schedules) {
     const fees = venueFact(`${prefix}.fees`, opts);
@@ -48117,6 +48136,21 @@ function researchedFee(account, market, side2, opts = {}) {
         malformed.push(`${prefix}.perUnit and ${prefix}.minimum are amounts \u2265 0`);
         continue;
       }
+      if (u.value > 0 || m.value > 0) {
+        const cur = venueFact(`${prefix}.currency`, opts);
+        tried.push(`${prefix}.currency`);
+        const code = "missing" in cur || typeof cur.value !== "string" ? void 0 : cur.value.trim().toUpperCase();
+        if (!code || !/^[A-Z]{3}$/.test(code)) {
+          if (!("missing" in cur)) malformed.push(`${prefix}.currency is not an ISO 4217 code`);
+          continue;
+        }
+        if (code !== opts.currency?.toUpperCase()) {
+          mismatched.push(
+            `${prefix}'s per-unit commission and minimum are in ${code}, the order is in ${opts.currency?.toUpperCase() ?? "an unstated currency"}`
+          );
+          continue;
+        }
+      }
       perUnit = u;
       minimum = m;
     }
@@ -48131,12 +48165,13 @@ function researchedFee(account, market, side2, opts = {}) {
       missing: `no fee is known for a ${market} fill on ${account}: the ${account} schedule ultrastock reads covers ${market === "crypto" ? "stocks and ETFs, not crypto-assets" : "crypto-assets only"} \u2014 research the broker behind this account (${accountKey(account)}.fees, .perUnit, .minimum): \`${researchCommand("venues", venueCountry() ?? "CC")}\``
     };
   const why2 = missingVenueFact(venueCountry(), [...new Set(tried)]);
-  return { missing: malformed.length ? `${[...new Set(malformed)].join("; ")}: read as unknown \u2014 ${why2}` : why2 };
+  const said = [.../* @__PURE__ */ new Set([...malformed.map((x) => `${x}: read as unknown`), ...mismatched])];
+  return { missing: said.length ? `${said.join("; ")} \u2014 ${why2}` : why2 };
 }
 function feeLookup(o, market, side2, opts = {}) {
   const own = ownFeeRate(o.account, o.currency, opts.ledger ?? readLedger("real"));
   if (own) return own;
-  const r3 = researchedFee(o.account, market, side2, opts);
+  const r3 = researchedFee(o.account, market, side2, { now: opts.now, currency: o.currency });
   if ("missing" in r3)
     return {
       missing: `${r3.missing}; or import the ${o.account} account's statements (\`ultrastock portfolio import <file> --format <f> --account ${o.account}\`) so your own fees there can be read (${MIN_OWN_FILLS} fills with a fee at least)`

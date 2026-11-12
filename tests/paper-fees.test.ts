@@ -56,7 +56,11 @@ describe("which fee a fill pays", () => {
     installTestVenueFacts();
     expect(researchedFee("kraken", "crypto", "maker")).toMatchObject({ model: { pct: 0.0025, min: 0 } });
     expect(researchedFee("ledger-wallet", "crypto", "taker")).toMatchObject({ model: { pct: 0.001 } });
-    expect(researchedFee("ibkr", "us", "taker")).toMatchObject({ model: { pct: 0, perUnit: 0.005, min: 1 } });
+    expect(researchedFee("ibkr", "us", "taker", { currency: "USD" })).toMatchObject({ model: { pct: 0, perUnit: 0.005, min: 1 } });
+    // Its per-share commission and minimum are in ibkr.currency (USD): an order in another currency has no known fee.
+    expect(researchedFee("ibkr", "euronext", "taker", { currency: "EUR" })).toMatchObject({
+      missing: expect.stringMatching(/ibkr's per-unit commission and minimum are in USD, the order is in EUR/),
+    });
     const none = researchedFee("boursorama", "euronext", "taker");
     expect("missing" in none && none.missing).toMatch(
       /no fee is known for account\.boursorama\.fees, account\.boursorama\.perUnit, account\.boursorama\.minimum: .*ultrastock facts research venues --country FR/,

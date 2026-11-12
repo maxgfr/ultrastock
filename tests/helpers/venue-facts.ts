@@ -26,15 +26,18 @@ export const TEST_VENUE_VALUES: Record<string, unknown> = {
   "ibkr.fees": { maker: 0, taker: 0 },
   "ibkr.perUnit": 0.005,
   "ibkr.minimum": 1,
+  "ibkr.currency": "USD",
   "kalshi.feeFormula": KALSHI_QUADRATIC,
   "kalshi.fees": { taker: 0.07, maker: 0.0175 },
   // The tests' own accounts, as `account.<id>` brokers.
   "account.cto.fees": { maker: 0.001, taker: 0.001 },
   "account.cto.perUnit": 0,
   "account.cto.minimum": 2,
+  "account.cto.currency": "EUR",
   "account.pea.fees": { maker: 0.001, taker: 0.001 },
   "account.pea.perUnit": 0,
   "account.pea.minimum": 2,
+  "account.pea.currency": "EUR",
 };
 
 /** Write TEST venue facts for `country`, dated `date` (default: yesterday), with `values` (default: all of the above). */

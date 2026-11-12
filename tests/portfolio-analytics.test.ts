@@ -530,7 +530,9 @@ describe("portfolio analytics on a recorded two-position paper book", () => {
       const reb = await run(["rebalance"], { out: mkdtempSync(join(tmpdir(), "pa-reb-")), targets: '{"MC.PA":40,"NVDA":40,"CASH":20}' });
       expect(reb.out).toMatch(/drift from target/);
       expect(reb.out).toMatch(/MC.PA units to buy = \d+ units/);
-      expect(reb.out).toMatch(/NVDA estimated fee/);
+      expect(reb.out).toMatch(/MC.PA estimated fee/);
+      // The cto account's researched minimum is in EUR (tests/helpers/venue-facts.ts): a USD order on it has no known fee.
+      expect(reb.out).toMatch(/NVDA: the fee is unknown and not counted — .*per-unit commission and minimum are in EUR, the order is in USD/);
       expect(reb.out).toMatch(/nothing is ordered/);
     });
   }, 60_000);

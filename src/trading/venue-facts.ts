@@ -14,12 +14,13 @@
 // before today is the one read. Keys:
 //
 //   <venue>.fees      rates {maker, taker}: share of the notional per side, the venue's entry (lowest-volume) tier
-//   ibkr.perUnit      amount: per share, in the instrument's currency
-//   ibkr.minimum      amount: minimum per order, in the instrument's currency
+//   ibkr.perUnit      amount: per share, in ibkr.currency
+//   ibkr.minimum      amount: minimum per order, in ibkr.currency
+//   ibkr.currency     text: the ISO 4217 currency those two amounts are in — they apply to orders in it only
 //   kalshi.feeFormula text: the fee formula as the schedule writes it — the engine computes only KALSHI_QUADRATIC
 //   kalshi.fees       rates {taker, maker}: the coefficients of that formula
-//   account.<id>.fees|perUnit|minimum   the broker behind one of the user's accounts: the same shapes as the
-//                     ibkr keys ({maker, taker} rates; amounts), checked when stored and when read
+//   account.<id>.fees|perUnit|minimum|currency   the broker behind one of the user's accounts: the same shapes
+//                     as the ibkr keys ({maker, taker} rates; amounts; a currency), checked when stored and read
 //
 // Every fee key, an account's included, is read as unknown 365 days after it was verified.
 import { UsageError } from "../engine.js";
@@ -57,6 +58,18 @@ const feeSpec = (venue: string, what: string, query: string, prefer: string): Fa
   note: "the lowest-volume tier, without a token discount; a percentage of the notional is the whole schedule ultrastock applies to this venue",
 });
 
+/** The currency a schedule's per-unit commission and minimum are written in: they are applied to orders in it only. */
+const currencySpec = (prefix: string, what: string, query: string, prefer: string): FactSpec => ({
+  key: `${prefix}.currency`,
+  label: `${what}: the currency of the per-unit commission and the minimum`,
+  type: "text",
+  unit: "ISO 4217 code (USD, EUR…)",
+  query,
+  prefer,
+  maxAgeDays: FEE_MAX_AGE_DAYS,
+  note: "the schedule's per-unit commission and minimum apply to orders in this currency only; an order in another currency has no known fee here (a minimum of 1 USD is not 1 EUR)",
+});
+
 export const VENUE_SPEC: readonly FactSpec[] = [
   feeSpec("binance.spot", "Binance spot", "Binance spot trading fee rate regular user {country}", "binance.com/en/fee/schedule"),
   feeSpec("binance.usdm", "Binance USDⓈ-M perpetual futures", "Binance USDⓈ-M futures trading fee regular user", "binance.com/en/fee/futureFee"),
@@ -72,7 +85,7 @@ export const VENUE_SPEC: readonly FactSpec[] = [
     key: "ibkr.perUnit",
     label: "Interactive Brokers stocks and ETFs: commission per share",
     type: "amount",
-    unit: "instrument currency per share (0 where the schedule is a percentage)",
+    unit: "ibkr.currency per share (0 where the schedule is a percentage)",
     query: "Interactive Brokers fixed commission per share {country}",
     prefer: "interactivebrokers.com commissions-stocks page",
     maxAgeDays: FEE_MAX_AGE_DAYS,
@@ -81,11 +94,17 @@ export const VENUE_SPEC: readonly FactSpec[] = [
     key: "ibkr.minimum",
     label: "Interactive Brokers stocks and ETFs: minimum commission per order",
     type: "amount",
-    unit: "instrument currency per order",
+    unit: "ibkr.currency per order",
     query: "Interactive Brokers fixed commission minimum per order {country}",
     prefer: "interactivebrokers.com commissions-stocks page",
     maxAgeDays: FEE_MAX_AGE_DAYS,
   },
+  currencySpec(
+    "ibkr",
+    "Interactive Brokers stocks and ETFs",
+    "Interactive Brokers fixed commission currency per share minimum {country}",
+    "interactivebrokers.com commissions-stocks page",
+  ),
   {
     key: "kalshi.feeFormula",
     label: "Kalshi trading fee formula",
@@ -109,7 +128,7 @@ export const VENUE_SPEC: readonly FactSpec[] = [
   },
 ];
 
-const ACCOUNT_FEE_KEY = /^account\.([A-Za-z0-9]+)\.(fees|perUnit|minimum)$/;
+const ACCOUNT_FEE_KEY = /^account\.([A-Za-z0-9]+)\.(fees|perUnit|minimum|currency)$/;
 
 /**
  * The spec of an account's fee key (`account.<id>.fees|perUnit|minimum`): the shape and the age limit of the registered
@@ -119,13 +138,15 @@ function accountFeeSpec(key: string): FactSpec | undefined {
   const m = ACCOUNT_FEE_KEY.exec(key);
   if (!m) return undefined;
   const [, id, what] = m;
+  if (what === "currency")
+    return currencySpec(`account.${id}`, `The broker behind the account ${id}`, "broker commission schedule {country}", "the broker's own fee page");
   if (what === "fees")
     return feeSpec(`account.${id}`, `The broker behind the account ${id}`, "broker commission schedule {country}", "the broker's own fee page");
   return {
     key,
     label: `The broker behind the account ${id}: ${what === "perUnit" ? "commission per unit" : "minimum commission per order"}`,
     type: "amount",
-    unit: what === "perUnit" ? "instrument currency per unit (0 where the schedule is a percentage)" : "instrument currency per order",
+    unit: what === "perUnit" ? `account.${id}.currency per unit (0 where the schedule is a percentage)` : `account.${id}.currency per order`,
     query: "broker commission schedule {country}",
     prefer: "the broker's own fee page",
     maxAgeDays: FEE_MAX_AGE_DAYS,
@@ -142,7 +163,7 @@ export const VENUES = defineDomain<FactSpec>({
   templateCommand: (c) => factsTemplateCommand("venues", countryCode(c)),
   setCommand: factsSetCommand("venues"),
   about: (c, date) =>
-    `TEMPLATE to fill by research. ultrastock contains no venue fee: every value must come from the venue's own fee page, as it applies to a resident of ${c}, read on ${date}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"; remove a key you did not research rather than guessing it. For one of the user's own accounts at another broker, add "account.<id>.fees" ({maker, taker}), "account.<id>.perUnit" and "account.<id>.minimum" (the account id letters and digits only). Tick sizes, lot steps and Kalshi's per-series fee multiplier are read live from the venues: do not store them. Then store the file with \`${factsSetCommand("venues").replace("<file.json>", "<this file>")}\`.`,
+    `TEMPLATE to fill by research. ultrastock contains no venue fee: every value must come from the venue's own fee page, as it applies to a resident of ${c}, read on ${date}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"; remove a key you did not research rather than guessing it. For one of the user's own accounts at another broker, add "account.<id>.fees" ({maker, taker}), "account.<id>.perUnit", "account.<id>.minimum" and "account.<id>.currency" (the currency of those two amounts; the account id letters and digits only). Tick sizes, lot steps and Kalshi's per-series fee multiplier are read live from the venues: do not store them. Then store the file with \`${factsSetCommand("venues").replace("<file.json>", "<this file>")}\`.`,
 });
 
 /** A key's id for an account (letters and digits only: a facts key is dotted words). */

@@ -102,9 +102,15 @@ const amount = (x: unknown): x is number => typeof x === "number" && Number.isFi
  * The researched fee of a fill on `account` (taker when it crosses the book, maker when a resting limit is reached),
  * from the first schedule that is fully researched; why none is, otherwise.
  */
-export function researchedFee(account: string, market: string, side: "maker" | "taker", opts: { now?: Date } = {}): FeeLookup {
+export function researchedFee(
+  account: string,
+  market: string,
+  side: "maker" | "taker",
+  opts: { now?: Date /** The order's currency: a per-unit commission or minimum applies in its own currency only. */; currency?: string } = {},
+): FeeLookup {
   const tried: string[] = [];
   const malformed: string[] = [];
+  const mismatched: string[] = [];
   const schedules = scheduleKeys(account, market);
   for (const { prefix, full } of schedules) {
     const fees = venueFact<{ maker: number; taker: number }>(`${prefix}.fees`, opts);
@@ -126,6 +132,22 @@ export function researchedFee(account: string, market: string, side: "maker" | "
         malformed.push(`${prefix}.perUnit and ${prefix}.minimum are amounts ≥ 0`);
         continue;
       }
+      // A per-unit commission or a minimum is an amount in one currency: applied to orders in that currency only.
+      if (u.value > 0 || m.value > 0) {
+        const cur = venueFact<string>(`${prefix}.currency`, opts);
+        tried.push(`${prefix}.currency`);
+        const code = "missing" in cur || typeof cur.value !== "string" ? undefined : cur.value.trim().toUpperCase();
+        if (!code || !/^[A-Z]{3}$/.test(code)) {
+          if (!("missing" in cur)) malformed.push(`${prefix}.currency is not an ISO 4217 code`);
+          continue;
+        }
+        if (code !== opts.currency?.toUpperCase()) {
+          mismatched.push(
+            `${prefix}'s per-unit commission and minimum are in ${code}, the order is in ${opts.currency?.toUpperCase() ?? "an unstated currency"}`,
+          );
+          continue;
+        }
+      }
       perUnit = u;
       minimum = m;
     }
@@ -140,7 +162,8 @@ export function researchedFee(account: string, market: string, side: "maker" | "
       missing: `no fee is known for a ${market} fill on ${account}: the ${account} schedule ultrastock reads covers ${market === "crypto" ? "stocks and ETFs, not crypto-assets" : "crypto-assets only"} — research the broker behind this account (${accountKey(account)}.fees, .perUnit, .minimum): \`${researchCommand("venues", venueCountry() ?? "CC")}\``,
     };
   const why = missingVenueFact(venueCountry(), [...new Set(tried)]);
-  return { missing: malformed.length ? `${[...new Set(malformed)].join("; ")}: read as unknown — ${why}` : why };
+  const said = [...new Set([...malformed.map((x) => `${x}: read as unknown`), ...mismatched])];
+  return { missing: said.length ? `${said.join("; ")} — ${why}` : why };
 }
 
 /** The fee of a fill on `account`: the user's own, else the researched schedule, else why neither is known. */
@@ -152,7 +175,7 @@ export function feeLookup(
 ): FeeLookup {
   const own = ownFeeRate(o.account, o.currency, opts.ledger ?? readLedger("real"));
   if (own) return own;
-  const r = researchedFee(o.account, market, side, opts);
+  const r = researchedFee(o.account, market, side, { now: opts.now, currency: o.currency });
   if ("missing" in r)
     return {
       missing: `${r.missing}; or import the ${o.account} account's statements (\`ultrastock portfolio import <file> --format <f> --account ${o.account}\`) so your own fees there can be read (${MIN_OWN_FILLS} fills with a fee at least)`,

@@ -71,7 +71,11 @@ to change.
   else the venue's schedule as researched (`facts research venues`: the
   venue the account names, `account.<id>.*` for another broker, Binance's
   for a crypto fill), taker when it crosses the book, maker when `paper
-  sweep` reaches a resting limit. With neither, **paper refuses to fill**:
+  sweep` reaches a resting limit. A schedule covers the product it was
+  researched for (IBKR's stocks and ETFs, a platform's crypto spot), goes
+  stale after 365 days, and its per-unit commission and minimum apply only
+  to orders in its stated currency (`ibkr.currency`,
+  `account.<id>.currency`). With neither, **paper refuses to fill**:
   research the fees or import the account's statements. A paper `plan` says
   which fee its fill would pay, or that none is known yet.
 - `paper sweep` works limit orders against the bars traded since.
