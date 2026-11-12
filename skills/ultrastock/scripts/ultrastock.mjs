@@ -48464,12 +48464,15 @@ async function preconditions(p) {
     if (!rate2) no("FX", `no ${o.currency}\u2192${profile.baseCurrency} rate to size the order against the limits`);
     else notional *= rate2;
   }
-  if (isDollarStablecoin(o.currency)) {
-    if (profile && p.env === "live") {
-      const r3 = ruleFact(profile.jurisdiction, stablecoinKey(o.currency));
+  if (profile && p.env === "live") {
+    const legs = [o.currency.toUpperCase(), ...o.assetKind === "crypto" ? [splitPair(o.symbol, o.currency).base] : []];
+    for (const coin of [...new Set(legs)].filter(isDollarStablecoin).sort()) {
+      const r3 = ruleFact(profile.jurisdiction, stablecoinKey(coin));
       if (r3.status !== "allowed")
-        no("BLOCKED_JURISDICTION", `${o.currency.toUpperCase()} is ${r3.status} for residents of ${profile.jurisdiction}: ${ruleWhy(r3, profile.jurisdiction)}`);
+        no("BLOCKED_JURISDICTION", `${coin} is ${r3.status} for residents of ${profile.jurisdiction}: ${ruleWhy(r3, profile.jurisdiction)}`);
     }
+  }
+  if (isDollarStablecoin(o.currency)) {
     const peg = pegs?.find((r3) => r3.coin === o.currency.toUpperCase()) ?? (await readPegs([o.currency]))[0];
     if (peg?.usd === void 0)
       no("PEG", `${o.currency}'s USD rate could not be read (${peg?.unread ?? "no reading"}): an order priced in it is not sent on its peg`);

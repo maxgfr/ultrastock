@@ -10,6 +10,8 @@
 //      it (`facts research jurisdiction`): the regime, then the register it
 //      names — ESMA's MiCA register is read here, any other needs the venue's
 //      own researched fact; unresearched refuses (a testnet stays usable);
+//      a stablecoin on either side of the pair needs its researched
+//      `stablecoin.<coin>` to be "allowed";
 //   3. no kill switch, the breaker is not tripped;
 //   4. the ticket is checked by the risk gate, unchanged since, within 15 min;
 //   5. a limit order (no market orders live), spot, no short: a sell needs
@@ -241,14 +243,19 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
     if (!rate) no("FX", `no ${o.currency}→${profile.baseCurrency} rate to size the order against the limits`);
     else notional *= rate;
   }
+  // A stablecoin is a crypto-asset of its own, on whichever side of the pair it is — the coin bought or sold (USDC/EUR)
+  // or the coin the order is quoted in (BTC/USDC): the researched rule of the user's country decides each leg
+  // (fail-closed, real money only).
+  if (profile && p.env === "live") {
+    const legs = [o.currency.toUpperCase(), ...(o.assetKind === "crypto" ? [splitPair(o.symbol, o.currency).base] : [])];
+    for (const coin of [...new Set(legs)].filter(isDollarStablecoin).sort()) {
+      const r = ruleFact(profile.jurisdiction, stablecoinKey(coin));
+      if (r.status !== "allowed")
+        no("BLOCKED_JURISDICTION", `${coin} is ${r.status} for residents of ${profile.jurisdiction}: ${ruleWhy(r, profile.jurisdiction)}`);
+    }
+  }
   // A dollar stablecoin is priced live: off its peg beyond the threshold, or unreadable, no real order is priced in it.
   if (isDollarStablecoin(o.currency)) {
-    // And it is a crypto-asset of its own: the researched rule of the user's country decides (fail-closed, real money only).
-    if (profile && p.env === "live") {
-      const r = ruleFact(profile.jurisdiction, stablecoinKey(o.currency));
-      if (r.status !== "allowed")
-        no("BLOCKED_JURISDICTION", `${o.currency.toUpperCase()} is ${r.status} for residents of ${profile.jurisdiction}: ${ruleWhy(r, profile.jurisdiction)}`);
-    }
     const peg = pegs?.find((r) => r.coin === o.currency.toUpperCase()) ?? (await readPegs([o.currency]))[0];
     if (peg?.usd === undefined)
       no("PEG", `${o.currency}'s USD rate could not be read (${peg?.unread ?? "no reading"}): an order priced in it is not sent on its peg`);
