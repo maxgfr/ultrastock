@@ -752,7 +752,7 @@ export async function etfRun(raw: string, dir: string, opts: { now?: Date; instr
     domLines.push(`- PRIIPs [${id}]: the risk gate blocks this ETF for a ${j} resident (code PRIIPS) — see the UCITS twins below.`);
   } else if (domicileUS && !profile)
     domLines.push(
-      "- Retail access: no profile — whether a US-domiciled ETF may be sold to you is your country's researched rule (`ultrastock profile init`, then `ultrastock facts research jurisdiction --key us-domiciled-etf --out <run>`); UCITS twins are listed below.",
+      "- Retail access: no profile — whether a US-domiciled ETF may be sold to you is your country's researched rule (`ultrastock profile init --jurisdiction <CC>`, then `ultrastock facts research jurisdiction --key us-domiciled-etf --out <run>`); UCITS twins are listed below.",
     );
   else if (domicileUS) domLines.push(`- Retail access: the researched ${j} rule allows US-domiciled ETFs — ${ruleWhy(usEtf!, j!)}.`);
 

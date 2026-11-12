@@ -103,12 +103,23 @@ export function countryCode(raw: string): string {
   return c;
 }
 
+/** Where a facts command points: the country (else the profile's, where the domain has one), one key, a `year` domain's year. */
+export interface FactsTarget {
+  key?: string;
+  year?: number;
+}
+const targetFlags = (country: string | undefined, t: FactsTarget) =>
+  `${country ? ` --country ${country.toUpperCase()}` : ""}${t.key ? ` --key ${t.key}` : ""}${t.year !== undefined ? ` --year ${t.year}` : ""}`;
+
 /**
  * The command that gathers the official documents to research a domain's facts for a country (one key, or all) and
- * writes the JSON to fill: named in every "not researched" message, whatever the domain.
+ * writes the JSON to fill: named in every "not researched" message, whatever the domain (core/domains.ts lists them).
  */
-export const researchCommand = (domain: string, country?: string, key?: string): string =>
-  `ultrastock facts research ${domain}${country ? ` --country ${country.toUpperCase()}` : ""}${key ? ` --key ${key}` : ""} --out <run>`;
+export const researchCommand = (domain: string, country?: string, target: FactsTarget = {}): string =>
+  `ultrastock facts research ${domain}${targetFlags(country, target)} --out <run>`;
+/** The command that prints a domain's JSON skeleton to fill, for a country. */
+export const factsTemplateCommand = (domain: string, country?: string, target: FactsTarget = {}): string =>
+  `ultrastock facts template ${domain}${targetFlags(country, target)}`;
 /** The command that stores a researched facts file of a domain. */
 export const factsSetCommand = (domain: string): string => `ultrastock facts set ${domain} --file <file.json>`;
 

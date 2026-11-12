@@ -23,7 +23,7 @@
 import { existsSync, statSync } from "node:fs";
 import type { Instrument } from "../providers/types.js";
 import { clockNow } from "./net.js";
-import { defineDomain, type FactSpec, factsPath, factsSetCommand, loadFacts, researchCommand } from "./researched.js";
+import { defineDomain, type FactSpec, factsPath, factsSetCommand, factsTemplateCommand, loadFacts, researchCommand } from "./researched.js";
 
 export type CalendarMarket = "XNYS" | "XPAR" | "XMIL" | "XOSL" | "CRYPTO";
 type ExchangeMarket = Exclude<CalendarMarket, "CRYPTO">;
@@ -127,7 +127,7 @@ export const CALENDAR = defineDomain({
   period: "year",
   keysFor: (c) => marketsOf(c).flatMap(keysOf),
   strict: (c) => marketsOf(c).length > 0,
-  templateCommand: (c) => researchCommand("calendar", c),
+  templateCommand: (c, year) => factsTemplateCommand("calendar", c, { year: Number(year) }),
   setCommand: factsSetCommand("calendar"),
   about: (c, year) =>
     `TEMPLATE to fill by research: the trading hours and the one-off closures of ${marketsOf(c).join(", ") || "no calendar ultrastock computes"} in ${year}, read on the exchange's own calendar page. The regular holidays are computed from the rules (\`ultrastock calendar verify --year ${year}\` lists them to compare).`,
@@ -180,10 +180,10 @@ export function marketHours(market: CalendarMarket, year = clockNow().getUTCFull
   return { open: o, close: c, origin: "built-in", sources: [SOURCE[market]], asOf: BUILT_IN_HOURS.checkedAt };
 }
 
-/** What an output printing `h` must say when the hours are the built-in ones. */
-export function hoursNote(market: CalendarMarket, h: SessionHours): string | undefined {
+/** What an output printing `h` (the hours of `year`) must say when the hours are the built-in ones. */
+export function hoursNote(market: CalendarMarket, h: SessionHours, year = clockNow().getUTCFullYear()): string | undefined {
   if (market === "CRYPTO" || h.origin === "researched") return undefined;
-  return `${MARKETS[market].name} hours ${h.open}–${h.close} are ultrastock's built-in ones (as published on ${h.sources.join(", ")} on ${h.asOf}), not a current research — \`${researchCommand("calendar", MARKET_COUNTRY[market])}\``;
+  return `${MARKETS[market].name} hours ${h.open}–${h.close} are ultrastock's built-in ones (as published on ${h.sources.join(", ")} on ${h.asOf}), not a current research — \`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``;
 }
 
 /** A year's one-off closures: the researched list when there is one (known), else the past ones recorded here (known only up to CLOSURES_CHECKED_THROUGH). */
@@ -219,7 +219,7 @@ export function sessionCountCaveat(market: CalendarMarket | undefined, from: str
   for (let y = Math.max(Number(lo.slice(0, 4)), Number(CLOSURES_CHECKED_THROUGH.slice(0, 4))); y <= Number(hi.slice(0, 4)); y++)
     if (!specialClosures(market, y).researched) years.push(y);
   if (!years.length) return undefined;
-  return `${MARKETS[market].name}: one-off closures (a day of mourning, an outage) after ${CLOSURES_CHECKED_THROUGH} are not researched for ${years.join(", ")} — the session count counts every rule-computed session as open and may be off by a day; research them with \`${researchCommand("calendar", MARKET_COUNTRY[market])}\``;
+  return `${MARKETS[market].name}: one-off closures (a day of mourning, an outage) after ${CLOSURES_CHECKED_THROUGH} are not researched for ${years.join(", ")} — the session count counts every rule-computed session as open and may be off by a day; research them with ${years.map((year) => `\`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``).join(", ")}`;
 }
 
 /** The UTC instant of a local wall-clock time on a day in an IANA time zone (daylight saving included), by Intl. */

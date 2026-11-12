@@ -432,14 +432,24 @@ export const TOOLS: Tool[] = [
   {
     name: "facts",
     description:
-      "The researched facts ultrastock reads instead of holding rules of its own: show what is stored (jurisdiction: what the investor's country allows — Polymarket, Kalshi, US-domiciled ETFs, crypto platforms and their register; funds: a fund domicile's withholding; tax: a year's tax rules), current or stale, with sources; template prints the JSON to research and fill. Researching (`facts research`, which reads the web into a run) and storing (`facts set`) are not exposed here.",
+      "The researched facts ultrastock reads instead of holding rules of its own: show what is stored (tax: a year's tax rules; jurisdiction: what the investor's country allows — Polymarket, Kalshi, US-domiciled ETFs, crypto platforms and their register; funds: a fund domicile's withholding; venues: venue and broker fees; geo: EU / EEA / euro-area membership, country EU; calendar: an exchange's hours and one-off closures for a year), current or stale, with sources; template prints the JSON to research and fill. Researching (`facts research`, which reads the web into a run) and storing (`facts set`) are not exposed here.",
     command: ["facts"],
     params: {
       action: { kind: "string", description: "show or template", positional: 0, required: true, enum: ["show", "template"] },
-      domain: { kind: "string", description: "jurisdiction, funds or tax", positional: 1, required: true, enum: ["jurisdiction", "funds", "tax"] },
-      country: { kind: "string", description: "ISO 3166 alpha-2 country (funds: the fund domicile); default the profile's" },
+      // The registry of core/domains.ts (tests/facts-domains.test.ts keeps the two equal).
+      domain: {
+        kind: "string",
+        description: "tax, jurisdiction, funds, venues, geo or calendar",
+        positional: 1,
+        required: true,
+        enum: ["tax", "jurisdiction", "funds", "venues", "geo", "calendar"],
+      },
+      country: {
+        kind: "string",
+        description: "ISO 3166 alpha-2 country (funds: the fund domicile; geo: EU; calendar: the exchange's country); default the profile's",
+      },
       key: { kind: "string", description: "only these keys, comma-separated" },
-      year: { kind: "number", description: "tax: the tax year" },
+      year: { kind: "number", description: "tax: the tax year; calendar: the year" },
     },
   },
   {

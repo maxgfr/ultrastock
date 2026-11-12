@@ -214,13 +214,22 @@ per-venue key such as `cryptoVenue.kraken`). A `date` domain is read with
 `loadLatestFacts`: each key's newest fact across the stored dates, so
 researching one key on a later day keeps the others' earlier conclusions.
 
-The domains:
+The domains — `src/core/domains.ts` is their registry: what `facts
+research|template|set|show <domain>` and the MCP `facts` tool accept, each
+domain's country and its default period:
 
 | Domain | Keyed by | Keys | Read by |
 |---|---|---|---|
 | `tax` | country, tax year | the FR / US engines' rates, thresholds and periods; free keys elsewhere | `tax` (see above) |
 | `jurisdiction` | country, research date | `polymarket`, `kalshi` (90 days), `us-domiciled-etf`, `crypto-casp`, `crypto-register` (`esma-mica`, `other`, `none`), `foreign-accounts`, `pfic` (US only) (180 days); `cryptoVenue.<venue>` and `cryptoVenue.<venue>.lei` | the risk gate (PRIIPS, JURISDICTION), live preconditions (Kalshi, crypto platforms), `broker status`, `predict polymarket`, `events`, `etf propose`, `analyze` / `etf`, `doctor`, `jurisdiction show|verify` |
 | `funds` | fund domicile, research date | `withholding` | the domicile line of `analyze` / `etf` |
+| `venues` | country of residence, research date | `<venue>.<market>.fees` ({maker, taker}), `ibkr.perUnit`, `ibkr.minimum`, `kalshi.feeFormula`, `kalshi.fees` (365 days); free `account.<id>.fees|perUnit|minimum` for another broker | paper fills, `backtest` (crypto), `portfolio rebalance`, Kalshi arbitrage |
+| `calendar` | the exchange's country (US for XNYS, FR for XPAR, IT for XMIL, NO for XOSL), year (default this year) | `<MIC>.open`, `<MIC>.close` (local HH:MM), `<MIC>.specialClosures` (dates, `[]` for none), max age 120 days | `calendar`, session counts (journal settle, morning, catalysts), the closed-bar rule, option settlement times |
+| `geo` | `EU` (the only country), the date the membership holds from | `eu.members`, `eea.nonEuMembers`, `euroArea.members` (ISO codes, max age 365 days) | the PEA first pass, the `pea-candidates` screen, `value --region europe\|pea`, European peers, the ECB exposure in `events` |
+
+Every message that names a research command builds it with `researchCommand`,
+`factsTemplateCommand` or `factsSetCommand` (core/researched.ts), so it names a
+registered domain and flags the parser takes.
 
 Every jurisdiction key is a status — `allowed`, `restricted`, `blocked` or
 `unknown` — with a note saying what the sources state (`crypto-register`
@@ -251,17 +260,9 @@ none gets its best other hit, flagged unofficial) through the research reader
 `[E#]`, and writes `FACTS.<domain>.<CC>.md` (per key: the documents to read,
 the fact to fill) and `FACTS.<domain>.<CC>.json` (the template with each key's
 `evidence`). Nothing is concluded by the CLI: the model reads, fills the JSON
-and stores it with `facts set <domain> --file`. `facts template|show <domain>`
+and stores it with `facts set <domain> --file <json>`. `facts template|show <domain>`
 print the skeleton and what is stored; `facts … tax` runs `tax rules …`. The
 MCP server exposes `facts show|template` only.
-
-Domains so far:
-
-| Domain | Country / period | Keys | Read by |
-|---|---|---|---|
-| `tax` | tax residence / tax year | the rules the FR and US engines read; a generic list elsewhere | the tax engines, `tax report`, `portfolio location` |
-| `calendar` | the exchange's country (US for XNYS, FR for XPAR, IT for XMIL, NO for XOSL) / year | `<MIC>.open`, `<MIC>.close` (local HH:MM), `<MIC>.specialClosures` (dates, `[]` for none), max age 120 days | `calendar`, session counts (journal settle, morning, catalysts), the closed-bar rule, option settlement times |
-| `geo` | `EU` / the date the membership holds from | `eu.members`, `eea.nonEuMembers`, `euroArea.members` (ISO codes, max age 365 days) | the PEA first pass, the `pea-candidates` screen, `value --region europe\|pea`, European peers, the ECB exposure in `events` |
 
 `src/core/geo.ts` is the only place EU, EEA and euro-area membership is read.
 No keyless machine-readable official list was found to read live, so it reads
@@ -269,7 +270,7 @@ the latest stored `geo` research; without a current one it uses one built-in
 list (as of 2026-01-01: 27 EU states, Iceland, Liechtenstein and Norway, the
 21-state euro area with Bulgaria, sourced from europa.eu and efta.int), and
 every output using it says so with the command to research a current one
-(`ultrastock facts research geo --country EU`). The lists are written in the
+(`ultrastock facts research geo --country EU --out <run>`). The lists are written in the
 order earlier requests were recorded with (by English name; peers by code).
 
 `src/core/calendar.ts` computes the holiday rules (observance, Easter, early

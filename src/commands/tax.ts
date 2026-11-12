@@ -39,7 +39,9 @@ function countryOf(args: CommandArgs): string {
   if (c) return countryCode(c);
   const res = loadProfile()?.taxResidence;
   if (res) return countryCode(res);
-  throw new UsageError("no tax residence in the profile: pass --country CC (an ISO 3166 code such as FR, US, DE), or run `ultrastock profile init`");
+  throw new UsageError(
+    "no tax residence in the profile: pass --country CC (an ISO 3166 code such as FR, US, DE), or run `ultrastock profile init --jurisdiction <CC>`",
+  );
 }
 
 /** An amount flag: digits and an optional decimal point. "85,000" is refused, not read as NaN (or as 85). */

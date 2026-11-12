@@ -173,7 +173,7 @@ export async function referenceRates(
  */
 export async function loadMarkedBook(bookName: string, f: Findings, now: Date, opts: { dayChange?: boolean } = {}): Promise<MarkedBook> {
   const profile = loadProfile();
-  if (!profile) throw new Error("no profile: run `ultrastock profile init` first");
+  if (!profile) throw new Error("no profile: run `ultrastock profile init --jurisdiction <CC>` first");
   const txs = readLedger(bookName);
   const book = buildBook(txs);
   const holdings = aggregateHoldings(book, profile);

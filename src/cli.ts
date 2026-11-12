@@ -140,8 +140,8 @@ USAGE
   ultrastock decide <run> <decision.json> [--json]
   ultrastock tax rules template --country CC --year YYYY [--currency <code>] | tax rules set --file <rules.json> [--country CC] [--year YYYY] | tax rules show [--country CC] [--year YYYY] [--json]
   ultrastock tax verify [--country CC] [--year YYYY] [--json]
-  ultrastock facts research <jurisdiction|funds|tax> [--country CC] [--key k,…] [--year YYYY] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]
-  ultrastock facts template|show <jurisdiction|funds|tax> [--country CC] [--key k,…] [--year YYYY] [--json] | facts set <domain> --file <facts.json> [--country CC] [--json]
+  ultrastock facts research <tax|jurisdiction|funds|venues|geo|calendar> [--country CC] [--key k,…] [--year YYYY] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]
+  ultrastock facts template|show <tax|jurisdiction|funds|venues|geo|calendar> [--country CC] [--key k,…] [--year YYYY] [--json] | facts set <domain> --file <facts.json> [--country CC] [--json]
   ultrastock tax report [--country CC|--regime fr|us] [--year YYYY] [--neutral] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,…|short=…,long=…] [--envelope-value <account>:<date>=<value>] [--lot-method fifo|hifo|lifo] [--household single|couple] [--out <dir>] [--json]
   ultrastock tax lots|harvest [--country FR|US] [--year YYYY] [--json]
   ultrastock tax export --format 8949|2086|2074|koinly|neutral|neutral-json [--country CC] [--year YYYY] [--neutral] [--out <dir>]
@@ -481,8 +481,10 @@ COMMANDS
             country allows (jurisdiction: Polymarket, Kalshi, US-domiciled
             ETFs, crypto platforms and the register that lists them, foreign
             account reporting, PFIC), what a fund domicile means for
-            withholding (funds), the tax rules (tax) — are not in ultrastock:
-            the agent researches them. research gathers, per key, the official
+            withholding (funds), the tax rules (tax), venue and broker fees
+            (venues), EU / EEA / euro-area membership (geo, country EU),
+            exchange hours and one-off closures (calendar, per exchange country
+            and year) — are not in ultrastock: the agent researches them. research gathers, per key, the official
             documents (the keyless search cascade of research --engine-search,
             or your own hits with --web-results, one list per key) into the run
             as evidence [E#] and writes FACTS.<domain>.<CC>.md (what to read)
@@ -1348,11 +1350,27 @@ async function run(args: CommandArgs): Promise<void> {
   }
 }
 
+/**
+ * A command line as the CLI reads it, without running it: the parsed command, `help` or `version` — or a usage error
+ * (an unknown command or flag, a flag without its value, an argument too many).
+ */
+export function parseCommandLine(argv: string[]): ReturnType<typeof parseArgs> {
+  let parsed: ReturnType<typeof parseArgs>;
+  try {
+    parsed = parseArgs(argv, SPEC);
+  } catch (e) {
+    throw new UsageError((e as Error).message);
+  }
+  if (parsed.kind === "help" || parsed.kind === "version") return parsed;
+  if (parsed.positional.length > arity(parsed)) throw new UsageError(`unexpected argument "${parsed.positional[arity(parsed)]}" — run \`ultrastock --help\``);
+  return parsed;
+}
+
 /** The CLI, as a function: tests drive it; the bundle calls it with process.argv. */
 export async function main(argv: string[]): Promise<void> {
   let parsed: ReturnType<typeof parseArgs>;
   try {
-    parsed = parseArgs(argv, SPEC);
+    parsed = parseCommandLine(argv);
   } catch (e) {
     return usage((e as Error).message);
   }
@@ -1365,7 +1383,6 @@ export async function main(argv: string[]): Promise<void> {
     return;
   }
   const args: CommandArgs = parsed;
-  if (args.positional.length > arity(args)) usage(`unexpected argument "${args.positional[arity(args)]}" — run \`ultrastock --help\``);
   try {
     await run(args);
   } catch (e) {

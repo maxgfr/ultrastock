@@ -151,7 +151,7 @@ export function formatDoctor(r: DoctorReport): string {
     `  node        ${r.node.version}${r.node.liveCapable ? "" : ` — analysis and paper only; live orders need Node >= ${LIVE_NODE_MAJOR}`}`,
     `  state       ${r.home}`,
     `  cache       ${r.cache}`,
-    `  profile     ${r.profile.exists ? `${r.profile.jurisdiction ?? "?"}, risk score ${r.profile.riskScore ?? "not assessed — run profile suitability"}, ${r.profile.envelopes ?? 0} envelope(s)` : "none — run `ultrastock profile init`"}`,
+    `  profile     ${r.profile.exists ? `${r.profile.jurisdiction ?? "?"}, risk score ${r.profile.riskScore ?? "not assessed — run profile suitability"}, ${r.profile.envelopes ?? 0} envelope(s)` : "none — run `ultrastock profile init --jurisdiction <CC>`"}`,
     ...(r.jurisdiction
       ? [
           `  rules       ${r.jurisdiction.country}: ${r.jurisdiction.researched} of ${r.jurisdiction.total} jurisdiction rules researched${r.jurisdiction.unresearched.length ? ` (missing or stale: ${r.jurisdiction.unresearched.join(", ")} — they fail closed; research them: \`${r.jurisdiction.research}\`)` : ""}`,

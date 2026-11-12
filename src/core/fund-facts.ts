@@ -10,7 +10,7 @@
 // "funds" domain, keyed by the DOMICILE: <home>/facts/funds/<CC>-<date>.json.
 import { countryName } from "./jurisdiction.js";
 import { clockNow } from "./net.js";
-import { countryCode, defineDomain, type FactSpec, loadLatestFacts } from "./researched.js";
+import { countryCode, defineDomain, type FactSpec, factsSetCommand, factsTemplateCommand, loadLatestFacts, researchCommand } from "./researched.js";
 
 export function fundKeys(domicile: string): FactSpec[] {
   const n = countryName(domicile);
@@ -35,13 +35,11 @@ export const FUNDS = defineDomain<FactSpec>({
   period: "date",
   keysFor: fundKeys,
   strict: () => true,
-  templateCommand: (country) => `ultrastock facts template funds --country ${countryCode(country)}`,
-  setCommand: "ultrastock facts set funds --file <file.json>",
+  templateCommand: (country) => factsTemplateCommand("funds", countryCode(country)),
+  setCommand: factsSetCommand("funds"),
   about: (c, date) =>
-    `TEMPLATE to fill by research. "country" is a fund DOMICILE (${c}), not the investor's country. ultrastock holds no tax rule: fill each value with what official sources for ${c} state on ${date}, its "sources", "verifiedAt" and "confidence"; set "researchedAt"; then \`ultrastock facts set funds --file <this file>\`.`,
+    `TEMPLATE to fill by research. "country" is a fund DOMICILE (${c}), not the investor's country. ultrastock holds no tax rule: fill each value with what official sources for ${c} state on ${date}, its "sources", "verifiedAt" and "confidence"; set "researchedAt"; then \`${factsSetCommand("funds").replace("<file.json>", "<this file>")}\`.`,
 });
-
-export const fundsResearchCommand = (domicile: string) => `ultrastock facts research funds --country ${domicile.toUpperCase()} --out <run>`;
 
 /** What the domicile means for withholding tax: the researched sentence, or what to research. Never a rule of ultrastock's own. */
 export function withholdingNote(code: string | undefined): string {
@@ -55,5 +53,5 @@ export function withholdingNote(code: string | undefined): string {
     } catch {
       // An unreadable file reads as not researched: the note says what to do.
     }
-  return `domicile ${c}: the withholding tax a ${n}-domiciled fund suffers on foreign dividends, and passes on, is not researched here — \`${fundsResearchCommand(c)}\`, or read the prospectus.`;
+  return `domicile ${c}: the withholding tax a ${n}-domiciled fund suffers on foreign dividends, and passes on, is not researched here — \`${researchCommand("funds", c)}\`, or read the prospectus.`;
 }

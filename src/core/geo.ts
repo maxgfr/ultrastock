@@ -17,7 +17,7 @@
 // (protocol data, not a fact that changes): they also give the order the
 // lists are written in, so requests already recorded stay byte for byte.
 import { clockNow } from "./net.js";
-import { defineDomain, type FactSpec, factsSetCommand, type LatestFacts, loadLatestFacts, researchCommand } from "./researched.js";
+import { defineDomain, type FactSpec, factsSetCommand, factsTemplateCommand, type LatestFacts, loadLatestFacts, researchCommand } from "./researched.js";
 
 const SOURCES = {
   eu: "https://european-union.europa.eu/principles-countries-history/eu-countries_en",
@@ -61,7 +61,7 @@ export const GEO = defineDomain({
   period: "date",
   keysFor: (c) => (c === "EU" ? KEYS : []),
   strict: (c) => c === "EU",
-  templateCommand: () => researchCommand("geo", "EU"),
+  templateCommand: () => factsTemplateCommand("geo", "EU"),
   setCommand: factsSetCommand("geo"),
   about: (_c, date) =>
     `TEMPLATE to fill by research: the EU, EEA and euro-area membership as of ${date}. Each value is a list of ISO 3166 alpha-2 codes read from the official page named in "prefer", with its URL in "sources".`,

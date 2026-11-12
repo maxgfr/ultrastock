@@ -150,7 +150,8 @@ export async function gateContextFor(
   const now = opts.now ?? clockNow();
   const bookName = opts.book ?? (order.venue === "paper" ? "paper" : "real");
   const profile = loadProfile();
-  if (!profile) throw new Error("no profile: run `ultrastock profile init` and `profile suitability` first — the gate enforces the profile's limits");
+  if (!profile)
+    throw new Error("no profile: run `ultrastock profile init --jurisdiction <CC>` and `profile suitability` first — the gate enforces the profile's limits");
   // What a reader had to skip (a line a crash cut short) is said with the check.
   const notes: string[] = [];
   const warn = (m: string) => void notes.push(m);

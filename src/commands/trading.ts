@@ -43,7 +43,7 @@ const bookOf = (args: CommandArgs) => {
 /** Mark a book to market (quotes and ECB rates) and record an equity snapshot (only when every position is priced). */
 export async function markBook(book: string) {
   const profile = loadProfile();
-  if (!profile) throw new Error("no profile: run `ultrastock profile init` first");
+  if (!profile) throw new Error("no profile: run `ultrastock profile init --jurisdiction <CC>` first");
   const now = clockNow();
   const txs = readLedger(book);
   const b = buildBook(txs);

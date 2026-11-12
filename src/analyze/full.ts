@@ -136,7 +136,7 @@ export function suitabilityPoints(inst: Instrument): { points: Point[]; notes: s
   if (!p)
     return {
       points: [{ key: `${sym}.profile.state`, label: "investor profile", value: "not set" }],
-      notes: ["no profile: run `ultrastock profile init` and the suitability questionnaire before sizing anything"],
+      notes: ["no profile: run `ultrastock profile init --jurisdiction <CC>` and the suitability questionnaire before sizing anything"],
     };
   const points: Point[] = [
     { key: `${sym}.profile.jurisdiction`, label: "investor's jurisdiction", value: p.jurisdiction },

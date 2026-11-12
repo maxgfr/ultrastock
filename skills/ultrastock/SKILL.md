@@ -28,10 +28,11 @@ the evidence, form a view, and write an answer in which every number cites the
 5. **Rules that vary by country are your research, never built in.**
    ultrastock contains no tax law and no jurisdiction rule (Polymarket,
    Kalshi, US-domiciled ETFs, crypto platforms and their register, foreign
-   accounts, PFIC). `facts research <jurisdiction|tax|funds> --out <run>`
-   gathers the official documents per key as `[E#]` and writes the JSON to
-   fill; read them, conclude, `facts set <domain> --file <json>` (tax: also
-   `tax rules set`). A rule not researched, stale or "unknown" fails closed —
+   accounts, PFIC), nor fees, membership lists or exchange hours.
+   `facts research <domain> --country <CC> --out <run>` (domains: tax,
+   jurisdiction, funds, venues, geo, calendar) gathers the official documents
+   per key as `[E#]` and writes the JSON to fill; read them, conclude,
+   `facts set <domain> --file <json>` (tax: also `tax rules set`). A rule not researched, stale or "unknown" fails closed —
    the refusal names the command. Say that the rules are your research and
    that a professional should confirm them.
 6. **A view is yours; say what would change it.** Bullish, expensive, risky are
@@ -179,7 +180,7 @@ ultrastock predict order kalshi <TICKER> yes|no [buy|sell] --contracts <n> --pri
 ultrastock backtest run|walkforward|sweep|montecarlo|compare|review <strategy> <symbol> [--years] [--grid] … · backtest decisions
 ultrastock strategy list|show|validate|new [<name>] [--like <strategy>]
 ultrastock tax rules template|set|show [--country] [--year] [--file] · tax verify
-ultrastock facts research <jurisdiction|funds|tax> [--country CC] [--key k,…] [--web-results <file>] --out <run> · facts template|set|show <domain> [--file]
+ultrastock facts research <tax|jurisdiction|funds|venues|geo|calendar> [--country CC] [--key k,…] [--web-results <file>] --out <run> · facts template|set|show <domain> [--file]
 ultrastock tax report|lots|harvest|export [--country] [--year] [--neutral] [--tmi] [--income] [--filing] [--carryforward] [--envelope-value] [--format]
 ultrastock mcp [--transport stdio|http --token <t>]   # the same commands as MCP tools: no order, profile, ledger or key changes; writing tools (analyze, calc, plan…) are declared so
 ultrastock serve [--port 8766] [--book real|paper]    # a read-only dashboard for the user's browser (127.0.0.1, token in the printed URL)

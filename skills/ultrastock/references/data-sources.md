@@ -42,7 +42,7 @@ listing", a jurisdiction block) is reported, never routed around.
   session count there is approximate.
 - **Calendars**: the holiday rules are computed; trading hours and one-off
   closures (a day of mourning, an outage) are researched facts per year
-  (`ultrastock facts research calendar --country US|FR|IT|NO`, keys
+  (`ultrastock facts research calendar --country US|FR|IT|NO --year <Y> --out <run>`, keys
   `<MIC>.open`, `<MIC>.close`, `<MIC>.specialClosures`). Without them the hours
   are the built-in ones (`calendar sessions` says so) and a session count past
   the closures last checked carries a note that it may be off by a day — say so

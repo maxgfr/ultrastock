@@ -180,7 +180,7 @@ export async function preconditions(p: PreconditionInput): Promise<{ refusals: R
   const R: Refusal[] = [];
   const no = (code: string, reason: string) => R.push({ code, reason });
   const profile = loadProfile();
-  if (!profile) no("NO_PROFILE", "no investor profile: `ultrastock profile init` first");
+  if (!profile) no("NO_PROFILE", "no investor profile: `ultrastock profile init --jurisdiction <CC>` first");
 
   if (p.env === "live") {
     const off = liveOffReason();

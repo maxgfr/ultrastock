@@ -32,7 +32,7 @@ export async function calendarCommand(args: CommandArgs, asJson: boolean): Promi
   if (sub === "sessions") {
     const sessions = nextSessions(market, today, argInt(args, "days", { min: 1, max: 260 }) ?? 10);
     const hol = holidays(market, year).filter((h) => h.date >= today);
-    const notes = [hoursNote(market, hours), sessionCountCaveat(market, today, sessions.at(-1)?.date ?? today)].filter((n): n is string => !!n);
+    const notes = [hoursNote(market, hours, year), sessionCountCaveat(market, today, sessions.at(-1)?.date ?? today)].filter((n): n is string => !!n);
     if (asJson)
       return void process.stdout.write(
         jsonLine({ market: { ...spec, open: hours.open, close: hours.close }, hours, today, sessions, upcomingHolidays: hol, notes }),
@@ -53,7 +53,7 @@ export async function calendarCommand(args: CommandArgs, asJson: boolean): Promi
     const notes =
       market !== "CRYPTO" && !specialClosures(market, year).researched && `${year}-12-31` > CLOSURES_CHECKED_THROUGH
         ? [
-            `one-off closures after ${CLOSURES_CHECKED_THROUGH} are not researched for ${year}: this list may lack one — \`${researchCommand("calendar", MARKET_COUNTRY[market])}\``,
+            `one-off closures after ${CLOSURES_CHECKED_THROUGH} are not researched for ${year}: this list may lack one — \`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``,
           ]
         : [];
     if (asJson) return void process.stdout.write(jsonLine({ market: spec, year, holidays: list, notes }));
@@ -73,7 +73,7 @@ export async function calendarCommand(args: CommandArgs, asJson: boolean): Promi
           .join("; ") || "none"
       } — search "${spec.name} market closure ${year}" for new ones (a national day of mourning, an outage)`,
       `Trading hours ${hours.open}–${hours.close} ${spec.timeZone} (${hours.origin === "researched" ? `researched, verified ${hours.asOf}` : `built-in, as published on ${hours.asOf}`})`,
-      ...(market === "CRYPTO" ? [] : [`Store the year's hours and one-off closures: \`${researchCommand("calendar", MARKET_COUNTRY[market])}\``]),
+      ...(market === "CRYPTO" ? [] : [`Store the year's hours and one-off closures: \`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``]),
     ];
     if (asJson) return void process.stdout.write(jsonLine({ market, year, computed: list, checklist: items }));
     process.stdout.write(`${items.map((i) => `- ${i}`).join("\n")}\n`);

@@ -17458,7 +17458,9 @@ function countryCode(raw) {
   if (!/^[A-Z]{2}$/.test(c)) throw new UsageError(`a country is an ISO 3166 alpha-2 code such as FR, US or DE, not "${raw}"`);
   return c;
 }
-var researchCommand = (domain, country2, key) => `ultrastock facts research ${domain}${country2 ? ` --country ${country2.toUpperCase()}` : ""}${key ? ` --key ${key}` : ""} --out <run>`;
+var targetFlags = (country2, t) => `${country2 ? ` --country ${country2.toUpperCase()}` : ""}${t.key ? ` --key ${t.key}` : ""}${t.year !== void 0 ? ` --year ${t.year}` : ""}`;
+var researchCommand = (domain, country2, target = {}) => `ultrastock facts research ${domain}${targetFlags(country2, target)} --out <run>`;
+var factsTemplateCommand = (domain, country2, target = {}) => `ultrastock facts template ${domain}${targetFlags(country2, target)}`;
 var factsSetCommand = (domain) => `ultrastock facts set ${domain} --file <file.json>`;
 var factsDir = (d) => join17(homeDir(), "facts", d.name);
 var factsPath = (d, country2, period2) => join17(factsDir(d), `${countryCode(country2)}-${period2}.json`);
@@ -17888,9 +17890,9 @@ var JURISDICTION = defineDomain({
       };
     return void 0;
   },
-  templateCommand: (country2) => `ultrastock facts template jurisdiction --country ${countryCode(country2)}`,
-  setCommand: "ultrastock facts set jurisdiction --file <file.json>",
-  about: (c, date) => `TEMPLATE to fill by research. ultrastock contains no jurisdiction rule: every value is the conclusion you drew from official sources for ${c} on ${date}. For each key fill "value" (one of its "values"), "note" (what the sources say, in a sentence), "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"; then run \`ultrastock facts set jurisdiction --file <this file>\`. Leave out a key you could not settle, or store it "unknown": either way it fails closed. \`ultrastock facts research jurisdiction --country ${c} --out <run>\` gathers the documents to read.`
+  templateCommand: (country2) => factsTemplateCommand("jurisdiction", countryCode(country2)),
+  setCommand: factsSetCommand("jurisdiction"),
+  about: (c, date) => `TEMPLATE to fill by research. ultrastock contains no jurisdiction rule: every value is the conclusion you drew from official sources for ${c} on ${date}. For each key fill "value" (one of its "values"), "note" (what the sources say, in a sentence), "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"; then run \`${factsSetCommand("jurisdiction").replace("<file.json>", "<this file>")}\`. Leave out a key you could not settle, or store it "unknown": either way it fails closed. \`${researchCommand("jurisdiction", c)}\` gathers the documents to read.`
 });
 function latest(code) {
   try {
@@ -17901,9 +17903,9 @@ function latest(code) {
 }
 function factReading(code, id) {
   const c = code.toUpperCase();
-  if (!/^[A-Z]{2}$/.test(c)) return { unresearched: `"${code}" is not a country code`, research: researchCommand("jurisdiction", "CC", id) };
+  if (!/^[A-Z]{2}$/.test(c)) return { unresearched: `"${code}" is not a country code`, research: researchCommand("jurisdiction", "CC", { key: id }) };
   const known = jurisdictionKeys(c).some((s) => s.key === id) || !!JURISDICTION.extraKey?.(id, c);
-  const research = researchCommand("jurisdiction", c, known ? id : void 0);
+  const research = researchCommand("jurisdiction", c, { key: known ? id : void 0 });
   if (!known) return { unresearched: `no jurisdiction rule is kept for "${id}"`, research };
   const l = latest(c);
   if (l instanceof Error) return { unresearched: `the stored ${c} jurisdiction facts are unreadable (${l.message.split("\n")[0]})`, research };
@@ -18006,7 +18008,7 @@ async function cryptoVenueGate(venue, code, opts = {}) {
   if (raw === "none")
     return {
       ok: false,
-      reason: `the ${c} research says authorisation is needed (crypto-casp restricted) but no register applies (crypto-register none): settle it \u2014 \`${researchCommand("jurisdiction", c, "crypto-casp")}\``
+      reason: `the ${c} research says authorisation is needed (crypto-casp restricted) but no register applies (crypto-register none): settle it \u2014 \`${researchCommand("jurisdiction", c, { key: "crypto-casp" })}\``
     };
   const v = ruleFact(c, `cryptoVenue.${venue}`);
   if (v.status === "allowed") return { ok: true, reason: `${venue} is authorised for ${c} per the research: ${ruleWhy(v, c)}` };
@@ -19895,16 +19897,14 @@ var VENUE_SPEC = [
     note: "the per-series fee_multiplier is read live from Kalshi's series API: do not fold it in here"
   }
 ];
-var templateCommand = (country2) => `ultrastock facts template venues --country ${countryCode(country2)}`;
-var RESEARCH_COMMAND = "ultrastock facts research venues";
 var VENUES = defineDomain({
   name: "venues",
   period: "date",
   keysFor: () => VENUE_SPEC,
   strict: () => false,
-  templateCommand: (c) => templateCommand(c),
-  setCommand: "ultrastock facts set venues --file <file.json>",
-  about: (c, date) => `TEMPLATE to fill by research. ultrastock contains no venue fee: every value must come from the venue's own fee page, as it applies to a resident of ${c}, read on ${date}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"; remove a key you did not research rather than guessing it. For one of the user's own accounts at another broker, add "account.<id>.fees" ({maker, taker}), "account.<id>.perUnit" and "account.<id>.minimum" (the account id letters and digits only). Tick sizes, lot steps and Kalshi's per-series fee multiplier are read live from the venues: do not store them. Then store the file with \`ultrastock facts set venues --file <this file>\`.`
+  templateCommand: (c) => factsTemplateCommand("venues", countryCode(c)),
+  setCommand: factsSetCommand("venues"),
+  about: (c, date) => `TEMPLATE to fill by research. ultrastock contains no venue fee: every value must come from the venue's own fee page, as it applies to a resident of ${c}, read on ${date}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"; remove a key you did not research rather than guessing it. For one of the user's own accounts at another broker, add "account.<id>.fees" ({maker, taker}), "account.<id>.perUnit" and "account.<id>.minimum" (the account id letters and digits only). Tick sizes, lot steps and Kalshi's per-series fee multiplier are read live from the venues: do not store them. Then store the file with \`${factsSetCommand("venues").replace("<file.json>", "<this file>")}\`.`
 });
 var accountKey = (account) => `account.${account.replace(/[^A-Za-z0-9]/g, "")}`;
 function venueCountry() {
@@ -19912,19 +19912,19 @@ function venueCountry() {
 }
 function latestVenueFacts(country2, now = clockNow()) {
   const c = countryCode(country2);
-  const today2 = now.toISOString().slice(0, 10);
-  const date = storedPeriods(VENUES, c).filter((d) => d <= today2).at(-1);
-  if (!date) return void 0;
-  const v = loadFacts(VENUES, c, date);
-  return { country: c, date, path: v.path, current: v.current, stale: v.stale };
+  const upTo = now.toISOString().slice(0, 10);
+  const l = loadLatestFacts(VENUES, c, { upTo });
+  const date = storedPeriods(VENUES, c).filter((d) => d <= upTo).at(-1);
+  const path2 = l.paths.at(-1);
+  return date && path2 ? { country: c, date, path: path2, current: l.current, stale: l.stale } : void 0;
 }
 function missingVenueFact(country2, keys, facts) {
   const what = keys.join(", ");
   if (!country2)
-    return `no fee is known for ${what}: no profile names the country of residence (\`ultrastock profile init\`), and ultrastock holds no fee schedule`;
+    return `no fee is known for ${what}: no profile names the country of residence (\`ultrastock profile init --jurisdiction <CC>\`), and ultrastock holds no fee schedule`;
   const stale = facts?.stale.filter((s) => keys.includes(s.key)) ?? [];
   const where = facts ? `${facts.path} does not hold ${what} as current${stale.length ? ` (${stale.map((s) => `${s.key} ${s.reason}`).join("; ")})` : ""}` : `no venue facts are stored for ${country2}`;
-  return `no fee is known for ${what}: ${where} \u2014 ultrastock holds no fee schedule. Research it: \`${RESEARCH_COMMAND} --country ${country2}\` (the template: \`${templateCommand(country2)}\`)`;
+  return `no fee is known for ${what}: ${where} \u2014 ultrastock holds no fee schedule. Research it: \`${researchCommand("venues", country2)}\` (the template: \`${factsTemplateCommand("venues", country2)}\`)`;
 }
 function venueFact(key, opts = {}) {
   const country2 = opts.country ?? venueCountry();
@@ -19938,7 +19938,7 @@ function venueFact(key, opts = {}) {
   }
   const fact = facts?.current[key];
   if (!facts || !fact) return { missing: missingVenueFact(country2, [key], facts) };
-  return { value: fact.value, fact, key, basis: `researched ${key} in ${facts.path} (verified ${fact.verifiedAt}, ${fact.sources[0]})` };
+  return { value: fact.value, fact, key, basis: `researched ${key} in ${fact.path} (verified ${fact.verifiedAt}, ${fact.sources[0]})` };
 }
 
 // src/providers/prediction/manifold.ts
@@ -20127,7 +20127,7 @@ var CALENDAR = defineDomain({
   period: "year",
   keysFor: (c) => marketsOf(c).flatMap(keysOf),
   strict: (c) => marketsOf(c).length > 0,
-  templateCommand: (c) => researchCommand("calendar", c),
+  templateCommand: (c, year) => factsTemplateCommand("calendar", c, { year: Number(year) }),
   setCommand: factsSetCommand("calendar"),
   about: (c, year) => `TEMPLATE to fill by research: the trading hours and the one-off closures of ${marketsOf(c).join(", ") || "no calendar ultrastock computes"} in ${year}, read on the exchange's own calendar page. The regular holidays are computed from the rules (\`ultrastock calendar verify --year ${year}\` lists them to compare).`
 });
@@ -20163,9 +20163,9 @@ function marketHours(market, year = clockNow().getUTCFullYear()) {
   const [o, c] = BUILT_IN_HOURS.hours[market];
   return { open: o, close: c, origin: "built-in", sources: [SOURCE19[market]], asOf: BUILT_IN_HOURS.checkedAt };
 }
-function hoursNote(market, h) {
+function hoursNote(market, h, year = clockNow().getUTCFullYear()) {
   if (market === "CRYPTO" || h.origin === "researched") return void 0;
-  return `${MARKETS[market].name} hours ${h.open}\u2013${h.close} are ultrastock's built-in ones (as published on ${h.sources.join(", ")} on ${h.asOf}), not a current research \u2014 \`${researchCommand("calendar", MARKET_COUNTRY[market])}\``;
+  return `${MARKETS[market].name} hours ${h.open}\u2013${h.close} are ultrastock's built-in ones (as published on ${h.sources.join(", ")} on ${h.asOf}), not a current research \u2014 \`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``;
 }
 function specialClosures(market, year) {
   if (market === "CRYPTO") return { closures: [], researched: true };
@@ -20194,7 +20194,7 @@ function sessionCountCaveat(market, from, to) {
   for (let y = Math.max(Number(lo.slice(0, 4)), Number(CLOSURES_CHECKED_THROUGH.slice(0, 4))); y <= Number(hi.slice(0, 4)); y++)
     if (!specialClosures(market, y).researched) years.push(y);
   if (!years.length) return void 0;
-  return `${MARKETS[market].name}: one-off closures (a day of mourning, an outage) after ${CLOSURES_CHECKED_THROUGH} are not researched for ${years.join(", ")} \u2014 the session count counts every rule-computed session as open and may be off by a day; research them with \`${researchCommand("calendar", MARKET_COUNTRY[market])}\``;
+  return `${MARKETS[market].name}: one-off closures (a day of mourning, an outage) after ${CLOSURES_CHECKED_THROUGH} are not researched for ${years.join(", ")} \u2014 the session count counts every rule-computed session as open and may be off by a day; research them with ${years.map((year) => `\`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``).join(", ")}`;
 }
 function localTimeToUtc(day4, hhmm, timeZone) {
   const [y, m, d] = day4.split("-").map(Number);
@@ -25918,11 +25918,10 @@ var FUNDS = defineDomain({
   period: "date",
   keysFor: fundKeys,
   strict: () => true,
-  templateCommand: (country2) => `ultrastock facts template funds --country ${countryCode(country2)}`,
-  setCommand: "ultrastock facts set funds --file <file.json>",
-  about: (c, date) => `TEMPLATE to fill by research. "country" is a fund DOMICILE (${c}), not the investor's country. ultrastock holds no tax rule: fill each value with what official sources for ${c} state on ${date}, its "sources", "verifiedAt" and "confidence"; set "researchedAt"; then \`ultrastock facts set funds --file <this file>\`.`
+  templateCommand: (country2) => factsTemplateCommand("funds", countryCode(country2)),
+  setCommand: factsSetCommand("funds"),
+  about: (c, date) => `TEMPLATE to fill by research. "country" is a fund DOMICILE (${c}), not the investor's country. ultrastock holds no tax rule: fill each value with what official sources for ${c} state on ${date}, its "sources", "verifiedAt" and "confidence"; set "researchedAt"; then \`${factsSetCommand("funds").replace("<file.json>", "<this file>")}\`.`
 });
-var fundsResearchCommand = (domicile) => `ultrastock facts research funds --country ${domicile.toUpperCase()} --out <run>`;
 function withholdingNote(code) {
   if (!code) return "domicile unknown: the withholding tax a fund suffers (and passes on) depends on its domicile \u2014 read it in the KID or prospectus.";
   const c = code.toUpperCase();
@@ -25933,7 +25932,7 @@ function withholdingNote(code) {
       if (f3 && typeof f3.value === "string") return `${n2} (${c}), as researched on ${f3.verifiedAt}: ${f3.value}${f3.sources[0] ? ` (${f3.sources[0]})` : ""}`;
     } catch {
     }
-  return `domicile ${c}: the withholding tax a ${n2}-domiciled fund suffers on foreign dividends, and passes on, is not researched here \u2014 \`${fundsResearchCommand(c)}\`, or read the prospectus.`;
+  return `domicile ${c}: the withholding tax a ${n2}-domiciled fund suffers on foreign dividends, and passes on, is not researched here \u2014 \`${researchCommand("funds", c)}\`, or read the prospectus.`;
 }
 
 // src/providers/funds/amundi.ts
@@ -26739,7 +26738,7 @@ var GEO = defineDomain({
   period: "date",
   keysFor: (c) => c === "EU" ? KEYS2 : [],
   strict: (c) => c === "EU",
-  templateCommand: () => researchCommand("geo", "EU"),
+  templateCommand: () => factsTemplateCommand("geo", "EU"),
   setCommand: factsSetCommand("geo"),
   about: (_c, date) => `TEMPLATE to fill by research: the EU, EEA and euro-area membership as of ${date}. Each value is a list of ISO 3166 alpha-2 codes read from the official page named in "prefer", with its URL in "sources".`
 });
@@ -28035,7 +28034,7 @@ async function etfRun(raw, dir2, opts = {}) {
     domLines.push(`- PRIIPs [${id}]: the risk gate blocks this ETF for a ${j} resident (code PRIIPS) \u2014 see the UCITS twins below.`);
   } else if (domicileUS && !profile)
     domLines.push(
-      "- Retail access: no profile \u2014 whether a US-domiciled ETF may be sold to you is your country's researched rule (`ultrastock profile init`, then `ultrastock facts research jurisdiction --key us-domiciled-etf --out <run>`); UCITS twins are listed below."
+      "- Retail access: no profile \u2014 whether a US-domiciled ETF may be sold to you is your country's researched rule (`ultrastock profile init --jurisdiction <CC>`, then `ultrastock facts research jurisdiction --key us-domiciled-etf --out <run>`); UCITS twins are listed below."
     );
   else if (domicileUS) domLines.push(`- Retail access: the researched ${j} rule allows US-domiciled ETFs \u2014 ${ruleWhy(usEtf, j)}.`);
   let comp;
@@ -34976,7 +34975,7 @@ async function referenceRates(currencies, base2) {
 }
 async function loadMarkedBook(bookName, f3, now, opts = {}) {
   const profile = loadProfile();
-  if (!profile) throw new Error("no profile: run `ultrastock profile init` first");
+  if (!profile) throw new Error("no profile: run `ultrastock profile init --jurisdiction <CC>` first");
   const txs = readLedger(bookName);
   const book2 = buildBook(txs);
   const holdings = aggregateHoldings(book2, profile);
@@ -35684,7 +35683,7 @@ function suitabilityPoints(inst) {
   if (!p)
     return {
       points: [{ key: `${sym3}.profile.state`, label: "investor profile", value: "not set" }],
-      notes: ["no profile: run `ultrastock profile init` and the suitability questionnaire before sizing anything"]
+      notes: ["no profile: run `ultrastock profile init --jurisdiction <CC>` and the suitability questionnaire before sizing anything"]
     };
   const points = [
     { key: `${sym3}.profile.jurisdiction`, label: "investor's jurisdiction", value: p.jurisdiction },
@@ -38905,7 +38904,7 @@ async function calendarCommand(args, asJson) {
   if (sub === "sessions") {
     const sessions = nextSessions(market, today2, argInt(args, "days", { min: 1, max: 260 }) ?? 10);
     const hol = holidays(market, year).filter((h) => h.date >= today2);
-    const notes = [hoursNote(market, hours), sessionCountCaveat(market, today2, sessions.at(-1)?.date ?? today2)].filter((n2) => !!n2);
+    const notes = [hoursNote(market, hours, year), sessionCountCaveat(market, today2, sessions.at(-1)?.date ?? today2)].filter((n2) => !!n2);
     if (asJson)
       return void process.stdout.write(
         jsonLine({ market: { ...spec, open: hours.open, close: hours.close }, hours, today: today2, sessions, upcomingHolidays: hol, notes })
@@ -38924,7 +38923,7 @@ async function calendarCommand(args, asJson) {
   if (sub === "holidays") {
     const list = holidays(market, year);
     const notes = market !== "CRYPTO" && !specialClosures(market, year).researched && `${year}-12-31` > CLOSURES_CHECKED_THROUGH ? [
-      `one-off closures after ${CLOSURES_CHECKED_THROUGH} are not researched for ${year}: this list may lack one \u2014 \`${researchCommand("calendar", MARKET_COUNTRY[market])}\``
+      `one-off closures after ${CLOSURES_CHECKED_THROUGH} are not researched for ${year}: this list may lack one \u2014 \`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``
     ] : [];
     if (asJson) return void process.stdout.write(jsonLine({ market: spec, year, holidays: list, notes }));
     process.stdout.write(
@@ -38942,7 +38941,7 @@ ${notes.map((n2) => `note: ${n2}
       `Computed ${list.length} non-standard sessions: ${list.map((h) => h.date).join(", ")}`,
       `One-off closures ${specialClosures(market, year).researched ? "researched" : `recorded (checked through ${CLOSURES_CHECKED_THROUGH}, not researched for ${year})`}: ${specialClosures(market, year).closures.map((s) => `${s.date} ${s.name}`).join("; ") || "none"} \u2014 search "${spec.name} market closure ${year}" for new ones (a national day of mourning, an outage)`,
       `Trading hours ${hours.open}\u2013${hours.close} ${spec.timeZone} (${hours.origin === "researched" ? `researched, verified ${hours.asOf}` : `built-in, as published on ${hours.asOf}`})`,
-      ...market === "CRYPTO" ? [] : [`Store the year's hours and one-off closures: \`${researchCommand("calendar", MARKET_COUNTRY[market])}\``]
+      ...market === "CRYPTO" ? [] : [`Store the year's hours and one-off closures: \`${researchCommand("calendar", MARKET_COUNTRY[market], { year })}\``]
     ];
     if (asJson) return void process.stdout.write(jsonLine({ market, year, computed: list, checklist: items }));
     process.stdout.write(`${items.map((i) => `- ${i}`).join("\n")}
@@ -40392,7 +40391,8 @@ async function gateContextFor(order, opts = {}) {
   const now = opts.now ?? clockNow();
   const bookName = opts.book ?? (order.venue === "paper" ? "paper" : "real");
   const profile = loadProfile();
-  if (!profile) throw new Error("no profile: run `ultrastock profile init` and `profile suitability` first \u2014 the gate enforces the profile's limits");
+  if (!profile)
+    throw new Error("no profile: run `ultrastock profile init --jurisdiction <CC>` and `profile suitability` first \u2014 the gate enforces the profile's limits");
   const notes = [];
   const warn = (m) => void notes.push(m);
   const txs = readLedger(bookName, warn);
@@ -47437,7 +47437,7 @@ function specFor(country2) {
   const c = country2.toUpperCase();
   return c === "FR" ? FR_SPEC : c === "US" ? US_SPEC : GENERIC_SPEC;
 }
-var templateCommand2 = (country2, year) => `ultrastock tax rules template --country ${countryCode(country2)} --year ${year}`;
+var templateCommand = (country2, year) => `ultrastock tax rules template --country ${countryCode(country2)} --year ${year}`;
 var TAX2 = defineDomain({
   name: "tax",
   period: "year",
@@ -47455,7 +47455,7 @@ var TAX2 = defineDomain({
       template: (country2) => isEngineCountry(country2) ? ENGINE_CURRENCY[country2] : null
     }
   },
-  templateCommand: templateCommand2,
+  templateCommand,
   setCommand: "ultrastock tax rules set --file <file.json>",
   about: (c, year) => `TEMPLATE to fill by research. ultrastock contains no tax law: every value must come from an official source for ${c} and the tax year ${year}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"${isEngineCountry(c) ? "" : ' and "currency"'}; then run \`ultrastock tax rules set --file <this file>\`. ${isEngineCountry(c) ? `The ${c} engine refuses until every key is researched.` : "No engine computes tax for this country: `tax report` shows the ledger's facts beside these rules, and the agent applies them. Add any other key the research finds."} The user should have a professional confirm the result.`,
   templateExtras: (c, year) => isEngineCountry(c) ? { formLines: FORM_LINES[c].map((f3) => ({ ...f3, check: `the numbering on the ${year} form` })) } : {}
@@ -47480,7 +47480,7 @@ function engineRules(country2, year) {
   const lacking = missing.filter((k) => engineKeys.has(k));
   if (lacking.length)
     throw new UsageError(
-      `${path2} lacks ${lacking.length} key(s) the ${country2} engine reads: ${lacking.join(", ")}${stale.length ? ` (stale: ${stale.map((s) => `${s.key} ${s.reason}`).join("; ")})` : ""} \u2014 research them (\`${templateCommand2(country2, year)}\` lists each with a search query) and store the file again with \`${TAX2.setCommand}\``
+      `${path2} lacks ${lacking.length} key(s) the ${country2} engine reads: ${lacking.join(", ")}${stale.length ? ` (stale: ${stale.map((s) => `${s.key} ${s.reason}`).join("; ")})` : ""} \u2014 research them (\`${templateCommand(country2, year)}\` lists each with a search query) and store the file again with \`${TAX2.setCommand}\``
     );
   return rules;
 }
@@ -48227,7 +48227,7 @@ async function preconditions(p) {
   const R = [];
   const no = (code, reason) => R.push({ code, reason });
   const profile = loadProfile();
-  if (!profile) no("NO_PROFILE", "no investor profile: `ultrastock profile init` first");
+  if (!profile) no("NO_PROFILE", "no investor profile: `ultrastock profile init --jurisdiction <CC>` first");
   if (p.env === "live") {
     const off = liveOffReason();
     if (off) no("LIVE_OFF", off);
@@ -49302,14 +49302,24 @@ var TOOLS = [
   },
   {
     name: "facts",
-    description: "The researched facts ultrastock reads instead of holding rules of its own: show what is stored (jurisdiction: what the investor's country allows \u2014 Polymarket, Kalshi, US-domiciled ETFs, crypto platforms and their register; funds: a fund domicile's withholding; tax: a year's tax rules), current or stale, with sources; template prints the JSON to research and fill. Researching (`facts research`, which reads the web into a run) and storing (`facts set`) are not exposed here.",
+    description: "The researched facts ultrastock reads instead of holding rules of its own: show what is stored (tax: a year's tax rules; jurisdiction: what the investor's country allows \u2014 Polymarket, Kalshi, US-domiciled ETFs, crypto platforms and their register; funds: a fund domicile's withholding; venues: venue and broker fees; geo: EU / EEA / euro-area membership, country EU; calendar: an exchange's hours and one-off closures for a year), current or stale, with sources; template prints the JSON to research and fill. Researching (`facts research`, which reads the web into a run) and storing (`facts set`) are not exposed here.",
     command: ["facts"],
     params: {
       action: { kind: "string", description: "show or template", positional: 0, required: true, enum: ["show", "template"] },
-      domain: { kind: "string", description: "jurisdiction, funds or tax", positional: 1, required: true, enum: ["jurisdiction", "funds", "tax"] },
-      country: { kind: "string", description: "ISO 3166 alpha-2 country (funds: the fund domicile); default the profile's" },
+      // The registry of core/domains.ts (tests/facts-domains.test.ts keeps the two equal).
+      domain: {
+        kind: "string",
+        description: "tax, jurisdiction, funds, venues, geo or calendar",
+        positional: 1,
+        required: true,
+        enum: ["tax", "jurisdiction", "funds", "venues", "geo", "calendar"]
+      },
+      country: {
+        kind: "string",
+        description: "ISO 3166 alpha-2 country (funds: the fund domicile; geo: EU; calendar: the exchange's country); default the profile's"
+      },
       key: { kind: "string", description: "only these keys, comma-separated" },
-      year: { kind: "number", description: "tax: the tax year" }
+      year: { kind: "number", description: "tax: the tax year; calendar: the year" }
     }
   },
   {
@@ -49575,7 +49585,7 @@ function locationFacts(year, country2 = "FR") {
 }
 function locationFactsNote(lf) {
   if (!lf.missing.length) return void 0;
-  return `${lf.country} tax facts not researched for ${lf.year}: ${lf.missing.join(", ")} \u2014 the advice leaves out what they would say (no holding period, ceiling or treaty rate is assumed); run \`${templateCommand2(lf.country, lf.year)}\`, research the keys and store them with \`${TAX2.setCommand}\``;
+  return `${lf.country} tax facts not researched for ${lf.year}: ${lf.missing.join(", ")} \u2014 the advice leaves out what they would say (no holding period, ceiling or treaty rate is assumed); run \`${templateCommand(lf.country, lf.year)}\`, research the keys and store them with \`${TAX2.setCommand}\``;
 }
 var unresearched = (year, country2 = "FR") => ({ country: country2, year, sources: [], missing: Object.values(KEYS3) });
 var SP_CTO = { label: "service-public.fr \u2014 Plus-values sur valeurs mobili\xE8res", url: "https://www.service-public.fr/particuliers/vosdroits/F21618" };
@@ -49732,7 +49742,7 @@ function orderFor(a) {
 }
 var pctText = (x) => `${Number((x * 100).toFixed(2))} %`;
 function sellTaxNote(envelope, ctx) {
-  const research = `\`${templateCommand2(ctx.residence, ctx.year)}\``;
+  const research = `\`${templateCommand(ctx.residence, ctx.year)}\``;
   if (ctx.residence !== "FR")
     return `how a sell from this ${envelope === "unknown" ? "account" : envelope} is taxed for a ${ctx.residence} tax resident is not built in: research the ${ctx.residence} rules for ${ctx.year} (${research}); \`tax report\` then shows the realised gain beside them`;
   const rate2 = ctx.pfuIr !== void 0 && ctx.psCapital !== void 0 ? `the flat tax, PFU: ${pctText(ctx.pfuIr)} income tax + ${pctText(ctx.psCapital)} social levies on the net gain, researched for ${ctx.year}` : `the flat tax, PFU, whose rates are not researched for ${ctx.year} \u2014 ${research}`;
@@ -49947,7 +49957,7 @@ async function locationAnalysis(m, f3) {
   const year = m.now.getUTCFullYear();
   if (residence !== "FR") {
     f3.note(
-      `no asset-location advice for a ${residence} tax resident: ultrastock's rankings are of French envelopes (PEA, assurance-vie, CTO) and say nothing about ${residence} accounts \u2014 research the ${residence} tax-advantaged accounts and how each taxes gains, dividends and interest (\`${templateCommand2(residence, year)}\`), then place the holdings by them`
+      `no asset-location advice for a ${residence} tax resident: ultrastock's rankings are of French envelopes (PEA, assurance-vie, CTO) and say nothing about ${residence} accounts \u2014 research the ${residence} tax-advantaged accounts and how each taxes gains, dividends and interest (\`${templateCommand(residence, year)}\`), then place the holdings by them`
     );
     return { residence, rules: {}, peaRoom: void 0, holdings: [] };
   }
@@ -49995,7 +50005,7 @@ async function locationAnalysis(m, f3) {
       );
     } else {
       room = void 0;
-      f3.note(`the room under the PEA ceiling is not computed: pea.ceiling is not researched for ${year} (\`${templateCommand2(residence, year)}\`)`);
+      f3.note(`the room under the PEA ceiling is not computed: pea.ceiling is not researched for ${year} (\`${templateCommand(residence, year)}\`)`);
     }
   } else f3.note("no PEA among the accounts or the profile's envelopes: a PEA would shelter the EU shares and PEA-eligible funds");
   const funds = m.holdings.filter((h) => (h.assetClass === "etf" || h.assetClass === "fund") && h.isin && !h.isin.startsWith("US")).slice(0, 10);
@@ -53362,7 +53372,7 @@ var bookOf2 = (args) => {
 };
 async function markBook(book2) {
   const profile = loadProfile();
-  if (!profile) throw new Error("no profile: run `ultrastock profile init` first");
+  if (!profile) throw new Error("no profile: run `ultrastock profile init --jurisdiction <CC>` first");
   const now = clockNow();
   const txs = readLedger(book2);
   const b = buildBook(txs);
@@ -53781,7 +53791,7 @@ var sourcesOf = (f3) => f3.inputs.map((d) => ({
   fallbackFrom: d.provenance.fallbackFrom
 }));
 function bookHint(book2) {
-  if (!loadProfile()) return { hint: "No profile yet: run `ultrastock profile init` first." };
+  if (!loadProfile()) return { hint: "No profile yet: run `ultrastock profile init --jurisdiction <CC>` first." };
   const b = buildBook(readLedger(book2));
   if (!b.positions.some((p) => p.quantity > 0) && !b.cash.length)
     return { hint: `The ${book2} book is empty: record a deposit and trades first (\`ultrastock portfolio deposit|add \u2026 --book ${book2}\`).` };
@@ -57888,7 +57898,9 @@ function countryOf(args) {
   if (c) return countryCode(c);
   const res = loadProfile()?.taxResidence;
   if (res) return countryCode(res);
-  throw new UsageError("no tax residence in the profile: pass --country CC (an ISO 3166 code such as FR, US, DE), or run `ultrastock profile init`");
+  throw new UsageError(
+    "no tax residence in the profile: pass --country CC (an ISO 3166 code such as FR, US, DE), or run `ultrastock profile init --jurisdiction <CC>`"
+  );
 }
 function amountFlag(args, flag) {
   const raw = argValue(args, flag);
@@ -58104,7 +58116,7 @@ async function neutral(args, country2, year) {
   const envelopes = loadProfile()?.envelopes ?? [];
   const { fx, notes } = await ledgerFx(txs, rules.currency, year, { cryptoQuotes: true });
   const report2 = neutralReport({ year, transactions: txs, envelopes, fx, currency: rules.currency, rules });
-  if (missing.length) report2.warnings.push(`not researched yet (${path2}): ${missing.join(", ")} \u2014 \`${templateCommand2(country2, year)}\` lists them`);
+  if (missing.length) report2.warnings.push(`not researched yet (${path2}): ${missing.join(", ")} \u2014 \`${templateCommand(country2, year)}\` lists them`);
   for (const s of stale) report2.warnings.push(`${s.key} is stale (${s.reason}): re-research it`);
   return { report: report2, notes, path: path2 };
 }
@@ -58168,7 +58180,7 @@ async function rulesCommand(args, asJson, sub, country2, year) {
           ([k, p]) => `- ${k} = ${formatValue(p.value)} \u2014 ${p.label} (verified ${p.verifiedAt}, ${p.confidence}; ${p.sources.join(" \xB7 ")})${p.note ? ` \u2014 ${p.note}` : ""}`
         ),
         ...stale.map((s) => `stale (not used): ${s.key} \u2014 ${s.reason}`),
-        ...missing.length ? ["", `not researched: ${missing.join(", ")} \u2014 \`${templateCommand2(c, y)}\``] : [],
+        ...missing.length ? ["", `not researched: ${missing.join(", ")} \u2014 \`${templateCommand(c, y)}\``] : [],
         ...engine ? [
           "",
           `cost basis: ${engine.method}`,
@@ -58203,7 +58215,7 @@ async function taxCommand(args, asJson) {
       { country: country2, year: y, ...c },
       [
         `# Research checklist \u2014 ${country2} tax rules for ${y} (${c.path}: ${c.stored ? "stored" : "not stored yet"})`,
-        `${DISCLAIMER}. For each key: search it on the preferred official source, read the text for ${y}, fill value / sources / verifiedAt / confidence (\`${templateCommand2(country2, y)}\` gives the skeleton), then \`ultrastock tax rules set --file <file.json>\`.`,
+        `${DISCLAIMER}. For each key: search it on the preferred official source, read the text for ${y}, fill value / sources / verifiedAt / confidence (\`${templateCommand(country2, y)}\` gives the skeleton), then \`ultrastock tax rules set --file <file.json>\`.`,
         ...c.items.map(
           (i) => `- ${i.key} [${i.status}] ${i.label} (${i.type}${i.unit ? `, ${i.unit}` : ""})
     search: "${i.query}"
@@ -58318,6 +58330,63 @@ ${pn.join("\n")}` : ""}`
 // src/commands/facts.ts
 import { existsSync as existsSync44, readFileSync as readFileSync49 } from "fs";
 import { resolve as resolve19 } from "path";
+
+// src/core/domains.ts
+var lastYear = (now) => now.getUTCFullYear() - 1;
+var thisYear = (now) => now.getUTCFullYear();
+var FACT_DOMAINS = Object.freeze({
+  tax: {
+    domain: TAX2,
+    country: "the tax residence",
+    defaultCountry: (p) => p?.taxResidence,
+    years: { default: lastYear, latest: thisYear }
+  },
+  jurisdiction: { domain: JURISDICTION, country: "the country of residence", defaultCountry: (p) => p?.jurisdiction },
+  funds: { domain: FUNDS, country: "a fund domicile (IE, LU, US\u2026), not the investor's country" },
+  venues: {
+    domain: VENUES,
+    country: "the country of residence (a venue's fees are the ones its entity charges there)",
+    defaultCountry: (p) => p?.jurisdiction
+  },
+  geo: { domain: GEO, country: "the area code EU", countries: ["EU"], defaultCountry: () => "EU" },
+  calendar: {
+    domain: CALENDAR,
+    country: `an exchange's country (${Object.entries(MARKET_COUNTRY).map(([m, c]) => `${c} for ${m}`).join(", ")})`,
+    countries: [...new Set(Object.values(MARKET_COUNTRY))],
+    years: { default: thisYear, latest: (now) => thisYear(now) + 1 }
+  }
+});
+var FACT_DOMAIN_NAMES = Object.keys(FACT_DOMAINS);
+function factDomain(name, usage2 = "") {
+  const d = name ? FACT_DOMAINS[name] : void 0;
+  if (!d)
+    throw new UsageError(`${name ? `"${name}" is not a facts domain` : "which domain?"} \u2014 one of ${FACT_DOMAIN_NAMES.join(", ")}.${usage2 ? ` ${usage2}` : ""}`);
+  return d;
+}
+function factsCountry(fd, given, profile) {
+  const name = fd.domain.name;
+  const raw = given ?? fd.defaultCountry?.(profile());
+  if (!raw)
+    throw new UsageError(
+      `${name} facts are kept per ${fd.country}: pass --country CC${fd.defaultCountry ? " (or run `ultrastock profile init --jurisdiction <CC>`)" : ""}`
+    );
+  const c = countryCode(raw);
+  if (fd.countries && !fd.countries.includes(c))
+    throw new UsageError(`${name} facts are kept for ${fd.country}: --country ${fd.countries.join(" or ")}, not ${c}`);
+  return c;
+}
+function factsPeriod(fd, year, now = clockNow()) {
+  const name = fd.domain.name;
+  if (fd.domain.period === "date") {
+    if (year) throw new UsageError(`${name} facts are dated by the day they were researched: --year does not apply`);
+    return now.toISOString().slice(0, 10);
+  }
+  const span = fd.years ?? { default: lastYear, latest: thisYear };
+  const y = year === void 0 ? span.default(now) : Number(year);
+  if (!Number.isInteger(y) || y < 2e3 || y > span.latest(now))
+    throw new UsageError(`--year ${year} is not a year ${name} facts are kept for (2000\u2013${span.latest(now)})`);
+  return y;
+}
 
 // src/research/facts.ts
 import { mkdirSync as mkdirSync32 } from "fs";
@@ -58489,32 +58558,26 @@ function worklistMarkdown(w) {
 }
 
 // src/commands/facts.ts
-var FACT_DOMAINS = { jurisdiction: JURISDICTION, funds: FUNDS, tax: TAX2 };
-var USAGE5 = "usage: ultrastock facts research|template|set|show <jurisdiction|funds|tax> [--country CC] [--key k,\u2026] [--year YYYY] [--file <facts.json>] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]";
-function domainOf2(name) {
-  const d = name ? FACT_DOMAINS[name] : void 0;
-  if (!d) throw new UsageError(`${name ? `"${name}" is not a facts domain` : "which domain?"} \u2014 one of ${Object.keys(FACT_DOMAINS).join(", ")}. ${USAGE5}`);
-  return d;
-}
-function countryOf2(d, args) {
-  const c = argValue(args, "country");
-  if (c) return countryCode(c);
-  const p = loadProfile();
-  const fromProfile = d === TAX2 ? p?.taxResidence : d === JURISDICTION ? p?.jurisdiction : void 0;
-  if (fromProfile) return countryCode(fromProfile);
-  throw new UsageError(
-    d === FUNDS ? "funds facts are kept per fund domicile: pass --country CC (IE, LU, US\u2026)" : "no country in the profile: pass --country CC (an ISO 3166 code such as FR, US, DE), or run `ultrastock profile init`"
-  );
-}
-function periodOf(d, args) {
-  const now = clockNow();
-  if (d.period === "date") {
-    if (argValue(args, "year")) throw new UsageError(`${d.name} facts are dated by the day they were researched: --year does not apply`);
-    return now.toISOString().slice(0, 10);
+var FACTS_USAGE = `usage: ultrastock facts research|template|set|show <${FACT_DOMAIN_NAMES.join("|")}> [--country CC] [--key k,\u2026] [--year YYYY] [--file <facts.json>] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]`;
+var SUBS = ["research", "template", "set", "show"];
+function factsInvocation(args) {
+  const [sub, name] = args.positional;
+  if (!sub || !SUBS.includes(sub)) throw new UsageError(FACTS_USAGE);
+  const fd = factDomain(name, FACTS_USAGE);
+  const keys = argList(args, "key");
+  const s = sub;
+  if (s === "set") {
+    if (!argValue(args, "file"))
+      throw new UsageError(
+        `facts set ${fd.domain.name} needs --file <facts.json>: fill the JSON that \`${researchCommand(fd.domain.name, "CC")}\` writes, or that \`${factsTemplateCommand(fd.domain.name, "CC")}\` prints`
+      );
+    return { sub: s, fd, keys };
   }
-  const y = Number(argValue(args, "year") ?? now.getUTCFullYear() - 1);
-  if (!Number.isInteger(y) || y < 2e3 || y > now.getUTCFullYear()) throw new UsageError(`--year ${argValue(args, "year")} is not a tax year`);
-  return y;
+  if (fd.domain === TAX2 && s !== "research") return { sub: s, fd, keys };
+  const country2 = factsCountry(fd, argValue(args, "country"), () => loadProfile());
+  const period2 = factsPeriod(fd, argValue(args, "year"));
+  if (keys.length) specsFor(fd.domain, country2, keys);
+  return { sub: s, fd, country: country2, period: period2, keys };
 }
 function readJson3(file) {
   const path2 = resolve19(file);
@@ -58526,14 +58589,13 @@ function readJson3(file) {
   }
 }
 async function factsCommand(args, asJson) {
-  const [sub, name] = args.positional;
-  if (!sub || !["research", "template", "set", "show"].includes(sub)) throw new UsageError(USAGE5);
-  const d = domainOf2(name);
+  const inv = factsInvocation(args);
+  const { sub, fd, keys } = inv;
+  const d = fd.domain;
   if (d === TAX2 && sub !== "research") return taxCommand({ ...args, positional: ["rules", sub] }, asJson);
-  const keys = argList(args, "key");
+  const c = inv.country ?? "";
+  const period2 = inv.period ?? "";
   if (sub === "research") {
-    const c2 = countryOf2(d, args);
-    const period2 = periodOf(d, args);
     const lists = [];
     const notes = [];
     const web = argValue(args, "web-results");
@@ -58542,10 +58604,10 @@ async function factsCommand(args, asJson) {
       if (skipped) notes.push(`${skipped} entr${skipped === 1 ? "y" : "ies"} of ${web === "-" ? "stdin" : web} without an http(s) url skipped`);
       lists.push(...got);
     }
-    const dir2 = runDirFor(argValue(args, "out"), `facts-${d.name}-${c2}-${runId()}`);
+    const dir2 = runDirFor(argValue(args, "out"), `facts-${d.name}-${c}-${runId()}`);
     const w = await researchFacts({
       domain: d,
-      country: c2,
+      country: c,
       period: period2,
       keys,
       dir: dir2,
@@ -58554,7 +58616,7 @@ async function factsCommand(args, asJson) {
       engines: lists.length ? argBool(args, "engine-search") : true,
       limit: argInt(args, "limit", { min: 1, max: 60 }),
       read: { wayback: !argBool(args, "no-wayback"), browser: argBool(args, "browser") },
-      setCommand: d === TAX2 ? TAX2.setCommand : d.setCommand
+      setCommand: d.setCommand
     });
     w.notes.unshift(...notes);
     if (asJson) return void process.stdout.write(jsonLine(w));
@@ -58566,17 +58628,17 @@ Then: ${w.setCommand}
 `);
   }
   if (sub === "template") {
-    const c2 = countryOf2(d, args);
-    const t = factsTemplate(d, c2, periodOf(d, args), { keys });
+    const t = factsTemplate(d, c, period2, { keys });
     return void process.stdout.write(`${JSON.stringify(t, null, asJson ? void 0 : 2)}
 `);
   }
   if (sub === "set") {
-    const f3 = argValue(args, "file");
-    if (!f3)
-      throw new UsageError(`facts set ${d.name} needs --file <facts.json> (fill the JSON of \`facts research ${d.name}\` or \`facts template ${d.name}\`)`);
+    const f3 = argValue(args, "file") ?? "";
     const pin = argValue(args, "country");
-    const v = saveFacts(d, readJson3(f3), { country: pin ? countryCode(pin) : void 0 });
+    const raw = readJson3(f3);
+    const named = pin ?? (raw && typeof raw === "object" && typeof raw.country === "string" ? raw.country : void 0);
+    if (fd.countries && named) factsCountry(fd, named, () => void 0);
+    const v = saveFacts(d, raw, { country: pin ? countryCode(pin) : void 0 });
     const lines = [
       `stored ${v.path} \u2014 ${Object.keys(v.file.facts).length} researched fact(s) for ${v.file.country} (${d.period} ${v.file.period})`,
       ...v.missing.length ? [`not researched yet (they read as unknown and fail closed): ${v.missing.join(", ")}`] : [],
@@ -58588,7 +58650,6 @@ Then: ${w.setCommand}
       lines.join("\n")
     );
   }
-  const c = countryOf2(d, args);
   if (d === JURISDICTION) {
     const r3 = rulesFor(c);
     if (keys.length) specsFor(d, c, keys);
@@ -58605,22 +58666,45 @@ Then: ${w.setCommand}
     );
   }
   const specs = specsFor(d, c, keys);
-  const l = loadLatestFacts(d, c);
-  const stale = new Map(l.stale.map((s) => [s.key, s.reason]));
+  const year = d.period === "year" ? period2 : void 0;
+  const { paths, facts, stale } = storedFor(fd, c, year);
   const items = specs.map((s) => {
-    const f3 = l.facts[s.key];
+    const f3 = facts[s.key];
     return { key: s.key, label: s.label, status: !f3 ? "missing" : stale.has(s.key) ? "stale" : "researched", ...f3 ? { fact: f3 } : {} };
   });
   return printResult(
     asJson,
-    { domain: d.name, country: c, paths: l.paths, items },
+    { domain: d.name, country: c, ...year !== void 0 ? { year } : {}, paths, items },
     [
-      `# ${d.name} facts \u2014 ${c}${l.paths.length ? "" : " (none stored)"}`,
+      `# ${d.name} facts \u2014 ${c}${year !== void 0 ? ` ${year}` : ""}${paths.length ? "" : " (none stored)"}`,
       ...items.map(
-        (i) => i.fact ? `- ${i.key}: ${i.status === "stale" ? `STALE (${stale.get(i.key)}) \u2014 ` : ""}${JSON.stringify(i.fact.value)} \u2014 ${i.fact.note ?? i.label} (researched ${i.fact.verifiedAt}: ${i.fact.sources.join(" ")})` : `- ${i.key}: not researched \u2014 \`ultrastock facts research ${d.name} --country ${c} --key ${i.key} --out <run>\``
+        (i) => i.fact ? `- ${i.key}: ${i.status === "stale" ? `STALE (${stale.get(i.key)}) \u2014 ` : ""}${JSON.stringify(i.fact.value)} \u2014 ${i.fact.note ?? i.label} (researched ${i.fact.verifiedAt}: ${i.fact.sources.join(" ")})` : `- ${i.key}: not researched \u2014 \`${researchCommand(d.name, c, { key: i.key, year })}\``
       )
     ].join("\n")
   );
+}
+function storedFor(fd, c, year) {
+  const d = fd.domain;
+  if (year === void 0) {
+    const l = loadLatestFacts(d, c);
+    return { paths: l.paths, facts: l.facts, stale: new Map(l.stale.map((s) => [s.key, s.reason])) };
+  }
+  const k = factsChecklist(d, c, year);
+  const facts = {};
+  const stale = /* @__PURE__ */ new Map();
+  for (const i of k.items) {
+    if (i.status === "missing") continue;
+    facts[i.key] = {
+      value: i.value,
+      label: i.label,
+      sources: i.sources ?? [],
+      verifiedAt: i.verifiedAt ?? "",
+      confidence: i.confidence ?? "low",
+      ...i.note && i.status !== "stale" ? { note: i.note } : {}
+    };
+    if (i.status === "stale") stale.set(i.key, i.note ?? "stale");
+  }
+  return { paths: k.stored ? [k.path] : [], facts, stale };
 }
 
 // src/commands/regime.ts
@@ -59058,7 +59142,7 @@ async function builtinScreen(id, opts) {
 
 // src/commands/screen.ts
 var ENGINES = ["tradingview", "crible", "builtin"];
-var USAGE6 = "usage: ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market america|france|germany|europe|uk|crypto|\u2026] [--universe SPX|NDX|CAC40|SBF120|DAX|SX5E|AEX|UKX|<comma list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--out <dir>] [--json] | screen --list [--engine \u2026] | screen --engine crible --bootstrap (download, or refresh, crible's dataset)";
+var USAGE5 = "usage: ultrastock screen <preset|query> [--engine tradingview|crible|builtin] [--market america|france|germany|europe|uk|crypto|\u2026] [--universe SPX|NDX|CAC40|SBF120|DAX|SX5E|AEX|UKX|<comma list>] [--limit <n>] [--sort <field>|-<field>] [--bootstrap] [--out <dir>] [--json] | screen --list [--engine \u2026] | screen --engine crible --bootstrap (download, or refresh, crible's dataset)";
 var isTechnical = (q) => TECHNICAL_IDS.includes(q);
 function pickEngine(query2) {
   if (tvPreset(query2)) return "tradingview";
@@ -59226,7 +59310,7 @@ async function screenCommand(args, asJson) {
   if (argBool(args, "list")) return listCommand(engineFlag, asJson);
   const query2 = args.positional.join(" ").trim();
   if (!query2 && argBool(args, "bootstrap") && engineFlag === "crible") return cribleRefresh(asJson);
-  if (!query2) throw new UsageError(USAGE6);
+  if (!query2) throw new UsageError(USAGE5);
   const engine = engineFlag ?? pickEngine(query2);
   if (argBool(args, "bootstrap") && engine !== "crible") throw new UsageError("--bootstrap downloads crible's dataset: it goes with --engine crible");
   if (argValue(args, "universe") && engine !== "builtin")
@@ -60100,7 +60184,7 @@ var ETF_USAGE = `usage:
   ultrastock etf propose [--goal core|growth|income|defensive] [--envelope pea|cto|av] [--risk 1-7] [--amount <EUR>]
                          [--max-funds 4] [--acc|--dist] [--currency EUR] [--hedged] [--out <run>] [--json]
                                                               PROPOSAL.md + TARGETS.json: a stated allocation convention, scored funds`;
-var USAGE7 = ETF_USAGE;
+var USAGE6 = ETF_USAGE;
 function distributionOf(args) {
   if (argBool(args, "acc") && argBool(args, "dist")) throw new UsageError("--acc and --dist are opposites: pick one");
   return argBool(args, "acc") ? "acc" : argBool(args, "dist") ? "dist" : void 0;
@@ -60122,7 +60206,7 @@ async function etfCommand(args, asJson) {
   if (sub === "compare") {
     const syms = symbolsOf(args);
     if (syms.length < 2 || syms.length > 6) throw new UsageError(`etf compare takes 2 to 6 ETFs, comma-separated
-${USAGE7}`);
+${USAGE6}`);
     const r3 = await etfCompare(syms);
     const out = argValue(args, "out");
     const registered = registerDatasets(out ? resolve20(out) : void 0, r3.datasets);
@@ -60164,7 +60248,7 @@ ${USAGE7}`);
   if (sub === "overlap") {
     const syms = symbolsOf(args);
     if (syms.length !== 2) throw new UsageError(`etf overlap takes exactly two ETFs
-${USAGE7}`);
+${USAGE6}`);
     emitDatasets(args, await etfOverlapReport(syms[0], syms[1]), asJson);
     return;
   }
@@ -60179,7 +60263,7 @@ ${USAGE7}`);
     };
     if (query2 && (browse.asset || browse.focus || browse.exposure || browse.sort || browse.leveraged))
       throw new UsageError(`--asset, --focus, --exposure, --sort and --leveraged browse the catalogue: drop the query "${query2}", or drop them
-${USAGE7}`);
+${USAGE6}`);
     let r3;
     try {
       r3 = await etfFind(query2, {
@@ -60199,7 +60283,7 @@ ${USAGE7}`);
   }
   if (sub === "propose") {
     if (args.positional.length > 1) throw new UsageError(`etf propose takes flags only
-${USAGE7}`);
+${USAGE6}`);
     const riskRaw = argValue(args, "risk");
     const risk = riskRaw === void 0 ? void 0 : Number(riskRaw);
     if (risk !== void 0 && !(Number.isInteger(risk) && risk >= 1 && risk <= 7))
@@ -60233,7 +60317,7 @@ run: ${dir2}
 `);
     return;
   }
-  throw new UsageError(USAGE7);
+  throw new UsageError(USAGE6);
 }
 
 // src/commands/value.ts
@@ -61572,7 +61656,7 @@ function formatDoctor(r3) {
     `  node        ${r3.node.version}${r3.node.liveCapable ? "" : ` \u2014 analysis and paper only; live orders need Node >= ${LIVE_NODE_MAJOR}`}`,
     `  state       ${r3.home}`,
     `  cache       ${r3.cache}`,
-    `  profile     ${r3.profile.exists ? `${r3.profile.jurisdiction ?? "?"}, risk score ${r3.profile.riskScore ?? "not assessed \u2014 run profile suitability"}, ${r3.profile.envelopes ?? 0} envelope(s)` : "none \u2014 run `ultrastock profile init`"}`,
+    `  profile     ${r3.profile.exists ? `${r3.profile.jurisdiction ?? "?"}, risk score ${r3.profile.riskScore ?? "not assessed \u2014 run profile suitability"}, ${r3.profile.envelopes ?? 0} envelope(s)` : "none \u2014 run `ultrastock profile init --jurisdiction <CC>`"}`,
     ...r3.jurisdiction ? [
       `  rules       ${r3.jurisdiction.country}: ${r3.jurisdiction.researched} of ${r3.jurisdiction.total} jurisdiction rules researched${r3.jurisdiction.unresearched.length ? ` (missing or stale: ${r3.jurisdiction.unresearched.join(", ")} \u2014 they fail closed; research them: \`${r3.jurisdiction.research}\`)` : ""}`
     ] : [],
@@ -61674,8 +61758,8 @@ USAGE
   ultrastock decide <run> <decision.json> [--json]
   ultrastock tax rules template --country CC --year YYYY [--currency <code>] | tax rules set --file <rules.json> [--country CC] [--year YYYY] | tax rules show [--country CC] [--year YYYY] [--json]
   ultrastock tax verify [--country CC] [--year YYYY] [--json]
-  ultrastock facts research <jurisdiction|funds|tax> [--country CC] [--key k,\u2026] [--year YYYY] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]
-  ultrastock facts template|show <jurisdiction|funds|tax> [--country CC] [--key k,\u2026] [--year YYYY] [--json] | facts set <domain> --file <facts.json> [--country CC] [--json]
+  ultrastock facts research <tax|jurisdiction|funds|venues|geo|calendar> [--country CC] [--key k,\u2026] [--year YYYY] [--web-results <file|->] [--engine-search] [--limit <n>] [--browser] [--no-wayback] --out <run> [--json]
+  ultrastock facts template|show <tax|jurisdiction|funds|venues|geo|calendar> [--country CC] [--key k,\u2026] [--year YYYY] [--json] | facts set <domain> --file <facts.json> [--country CC] [--json]
   ultrastock tax report [--country CC|--regime fr|us] [--year YYYY] [--neutral] [--book real|paper] [--tmi <rate>] [--marginal-rate <rate>] [--filing single|joint|separate|head] [--income <n>] [--carryforward 2024=1200,\u2026|short=\u2026,long=\u2026] [--envelope-value <account>:<date>=<value>] [--lot-method fifo|hifo|lifo] [--household single|couple] [--out <dir>] [--json]
   ultrastock tax lots|harvest [--country FR|US] [--year YYYY] [--json]
   ultrastock tax export --format 8949|2086|2074|koinly|neutral|neutral-json [--country CC] [--year YYYY] [--neutral] [--out <dir>]
@@ -62015,8 +62099,10 @@ COMMANDS
             country allows (jurisdiction: Polymarket, Kalshi, US-domiciled
             ETFs, crypto platforms and the register that lists them, foreign
             account reporting, PFIC), what a fund domicile means for
-            withholding (funds), the tax rules (tax) \u2014 are not in ultrastock:
-            the agent researches them. research gathers, per key, the official
+            withholding (funds), the tax rules (tax), venue and broker fees
+            (venues), EU / EEA / euro-area membership (geo, country EU),
+            exchange hours and one-off closures (calendar, per exchange country
+            and year) \u2014 are not in ultrastock: the agent researches them. research gathers, per key, the official
             documents (the keyless search cascade of research --engine-search,
             or your own hits with --web-results, one list per key) into the run
             as evidence [E#] and writes FACTS.<domain>.<CC>.md (what to read)
@@ -62851,10 +62937,21 @@ ${bars.map((b) => [b.date, b.open, b.high, b.low, b.close, b.volume ?? ""].join(
     return;
   }
 }
-async function main(argv) {
+function parseCommandLine(argv) {
   let parsed;
   try {
     parsed = parseArgs(argv, SPEC);
+  } catch (e) {
+    throw new UsageError(e.message);
+  }
+  if (parsed.kind === "help" || parsed.kind === "version") return parsed;
+  if (parsed.positional.length > arity(parsed)) throw new UsageError(`unexpected argument "${parsed.positional[arity(parsed)]}" \u2014 run \`ultrastock --help\``);
+  return parsed;
+}
+async function main(argv) {
+  let parsed;
+  try {
+    parsed = parseCommandLine(argv);
   } catch (e) {
     return usage(e.message);
   }
@@ -62869,7 +62966,6 @@ async function main(argv) {
     return;
   }
   const args = parsed;
-  if (args.positional.length > arity(args)) usage(`unexpected argument "${args.positional[arity(args)]}" \u2014 run \`ultrastock --help\``);
   try {
     await run2(args);
   } catch (e) {
@@ -62900,5 +62996,6 @@ export {
   HELP,
   VALUE_FLAGS,
   main,
+  parseCommandLine,
   parseDuration
 };

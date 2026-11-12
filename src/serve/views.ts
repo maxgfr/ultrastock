@@ -78,7 +78,7 @@ const sourcesOf = (f: Findings): SourceRow[] =>
 
 /** The two states `loadMarkedBook` throws on, said as a hint (a page that tells what to run, not a 500). */
 function bookHint(book: BookName): Hint | undefined {
-  if (!loadProfile()) return { hint: "No profile yet: run `ultrastock profile init` first." };
+  if (!loadProfile()) return { hint: "No profile yet: run `ultrastock profile init --jurisdiction <CC>` first." };
   const b = buildBook(readLedger(book));
   if (!b.positions.some((p) => p.quantity > 0) && !b.cash.length)
     return { hint: `The ${book} book is empty: record a deposit and trades first (\`ultrastock portfolio deposit|add … --book ${book}\`).` };

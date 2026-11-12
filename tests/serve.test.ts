@@ -470,7 +470,7 @@ describe("serve: hints instead of errors", () => {
     newHome("noprofile");
     const none = await call("/");
     expect(none.status).toBe(200);
-    expect(none.body).toMatch(/No profile yet: run <code>ultrastock profile init<\/code>/);
+    expect(none.body).toMatch(/No profile yet: run <code>ultrastock profile init --jurisdiction &lt;CC&gt;<\/code>/);
     expect(JSON.parse((await call("/api/analysis/risk")).body).hint).toMatch(/profile init/);
     saveProfile(defaultProfile("FR", "EUR"));
     const empty = await call("/analysis/risk?book=paper");

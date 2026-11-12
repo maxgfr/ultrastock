@@ -29,11 +29,14 @@ import {
   defineDomain,
   type Fact,
   type FactSpec,
+  factsSetCommand,
   factsTemplate,
-  loadFacts,
+  factsTemplateCommand,
+  type LatestFacts,
+  loadLatestFacts,
+  researchCommand,
   saveFacts,
   storedPeriods,
-  type ValidatedFacts,
 } from "../core/researched.js";
 
 /** The one Kalshi fee formula the engine computes: anything else researched is refused, not guessed. */
@@ -105,19 +108,16 @@ export const VENUE_SPEC: readonly FactSpec[] = [
   },
 ];
 
-export const templateCommand = (country: string) => `ultrastock facts template venues --country ${countryCode(country)}`;
-export const RESEARCH_COMMAND = "ultrastock facts research venues";
-
 /** The venues domain. Not strict: the broker behind an account (`account.<id>.fees`…) is free research. */
 export const VENUES = defineDomain<FactSpec>({
   name: "venues",
   period: "date",
   keysFor: () => VENUE_SPEC,
   strict: () => false,
-  templateCommand: (c) => templateCommand(c),
-  setCommand: "ultrastock facts set venues --file <file.json>",
+  templateCommand: (c) => factsTemplateCommand("venues", countryCode(c)),
+  setCommand: factsSetCommand("venues"),
   about: (c, date) =>
-    `TEMPLATE to fill by research. ultrastock contains no venue fee: every value must come from the venue's own fee page, as it applies to a resident of ${c}, read on ${date}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"; remove a key you did not research rather than guessing it. For one of the user's own accounts at another broker, add "account.<id>.fees" ({maker, taker}), "account.<id>.perUnit" and "account.<id>.minimum" (the account id letters and digits only). Tick sizes, lot steps and Kalshi's per-series fee multiplier are read live from the venues: do not store them. Then store the file with \`ultrastock facts set venues --file <this file>\`.`,
+    `TEMPLATE to fill by research. ultrastock contains no venue fee: every value must come from the venue's own fee page, as it applies to a resident of ${c}, read on ${date}. For each key fill "value", "sources" (at least one URL), "verifiedAt" and "confidence"; set "researchedAt"; remove a key you did not research rather than guessing it. For one of the user's own accounts at another broker, add "account.<id>.fees" ({maker, taker}), "account.<id>.perUnit" and "account.<id>.minimum" (the account id letters and digits only). Tick sizes, lot steps and Kalshi's per-series fee multiplier are read live from the venues: do not store them. Then store the file with \`${factsSetCommand("venues").replace("<file.json>", "<this file>")}\`.`,
 });
 
 /** A key's id for an account (letters and digits only: a facts key is dotted words). */
@@ -130,32 +130,36 @@ export function venueCountry(): string | undefined {
 
 export interface VenueFacts {
   country: string;
+  /** The date of the newest file read, and its path. */
   date: string;
   path: string;
-  current: Record<string, Fact>;
-  stale: ValidatedFacts["stale"];
+  current: LatestFacts["current"];
+  stale: LatestFacts["stale"];
 }
 
-/** The latest venue facts for a country dated on or before today; undefined when none is stored. */
+/**
+ * A country's newest venue fact per key, across the files dated on or before today (core/researched.ts's one reader:
+ * a fee researched on a new day leaves the other keys their earlier file's fact); undefined when none is stored.
+ */
 export function latestVenueFacts(country: string, now = clockNow()): VenueFacts | undefined {
   const c = countryCode(country);
-  const today = now.toISOString().slice(0, 10);
-  const date = (storedPeriods(VENUES, c) as string[]).filter((d) => d <= today).at(-1);
-  if (!date) return undefined;
-  const v = loadFacts(VENUES, c, date);
-  return { country: c, date, path: v.path, current: v.current, stale: v.stale };
+  const upTo = now.toISOString().slice(0, 10);
+  const l = loadLatestFacts(VENUES, c, { upTo });
+  const date = (storedPeriods(VENUES, c) as string[]).filter((d) => d <= upTo).at(-1);
+  const path = l.paths.at(-1);
+  return date && path ? { country: c, date, path, current: l.current, stale: l.stale } : undefined;
 }
 
 /** Why a venue fact is not available, in words that say what to do. */
 export function missingVenueFact(country: string | undefined, keys: readonly string[], facts?: VenueFacts): string {
   const what = keys.join(", ");
   if (!country)
-    return `no fee is known for ${what}: no profile names the country of residence (\`ultrastock profile init\`), and ultrastock holds no fee schedule`;
+    return `no fee is known for ${what}: no profile names the country of residence (\`ultrastock profile init --jurisdiction <CC>\`), and ultrastock holds no fee schedule`;
   const stale = facts?.stale.filter((s) => keys.includes(s.key)) ?? [];
   const where = facts
     ? `${facts.path} does not hold ${what} as current${stale.length ? ` (${stale.map((s) => `${s.key} ${s.reason}`).join("; ")})` : ""}`
     : `no venue facts are stored for ${country}`;
-  return `no fee is known for ${what}: ${where} — ultrastock holds no fee schedule. Research it: \`${RESEARCH_COMMAND} --country ${country}\` (the template: \`${templateCommand(country)}\`)`;
+  return `no fee is known for ${what}: ${where} — ultrastock holds no fee schedule. Research it: \`${researchCommand("venues", country)}\` (the template: \`${factsTemplateCommand("venues", country)}\`)`;
 }
 
 export interface FactRead<T> {
@@ -179,7 +183,7 @@ export function venueFact<T>(key: string, opts: { country?: string; now?: Date }
   }
   const fact = facts?.current[key];
   if (!facts || !fact) return { missing: missingVenueFact(country, [key], facts) };
-  return { value: fact.value as T, fact, key, basis: `researched ${key} in ${facts.path} (verified ${fact.verifiedAt}, ${fact.sources[0]})` };
+  return { value: fact.value as T, fact, key, basis: `researched ${key} in ${fact.path} (verified ${fact.verifiedAt}, ${fact.sources[0]})` };
 }
 
 /** Validate and store a venues facts file; returns where it went and what is still missing or stale. */
