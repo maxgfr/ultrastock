@@ -77,6 +77,8 @@ describe("options-analysis helpers", () => {
   it("converts IV to fractions, fills greeks and reads an expiry", () => {
     const q = toQuantChain(syntheticChain(), "cboe", NOW, 0.04);
     expect(q.options[0]!.iv).toBeCloseTo(0.3);
+    // The New York close it counts to is the built-in one (no hours researched here), and the notes say so.
+    expect(q.notes.join("\n")).toMatch(/time to expiry runs to the 2026 close: NYSE \/ Nasdaq hours 09:30–16:00 are ultrastock's built-in ones/);
     expect(q.multiplier).toBe(100);
     const out = new PointList();
     expiryPoints(q, "2026-11-20", out);

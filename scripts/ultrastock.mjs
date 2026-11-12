@@ -21642,6 +21642,11 @@ function toQuantChain(chain2, venue, now, rate2) {
   }
   if (inverse2) notes.push(`premiums quoted in ${chain2.underlying} converted to ${chain2.strikeCurrency} at the index price ${chain2.underlyingPrice}`);
   if (filled) notes.push(`${filled} contract(s) had no greeks from the venue: delta and gamma are Black\u2013Scholes from their IV (r = ${r3})`);
+  if (venue === "cboe")
+    for (const y of new Set(options.map((o) => Number(o.expiry.slice(0, 4))))) {
+      const note = hoursNote("XNYS", marketHours("XNYS", y), y);
+      if (note) notes.push(`time to expiry runs to the ${y} close: ${note}`);
+    }
   const expiries = [...new Set(options.map((o) => o.expiry))].sort().map((expiry) => ({ expiry, dte: Math.max(0, Math.round((Date.parse(`${expiry}T00:00:00Z`) - now.getTime()) / DAY3)) }));
   return {
     underlying: chain2.underlying,

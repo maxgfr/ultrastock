@@ -33,7 +33,7 @@ import { homeDir } from "../../core/paths.js";
 import { UsageError, writeFileAtomic } from "../../engine.js";
 import type { OptionChain } from "../../providers/options/chain.js";
 import { fmt, moveKey, type PointList } from "./common.js";
-import { localTimeToUtc, MARKETS, marketHours } from "../../core/calendar.js";
+import { hoursNote, localTimeToUtc, MARKETS, marketHours } from "../../core/calendar.js";
 
 const DAY = 86_400_000;
 const YEAR = 365 * DAY;
@@ -116,6 +116,12 @@ export function toQuantChain(chain: OptionChain, venue: OptionVenue, now: Date, 
   }
   if (inverse) notes.push(`premiums quoted in ${chain.underlying} converted to ${chain.strikeCurrency} at the index price ${chain.underlyingPrice}`);
   if (filled) notes.push(`${filled} contract(s) had no greeks from the venue: delta and gamma are Black–Scholes from their IV (r = ${r})`);
+  // The time to a US expiry runs to the New York close: when those hours are the built-in ones, the output says so.
+  if (venue === "cboe")
+    for (const y of new Set(options.map((o) => Number(o.expiry.slice(0, 4))))) {
+      const note = hoursNote("XNYS", marketHours("XNYS", y), y);
+      if (note) notes.push(`time to expiry runs to the ${y} close: ${note}`);
+    }
   const expiries = [...new Set(options.map((o) => o.expiry))]
     .sort()
     .map((expiry) => ({ expiry, dte: Math.max(0, Math.round((Date.parse(`${expiry}T00:00:00Z`) - now.getTime()) / DAY)) }));
