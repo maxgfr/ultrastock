@@ -6,9 +6,12 @@
 //   1. the equity share         from the risk score (1–7) and the goal
 //   2. the buckets              the goal's split of each sleeve (ETF_GOAL_SPLITS),
 //                               trimmed to --max-funds, small lines merged
-//   3. the envelope             a PEA holds no bond fund: that part is placed
-//                               outside (CTO / assurance-vie) and said so; an
-//                               assurance-vie holds the insurer's list only
+//   3. the envelope             inside a PEA, only a fund its issuer flags
+//                               eligible (or names so, a hint): a line no such
+//                               fund fills is placed outside (CTO /
+//                               assurance-vie) and said so — no eligibility rule
+//                               of ultrastock's own; an assurance-vie holds the
+//                               insurer's list only
 //   4. the candidates           TradingView funds on the bucket's indexes,
 //                               filtered (UCITS, not leveraged, not hedged, AUM,
 //                               age, distribution, the researched jurisdiction
@@ -77,8 +80,6 @@ export interface EtfBucket {
   variants?: RegExp;
   /** The fund's base currency must be the wanted currency (a euro bond, euro cash). */
   baseCurrency?: boolean;
-  /** Whether a PEA can hold it: a PEA holds funds ≥ 75 % in EU-company shares (or swap funds built to qualify) — never a bond fund. */
-  pea: boolean;
 }
 
 const ESG = /\b(?:esg|sri|screened|ctb|pab|climate|transition|green|paris)\b/;
@@ -93,7 +94,6 @@ export const ETF_BUCKETS: Record<string, EtfBucket> = {
     search: "MSCI World|FTSE All-World|MSCI ACWI|FTSE Developed",
     accept: /^(?:msci world|msci acwi(?: imi)?|ftse all world(?: developed)?|ftse developed)$/,
     variants: /^(?:msci world|msci acwi|ftse all world)\b/,
-    pea: true,
   },
   em: {
     id: "em",
@@ -103,7 +103,6 @@ export const ETF_BUCKETS: Record<string, EtfBucket> = {
     search: "MSCI EM|MSCI Emerging|FTSE Emerging",
     accept: /^(?:msci (?:em|emerging markets)(?: \(emerging markets\))?(?: imi)?|ftse emerging(?: markets)?(?: all cap)?)$/,
     variants: /^msci (?:em|emerging markets)\b(?!.*\b(?:asia|ex china|latin|small)\b)/,
-    pea: true,
   },
   small: {
     id: "small",
@@ -112,7 +111,6 @@ export const ETF_BUCKETS: Record<string, EtfBucket> = {
     assetClass: "Equity",
     search: "World Small Cap|World Index Small Cap",
     accept: /^msci world small cap$/,
-    pea: true,
   },
   "us-tech": {
     id: "us-tech",
@@ -121,7 +119,6 @@ export const ETF_BUCKETS: Record<string, EtfBucket> = {
     assetClass: "Equity",
     search: "Nasdaq 100|Nasdaq-100|NASDAQ 100",
     accept: /^nasdaq 100(?: notional)?$/,
-    pea: true,
   },
   dividend: {
     id: "dividend",
@@ -131,7 +128,6 @@ export const ETF_BUCKETS: Record<string, EtfBucket> = {
     search: "High Dividend|Select Dividend|Dividend Aristocrats|Dividend Leaders",
     accept:
       /^(?:ftse all world high dividend yield|msci (?:world|acwi|europe|emu) high dividend yield|stoxx (?:global|europe) select dividend (?:100|30)|euro stoxx select dividend 30|s&p (?:global|euro|pan europe) (?:high yield )?dividend aristocrats|morningstar developed markets large cap dividend leaders)$/,
-    pea: true,
   },
   "euro-gov": {
     id: "euro-gov",
@@ -143,7 +139,6 @@ export const ETF_BUCKETS: Record<string, EtfBucket> = {
       /^(?:bloomberg (?:barclays )?euro (?:aggregate )?(?:treasury|government)(?: bond)?(?: treasury)?|bloomberg euro aggregate(?: bond)?|(?:markit )?iboxx (?:euro|eur) sovereigns(?: eurozone)?|ftse (?:mts )?eurozone government bond|j ?p ?morgan emu government bond(?: ig)?)$/,
     variants: /^bloomberg euro (?:aggregate )?treasury\b/,
     baseCurrency: true,
-    pea: false,
   },
   "euro-corp": {
     id: "euro-corp",
@@ -154,7 +149,6 @@ export const ETF_BUCKETS: Record<string, EtfBucket> = {
     accept: /^(?:bloomberg (?:barclays )?euro (?:aggregate )?corporate(?: bond)?|(?:markit )?iboxx (?:euro|eur) (?:liquid )?corporates?(?: overall)?)$/,
     variants: /^bloomberg euro (?:aggregate )?corporate\b(?!.*\b(?:\d|ex|financials?)\b)/,
     baseCurrency: true,
-    pea: false,
   },
   money: {
     id: "money",
@@ -164,7 +158,6 @@ export const ETF_BUCKETS: Record<string, EtfBucket> = {
     search: ETF_MONEY_MARKET_INDEX,
     accept: /\b(?:overnight|estr|str|money market|eonia|government bill|treasury bills?)\b/,
     baseCurrency: true,
-    pea: true,
   },
 };
 
@@ -306,12 +299,12 @@ export function etfAllocation(o: { goal: EtfGoal; risk: number; maxFunds: number
   };
 }
 
-export const ETF_PEA_BOND_REASON =
-  "a PEA holds only funds at least 75 % invested in shares of EU companies (or swap funds built to qualify): no bond fund is eligible — hold this part in a CTO or an assurance-vie";
-
-/** Where a line goes for an envelope: inside it, or outside with the reason. */
-export function etfPlacement(bucket: EtfBucket, envelope: EtfEnvelope): { inside: boolean; why?: string } {
-  if (envelope === "pea" && !bucket.pea) return { inside: false, why: ETF_PEA_BOND_REASON };
+/**
+ * Where a line goes for an envelope, before its funds are screened: inside. Whether a PEA can hold a fund is the
+ * issuer's flag (or a name hint), read fund by fund in the screen — a line no eligible fund fills is placed outside
+ * then, with the reason. ultrastock asserts no eligibility rule of its own.
+ */
+export function etfPlacement(_bucket: EtfBucket, _envelope: EtfEnvelope): { inside: boolean; why?: string } {
   return { inside: true };
 }
 
@@ -696,7 +689,22 @@ export async function etfPropose(dir: string, o: EtfProposeOptions): Promise<Etf
     return scans.get(k)!;
   };
   const isPea = (w: Work) => o.envelope === "pea" && w.inside;
-  for (const w of work) w.scan = await scanFor(w.line.bucket, isPea(w));
+  for (const w of work) {
+    try {
+      w.scan = await scanFor(w.line.bucket, isPea(w));
+    } catch (e) {
+      // The Euronext Paris scan of a line failed (or a replay does not hold it): the line is screened outside the PEA.
+      if (!isPea(w)) throw e;
+      const why =
+        e instanceof FixtureMiss
+          ? "the replay holds no Euronext Paris scan for it"
+          : `the Euronext Paris scan for it failed (${(e as Error).message.split("\n")[0]!.slice(0, 120)})`;
+      w.inside = false;
+      w.notes.push(`${w.line.bucket.label}: ${why} — placed outside the PEA (CTO or assurance-vie)`);
+      impossible.push(`${w.line.bucket.label} (${w.line.weightPct} %) inside the PEA — ${why}: placed outside it, in a CTO or an assurance-vie`);
+      w.scan = await scanFor(w.line.bucket, false);
+    }
+  }
   const facts = new Map<string, AmundiFacts>();
   let amundi: { url: string; fetchedAt: string } | undefined;
   const askAmundi = async (ds: Dataset[]) => {

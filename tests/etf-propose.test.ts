@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import { etfExposureOf, etfFind, etfFocusOf } from "../src/analyze/etf.js";
 import {
   ETF_BUCKETS,
-  ETF_PEA_BOND_REASON,
   type EtfScreenContext,
   EtfProposeError,
   etfAllocation,
@@ -127,13 +126,18 @@ describe("the allocation convention", () => {
 });
 
 describe("the envelope", () => {
-  it("keeps no bond bucket inside a PEA, and says why", () => {
-    expect(etfPlacement(ETF_BUCKETS["euro-gov"]!, "pea")).toEqual({ inside: false, why: ETF_PEA_BOND_REASON });
-    expect(etfPlacement(ETF_BUCKETS["euro-corp"]!, "pea").inside).toBe(false);
-    expect(etfPlacement(ETF_BUCKETS.world!, "pea").inside).toBe(true);
+  it("asserts no PEA rule of its own: every line starts inside, and the issuer's flag decides fund by fund", () => {
+    for (const b of ["euro-gov", "euro-corp", "money", "world"]) expect(etfPlacement(ETF_BUCKETS[b]!, "pea")).toEqual({ inside: true });
     expect(etfPlacement(ETF_BUCKETS["euro-gov"]!, "cto").inside).toBe(true);
-    expect(etfPlacement(ETF_BUCKETS["euro-gov"]!, "av").inside).toBe(true);
-    expect(ETF_PEA_BOND_REASON).toMatch(/CTO or an assurance-vie/);
+    // A bond fund with no issuer flag is left out of a PEA by the screen; one its issuer flags eligible is kept.
+    const bond = (t: string, isin: string) =>
+      fund(t, { isin, index_tracked: "Bloomberg Euro Treasury", etf_fund_currency: "EUR", asset_class: "Fixed income" });
+    const flagged = bond("EURONEXT:B1", "LU0000000001");
+    const plain = bond("EURONEXT:B2", "IE0000000002");
+    const facts = new Map<string, AmundiFacts>([["LU0000000001", { isin: "LU0000000001", pea: true, synthetic: false }]]);
+    const r = etfScreenCandidates([flagged, plain], ETF_BUCKETS["euro-gov"]!, ctx({ pea: true, facts }));
+    expect(r.kept.map((c) => c.m.ticker)).toEqual(["EURONEXT:B1"]);
+    expect(r.dropped).toEqual({ pea: 1 });
   });
   it("in a PEA, keeps a fund only on the issuer's flag or a name hint", () => {
     const flagged = fund("EURONEXT:CW8", { isin: "LU1681043599", country_code_fund: "LU" });
@@ -267,7 +271,10 @@ describe("etf fixtures — browsing and proposing", () => {
     const bonds = r.lines.find((l) => l.bucket === "euro-gov")!;
     expect(bonds.envelope).toBe("cto-or-av");
     expect(bonds.weightPct).toBe(45);
-    expect(r.impossible.join(" ")).toMatch(/no bond fund is eligible/);
+    // The replay holds no Euronext Paris scan for the bonds: the line is screened outside the PEA, and said so.
+    expect(r.impossible.join(" ")).toMatch(
+      /Euro government bonds \(all maturities\) \(45 %\) inside the PEA — the replay holds no Euronext Paris scan for it: placed outside it, in a CTO or an assurance-vie/,
+    );
     for (const l of r.lines.filter((x) => x.envelope === "pea")) expect(l.pick).toBeDefined();
     const store = EvidenceStore.load(dir)!;
     for (const l of r.lines) {

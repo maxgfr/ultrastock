@@ -1216,7 +1216,7 @@ export async function etfFind(query: string, opts: EtfFindOptions = {}): Promise
     );
     if (browse && opts.asset && opts.asset !== "equity" && opts.asset !== "real-estate")
       notes.push(
-        `--pea with --asset ${opts.asset}: a PEA holds funds at least 75 % invested in EU-company shares (or swap funds built to qualify) — a ${opts.asset} fund is not eligible; look for it in a CTO or an assurance-vie`,
+        `--pea with --asset ${opts.asset}: only a fund its issuer flags PEA-eligible (or names so, a hint) is kept — the PEA's eligibility rules are the issuer's and the law's, not ultrastock's: check the KID, or hold it in a CTO or an assurance-vie`,
       );
     rows = kept;
   }

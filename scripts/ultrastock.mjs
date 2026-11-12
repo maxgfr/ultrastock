@@ -27664,7 +27664,7 @@ async function etfFind(query2, opts = {}) {
     );
     if (browse && opts.asset && opts.asset !== "equity" && opts.asset !== "real-estate")
       notes.push(
-        `--pea with --asset ${opts.asset}: a PEA holds funds at least 75 % invested in EU-company shares (or swap funds built to qualify) \u2014 a ${opts.asset} fund is not eligible; look for it in a CTO or an assurance-vie`
+        `--pea with --asset ${opts.asset}: only a fund its issuer flags PEA-eligible (or names so, a hint) is kept \u2014 the PEA's eligibility rules are the issuer's and the law's, not ultrastock's: check the KID, or hold it in a CTO or an assurance-vie`
       );
     rows = kept;
   }
@@ -58165,8 +58165,7 @@ var ETF_BUCKETS = {
     assetClass: "Equity",
     search: "MSCI World|FTSE All-World|MSCI ACWI|FTSE Developed",
     accept: /^(?:msci world|msci acwi(?: imi)?|ftse all world(?: developed)?|ftse developed)$/,
-    variants: /^(?:msci world|msci acwi|ftse all world)\b/,
-    pea: true
+    variants: /^(?:msci world|msci acwi|ftse all world)\b/
   },
   em: {
     id: "em",
@@ -58175,8 +58174,7 @@ var ETF_BUCKETS = {
     assetClass: "Equity",
     search: "MSCI EM|MSCI Emerging|FTSE Emerging",
     accept: /^(?:msci (?:em|emerging markets)(?: \(emerging markets\))?(?: imi)?|ftse emerging(?: markets)?(?: all cap)?)$/,
-    variants: /^msci (?:em|emerging markets)\b(?!.*\b(?:asia|ex china|latin|small)\b)/,
-    pea: true
+    variants: /^msci (?:em|emerging markets)\b(?!.*\b(?:asia|ex china|latin|small)\b)/
   },
   small: {
     id: "small",
@@ -58184,8 +58182,7 @@ var ETF_BUCKETS = {
     sleeve: "equity",
     assetClass: "Equity",
     search: "World Small Cap|World Index Small Cap",
-    accept: /^msci world small cap$/,
-    pea: true
+    accept: /^msci world small cap$/
   },
   "us-tech": {
     id: "us-tech",
@@ -58193,8 +58190,7 @@ var ETF_BUCKETS = {
     sleeve: "equity",
     assetClass: "Equity",
     search: "Nasdaq 100|Nasdaq-100|NASDAQ 100",
-    accept: /^nasdaq 100(?: notional)?$/,
-    pea: true
+    accept: /^nasdaq 100(?: notional)?$/
   },
   dividend: {
     id: "dividend",
@@ -58202,8 +58198,7 @@ var ETF_BUCKETS = {
     sleeve: "equity",
     assetClass: "Equity",
     search: "High Dividend|Select Dividend|Dividend Aristocrats|Dividend Leaders",
-    accept: /^(?:ftse all world high dividend yield|msci (?:world|acwi|europe|emu) high dividend yield|stoxx (?:global|europe) select dividend (?:100|30)|euro stoxx select dividend 30|s&p (?:global|euro|pan europe) (?:high yield )?dividend aristocrats|morningstar developed markets large cap dividend leaders)$/,
-    pea: true
+    accept: /^(?:ftse all world high dividend yield|msci (?:world|acwi|europe|emu) high dividend yield|stoxx (?:global|europe) select dividend (?:100|30)|euro stoxx select dividend 30|s&p (?:global|euro|pan europe) (?:high yield )?dividend aristocrats|morningstar developed markets large cap dividend leaders)$/
   },
   "euro-gov": {
     id: "euro-gov",
@@ -58213,8 +58208,7 @@ var ETF_BUCKETS = {
     search: "Euro Treasury|Euro Aggregate|Euro Government|Eurozone Government|Euro Sovereigns|EUR Sovereigns|EMU Government",
     accept: /^(?:bloomberg (?:barclays )?euro (?:aggregate )?(?:treasury|government)(?: bond)?(?: treasury)?|bloomberg euro aggregate(?: bond)?|(?:markit )?iboxx (?:euro|eur) sovereigns(?: eurozone)?|ftse (?:mts )?eurozone government bond|j ?p ?morgan emu government bond(?: ig)?)$/,
     variants: /^bloomberg euro (?:aggregate )?treasury\b/,
-    baseCurrency: true,
-    pea: false
+    baseCurrency: true
   },
   "euro-corp": {
     id: "euro-corp",
@@ -58224,8 +58218,7 @@ var ETF_BUCKETS = {
     search: "Euro Corporate|EUR Corporates|Euro Aggregate Corporate|EUR Liquid Corporates",
     accept: /^(?:bloomberg (?:barclays )?euro (?:aggregate )?corporate(?: bond)?|(?:markit )?iboxx (?:euro|eur) (?:liquid )?corporates?(?: overall)?)$/,
     variants: /^bloomberg euro (?:aggregate )?corporate\b(?!.*\b(?:\d|ex|financials?)\b)/,
-    baseCurrency: true,
-    pea: false
+    baseCurrency: true
   },
   money: {
     id: "money",
@@ -58234,8 +58227,7 @@ var ETF_BUCKETS = {
     assetClass: "Fixed income",
     search: ETF_MONEY_MARKET_INDEX,
     accept: /\b(?:overnight|estr|str|money market|eonia|government bill|treasury bills?)\b/,
-    baseCurrency: true,
-    pea: true
+    baseCurrency: true
   }
 };
 function etfEquityShare(risk, goal) {
@@ -58335,9 +58327,7 @@ function etfAllocation(o) {
     lines: lines.map((x, i) => ({ bucket: ETF_BUCKETS[x.id], weightPct: weights[i], merged: x.merged }))
   };
 }
-var ETF_PEA_BOND_REASON = "a PEA holds only funds at least 75 % invested in shares of EU companies (or swap funds built to qualify): no bond fund is eligible \u2014 hold this part in a CTO or an assurance-vie";
-function etfPlacement(bucket2, envelope) {
-  if (envelope === "pea" && !bucket2.pea) return { inside: false, why: ETF_PEA_BOND_REASON };
+function etfPlacement(_bucket, _envelope) {
   return { inside: true };
 }
 var ETF_VENUES = /* @__PURE__ */ new Set(["EURONEXT", "XETR", "MIL", "SIX", "LSE", "VIE", "BME"]);
@@ -58555,7 +58545,18 @@ async function etfPropose(dir2, o) {
     return scans.get(k);
   };
   const isPea = (w) => o.envelope === "pea" && w.inside;
-  for (const w of work) w.scan = await scanFor(w.line.bucket, isPea(w));
+  for (const w of work) {
+    try {
+      w.scan = await scanFor(w.line.bucket, isPea(w));
+    } catch (e) {
+      if (!isPea(w)) throw e;
+      const why2 = e instanceof FixtureMiss ? "the replay holds no Euronext Paris scan for it" : `the Euronext Paris scan for it failed (${e.message.split("\n")[0].slice(0, 120)})`;
+      w.inside = false;
+      w.notes.push(`${w.line.bucket.label}: ${why2} \u2014 placed outside the PEA (CTO or assurance-vie)`);
+      impossible.push(`${w.line.bucket.label} (${w.line.weightPct} %) inside the PEA \u2014 ${why2}: placed outside it, in a CTO or an assurance-vie`);
+      w.scan = await scanFor(w.line.bucket, false);
+    }
+  }
   const facts = /* @__PURE__ */ new Map();
   let amundi;
   const askAmundi = async (ds) => {
