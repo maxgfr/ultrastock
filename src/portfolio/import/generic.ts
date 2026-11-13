@@ -29,11 +29,12 @@
 // buy price = (|amount| − fee) / quantity, sell price = (|amount| + fee) / quantity.
 // A row without a symbol uses its ISIN (the router resolves EU ISINs).
 //
-// Named maps (--map boursorama|fortuneo|trade-republic) are BEST-EFFORT: none
-// of these brokers publishes the column layout of its export, so the column
-// names below are the usual ones, not verified against a reference — a column
-// a named map expects but the file lacks is reported, and an explicit JSON map
-// overrides it.
+// The broker maps (--map boursorama|fortuneo|trade-republic) are BEST-EFFORT:
+// none of these brokers publishes the column layout of its export, so the
+// column names below are the usual ones, not verified against a reference — a
+// column a named map expects but the file lacks is reported, and an explicit
+// JSON map overrides it. --map nautilus is the exception, verified: the fills
+// export of the companion repo nautilus-trading, a format both repos own.
 import { deaccent, UsageError } from "../../engine.js";
 import type { TxType } from "../ledger.js";
 import {
@@ -79,7 +80,7 @@ const COLUMN_KEYS = ["date", "type", "symbol", "isin", "quantity", "price", "amo
 const OPTION_KEYS = ["defaultType", "defaultCurrency", "dateOrder", "decimal", "delimiter", "types"] as const;
 const TX_TYPES: readonly TxType[] = ["deposit", "withdrawal", "buy", "sell", "dividend", "interest", "fee", "tax", "split", "transfer-in", "transfer-out"];
 
-/** Ready-made maps for French brokers' exports — all best-effort (see the module header). */
+/** Ready-made maps: French brokers' exports, best-effort (see the module header), and nautilus-trading's, verified. */
 export const GENERIC_PRESETS: Record<string, { map: ColumnMap; verified: boolean; source: string }> = {
   boursorama: {
     map: {
@@ -117,6 +118,24 @@ export const GENERIC_PRESETS: Record<string, { map: ColumnMap; verified: boolean
     map: { date: "Date", type: "Type", isin: "ISIN", quantity: "Shares", price: "Price", fee: "Fee", amount: "Amount", currency: "Currency", decimal: "." },
     verified: false,
     source: "Trade Republic's in-app transaction export (2025) has no published column reference",
+  },
+  // ISO dates read under the default DMY order; fee is a positive charge (commission + transaction taxes).
+  nautilus: {
+    map: {
+      date: "date",
+      type: "type",
+      symbol: "symbol",
+      isin: "isin",
+      quantity: "quantity",
+      price: "price",
+      fee: "fee",
+      currency: "currency",
+      note: "note",
+      decimal: ".",
+      delimiter: ",",
+    },
+    verified: true,
+    source: "nautilus-trading's own export (portfolio/export.py), a format both repos own",
   },
 };
 
@@ -178,7 +197,8 @@ export function parseGeneric(text: string, opts: ImportOptions & { map: ColumnMa
   const rows = csvRowsWithLines(src, delimiter);
   const want = headerKey(map.date);
   const h = rows.findIndex((r) => r.cells.some((c) => headerKey(c) === want));
-  const hint = opts.presetName ? ` (the "${opts.presetName}" map is best-effort: pass --map '{…}' with your file's headers)` : "";
+  const preset = opts.presetName && Object.hasOwn(GENERIC_PRESETS, opts.presetName) ? GENERIC_PRESETS[opts.presetName] : undefined;
+  const hint = opts.presetName && !preset?.verified ? ` (the "${opts.presetName}" map is best-effort: pass --map '{…}' with your file's headers)` : "";
   if (h < 0) throw new Error(`no header row with the date column "${map.date}" in the file${hint}`);
   const header = rows[h]!.cells.map(headerKey);
   const col: Partial<Record<(typeof COLUMN_KEYS)[number], number>> = {};
@@ -197,8 +217,7 @@ export function parseGeneric(text: string, opts: ImportOptions & { map: ColumnMa
     if (fatal) throw new Error(`${msg}${hint}`);
     res.warnings.push(`${msg} — those fields are left empty`);
   }
-  if (opts.presetName && Object.hasOwn(GENERIC_PRESETS, opts.presetName) && !GENERIC_PRESETS[opts.presetName]!.verified)
-    res.warnings.push(`the "${opts.presetName}" column map is best-effort (${GENERIC_PRESETS[opts.presetName]!.source}) — check the result with --dry-run`);
+  if (preset && !preset.verified) res.warnings.push(`the "${opts.presetName}" column map is best-effort (${preset.source}) — check the result with --dry-run`);
   const defaultCurrency = (map.defaultCurrency ?? "EUR").toUpperCase();
   if (col.currency === undefined && !map.defaultCurrency) res.warnings.push("no currency column: every row is booked in EUR (set defaultCurrency in the map)");
   let pricedFromAmount = 0;

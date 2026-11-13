@@ -52612,6 +52612,24 @@ var GENERIC_PRESETS = {
     map: { date: "Date", type: "Type", isin: "ISIN", quantity: "Shares", price: "Price", fee: "Fee", amount: "Amount", currency: "Currency", decimal: "." },
     verified: false,
     source: "Trade Republic's in-app transaction export (2025) has no published column reference"
+  },
+  // ISO dates read under the default DMY order; fee is a positive charge (commission + transaction taxes).
+  nautilus: {
+    map: {
+      date: "date",
+      type: "type",
+      symbol: "symbol",
+      isin: "isin",
+      quantity: "quantity",
+      price: "price",
+      fee: "fee",
+      currency: "currency",
+      note: "note",
+      decimal: ".",
+      delimiter: ","
+    },
+    verified: true,
+    source: "nautilus-trading's own export (portfolio/export.py), a format both repos own"
   }
 };
 function checkColumnMap(raw) {
@@ -52664,7 +52682,8 @@ function parseGeneric(text2, opts) {
   const rows = csvRowsWithLines(src2, delimiter2);
   const want = headerKey(map.date);
   const h = rows.findIndex((r3) => r3.cells.some((c) => headerKey(c) === want));
-  const hint = opts.presetName ? ` (the "${opts.presetName}" map is best-effort: pass --map '{\u2026}' with your file's headers)` : "";
+  const preset = opts.presetName && Object.hasOwn(GENERIC_PRESETS, opts.presetName) ? GENERIC_PRESETS[opts.presetName] : void 0;
+  const hint = opts.presetName && !preset?.verified ? ` (the "${opts.presetName}" map is best-effort: pass --map '{\u2026}' with your file's headers)` : "";
   if (h < 0) throw new Error(`no header row with the date column "${map.date}" in the file${hint}`);
   const header2 = rows[h].cells.map(headerKey);
   const col = {};
@@ -52683,8 +52702,7 @@ function parseGeneric(text2, opts) {
     if (fatal) throw new Error(`${msg}${hint}`);
     res.warnings.push(`${msg} \u2014 those fields are left empty`);
   }
-  if (opts.presetName && Object.hasOwn(GENERIC_PRESETS, opts.presetName) && !GENERIC_PRESETS[opts.presetName].verified)
-    res.warnings.push(`the "${opts.presetName}" column map is best-effort (${GENERIC_PRESETS[opts.presetName].source}) \u2014 check the result with --dry-run`);
+  if (preset && !preset.verified) res.warnings.push(`the "${opts.presetName}" column map is best-effort (${preset.source}) \u2014 check the result with --dry-run`);
   const defaultCurrency = (map.defaultCurrency ?? "EUR").toUpperCase();
   if (col.currency === void 0 && !map.defaultCurrency) res.warnings.push("no currency column: every row is booked in EUR (set defaultCurrency in the map)");
   let pricedFromAmount = 0;
@@ -53470,7 +53488,7 @@ async function importCommand(args, asJson) {
     throw new UsageError(e.message);
   }
   if (format === "generic" && !mapOpt.map)
-    throw new UsageError("--format generic needs --map (a JSON column map, a .json file holding one, or boursorama|fortuneo|trade-republic)");
+    throw new UsageError("--format generic needs --map (a JSON column map, a .json file holding one, or boursorama|fortuneo|trade-republic|nautilus)");
   const path2 = resolve13(file);
   if (!existsSync38(path2)) throw new Error(`no such file: ${path2}`);
   const { text: text2, warning } = readStatement(path2);
@@ -63744,11 +63762,12 @@ COMMANDS
             "symbol":"Ticker","quantity":"Qty","price":"Price","fee":"Fees",
             "amount":"Amount","currency":"Ccy"}', or boursorama, fortuneo,
             trade-republic \u2014 unverified layouts, checked against the file's
-            headers). French or English numbers, dates and type words; re-import
-            adds nothing (content ids); a sell beyond holdings refuses the whole
-            file; skipped rows are listed with their reason; --dry-run writes
-            nothing. For crypto, --map '{"quote":"EUR"}' names the pair coin
-            deposits and rewards are booked against.
+            headers \u2014 or nautilus, the verified fills export of the companion
+            repo nautilus-trading). French or English numbers, dates and type
+            words; re-import adds nothing (content ids); a sell beyond holdings
+            refuses the whole file; skipped rows are listed with their reason;
+            --dry-run writes nothing. For crypto, --map '{"quote":"EUR"}' names
+            the pair coin deposits and rewards are booked against.
             Analyses of a book marked to market, every figure an [E#]: risk
             (exposures by class, currency, sector, country; HHI, volatility,
             VaR/CVaR historical, Cornish-Fisher and 10-day bootstrap, beta,

@@ -426,11 +426,12 @@ COMMANDS
             "symbol":"Ticker","quantity":"Qty","price":"Price","fee":"Fees",
             "amount":"Amount","currency":"Ccy"}', or boursorama, fortuneo,
             trade-republic — unverified layouts, checked against the file's
-            headers). French or English numbers, dates and type words; re-import
-            adds nothing (content ids); a sell beyond holdings refuses the whole
-            file; skipped rows are listed with their reason; --dry-run writes
-            nothing. For crypto, --map '{"quote":"EUR"}' names the pair coin
-            deposits and rewards are booked against.
+            headers — or nautilus, the verified fills export of the companion
+            repo nautilus-trading). French or English numbers, dates and type
+            words; re-import adds nothing (content ids); a sell beyond holdings
+            refuses the whole file; skipped rows are listed with their reason;
+            --dry-run writes nothing. For crypto, --map '{"quote":"EUR"}' names
+            the pair coin deposits and rewards are booked against.
             Analyses of a book marked to market, every figure an [E#]: risk
             (exposures by class, currency, sector, country; HHI, volatility,
             VaR/CVaR historical, Cornish-Fisher and 10-day bootstrap, beta,

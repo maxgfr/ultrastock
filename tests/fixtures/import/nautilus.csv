@@ -1,0 +1,6 @@
+date,type,symbol,isin,quantity,price,fee,currency,note
+2026-11-12,buy,SPY,,5,578.40,1.00,USD,nautilus:rebalance O-1
+2026-11-12,buy,ASML.AS,NL0010273215,2,684.10,3.42,EUR,nautilus:rebalance O-2
+2026-11-13,buy,MC.PA,,10,612.40,27.56,EUR,nautilus:rebalance O-3
+2026-11-13,sell,SPY,,3,580.12,1.00,USD,nautilus:pmax O-4
+2026-13-40,buy,SAP.DE,,4,231.15,1.20,EUR,nautilus:pmax O-5

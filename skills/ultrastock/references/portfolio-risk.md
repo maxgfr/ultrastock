@@ -24,7 +24,8 @@ news beside them. See [local-store](local-store.md).
   - **Coinbase**: the transaction history.
   - **Any other CSV**: a column map (`--map '{"date":"Date",…}'`). The named
     maps `boursorama`, `fortuneo` and `trade-republic` are unverified layouts,
-    checked against the file's headers. When its fee or tax rows carry both
+    checked against the file's headers; `nautilus` is verified (see
+    [With nautilus-trading](#with-nautilus-trading)). When its fee or tax rows carry both
     signs, the import is refused until `--fee-sign charge-negative` (a
     negative amount is paid, a positive one refunded) or
     `--fee-sign charge-positive` (the reverse) says which: ask the user or
@@ -67,3 +68,24 @@ Reading the results:
   scenario, not a forecast.
 - Currency exposure is risk too: USD assets for a EUR investor carry the
   dollar.
+
+## With nautilus-trading
+
+nautilus-trading, a companion repo, backtests systematic strategies and
+portfolio rebalancing on stocks and ETFs, and plans and executes rebalances
+through IB Gateway (paper by default). ultrastock keeps its own part: the
+evidence-checked analysis, the risk gate, the ledger, the journal, the
+dashboard and tax. The bridge is a CSV of fills, nautilus-trading's export,
+imported into the ledger with the verified `nautilus` map:
+
+```bash
+ultrastock portfolio import fills.csv --format generic --map nautilus --account cto-ibkr --book paper --dry-run
+```
+
+- Columns: `date,type,symbol,isin,quantity,price,fee,currency,note` —
+  comma-delimited, `.` decimal, ISO dates, `buy` or `sell`; `symbol` is a
+  ticker as ultrastock routes it (`MC.PA`, `SAP.DE`, `SPY`), `isin` may be
+  empty, `price` is per share in the listing currency, and `fee`
+  (commission and transaction taxes) is a positive charge.
+- `--book paper` for paper fills, `--book real` (the default) for live ones.
+  Dry-run first, as for any import; re-importing the same file adds nothing.

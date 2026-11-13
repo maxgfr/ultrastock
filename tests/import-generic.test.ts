@@ -132,6 +132,39 @@ describe("generic CSV with a column map", () => {
     expect(r.warnings.join(" ")).toMatch(/best-effort/);
     expect(r.warnings.join(" ")).toMatch(/not in the file/);
   });
+  it("reads nautilus-trading's export with --map nautilus, a verified layout", () => {
+    const opts = resolveMapOption("generic", "nautilus");
+    expect(opts).toMatchObject({ presetName: "nautilus" });
+    expect(GENERIC_PRESETS.nautilus!.verified).toBe(true);
+    const r = parseStatement("generic", sample("nautilus.csv"), { account: "cto-ibkr", ...opts });
+    expect(r.transactions.map((t) => `${t.date}:${t.type}:${t.symbol}`)).toEqual([
+      "2026-11-12:buy:SPY",
+      "2026-11-12:buy:ASML.AS",
+      "2026-11-13:buy:MC.PA",
+      "2026-11-13:sell:SPY",
+    ]);
+    // Positive fee = a charge; price per share in the listing currency.
+    expect(r.transactions[2]).toMatchObject({ account: "cto-ibkr", quantity: 10, price: 612.4, fee: 27.56, currency: "EUR", note: "nautilus:rebalance O-3" });
+    expect(r.transactions[3]).toMatchObject({ quantity: 3, price: 580.12, fee: 1, currency: "USD" });
+    expect(r.transactions[1]).toMatchObject({ isin: "NL0010273215", fee: 3.42 });
+    expect(r.transactions[0]!.isin).toBeUndefined();
+    expect(r.skipped).toEqual([{ line: 6, reason: 'unreadable date "2026-13-40"' }]);
+    // A layout both repos own: no best-effort warning, nor any other.
+    expect(r.warnings).toEqual([]);
+    expect(replay(r.transactions).positions.find((p) => p.symbol === "SPY")).toMatchObject({ quantity: 2 });
+    // A file that does not fit is refused without calling the map best-effort; an unverified map still says it.
+    const refusal = (presetName: string) => {
+      try {
+        parseStatement("generic", "When,Type\n13/11/2026,buy\n", { account: "cto-ibkr", ...resolveMapOption("generic", presetName) });
+      } catch (e) {
+        return (e as Error).message;
+      }
+      return "";
+    };
+    expect(refusal("nautilus")).toMatch(/no header row with the date column "date"/);
+    expect(refusal("nautilus")).not.toMatch(/best-effort/);
+    expect(refusal("fortuneo")).toMatch(/the "fortuneo" map is best-effort/);
+  });
   it("validates the map itself", () => {
     expect(() => checkColumnMap([])).toThrow(/JSON object/);
     expect(() => checkColumnMap({ type: "Type" })).toThrow(/needs "date"/);

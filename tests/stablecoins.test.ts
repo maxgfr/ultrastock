@@ -77,19 +77,25 @@ describe("the live gate and a stablecoin off its peg", () => {
     cancel: async (_s, id) => ({ state: "cancelled", clientOrderId: id }),
     openOrders: async () => [],
   };
+  // A ticket id is its creation second + the order's fingerprint: the same order
+  // twice within one second collides, so each ticket here gets its own second.
+  let created = 0;
   const ticket = async () => {
-    const t = createTicket({
-      account: "kraken",
-      symbol: "SOLUSDT",
-      side: "buy",
-      quantity: 1,
-      price: 100,
-      orderType: "limit",
-      currency: "USDT",
-      stop: 90,
-      assetKind: "crypto",
-      venue: "kraken",
-    });
+    const t = createTicket(
+      {
+        account: "kraken",
+        symbol: "SOLUSDT",
+        side: "buy",
+        quantity: 1,
+        price: 100,
+        orderType: "limit",
+        currency: "USDT",
+        stop: 90,
+        assetKind: "crypto",
+        venue: "kraken",
+      },
+      { now: new Date(Date.now() + 1000 * created++) },
+    );
     await recordCheck(t.id, { verdict: "pass", checks: [], fingerprint: t.fingerprint, riskReducing: false, notionalBase: 100 });
     return loadTicket(t.id);
   };
