@@ -59,7 +59,7 @@ export async function importCommand(args: CommandArgs, asJson: boolean): Promise
     throw new UsageError((e as Error).message);
   }
   if (format === "generic" && !mapOpt.map)
-    throw new UsageError("--format generic needs --map (a JSON column map, a .json file holding one, or boursorama|fortuneo|trade-republic)");
+    throw new UsageError("--format generic needs --map (a JSON column map, a .json file holding one, or boursorama|fortuneo|trade-republic|nautilus)");
   const path = resolve(file);
   if (!existsSync(path)) throw new Error(`no such file: ${path}`);
 

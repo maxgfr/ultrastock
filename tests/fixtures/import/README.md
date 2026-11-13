@@ -20,5 +20,6 @@ out-of-scope rows that the parsers must report in `skipped`.
 | `coinbase.csv` | Coinbase transaction history, with its preamble lines | best-effort |
 | `generic-fr.csv` | a French broker export (`;`, `1 234,56`, DD/MM/YYYY, French labels) read with a column map | invented layout |
 | `generic-en.csv` | an English CSV read with a column map | invented layout |
+| `nautilus.csv` | nautilus-trading's fills export, read with `--map nautilus` | nautilus-trading's own export (`portfolio/export.py`) |
 
 No sample sells more than it holds: each replays through `buildBook`.
