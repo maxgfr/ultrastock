@@ -74,6 +74,7 @@ listing", a jurisdiction block) is reported, never routed around.
 | Positioning, sentiment | CFTC COT ✓, CNN Fear & Greed, alternative.me, Cboe |
 | Calendars | Nasdaq, ForexFactory (events); exchange holidays computed from the rules |
 | News | Google News, GDELT, Yahoo (external text) |
+| Research literature | OpenAlex (a paper's venue, year, type, citations, retraction — `research --kind strategy`; keyless, only the DOI is sent) |
 | Options | CBOE ✓ (US, 15 min), Deribit ✓ (BTC, ETH) |
 | Crypto | Binance futures ✓, CoinGecko, DefiLlama, CoinMetrics, mempool.space, DexScreener, Solana RPC |
 | Prediction | Kalshi ✓, Manifold, Polymarket (where lawful) |

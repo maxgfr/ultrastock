@@ -1,6 +1,6 @@
 // `research`: web sources, compiled into evidence the answer cites and `check` verifies.
 //
-//   research <subject> [--kind equity|etf|crypto|company|person] [--focus results|calendar] [--ask "<question>"] --out <run>
+//   research <subject> [--kind equity|etf|crypto|company|person|strategy] [--focus results|calendar] [--ask "<question>"] --out <run>
 //       writes RESEARCH.todo.json — the angles and their queries (FR + EN) — for the agent's own web search
 //   research --out <run> [--for <tag>] --web-results websearch.json [--engine-search] [--limit 15]
 //       reads what the agent found: fetches, cleans, dedupes and ranks the pages, registers each as a
@@ -140,7 +140,10 @@ export async function researchCommand(args: CommandArgs, asJson: boolean): Promi
 export function formatRound(r: ResearchRoundResult, todoFile: string): string {
   return [
     `research: ${r.kept.length} new source${r.kept.length === 1 ? "" : "s"} (${r.total} in the run), ${r.dropped.length} dropped — ${r.dossier}`,
-    ...r.kept.map((d) => `  [${d.id}] ${d.host}${d.pdf ? " (PDF)" : ""} — ${d.chars} characters${d.official ? ", official" : ""}${d.via ? ` — ${d.via}` : ""}`),
+    ...r.kept.map(
+      (d) =>
+        `  [${d.id}] ${d.host}${d.pdf ? " (PDF)" : ""} — ${d.chars} characters${d.tier ? `, ${d.tier}` : ""}${d.official ? (d.tier ? ", scholarly" : ", official") : ""}${d.via ? ` — ${d.via}` : ""}`,
+    ),
     r.underCovered.length
       ? `under-covered angles: ${r.underCovered.join(", ")} — the next round's rephrased queries are in ${join(r.dir, todoFile)}`
       : "no angle under-covered",

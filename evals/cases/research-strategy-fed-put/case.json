@@ -1,0 +1,8 @@
+{
+  "kind": "research — a strategy's literature (the Fed put): the NBER working paper and its PDF, SSRN through Wayback, OpenAlex's records, checked figure by figure",
+  "research": { "subject": "fed put", "kind": "strategy", "webResults": "websearch.json" },
+  "fixture": "assets/fixtures/research-strategy-fed-put",
+  "calcs": [],
+  "expect": { "evidenceMin": 5, "keys": ["openalex.10.3386/w26894", "openalex.10.1093/rfs/hhaa116"], "documents": 3 },
+  "answers": { "good": 0, "bad": 2 }
+}

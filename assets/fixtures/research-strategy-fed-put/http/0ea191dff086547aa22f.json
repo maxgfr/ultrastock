@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.openalex.org/works/doi:10.3386/w26894?select=id,doi,display_name,publication_year,type,is_retracted,cited_by_count,primary_location"
+ },
+ "response": {
+  "status": 200,
+  "body": "{\"id\":\"https://openalex.org/W3090627464\",\"doi\":\"https://doi.org/10.3386/w26894\",\"display_name\":\"The Economics of the Fed Put\",\"publication_year\":2020,\"type\":\"report\",\"is_retracted\":false,\"cited_by_count\":38,\"primary_location\":{\"id\":\"doi:10.3386/w26894\",\"doi\":\"https://doi.org/10.3386/w26894\",\"is_oa\":true,\"landing_page_url\":\"https://doi.org/10.3386/w26894\",\"pdf_url\":\"https://doi.org/10.3386/w26894\",\"source\":{\"id\":\"https://openalex.org/S2809516038\",\"display_name\":\"National Bureau of Economic Research\",\"issn_l\":null,\"issn\":null,\"is_oa\":false,\"is_in_doaj\":false,\"is_core\":false,\"listed_in\":[],\"host_organization\":null,\"host_organization_name\":null,\"host_organization_lineage\":[\"https://openalex.org/P4322614461\"],\"host_organization_lineage_names\":[\"National Bureau of Economic Research\"],\"type\":\"repository\"},\"license\":null,\"license_id\":null,\"version\":\"publishedVersion\",\"is_accepted\":true,\"is_published\":true,\"raw_source_name\":\"National Bureau of Economic Research\",\"raw_type\":\"report\"}}\n",
+  "url": "https://api.openalex.org/works/doi:10.3386/w26894?select=id,doi,display_name,publication_year,type,is_retracted,cited_by_count,primary_location",
+  "fetchedAt": "2026-11-23T13:55:04.596Z",
+  "ok": true
+ }
+}

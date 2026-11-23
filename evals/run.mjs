@@ -9,6 +9,7 @@
 //   btcusdt   a crypto pair, 24/7, closed daily bars only
 //   cw8-full  a PEA world ETF at --depth full: ETF.md and the full-depth extras
 //   research-mc-pa  LVMH's own H1 2026 releases, ingested as document evidence
+//   research-strategy-fed-put  a strategy's literature: the NBER paper, its PDF, SSRN, OpenAlex's records
 //   value-pt  a recorded crible screen through the value pipeline to VALUE.md
 //   events-br a book exposed to Brazil and the US: the run-off just past, the Fed ahead
 //   etf-propose-pea  `etf propose` for a PEA at risk 4: the convention, the picks, PROPOSAL.md
@@ -127,7 +128,15 @@ for (const name of readdirSync(join(here, "cases")).sort()) {
   } else if (spec.research) {
     // A research case: the worklist, then the recorded pages compiled into document evidence.
     if (suite !== "offline") continue;
-    const plan = cli(["research", spec.research.subject, ...(spec.research.focus ? ["--focus", spec.research.focus] : []), "--out", run, ...source]);
+    const plan = cli([
+      "research",
+      spec.research.subject,
+      ...(spec.research.kind ? ["--kind", spec.research.kind] : []),
+      ...(spec.research.focus ? ["--focus", spec.research.focus] : []),
+      "--out",
+      run,
+      ...source,
+    ]);
     ok(
       plan.status === 0 && plan.json?.angles?.length > 0,
       `research ${spec.research.subject} worklist (${plan.status === 0 ? `${plan.json.angles.length} angles` : plan.stderr.trim()})`,

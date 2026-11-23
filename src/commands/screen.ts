@@ -62,7 +62,7 @@ function listText(engine: Engine | undefined): string {
       lines.push(
         `    sorted by: ${p.id === "magic-formula" ? "combined rank" : `${p.sort.sortBy} ${p.sort.sortOrder === "asc" ? "ascending" : "descending"}`}`,
       );
-      lines.push(`    source: ${p.source}`);
+      lines.push(`    source: ${p.source} — read it: ultrastock research "${p.id}" --kind strategy --out <run>`);
       for (const a of p.approximations ?? []) lines.push(`    approximated: ${a}`);
     }
     lines.push("");
@@ -77,7 +77,7 @@ function listText(engine: Engine | undefined): string {
     for (const p of BUILTIN_PRESETS) {
       lines.push(`- ${p.id} — ${p.title} [engine builtin]`);
       lines.push(`    rules: ${p.rules.join("; ")}`);
-      lines.push(`    source: ${p.source}`);
+      lines.push(`    source: ${p.source} — read it: ultrastock research "${p.id}" --kind strategy --out <run>`);
       for (const a of p.approximations ?? []) lines.push(`    approximated: ${a}`);
     }
     lines.push("");

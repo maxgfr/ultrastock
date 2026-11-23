@@ -1,0 +1,13 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.openalex.org/works/doi:10.1007/s00500-023-08305-7?select=id,doi,display_name,publication_year,type,is_retracted,cited_by_count,primary_location"
+ },
+ "response": {
+  "status": 200,
+  "body": "{\"id\":\"https://openalex.org/W4372287301\",\"doi\":\"https://doi.org/10.1007/s00500-023-08305-7\",\"display_name\":\"RETRACTED ARTICLE: Influencing factors of stock returns based on Fama\\u2013French model and intelligent algorithm\",\"publication_year\":2023,\"type\":\"article\",\"is_retracted\":true,\"cited_by_count\":3,\"primary_location\":{\"id\":\"doi:10.1007/s00500-023-08305-7\",\"doi\":\"https://doi.org/10.1007/s00500-023-08305-7\",\"is_oa\":false,\"landing_page_url\":\"https://doi.org/10.1007/s00500-023-08305-7\",\"pdf_url\":null,\"source\":{\"id\":\"https://openalex.org/S65753830\",\"display_name\":\"Soft Computing\",\"issn_l\":\"1432-7643\",\"issn\":[\"1432-7643\",\"1433-7479\"],\"is_oa\":false,\"is_in_doaj\":false,\"is_core\":true,\"listed_in\":[\"anvur-class-a\",\"anvur-scientific\",\"ccf-c\",\"cwts-core\",\"jufo-1\",\"norway-1\",\"poland-70\",\"russia-white-list-1\",\"vabb-shw\"],\"host_organization\":\"https://openalex.org/P4310319900\",\"host_organization_name\":\"Springer Science+Business Media\",\"host_organization_lineage\":[\"https://openalex.org/P4310319900\",\"https://openalex.org/P4310319965\"],\"host_organization_lineage_names\":[\"Springer Science+Business Media\",\"Springer Nature\"],\"type\":\"journal\"},\"license\":null,\"license_id\":null,\"version\":\"publishedVersion\",\"is_accepted\":true,\"is_published\":true,\"raw_source_name\":\"Soft Computing\",\"raw_type\":\"journal-article\"}}\n",
+  "url": "https://api.openalex.org/works/doi:10.1007/s00500-023-08305-7?select=id,doi,display_name,publication_year,type,is_retracted,cited_by_count,primary_location",
+  "fetchedAt": "2026-11-23T13:56:24.149Z",
+  "ok": true
+ }
+}

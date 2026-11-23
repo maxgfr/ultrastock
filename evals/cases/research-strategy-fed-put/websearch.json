@@ -1,0 +1,15 @@
+[
+  {
+    "angle": "working-papers",
+    "query": "fed put site:ssrn.com OR site:nber.org OR site:arxiv.org",
+    "results": [
+      { "url": "https://www.nber.org/papers/w26894", "title": "The Economics of the Fed Put | NBER" },
+      { "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3563962", "title": "The Economics of the Fed Put by Anna Cieslak, Annette Vissing-Jorgensen :: SSRN" }
+    ]
+  },
+  {
+    "angle": "original-paper",
+    "query": "fed put original paper journal of finance pdf",
+    "results": [{ "url": "https://www.nber.org/system/files/working_papers/w26894/w26894.pdf", "title": "The Economics of the Fed Put" }]
+  }
+]

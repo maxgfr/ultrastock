@@ -26,8 +26,9 @@ cheap?", "what did Anthropic report this year?").
      feed holds AGM dates). `morning` writes one per flagged results date, and
      `morning --confirm` reads them back (see [morning](morning.md)).
    - `--ask "<question>"`: angles built from one precise question.
-   - `--kind equity|etf|crypto|company|person` overrides the detection; `--name` the
-     name searched with.
+   - `--kind equity|etf|crypto|company|person|strategy` overrides the detection;
+     `--name` the name searched with. `strategy` searches a strategy's literature
+     (see [Sourcing a strategy](#sourcing-a-strategy)).
 2. **Search** — run every query with your web search, one query per call. Save the
    result lists to one JSON file, one entry per query:
 
@@ -66,6 +67,56 @@ cheap?", "what did Anthropic report this year?").
    Md€" for "€38.6 billion"). `ultrastock check <run> answer.md` refuses a figure
    the cited document does not state, and notes one it finds only far from the
    claim's words. Then `ultrastock report <run>`.
+
+## Sourcing a strategy
+
+`research "<strategy>" --kind strategy --out <run>` ("fed put", "momentum", "DCA",
+"buy the dip") answers "what does the research say about it?". Its angles: the
+original paper, the working papers (`site:ssrn.com OR site:nber.org OR
+site:arxiv.org`), literature reviews, out-of-sample and post-publication results,
+costs and critiques, central banks' and asset managers' research, and evidence in
+French (AMF, Banque de France). When the name is one of ultrastock's own rules — a
+`screen` preset, a `value` style, a backtest strategy or an allocation rule — its
+`cited-source` angle comes first: the references that rule's `source` names
+(`research momentum --kind strategy` searches "Jegadeesh Titman 1993 Journal of
+Finance pdf"). `--ask "le DCA bat-il l'investissement en une fois ?"` works as for
+any subject.
+
+Each source carries its **level of evidence**, in `sources/E#.md`, its `[E#]` label
+and DOSSIER.md, strongest first:
+
+1. **peer-reviewed** — a journal (doi.org, OUP, Elsevier, Wiley, JSTOR, Springer,
+   Taylor & Francis, Cambridge, the AEA);
+2. **working-paper** — NBER, SSRN, CEPR, RePEc, HAL, a university;
+3. **preprint** — arXiv;
+4. **institutional** — a central bank, the BIS, the IMF, the AMF;
+5. **practitioner** — an asset manager's research (AQR, Vanguard, Alpha Architect…);
+6. **press** — everything else.
+
+The paper each scholarly source is (the DOI or arXiv id in its URL or at the head
+of its text) is looked up in **OpenAlex** (keyless; only the DOI is sent): its
+venue, year, type, citation count and whether it was retracted become an `[E#]`
+citable at `doi.org`, and a working paper whose page names its published version
+under the same title gets that version's record too. DOSSIER.md lists them under
+"The papers, checked with OpenAlex", and a **retracted** paper is flagged at its
+top. A press page or a blog that names a DOI cites a study: the notes say "read the
+study", and the next round's `gap-cited-studies` angle searches that DOI. OpenAlex
+unreachable: the levels rest on each source's domain, and the notes say so.
+
+Rules for the answer:
+
+- **Cite the paper's figure, not the press's**: "32 bps at the next meeting and 127
+  bps after one year [E2]" from the paper itself; a page that reports it is a
+  pointer to the study, not the evidence.
+- **A working paper is not a published article**: say which version you cite (the
+  NBER working paper, or the journal's), and its level.
+- **A result can fade once published**: anomalies' returns fall out of sample and
+  fall further after publication (McLean & Pontiff, Journal of Finance, 2016) —
+  read the out-of-sample angle before calling an edge durable, and cite the
+  figures you find there, not these.
+- **Cite figures**: a claim with no figure is only checked for its `[E#]` existing,
+  never against the paper's text. "The Fed reacts to stocks [E2]" passes whatever
+  E2 says; "a 10% decline predicts a 32 bps cut [E2]" is checked.
 
 ## Who searches
 
