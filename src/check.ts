@@ -354,6 +354,9 @@ export function figureMatches(f: Figure, items: readonly EvidenceItem[], opts: {
     if (typeof it.value !== "number") continue;
     // A unit the reader does not know is held only to an item in that unit, at the value written.
     if (f.unit !== undefined && !unitAgrees(f.unit, it.unit)) continue;
+    // Basis points are held by a source's basis points or percentage, never by a bare number of a document: "50 bps"
+    // is not the 0.50 of a table's R².
+    if (f.scale === 0.01 && it.unit === AS_WRITTEN) continue;
     const candidates = [it.value];
     // A fraction stored as a ratio can be written as a percentage, and back.
     if (f.unit === undefined && f.percent && FRACTION_UNITS.has(it.unit)) candidates.push(it.value * 100);
@@ -373,10 +376,15 @@ export function figureMatches(f: Figure, items: readonly EvidenceItem[], opts: {
 
 /**
  * A document's figures as evidence-shaped values, so `figureMatches` reads them like any other. A plain figure is
- * stored as written, not as a fraction: "0.45 EUR" or "15 stores" in a page is no "45 %".
+ * stored as written, not as a fraction: "0.45 EUR" or "15 stores" in a page is no "45 %"; one in basis points says so.
  */
 export function documentFigures(doc: EvidenceItem, text: string): EvidenceItem[] {
-  return extractFigures(text).map((f) => ({ ...doc, value: f.value, unit: f.unit ?? (f.percent ? "%" : AS_WRITTEN), doc: undefined }));
+  return extractFigures(text).map((f) => ({
+    ...doc,
+    value: f.value,
+    unit: f.unit ?? (f.percent ? "%" : f.scale === 0.01 ? "bp" : AS_WRITTEN),
+    doc: undefined,
+  }));
 }
 
 /** A cited document as `check` reads it once: its text, its figures, and what is derived from them on demand. */

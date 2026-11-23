@@ -18,6 +18,16 @@ import type { Costs, EquityPoint } from "./simulate.js";
 export const ALLOCATIONS = ["buy-and-hold", "60-40", "equal-weight", "dual-momentum", "risk-parity"] as const;
 export type Allocation = (typeof ALLOCATIONS)[number];
 
+/** The literature each rule comes from — what `research "<rule>" --kind strategy` reads first. */
+export const ALLOCATION_SOURCES: Record<Allocation, string> = {
+  "buy-and-hold": "holding the market at its weights (Sharpe, 'The Arithmetic of Active Management', Financial Analysts Journal, 1991)",
+  "60-40": "the balanced stock-bond portfolio (Asness, 'Why Not 100% Equities', Journal of Portfolio Management, 1996)",
+  "equal-weight": "1/N against optimised weights (DeMiguel, Garlappi & Uppal, 'Optimal Versus Naive Diversification', Review of Financial Studies, 2009)",
+  "dual-momentum": "Antonacci's global equities momentum (Antonacci, Dual Momentum Investing, 2014)",
+  "risk-parity":
+    "equal risk contributions (Maillard, Roncalli & Teiletche, 'The Properties of Equally Weighted Risk Contribution Portfolios', Journal of Portfolio Management, 2010)",
+};
+
 export interface AllocationOptions {
   rebalance?: "monthly" | "quarterly";
   costs: Costs;

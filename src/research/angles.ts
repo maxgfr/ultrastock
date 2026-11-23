@@ -14,12 +14,17 @@
 // hold, the filings behind it and the questions it raises — the web holds what
 // the regulators' indexes do not reach (a non-US fund's reports, the Senate's
 // PTRs, the press that read a 278-T).
+// An investment strategy (momentum, the Fed put, DCA, buy-the-dip) is searched
+// in its literature: the original paper, the working papers, the reviews, its
+// out-of-sample record, its costs and critics, and what central banks and
+// asset managers' research found — each source then ranked by its level of
+// evidence (scholarly.ts).
 // `--focus results` narrows to the latest publication, `--focus calendar` to
 // the dates the issuer announces ahead; `--ask` turns one
 // precise question into its own angles.
 import { rankedKeywords } from "../engine.js";
 
-export const RESEARCH_KINDS = ["equity", "etf", "crypto", "company", "person"] as const;
+export const RESEARCH_KINDS = ["equity", "etf", "crypto", "company", "person", "strategy"] as const;
 export type ResearchKind = (typeof RESEARCH_KINDS)[number];
 export const RESEARCH_FOCUSES = ["general", "results", "calendar"] as const;
 export type ResearchFocus = (typeof RESEARCH_FOCUSES)[number];
@@ -112,6 +117,32 @@ const PERSON: Template[] = [
   ],
 ];
 
+// An investment strategy: what the research says about it, from the paper that found it to the ones that tried it since.
+const STRATEGY: Template[] = [
+  ["original-paper", "The original paper", "{n} article fondateur étude originale pdf", "{n} original paper journal of finance pdf"],
+  [
+    "working-papers",
+    "Working papers",
+    "{n} document de travail site:ssrn.com OR site:nber.org OR site:hal.science",
+    "{n} site:ssrn.com OR site:nber.org OR site:arxiv.org",
+  ],
+  ["review", "Literature reviews", "{n} revue de littérature méta-analyse", "{n} literature review meta-analysis survey"],
+  [
+    "out-of-sample",
+    "Out of sample and after publication",
+    "{n} réplication hors échantillon après publication",
+    "{n} out-of-sample replication post-publication decay McLean Pontiff",
+  ],
+  ["costs-critique", "Costs and critiques", "{n} coûts de transaction critique limites", "{n} transaction costs critique does not work"],
+  [
+    "institutional",
+    "Central banks' and asset managers' research",
+    "{n} étude Banque de France BCE Fed recherche",
+    "{n} research Federal Reserve BIS Vanguard AQR",
+  ],
+  ["fr-evidence", "Evidence in French", "étude scientifique {n} AMF Banque de France", "{n} empirical evidence individual investors study"],
+];
+
 // The latest publication, whatever the kind: the release, the deck, the filing, the call.
 const RESULTS: Template[] = [
   [
@@ -181,6 +212,7 @@ export function researchAngles(s: ResearchSubject): ResearchAngle[] {
   if (s.focus === "results") return (s.kind === "company" ? COMPANY_RESULTS : RESULTS).map((t) => angle(t, s));
   if (s.focus === "calendar") return CALENDAR.map((t) => angle(t, s));
   if (s.kind === "person") return PERSON.map((t) => angle(t, s));
+  if (s.kind === "strategy") return STRATEGY.map((t) => angle(t, s));
   const table = s.kind === "etf" ? ETF : s.kind === "crypto" ? CRYPTO : s.kind === "company" ? COMPANY : EQUITY;
   return table.map((t) => angle(t, s));
 }
@@ -205,8 +237,9 @@ const MAX_REPHRASINGS = 3;
 export const followUpId = (angleId: string) => `more-${angleId}`;
 export const followedAngle = (id: string) => (id.startsWith("more-") ? id.slice(5) : undefined);
 
-/** Angles after a document — a release, a filing, a deck, a factsheet: their second round asks for the PDF. */
-const DOCUMENT_ANGLE = /^(?:results-(?:latest|release|presentation|filing|call|guidance|segments|revenue)|factsheet-kid|holdings|tracking|ask-primary)$/;
+/** Angles after a document — a release, a filing, a deck, a factsheet, a paper: their second round asks for the PDF. */
+const DOCUMENT_ANGLE =
+  /^(?:results-(?:latest|release|presentation|filing|call|guidance|segments|revenue)|factsheet-kid|holdings|tracking|ask-primary|original-paper|working-papers|review|cited-source)$/;
 
 export interface UnderCoveredAngle {
   angle: ResearchAngle;

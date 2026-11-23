@@ -93,7 +93,7 @@ USAGE
   ultrastock fx [USD,GBP,…] [--out <dir>] [--json]
   ultrastock cot <market> [--report legacy|tff] [--out <dir>] [--json]
   ultrastock sentiment [all|cnn|crypto|vix|putcall] [--out <dir>] [--json]
-  ultrastock research <symbol|name> [--kind equity|etf|crypto|company|person] [--focus results|calendar] [--ask "<question>"] [--name <search name>] [--for <tag>] --out <run> [--json]
+  ultrastock research <symbol|name> [--kind equity|etf|crypto|company|person|strategy] [--focus results|calendar] [--ask "<question>"] [--name <search name>] [--for <tag>] --out <run> [--json]
   ultrastock research --out <run> [--for <tag>] --web-results <websearch.json|-> | --urls <a,b> | --search-with claude|codex|ccs | --engine-search [--browser] [--no-wayback] [--limit <n>] [--json]
   ultrastock research <symbol|name> --search-with claude|codex|ccs [--search-model <m>] --out <run> [--json]   (worklist, search and ingestion in one call)
   ultrastock events [--days 60] [--since 7] [--country BR,US] [--all] [--book real|paper] [--limit <n>] [--out <dir>] [--json]
@@ -299,7 +299,16 @@ COMMANDS
             A refused or walled page falls back to its Wayback copy
             (--no-wayback to skip) and, with --browser, a render in a separate
             browser; an official page's linked PDF reports are read too.
-  universe  An index's current members (Wikipedia) — current only: a backtest
+            --kind strategy searches a strategy's literature (the original
+            paper, working papers, reviews, out-of-sample decay, costs and
+            critiques, central banks' and asset managers' research; first, the
+            source a screen preset, value style, backtest strategy or
+            allocation rule of that name cites), ranks each source's level of
+            evidence (peer-reviewed, working-paper, preprint, institutional,
+            practitioner, press) and checks its paper in OpenAlex (venue,
+            citations, retraction), e.g. research "fed put" --kind strategy
+            --out <run>.
+  universe An index's current members (Wikipedia) — current only: a backtest
             over them has survivorship bias.
   resolve   A name, ticker or ISIN → the Euronext listings, the SEC registrant,
             the LEI (GLEIF) and FIGI identifiers that match.

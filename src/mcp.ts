@@ -251,11 +251,12 @@ export const TOOLS: Tool[] = [
       "Web research compiled into evidence. With a subject: write the worklist (RESEARCH.todo.json: angles and FR+EN queries — business model, results, governance, controversies, short-sellers; ETF factsheet/KID/replication/PEA; focus=results for the latest report, ask for one precise question). Then run those queries with YOUR web search and call again with out + hits (inline) to ingest: pages and PDFs fetched, walls rescued (Wayback, optional browser) or dropped, linked reports followed, each page a document [E#] (sources/E#.md, DOSSIER.md; an angle with fewer than two sources gets a rephrased second round in the worklist). No web search of your own: search-with claude|codex. check refuses a figure the cited page does not state.",
     command: ["research"],
     params: {
-      subject: { kind: "string", description: "a symbol, an ISIN or a company name (omit when ingesting)", positional: 0 },
+      subject: { kind: "string", description: "a symbol, an ISIN, a company name or a strategy (omit when ingesting)", positional: 0 },
       kind: {
         kind: "string",
-        description: "equity, etf, crypto, company (a name with no listing) or person (a public figure or an investment fund: trades, holdings, filings)",
-        enum: ["equity", "etf", "crypto", "company", "person"],
+        description:
+          "equity, etf, crypto, company (a name with no listing), person (a public figure or an investment fund: trades, holdings, filings) or strategy (an investment strategy's literature: papers ranked by level of evidence, checked in OpenAlex)",
+        enum: ["equity", "etf", "crypto", "company", "person", "strategy"],
       },
       focus: {
         kind: "string",

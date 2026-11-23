@@ -28,6 +28,7 @@ import {
   writeTodo,
 } from "./dossier.js";
 import { type Dropped, engineSearch, fuseHits, notADocument, type ReadPage, readCandidates, type WebHit } from "./ingest.js";
+import { citedSourceAngle, citedStudiesAngle, evidenceTier, type ScholarlyCheck, scholarlyCheck, scholarlyHost, sourceHost } from "./scholarly.js";
 
 interface IndexEntry {
   id: string;
@@ -42,6 +43,7 @@ interface IndexEntry {
   fetchedAt: string;
   publishedAt?: string;
   official: boolean;
+  tier?: string;
   via?: string;
 }
 
@@ -69,7 +71,8 @@ async function subjectOf(
 ): Promise<{ s: Omit<ResearchSubject, "focus" | "year" | "ask">; notes: string[] }> {
   const notes: string[] = [];
   const symbolLike = /^[A-Za-z0-9.:\-^=]{1,15}$/.test(raw.trim());
-  if (kind !== "company" && kind !== "person" && symbolLike) {
+  // A company with no listing, a person and a strategy are searched by name: no ticker to resolve.
+  if (kind !== "company" && kind !== "person" && kind !== "strategy" && symbolLike) {
     try {
       const r = await resolveSymbol(raw);
       const inst = r.instrument;
@@ -112,7 +115,8 @@ export async function startResearch(raw: string, opts: ResearchStart = {}): Prom
     ...(opts.tag ? { tag: opts.tag } : {}),
     createdAt: clockNow().toISOString(),
     round: 1,
-    angles: researchAngles(subject),
+    // A strategy ultrastock's own rules follow (a screen preset, a value style…): the literature they cite, searched first.
+    angles: [...(subject.kind === "strategy" ? [citedSourceAngle([raw, subject.name])].filter((a) => !!a) : []), ...researchAngles(subject)],
   };
   writeTodo(dir, todo);
   return { dir, todo, notes: [...sub.notes] };
@@ -141,7 +145,7 @@ function previousDocs(dir: string, tag?: string): RegisteredDoc[] {
       score: 0,
       ...(e.via ? { via: e.via } : {}),
     };
-    out.push({ id: e.id, page, host: e.host, official: e.official });
+    out.push({ id: e.id, page, host: e.host, official: e.official, ...(e.tier ? { tier: e.tier } : {}) });
   }
   return out;
 }
@@ -175,12 +179,14 @@ export interface ResearchRound {
 export interface ResearchRoundResult {
   dir: string;
   dossier: string;
-  kept: Array<{ id: string; url: string; host: string; pdf: boolean; chars: number; official: boolean; angles: string[]; via?: string }>;
+  kept: Array<{ id: string; url: string; host: string; pdf: boolean; chars: number; official: boolean; tier?: string; angles: string[]; via?: string }>;
   total: number;
   dropped: Dropped[];
   /** Angle ids with fewer than two kept sources — the next round's angles rephrase their queries. */
   underCovered: string[];
   crible?: CribleCheck["rows"];
+  /** A strategy's papers, as OpenAlex holds them. */
+  scholarly?: Pick<ScholarlyCheck, "rows" | "retracted" | "cites">;
   notes: string[];
 }
 
@@ -214,7 +220,20 @@ export async function researchRound(dir: string, todo: ResearchTodo, notes: stri
   });
   const notDocs = [...new Set(lists.flat().map((h) => h.url))].filter(notADocument);
   dropped.push(...notDocs.map((url) => ({ url, reason: "not a document (video, social feed or search page)" })));
-  const fresh = registerDocuments(dir, todo, pages);
+  // A strategy's official sources are scholarly (journals, working-paper series, central banks, universities), and each
+  // source carries its level of evidence.
+  const fresh = registerDocuments(
+    dir,
+    todo,
+    pages,
+    todo.kind === "strategy"
+      ? {
+          official: (host, page) => scholarlyHost(sourceHost(host, page.url)),
+          officialAs: "scholarly: a journal, a working-paper series, a preprint server, a central bank or a university",
+          tier: (host, page) => evidenceTier(sourceHost(host, page.url)),
+        }
+      : {},
+  );
   const seen = new Set(before.map((d) => d.id));
   const docs = [...before, ...fresh.filter((d) => !seen.has(d.id))];
   const index: IndexEntry[] = docs.map((d) => ({
@@ -228,11 +247,14 @@ export async function researchRound(dir: string, todo: ResearchTodo, notes: stri
     fetchedAt: d.page.fetchedAt,
     publishedAt: d.page.publishedAt,
     official: d.official,
+    ...(d.tier ? { tier: d.tier } : {}),
     ...(d.page.via ? { via: d.page.via } : {}),
   }));
   writeFileAtomic(join(dir, files.index), `${JSON.stringify(index, null, 2)}\n`);
 
   const crible = todo.kind === "equity" && todo.symbol ? await cribleCrossCheck(dir, todo.symbol, docs) : undefined;
+  const scholarly = todo.kind === "strategy" ? await scholarlyCheck(dir, todo.subject, docs) : undefined;
+  const cited = scholarly ? citedStudiesAngle(scholarly) : undefined;
   const searched = new Set([...(todo.searched ?? []), ...lists.flat().map((h) => h.angle ?? ""), ...docs.flatMap((d) => d.page.angles)].filter(Boolean));
   // The second round follows the angles with too few sources; the terms are a statistic.
   const { coverage: angles, under } = angleCoverage(todo, docs, searched);
@@ -240,7 +262,9 @@ export async function researchRound(dir: string, todo: ResearchTodo, notes: stri
   const unsearched = todo.angles.filter((a) => !searched.has(a.id)).map((a) => a.id);
   if (unsearched.length) notes.push(`angles not searched yet: ${unsearched.join(", ")} — their queries are in ${files.todo}`);
   const asked = new Set(todo.angles.flatMap((a) => a.queries));
-  const follow = followUpAngles(todo, under, { issuerDomain: issuerDomain(docs, todo.name), asked }).filter((a) => !searched.has(a.id));
+  const follow = [...followUpAngles(todo, under, { issuerDomain: issuerDomain(docs, todo.name), asked }), ...(cited ? [cited] : [])].filter(
+    (a) => !searched.has(a.id),
+  );
   const isFollowUp = (id: string) => id.startsWith("gap-") || id.startsWith("more-");
   const next: ResearchTodo = {
     ...todo,
@@ -250,7 +274,7 @@ export async function researchRound(dir: string, todo: ResearchTodo, notes: stri
     angles: [...todo.angles.filter((a) => !isFollowUp(a.id) || searched.has(a.id)), ...follow],
   };
   writeTodo(dir, next);
-  const dossier = writeDossier(dir, next, docs, dropped, { notes, crible, angles, under, terms });
+  const dossier = writeDossier(dir, next, docs, dropped, { notes, crible, angles, under, terms, scholarly });
   return {
     dir,
     dossier,
@@ -261,6 +285,7 @@ export async function researchRound(dir: string, todo: ResearchTodo, notes: stri
       pdf: d.page.pdf,
       chars: d.page.text.length,
       official: d.official,
+      ...(d.tier ? { tier: d.tier } : {}),
       angles: d.page.angles,
       via: d.page.via,
     })),
@@ -268,6 +293,7 @@ export async function researchRound(dir: string, todo: ResearchTodo, notes: stri
     dropped,
     underCovered: next.underCovered ?? [],
     crible: crible?.rows,
-    notes,
+    ...(scholarly ? { scholarly: { rows: scholarly.rows, retracted: scholarly.retracted, cites: scholarly.cites } } : {}),
+    notes: [...notes, ...(scholarly?.notes ?? [])],
   };
 }

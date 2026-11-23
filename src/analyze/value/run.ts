@@ -633,7 +633,7 @@ function valueMarkdown(
     const st = run.style;
     const k = `VALUE.${st.id}`;
     L.push(`## ${st.id} — ${st.title}`, "");
-    L.push(`Looking for ${st.thesis}. Source: ${st.source}.`, "");
+    L.push(`Looking for ${st.thesis}. Source: ${st.source} (read it: \`ultrastock research "${st.id}" --kind strategy --out <run>\`).`, "");
     L.push(
       `Funnel: crible matches ${cite(by(`${k}.matches`))}, read ${cite(by(`${k}.fetched`))}, after hygiene ${cite(by(`${k}.hygiene`))}, after the gates ${cite(by(`${k}.gates`))}, scored ${cite(by(`${k}.scored`))} (unscored for missing figures ${cite(by(`${k}.unscored`))}). Query: [${by(`${k}.query`)?.id ?? "–"}].`,
       "",
